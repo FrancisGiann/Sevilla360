@@ -1,0 +1,406 @@
+/* ==========================================================================
+   Virtual Showroom Layout (Full Screen & Wide)
+   ========================================================================== */
+
+:root {
+    --bg-viewer: #FBE4CD;
+    --bg-details: #DEB47E;
+    --btn-brown: #A07748;
+    --border-dark: #2A2522;
+}
+
+.showroom-wrapper {
+    /* Set wrapper to exactly 100% of the screen height */
+    height: 100vh; 
+    padding-top: 90px; /* Just enough space for your navbar */
+    padding-bottom: 20px; /* Small gap at the bottom of the screen */
+    background-color: var(--color-white);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.showroom-container {
+    width: 96%; /* Makes it much wider, leaving just a 2% gap on each side */
+    max-width: 1900px; /* Increased max-width so it fills large monitors */
+    height: 100%; /* Forces it to stay inside the 100vh wrapper */
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+/* --- 1. The Big Viewer Box --- */
+.big-viewer-box {
+    background-color: var(--bg-viewer);
+    flex: 1; /* Magic trick: Automatically shrinks/grows to fill all remaining vertical space! */
+    min-height: 0; /* Removes the old 600px limit that forced scrolling */
+    position: relative;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    overflow: hidden;
+    transition: all 0.4s ease;
+}
+
+.viewer-label {
+    position: absolute;
+    top: 20px;
+    left: 30px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 1rem;
+    z-index: 10;
+}
+
+/* Map Controls (Top Right) */
+.viewer-controls {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+}
+
+.viewer-controls button {
+    width: 35px;
+    height: 35px;
+    background: rgba(160, 119, 72, 0.5);
+    border: none;
+    color: var(--border-dark);
+    font-size: 1.2rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: 0.3s ease;
+}
+
+.viewer-controls button:hover {
+    background: var(--btn-brown);
+    color: white;
+}
+
+/* Pills (Bottom Left) */
+.room-pills {
+    position: absolute;
+    bottom: 20px; /* Tucked slightly tighter to the bottom */
+    left: 30px;
+    display: flex;
+    gap: 10px;
+    z-index: 20;
+}
+
+.pill {
+    padding: 8px 20px;
+    border-radius: 30px;
+    border: 1px solid var(--border-dark);
+    background: transparent;
+    color: var(--border-dark);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Hide dropdown arrows by default */
+.pill span {
+    font-size: 0.6rem;
+    display: none; 
+}
+
+/* Show dropdown arrows ONLY in Photo Mode */
+.mode-photos .pill span {
+    display: inline-block;
+}
+
+.pill.active, .pill:hover {
+    background: var(--bg-details);
+}
+
+/* --- 2. The Details Box --- */
+.details-box {
+    display: flex;
+    background-color: var(--bg-details);
+    color: var(--border-dark);
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.details-left {
+    flex: 6;
+    padding: 20px 30px; /* Reduced vertical padding */
+    border-right: 2px solid var(--border-dark);
+}
+
+.details-right {
+    flex: 4;
+    padding: 20px 30px; /* Reduced vertical padding */
+    display: flex;
+    flex-direction: column;
+}
+
+.details-title {
+    font-family: var(--font-body);
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 12px; /* Tighter spacing */
+    letter-spacing: 1px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0; /* Tighter spacing */
+    border-bottom: 1px solid var(--border-dark);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+}
+
+.d-label { text-transform: uppercase; }
+.d-value { font-weight: 500; text-align: right; }
+
+/* Action Buttons */
+.action-buttons {
+    margin-top: auto;
+    display: flex;
+    gap: 15px;
+}
+
+.btn-mock {
+    flex: 1;
+    padding: 15px 0;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: 0.3s;
+    background-color: var(--btn-brown);
+    color: var(--color-white);
+}
+
+.btn-mock:hover {
+    opacity: 0.9;
+    transform: translateY(-2px);
+}
+
+/* ==========================================================================
+   UI Toggle States (360 Mode vs Photo Mode)
+   ========================================================================== */
+
+/* By default, hide Photo UI */
+.ui-photos {
+    display: none !important;
+}
+
+/* 
+   When 'mode-photos' class is active:
+*/
+.mode-photos .ui-360 { display: none !important; }
+.mode-photos .details-box { display: none !important; }
+
+/* Show the Photo UI */
+.mode-photos .ui-photos { 
+    display: block !important; 
+}
+
+/* Ensure the big arrows keep their flexbox centering when revealed */
+.mode-photos button.slider-arrow {
+    display: flex !important; 
+}
+
+.mode-photos .showroom-wrapper {
+    padding-top: 80px; 
+    padding-bottom: 0;
+}
+
+.mode-photos .showroom-container {
+    width: 100%;
+    max-width: 100%;
+}
+
+.mode-photos .big-viewer-box {
+    border-radius: 0;
+}
+
+/* Helper Class to lock body scrolling */
+body.no-scroll {
+    overflow: hidden;
+}
+
+/* Hide the footer when in full-screen Photo Mode */
+body.no-scroll .footer {
+    display: none;
+}
+
+/* --- Styling for the Photo Gallery Elements --- */
+.photo-room-title {
+    position: absolute;
+    top: 30px;
+    left: 40px;
+    font-family: var(--font-body);
+    font-size: 1.1rem;
+    color: var(--border-dark);
+    z-index: 10;
+}
+
+.slider-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--border-dark);
+    cursor: pointer;
+    z-index: 10;
+    transition: 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.slider-arrow:hover { transform: translateY(-50%) scale(1.1); }
+.slider-arrow.left { left: 40px; }
+.slider-arrow.right { right: 40px; }
+
+.btn-back {
+    position: absolute;
+    bottom: 30px;
+    right: 40px;
+    background-color: var(--bg-details);
+    color: var(--border-dark);
+    border: none;
+    padding: 10px 40px;
+    border-radius: 50px;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 10;
+    transition: 0.3s;
+}
+.btn-back:hover {
+    background-color: var(--btn-brown);
+    color: var(--color-white);
+}
+
+.slider-image-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.slider-image-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* ==========================================================================
+   Responsive Constraints (Mobile & Tablet Adjustments)
+   ========================================================================== */
+@media (max-width: 992px) {
+    
+    /* --- Normal 360 View Adjustments --- */
+    .showroom-wrapper {
+        height: auto;
+        min-height: 100vh; 
+        padding-top: 100px; /* Space for Navbar */
+        padding-bottom: 40px;
+        display: block; 
+    }
+    
+    .showroom-container { height: auto; }
+
+    .big-viewer-box {
+        min-height: 55vh; /* Large map area */
+        flex: none; 
+    }
+
+    .details-box { flex-direction: column; }
+    .details-left { border-right: none; border-bottom: 2px solid var(--border-dark); }
+    .action-buttons { margin-top: 20px; }
+
+    /* --- SWIPEABLE PILL BUTTONS --- */
+    .room-pills { 
+        flex-wrap: nowrap; /* Forces them onto one line */
+        overflow-x: auto; /* Allows horizontal swiping */
+        -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+        left: 15px;
+        right: 15px; /* Stretch full width */
+        bottom: 15px;
+        gap: 10px;
+        padding-bottom: 5px;
+        /* Hide scrollbar for a clean look */
+        scrollbar-width: none; 
+    }
+    
+    .room-pills::-webkit-scrollbar { 
+        display: none; 
+    }
+    
+    .pill {
+        flex: 0 0 auto; /* Prevents buttons from squishing */
+        padding: 8px 16px;
+        font-size: 0.8rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Helps them pop over photos */
+        background: rgba(255, 255, 255, 0.85); /* Slight glass effect on mobile */
+        backdrop-filter: blur(5px);
+    }
+    
+    .pill.active {
+        background: var(--bg-details);
+    }
+
+    /* --- TRUE FULL-SCREEN PHOTO MODE --- */
+    .mode-photos .showroom-wrapper {
+        position: fixed; /* Pops it out of the layout */
+        top: 0; left: 0;
+        width: 100vw;
+        height: 100vh; 
+        padding: 0; /* Removes all white gaps */
+        z-index: 9999; /* Covers the Navbar entirely! */
+        background-color: var(--color-dark); /* Dark background looks better for galleries */
+    }
+    
+    .mode-photos .showroom-container {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+    }
+
+    .mode-photos .big-viewer-box {
+        height: 100%;
+        min-height: 100%;
+        border-radius: 0;
+    }
+
+    /* Adjust Photo UI for True Fullscreen */
+    .btn-back {
+        bottom: auto; 
+        top: 40px; /* Accounts for iPhone notches */
+        right: 15px;
+        padding: 8px 24px; 
+        font-size: 0.9rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+    }
+
+    .photo-room-title {
+        top: 45px; /* Aligns with the back button */
+        left: 15px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        text-shadow: 0 2px 6px rgba(255,255,255,0.9); 
+    }
+
+    /* Move arrows slightly lower so they don't hit the back button on small phones */
+    .slider-arrow { margin-top: 15px; }
+    .slider-arrow.left { left: 5px; }
+    .slider-arrow.right { right: 5px; }
+}
