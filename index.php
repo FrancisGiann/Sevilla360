@@ -28,7 +28,7 @@
             <a href="#events">Events</a>
             <a href="#accommodations">Accommodations</a>
             <a href="showroom.php">Virtual Showroom</a>
-            <a href="login.php" class="btn btn-primary">Login / Register</a>
+            <a href="auth.php" class="btn btn-primary">Login / Register</a>
         </div>
     </div>
 </nav>

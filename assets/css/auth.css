@@ -1,0 +1,208 @@
+/* ==========================================================================
+   SEVILLA360 - Auth Page Specific Styles
+   ========================================================================== */
+
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.auth-logo {
+    font-family: var(--font-heading);
+    font-size: 3rem;
+    color: var(--color-gold);
+    font-weight: 600;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.auth-tagline {
+    font-family: var(--font-body);
+    color: var(--color-dark-light);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.85rem;
+}
+
+.auth-card {
+    background-color: var(--color-white);
+    padding: 3rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--color-gold);
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    overflow: hidden;
+}
+
+.auth-view {
+    display: none;
+    animation: fadeIn 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.auth-view.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.auth-title {
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--color-dark-light);
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--color-dark);
+}
+
+/* Gray boxes for input fields */
+.form-control {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    background-color: #F5F5F5;
+    color: var(--color-dark);
+    transition: var(--transition-smooth);
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--color-gold);
+    background-color: var(--color-white);
+    box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.1);
+}
+
+.form-control::placeholder {
+    color: #A09D9B;
+}
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--color-dark-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: var(--transition-smooth);
+}
+
+.password-toggle:hover {
+    color: var(--color-gold);
+}
+
+.forgot-link {
+    display: block;
+    text-align: right;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    color: var(--color-dark-light);
+}
+
+.forgot-link:hover {
+    color: var(--color-gold);
+}
+
+.btn-full {
+    width: 100%;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.auth-footer {
+    text-align: center;
+    margin-top: 2rem;
+    font-size: 0.9rem;
+    color: var(--color-dark-light);
+}
+
+.auth-footer a {
+    color: var(--color-gold);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.auth-footer a:hover {
+    text-decoration: underline;
+}
+
+.terms-checkbox-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 2rem;
+    font-size: 0.85rem;
+    color: var(--color-dark-light);
+}
+
+.terms-checkbox-group input[type="checkbox"] {
+    margin-top: 3px;
+    accent-color: var(--color-gold);
+    cursor: pointer;
+}
+
+.terms-link {
+    color: var(--color-gold);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.terms-content {
+    font-size: 0.9rem;
+    color: var(--color-dark-light);
+    margin-bottom: 2rem;
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.terms-content ol {
+    padding-left: 1.2rem;
+}
+
+.terms-content li {
+    margin-bottom: 1rem;
+}
+
+.terms-content li strong {
+    color: var(--color-dark);
+}
