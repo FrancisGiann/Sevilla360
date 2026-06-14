@@ -14,6 +14,9 @@
 <body class="bg-beige">
 
     <div class="auth-page">
+
+        <!-- BACK BUTTON TO HOMEPAGE -->
+        <a href="index.php" class="back-home-btn">&larr; Back to Home</a>
         
         <!-- Header outside the card -->
         <div class="auth-header">

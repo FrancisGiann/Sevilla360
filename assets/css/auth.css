@@ -206,3 +206,36 @@
 .terms-content li strong {
     color: var(--color-dark);
 }
+
+.back-home-btn {
+    position: absolute;
+    top: 2.5rem;
+    left: 2.5rem;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--color-dark-light);
+    display: inline-flex;
+    align-items: center;
+    transition: var(--transition-smooth);
+    z-index: 10;
+}
+
+.back-home-btn:hover {
+    color: var(--color-gold);
+    transform: translateX(-5px); 
+}
+
+
+@media (max-width: 768px) {
+    .back-home-btn {
+        position: relative;      
+        top: 0;
+        left: 0;
+        align-self: flex-start;  
+        margin-bottom: 2rem;    
+        font-size: 0.75rem;
+    }
+}
