@@ -38,7 +38,7 @@
         <div class="hero-content reveal">
             <h1>Where Every Event Becomes A Memory</h1>
             <div class="hero-buttons">
-                <a href="#book" class="btn btn-primary">Book Your Stay</a>
+                <a href="booking.php" class="btn btn-primary">Book Your Stay</a>
                 <a href="#explore" class="btn btn-outline">Explore Resort</a>
             </div>
         </div>
