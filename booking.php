@@ -336,8 +336,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <button class="btn btn-primary">Check Availability & Prices</button>
                 </div>
 
 
@@ -440,8 +438,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <button class="btn btn-primary">Check Availability & Prices</button>
                 </div>
 
             </div>

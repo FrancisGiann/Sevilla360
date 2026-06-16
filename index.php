@@ -169,9 +169,9 @@
                 </div>
                 <div class="footer-col">
                     <h4>Contact Us</h4>
-                    <p>+1 (800) 123-4567</p>
+                    <p>+63912334552</p>
                     <p>reservations@sevilla360.com</p>
-                    <p>123 Serenity Lane, Resort City</p>
+                    <p>Domoit, Lucena City</p>
                 </div>
                 <div class="footer-col">
                     <h4>Newsletter</h4>
