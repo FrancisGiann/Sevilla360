@@ -150,7 +150,7 @@
 .cal-day-cell.in-range {
     background: rgba(214, 168, 112, 0.15); /* Light Gold */
     color: var(--color-dark);
-    margin: 0; /* Remove margin to connect background */
+    margin: 0; 
     border-radius: 0; 
 }
 
@@ -194,8 +194,8 @@
 
 .dot.selected { background: var(--color-gold); }
 .dot.booked { background: #e06666; }
-.dot.available { background: #d8dfda; } 
-.dot.unavailable { background: #e0e0e0; } /* Grey for unavailable */
+.dot.available { background: #e7eae8; } 
+.dot.unavailable { background: #999; } /* Grey for unavailable */
 
 /* Forms & Inputs */
 .form-row { display: flex; gap: 1.5rem; }

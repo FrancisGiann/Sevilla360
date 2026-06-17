@@ -385,7 +385,7 @@
                     <!-- Universal Summary Footer -->
                     <div class="summary-footer">
                         <div class="timer-box" id="timer-box">
-                            <span id="timer-text">Select your dates to start session.</span>
+                            <span id="timer-text">Select your dates to book.</span>
                             <span id="countdown-wrapper" style="display: none;">Session expires in: <span id="countdown">30:00</span></span>
                         </div>
                         
