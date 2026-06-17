@@ -16,7 +16,111 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- 2. Advanced 7-Day Grid Calendar System ---
+    // --- 2. Global Timer & Cancel Logic ---
+    let timerInterval;
+    let timeLimit = 30 * 60; // 30 minutes
+    let timerStarted = false;
+    let activeCalendarInstance = null; 
+
+    function startTimer() {
+        if (timerStarted) return; 
+        timerStarted = true;
+
+        const timerBox = document.getElementById('timer-box');
+        const timerText = document.getElementById('timer-text');
+        const countdownWrapper = document.getElementById('countdown-wrapper');
+        const countdownEl = document.getElementById('countdown');
+
+        timerBox.classList.add('running');
+        timerText.style.display = 'none';
+        countdownWrapper.style.display = 'inline';
+
+        timerInterval = setInterval(() => {
+            const minutes = Math.floor(timeLimit / 60);
+            let seconds = timeLimit % 60;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
+            countdownEl.innerText = `${minutes}:${seconds}`;
+
+            if (timeLimit <= 0) {
+                stopTimerAndReset();
+                alert("Your session has expired. Please refresh the page to restart your booking.");
+                const proceedBtn = document.getElementById('btn-proceed');
+                proceedBtn.disabled = true;
+                proceedBtn.style.opacity = '0.5';
+                proceedBtn.style.cursor = 'not-allowed';
+            }
+            timeLimit--;
+        }, 1000);
+    }
+
+    function stopTimerAndReset() {
+        clearInterval(timerInterval);
+        timerStarted = false;
+        timeLimit = 30 * 60; 
+
+        // Reset UI
+        const timerBox = document.getElementById('timer-box');
+        timerBox.classList.remove('running');
+        document.getElementById('timer-text').style.display = 'inline';
+        document.getElementById('countdown-wrapper').style.display = 'none';
+
+        // Reset Terms checkbox
+        document.getElementById('terms-check').checked = false;
+
+        // Clear Calendar selection
+        if (activeCalendarInstance) {
+            activeCalendarInstance.resetSelection(); 
+        }
+
+        // Reset Text in Summary
+        document.querySelectorAll('.sum-dates-display').forEach(el => el.innerText = '--');
+    }
+
+    // Bind Sidebar Cancel Button
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+        stopTimerAndReset();
+    });
+
+    // Modal Date Confirmation Handler
+    function requestDateConfirmation(startDate, endDate, calendarInstance) {
+        const dateModal = document.getElementById('date-confirm-modal');
+        const dateTextEl = document.getElementById('selected-date-text');
+        
+        const options = { month: 'short', day: 'numeric', year: 'numeric' };
+        const startStr = startDate.toLocaleDateString('en-US', options);
+        
+        let displayStr = startStr;
+        if (endDate && startDate.getTime() !== endDate.getTime()) {
+            const endStr = endDate.toLocaleDateString('en-US', options);
+            displayStr = `${startStr} — ${endStr}`;
+        }
+
+        dateTextEl.innerText = displayStr;
+        dateModal.classList.add('active');
+
+        const oldConfirmBtn = document.getElementById('btn-confirm-date');
+        const newConfirmBtn = oldConfirmBtn.cloneNode(true);
+        oldConfirmBtn.parentNode.replaceChild(newConfirmBtn, oldConfirmBtn);
+
+        const oldCancelBtn = document.getElementById('btn-cancel-date');
+        const newCancelBtn = oldCancelBtn.cloneNode(true);
+        oldCancelBtn.parentNode.replaceChild(newCancelBtn, oldCancelBtn);
+
+        newConfirmBtn.addEventListener('click', () => {
+            dateModal.classList.remove('active');
+            activeCalendarInstance = calendarInstance; 
+            
+            document.querySelectorAll('.sum-dates-display').forEach(el => el.innerText = displayStr);
+            startTimer(); 
+        });
+
+        newCancelBtn.addEventListener('click', () => {
+            dateModal.classList.remove('active');
+            calendarInstance.resetSelection();
+        });
+    }
+
+    // --- 3. Advanced Airbnb-Style Calendar System ---
     class BookingCalendar {
         constructor(containerId) {
             this.container = document.getElementById(containerId);
@@ -28,7 +132,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.nextBtn = this.container.querySelector('.next-month');
 
             this.currentDate = new Date();
-            this.selectedCell = null;
+            this.currentDate.setDate(1); 
+            
+            this.startDate = null;
+            this.endDate = null;
+
+            // Mock Booked Dates
+            this.bookedDays = [3, 8, 17, 24]; 
 
             this.init();
         }
@@ -47,16 +157,35 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        resetSelection() {
+            this.startDate = null;
+            this.endDate = null;
+            this.render();
+        }
+
+        hasBookedDaysBetween(start, end) {
+            let current = new Date(start);
+            current.setDate(current.getDate() + 1);
+            
+            while (current < end) {
+                if (this.bookedDays.includes(current.getDate())) {
+                    return true;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return false;
+        }
+
         render() {
             this.grid.innerHTML = '';
             
             const year = this.currentDate.getFullYear();
             const month = this.currentDate.getMonth();
-            
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            
             this.monthYearDisplay.innerText = `${monthNames[month]} ${year}`;
 
-            const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sunday
+            const firstDayIndex = new Date(year, month, 1).getDay(); 
             const daysInMonth = new Date(year, month + 1, 0).getDate();
 
             for(let i = 0; i < firstDayIndex; i++) {
@@ -65,36 +194,101 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.grid.appendChild(emptyCell);
             }
 
-            const bookedDays = [3, 8, 17, 24]; 
-            const unavailableDays = [1, 2, 9, 29, 30, 31]; 
-
             for(let day = 1; day <= daysInMonth; day++) {
+                const cellDate = new Date(year, month, day);
                 const cell = document.createElement('div');
                 cell.className = 'cal-day-cell';
                 cell.innerText = day;
 
-                if (unavailableDays.includes(day)) {
-                    cell.classList.add('unavailable');
-                } else if (bookedDays.includes(day)) {
+                if (this.bookedDays.includes(day)) {
                     cell.classList.add('booked');
                 } else {
+                    
+                    if (this.startDate && cellDate.getTime() === this.startDate.getTime()) {
+                        cell.classList.add('selected', 'start-date');
+                    }
+                    if (this.endDate && cellDate.getTime() === this.endDate.getTime()) {
+                        cell.classList.add('selected', 'end-date');
+                    }
+                    if (this.startDate && this.endDate && cellDate > this.startDate && cellDate < this.endDate) {
+                        cell.classList.add('in-range');
+                    }
+
                     cell.addEventListener('click', () => {
-                        this.grid.querySelectorAll('.cal-day-cell').forEach(c => c.classList.remove('selected'));
-                        cell.classList.add('selected');
+                        
+                        // NEW LOGIC: Ask to override if session timer is already running
+                        if (timerStarted) {
+                            const overrideModal = document.getElementById('override-date-modal');
+                            overrideModal.classList.add('active');
+
+                            const oldYes = document.getElementById('btn-override-yes');
+                            const newYes = oldYes.cloneNode(true);
+                            oldYes.parentNode.replaceChild(newYes, oldYes);
+
+                            const oldNo = document.getElementById('btn-override-no');
+                            const newNo = oldNo.cloneNode(true);
+                            oldNo.parentNode.replaceChild(newNo, oldNo);
+
+                            newYes.addEventListener('click', () => {
+                                overrideModal.classList.remove('active');
+                                stopTimerAndReset(); 
+                                
+                                // Automatically select the newly clicked date as the new start date
+                                this.startDate = cellDate;
+                                this.endDate = null;
+                                this.render();
+                            });
+
+                            newNo.addEventListener('click', () => {
+                                overrideModal.classList.remove('active');
+                            });
+
+                            return; // Stop execution, don't change selection yet
+                        }
+
+                        // Normal Selection Logic
+                        if (this.startDate && this.endDate) {
+                            this.startDate = cellDate;
+                            this.endDate = null;
+                            this.render();
+                            return;
+                        }
+
+                        if (!this.startDate) {
+                            this.startDate = cellDate;
+                            this.render();
+                            return;
+                        }
+
+                        if (this.startDate && !this.endDate) {
+                            if (cellDate < this.startDate) {
+                                this.startDate = cellDate;
+                                this.render();
+                            } else {
+                                if (this.hasBookedDaysBetween(this.startDate, cellDate)) {
+                                    alert("Your selection contains unavailable dates. Please select a different range.");
+                                    this.startDate = cellDate; 
+                                    this.render();
+                                } else {
+                                    this.endDate = cellDate;
+                                    this.render();
+                                    requestDateConfirmation(this.startDate, this.endDate, this);
+                                }
+                            }
+                        }
                     });
                 }
-
                 this.grid.appendChild(cell);
             }
         }
     }
 
-    new BookingCalendar('cal-ui-event');
-    new BookingCalendar('cal-ui-hotel');
-    new BookingCalendar('cal-ui-villa');
+    const calEvent = new BookingCalendar('cal-ui-event');
+    const calHotel = new BookingCalendar('cal-ui-hotel');
+    const calVilla = new BookingCalendar('cal-ui-villa');
 
 
-    // --- 3. Tab Switching Logic ---
+    // --- 4. Tab Switching Logic ---
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
     const summaryContainers = document.querySelectorAll('.summary-container');
@@ -112,7 +306,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- 4. Dynamic Image Changing ---
+
+    // --- 5. Dynamic Image Changing ---
     const imagesDict = {
         'grand-ballroom': 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=800',
         'garden-pavilion': 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=800',
@@ -142,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateImage('villa-type', 'villa-img');
 
 
-    // --- 5. Event Type "Others" Input Reveal ---
+    // --- 6. Event Type "Others" Input Reveal ---
     const eventTypeRadios = document.querySelectorAll('input[name="event-type"]');
     const othersInput = document.getElementById('event-type-others');
     const sumEvType = document.getElementById('sum-ev-type');
@@ -165,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- 6. Resort Villa Stay Type Details Toggle ---
+    // --- 7. Resort Villa Stay Type Details Toggle ---
     const villaStayRadios = document.querySelectorAll('input[name="villa-stay"]');
     const ruleDay = document.getElementById('rule-day');
     const ruleNight = document.getElementById('rule-night');
@@ -183,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- 7. Extra Pax Calculators ---
+    // --- 8. Extra Pax Calculators ---
     function enforceConstraintsAndCalculate(inputId, base, max, feeRate, uiSpanId, summarySpanId, guestsSumId) {
         const inputEl = document.getElementById(inputId);
         const uiSpan = document.getElementById(uiSpanId);
@@ -221,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     enforceConstraintsAndCalculate('villa-guests', 4, 8, 1000, 'villa-extra-fee', 'sum-vl-fee', 'sum-vl-guests');
 
 
-    // --- 8. Toggles & Counters (Add-ons) ---
+    // --- 9. Toggles & Counters (Add-ons) ---
     function setupToggle(checkboxId, targetId) {
         const checkbox = document.getElementById(checkboxId);
         const target = document.getElementById(targetId);
@@ -255,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- 9. Summary Syncs ---
+    // --- 10. Summary Syncs ---
     const updateText = (sourceId, targetId, isSelect = false) => {
         const source = document.getElementById(sourceId);
         const target = document.getElementById(targetId);
@@ -286,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    // --- 10. T&C Modal Logic ---
+    // --- 11. T&C Modal Logic ---
     const openTerms = document.getElementById('open-terms');
     const tncModal = document.getElementById('tnc-modal');
     const btnAgree = document.getElementById('btn-agree');
@@ -307,32 +502,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('click', (e) => {
-        if (e.target === tncModal) {
-            tncModal.classList.remove('active');
+        if (e.target.classList.contains('modal-overlay')) {
+            e.target.classList.remove('active');
         }
     });
 
+    // --- 12. Reveal Animations (Fix for Footer) ---
+    const reveals = document.querySelectorAll('.reveal');
+    const revealObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('active');
+                observer.unobserve(entry.target); 
+            }
+        });
+    }, {
+        root: null,
+        threshold: 0.1
+    });
 
-    // --- 11. 30-Minute Countdown Timer ---
-    let timeLimit = 30 * 60; 
-    const countdownEl = document.getElementById('countdown');
-
-    const timerInterval = setInterval(() => {
-        const minutes = Math.floor(timeLimit / 60);
-        let seconds = timeLimit % 60;
-        seconds = seconds < 10 ? '0' + seconds : seconds;
-        countdownEl.innerText = `${minutes}:${seconds}`;
-
-        if (timeLimit <= 0) {
-            clearInterval(timerInterval);
-            countdownEl.innerText = "00:00";
-            alert("Your session has expired. Please refresh the page to restart your booking.");
-            const proceedBtn = document.getElementById('btn-proceed');
-            proceedBtn.disabled = true;
-            proceedBtn.style.opacity = '0.5';
-            proceedBtn.style.cursor = 'not-allowed';
-        }
-        timeLimit--;
-    }, 1000);
+    reveals.forEach(reveal => {
+        revealObserver.observe(reveal);
+    });
 
 });

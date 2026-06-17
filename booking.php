@@ -43,7 +43,7 @@
                 <div class="tab-content active" id="tab-event-hall">
                     <h2 class="section-title">Reserve an Event Hall</h2>
                     
-                    <!-- Advanced 7-Day Calendar UI -->
+                    <!-- Advanced Airbnb-Style Calendar UI -->
                     <div class="calendar-ui" id="cal-ui-event">
                         <div class="cal-header">
                             <button type="button" class="cal-nav prev-month">&larr;</button>
@@ -58,9 +58,9 @@
                         </div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
+                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
-                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 
@@ -217,9 +217,9 @@
                         <div class="cal-days-grid"></div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
+                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
-                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 
@@ -271,9 +271,9 @@
                         <div class="cal-days-grid"></div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
+                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
-                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 
@@ -356,14 +356,15 @@
                         <p><strong>Service:</strong> <span class="sum-val">Event Hall</span></p>
                         <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span></p>
                         <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span></p>
+                        <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                         <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
-                        <p><strong>Add-ons:</strong> <span class="sum-val" id="sum-ev-addons">None</span></p>
                         <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ev-payment">100% Full</span></p>
                     </div>
 
                     <div class="summary-container" id="sum-hotel-rooms">
                         <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
                         <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span></p>
+                        <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                         <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
                         <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
                     </div>
@@ -372,14 +373,16 @@
                         <p><strong>Service:</strong> <span class="sum-val">Resort Villa</span></p>
                         <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita (Poolside)</span></p>
                         <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span></p>
+                        <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                         <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
                         <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
                     </div>
 
                     <!-- Universal Summary Footer -->
                     <div class="summary-footer">
-                        <div class="timer-box">
-                            Session expires in: <span id="countdown">30:00</span>
+                        <div class="timer-box" id="timer-box">
+                            <span id="timer-text">Select your dates to start session.</span>
+                            <span id="countdown-wrapper" style="display: none;">Session expires in: <span id="countdown">30:00</span></span>
                         </div>
                         
                         <div class="terms-group">
@@ -395,6 +398,36 @@
 
         </div>
     </section>
+
+    <!-- Date Confirmation Modal -->
+    <div class="modal-overlay" id="date-confirm-modal">
+        <div class="modal-content">
+            <h3 style="font-family: var(--font-heading); font-size: 1.8rem; margin-bottom: 15px;">Confirm Dates</h3>
+            <div class="modal-body" style="text-align: center; margin-bottom: 25px;">
+                <p style="font-size: 1.1rem; color: var(--color-dark);">You have selected:<br><strong id="selected-date-text" style="color: var(--color-gold); display: block; margin-top: 10px; font-size: 1.2rem;"></strong></p>
+                <p style="font-size: 0.9rem; margin-top: 15px;">Proceeding will lock these dates for 30 minutes while you complete your booking.</p>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="btn btn-primary" id="btn-confirm-date">Confirm</button>
+                <button class="btn btn-outline" id="btn-cancel-date" style="color: var(--color-dark); border-color: var(--color-dark);">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Override Lock Date Modal -->
+    <div class="modal-overlay" id="override-date-modal">
+        <div class="modal-content">
+            <h3 style="font-family: var(--font-heading); font-size: 1.8rem; margin-bottom: 15px;">Change Dates?</h3>
+            <div class="modal-body" style="text-align: center; margin-bottom: 25px;">
+                <p style="font-size: 1.1rem; color: var(--color-dark);">You currently have dates locked for this session.</p>
+                <p style="font-size: 0.9rem; margin-top: 10px;">Would you like to cancel your current selection and pick new dates?</p>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="btn btn-primary" id="btn-override-yes">Yes, Change Dates</button>
+                <button class="btn btn-outline" id="btn-override-no" style="color: var(--color-dark); border-color: var(--color-dark);">No, Keep Current</button>
+            </div>
+        </div>
+    </div>
 
     <!-- T&C Modal -->
     <div class="modal-overlay" id="tnc-modal">

@@ -49,7 +49,7 @@
 .section-title { font-size: 2.2rem; margin-bottom: 1.5rem; color: var(--color-gold); }
 
 /* ==========================================================================
-   CALENDAR UI (7-Day Grid Matrix)
+   CALENDAR UI (Airbnb Style)
    ========================================================================== */
 .calendar-ui {
     background: var(--color-white);
@@ -100,12 +100,13 @@
 .cal-days-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 8px;
+    gap: 8px 0; /* Horizontal gap 0 for continuous range styling */
     margin-bottom: 25px;
 }
 
+/* FIXED CALENDAR CELL RESIZING BUG */
 .cal-day-cell {
-    aspect-ratio: 1.6 / 1;
+    height: 48px; /* Used fixed height instead of aspect ratio to prevent jumping */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -113,21 +114,52 @@
     font-size: 0.95rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
     background: #f9f9f9;
     color: var(--color-dark);
     border: none;
+    margin: 0 4px; /* Internal margin for visual spacing when not in range */
 }
 
-.cal-day-cell:hover:not(.booked):not(.unavailable):not(.empty) {
+.cal-day-cell:hover:not(.booked):not(.empty):not(.selected):not(.in-range) {
     background: #ebebeb;
 }
 
 .cal-day-cell.empty { background: transparent; cursor: default; }
-.cal-day-cell.selected { background: var(--color-gold); color: white; box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3); }
-.cal-day-cell.booked { background: #e06666; color: white; cursor: not-allowed; }
-.cal-day-cell.unavailable { background: #e0e0e0; color: #999; cursor: not-allowed; }
 
+.cal-day-cell.booked { 
+    background: #e06666; 
+    color: white; 
+    cursor: not-allowed; 
+}
+
+/* Range Styles */
+.cal-day-cell.selected { 
+    background: var(--color-gold); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3); 
+}
+
+.cal-day-cell.in-range {
+    background: rgba(214, 168, 112, 0.15); /* Light Gold */
+    color: var(--color-dark);
+    margin: 0; /* Remove margin to connect background */
+    border-radius: 0; 
+}
+
+.cal-day-cell.selected.start-date:not(.end-date) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-right: 0;
+}
+
+.cal-day-cell.selected.end-date:not(.start-date) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    margin-left: 0;
+}
+
+/* Legend */
 .cal-legend {
     display: flex;
     justify-content: center;
@@ -154,9 +186,9 @@
 }
 
 .dot.selected { background: var(--color-gold); }
+.dot.in-range-dot { background: rgba(214, 168, 112, 0.3); }
 .dot.booked { background: #e06666; }
 .dot.available { background: #2ecc71; }
-.dot.unavailable { background: #e0e0e0; }
 
 /* Forms & Inputs */
 .form-row { display: flex; gap: 1.5rem; }
@@ -271,11 +303,11 @@ select:focus, input:focus { outline: none; border-color: var(--color-gold); box-
    ========================================================================== */
 .booking-sidebar { 
     position: relative; 
-    margin-top: 85px; /* PUSHES THE SIDEBAR DOWN TO ALIGN WITH THE H2 TITLE */
+    margin-top: 85px;
 }
 .sticky-summary {
     position: sticky; 
-    top: 120px; /* Accounts for fixed navbar during scroll */
+    top: 120px; 
     background: var(--color-beige); 
     padding: 30px;
     border-radius: 8px; 
@@ -299,9 +331,14 @@ select:focus, input:focus { outline: none; border-color: var(--color-gold); box-
 .summary-footer { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(0,0,0,0.1); }
 
 .timer-box {
-    text-align: center; font-size: 1rem; font-weight: 500; color: #c0392b;
-    margin-bottom: 1.5rem; padding: 12px; background: rgba(192, 57, 43, 0.1); border-radius: 4px;
+    text-align: center; font-size: 0.95rem; font-weight: 500; color: var(--color-dark-light);
+    margin-bottom: 1.5rem; padding: 12px; background: rgba(0,0,0,0.05); border-radius: 4px;
 }
+.timer-box.running {
+    color: #c0392b;
+    background: rgba(192, 57, 43, 0.1);
+}
+
 .terms-group { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; font-size: 0.9rem; }
 .terms-group a { color: var(--color-gold); text-decoration: underline; }
 
@@ -346,8 +383,17 @@ select:focus, input:focus { outline: none; border-color: var(--color-gold); box-
     .form-row { flex-direction: column; gap: 0; }
 }
 @media (max-width: 768px) {
+    .cal-header { 
+        flex-direction: row; 
+        justify-content: space-between; 
+        align-items: center; 
+        gap: 0; 
+    }
+    .cal-month-year { font-size: 1.3rem; }
+    
     .tier-cards { grid-template-columns: 1fr; }
     .mix-row { flex-direction: column; align-items: flex-start; gap: 15px; }
-    .cal-day-cell { aspect-ratio: 1 / 1; font-size: 0.85rem; }
-    .cal-header { flex-direction: column; gap: 10px; }
+    
+    /* Mobile Height for fix */
+    .cal-day-cell { height: 40px; font-size: 0.85rem; margin: 0 2px;}
 }
