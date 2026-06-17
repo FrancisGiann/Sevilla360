@@ -58,9 +58,9 @@
                         </div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
+                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 
@@ -221,9 +221,9 @@
                         <div class="cal-days-grid"></div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
+                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 
@@ -275,9 +275,9 @@
                         <div class="cal-days-grid"></div>
                         <div class="cal-legend">
                             <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                            <span class="legend-item"><span class="dot in-range-dot"></span> In Range</span>
                             <span class="legend-item"><span class="dot booked"></span> Booked</span>
                             <span class="legend-item"><span class="dot available"></span> Available</span>
+                            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
                         </div>
                     </div>
 

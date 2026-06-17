@@ -186,9 +186,9 @@
 }
 
 .dot.selected { background: var(--color-gold); }
-.dot.in-range-dot { background: rgba(214, 168, 112, 0.3); }
 .dot.booked { background: #e06666; }
-.dot.available { background: #2ecc71; }
+.dot.available { background: #d8dfda; } 
+.dot.unavailable { background: #e0e0e0; } /* Grey for unavailable */
 
 /* Forms & Inputs */
 .form-row { display: flex; gap: 1.5rem; }
