@@ -121,7 +121,7 @@
     margin: 0 4px; /* Internal margin for visual spacing when not in range */
 }
 
-.cal-day-cell:hover:not(.booked):not(.empty):not(.selected):not(.in-range) {
+.cal-day-cell:hover:not(.booked):not(.unavailable):not(.empty):not(.selected):not(.in-range) {
     background: #ebebeb;
 }
 
@@ -131,6 +131,13 @@
     background: #e06666; 
     color: white; 
     cursor: not-allowed; 
+}
+
+.cal-day-cell.unavailable {
+    background: #e0e0e0; 
+    color: #999; 
+    cursor: not-allowed;
+    text-decoration: line-through; 
 }
 
 /* Range Styles */

@@ -137,8 +137,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.startDate = null;
             this.endDate = null;
 
-            // Mock Booked Dates
+            // Mock Booked & Unavailable Dates (Day of the month)
             this.bookedDays = [3, 8, 17, 24]; 
+            this.unavailableDays = [10, 11, 28, 29]; // <-- ADDED: Mock Unavailable Dates
 
             this.init();
         }
@@ -163,12 +164,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.render();
         }
 
-        hasBookedDaysBetween(start, end) {
+        // <-- UPDATED: Now checks for both booked AND unavailable days
+        hasInvalidDaysBetween(start, end) {
             let current = new Date(start);
             current.setDate(current.getDate() + 1);
             
             while (current < end) {
-                if (this.bookedDays.includes(current.getDate())) {
+                if (this.bookedDays.includes(current.getDate()) || this.unavailableDays.includes(current.getDate())) {
                     return true;
                 }
                 current.setDate(current.getDate() + 1);
@@ -200,8 +202,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 cell.className = 'cal-day-cell';
                 cell.innerText = day;
 
+                // <-- UPDATED: Checks for booked OR unavailable days to block them
                 if (this.bookedDays.includes(day)) {
                     cell.classList.add('booked');
+                } else if (this.unavailableDays.includes(day)) {
+                    cell.classList.add('unavailable');
                 } else {
                     
                     if (this.startDate && cellDate.getTime() === this.startDate.getTime()) {
@@ -216,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     cell.addEventListener('click', () => {
                         
-                        // NEW LOGIC: Ask to override if session timer is already running
+                        // Ask to override if session timer is already running
                         if (timerStarted) {
                             const overrideModal = document.getElementById('override-date-modal');
                             overrideModal.classList.add('active');
@@ -233,7 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 overrideModal.classList.remove('active');
                                 stopTimerAndReset(); 
                                 
-                                // Automatically select the newly clicked date as the new start date
                                 this.startDate = cellDate;
                                 this.endDate = null;
                                 this.render();
@@ -243,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 overrideModal.classList.remove('active');
                             });
 
-                            return; // Stop execution, don't change selection yet
+                            return; 
                         }
 
                         // Normal Selection Logic
@@ -265,8 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 this.startDate = cellDate;
                                 this.render();
                             } else {
-                                if (this.hasBookedDaysBetween(this.startDate, cellDate)) {
-                                    alert("Your selection contains unavailable dates. Please select a different range.");
+                                // <-- UPDATED: Calls the new `hasInvalidDaysBetween` function
+                                if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
+                                    alert("Your selection contains unavailable or booked dates. Please select a different range.");
                                     this.startDate = cellDate; 
                                     this.render();
                                 } else {
