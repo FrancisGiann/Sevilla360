@@ -433,6 +433,20 @@ document.addEventListener('DOMContentLoaded', () => {
     setupToggle('check-catering', 'catering-options');
     setupToggle('check-rooms', 'rooms-options');
 
+    // Summary Add ons 
+    function updateEventAddonsSummary() {
+        const catering = document.getElementById('check-catering').checked ? 'Catering' : '';
+        const rooms = document.getElementById('check-rooms').checked ? 'Rooms' : '';
+        const av = document.getElementById('check-av').checked ? 'A/V Setup' : '';
+
+        const addonsArray = [catering, rooms, av].filter(Boolean);
+        document.getElementById('sum-ev-addons').innerText = addonsArray.length > 0 ? addonsArray.join(', ') : 'None';
+    }
+
+    document.getElementById('check-catering').addEventListener('change', updateEventAddonsSummary);
+    document.getElementById('check-rooms').addEventListener('change', updateEventAddonsSummary);
+    document.getElementById('check-av').addEventListener('change', updateEventAddonsSummary);
+
     document.querySelectorAll('.counter').forEach(counter => {
         const minusBtn = counter.querySelector('.minus');
         const plusBtn = counter.querySelector('.plus');

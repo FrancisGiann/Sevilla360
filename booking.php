@@ -145,6 +145,10 @@
                                         </ul>
                                     </label>
                                 </div>
+                                <div class="form-group" style="margin-top: 1.5rem;">
+                                    <label for="catering-notes">Catering Notes / Special Requests</label>
+                                    <textarea id="catering-notes" placeholder="e.g., Peanut allergies, vegetarian meals for 5 pax..." rows="3"></textarea>
+                                </div>
                             </div>
                         </div>
 
