@@ -333,11 +333,10 @@ body.no-scroll .footer {
         overflow-x: auto; /* Allows horizontal swiping */
         -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
         left: 15px;
-        right: 15px; /* Stretch full width */
+        right: 15px; 
         bottom: 15px;
         gap: 10px;
         padding-bottom: 5px;
-        /* Hide scrollbar for a clean look */
         scrollbar-width: none; 
     }
     
@@ -346,11 +345,11 @@ body.no-scroll .footer {
     }
     
     .pill {
-        flex: 0 0 auto; /* Prevents buttons from squishing */
+        flex: 0 0 auto; 
         padding: 8px 16px;
         font-size: 0.8rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Helps them pop over photos */
-        background: rgba(255, 255, 255, 0.85); /* Slight glass effect on mobile */
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+        background: rgba(255, 255, 255, 0.85); 
         backdrop-filter: blur(5px);
     }
     
@@ -360,13 +359,13 @@ body.no-scroll .footer {
 
     /* --- TRUE FULL-SCREEN PHOTO MODE --- */
     .mode-photos .showroom-wrapper {
-        position: fixed; /* Pops it out of the layout */
+        position: fixed; 
         top: 0; left: 0;
         width: 100vw;
         height: 100vh; 
-        padding: 0; /* Removes all white gaps */
-        z-index: 9999; /* Covers the Navbar entirely! */
-        background-color: var(--color-dark); /* Dark background looks better for galleries */
+        padding: 0; 
+        z-index: 9999; 
+        background-color: var(--color-dark); 
     }
     
     .mode-photos .showroom-container {
@@ -381,10 +380,9 @@ body.no-scroll .footer {
         border-radius: 0;
     }
 
-    /* Adjust Photo UI for True Fullscreen */
     .btn-back {
         bottom: auto; 
-        top: 40px; /* Accounts for iPhone notches */
+        top: 40px; 
         right: 15px;
         padding: 8px 24px; 
         font-size: 0.9rem;
@@ -392,14 +390,13 @@ body.no-scroll .footer {
     }
 
     .photo-room-title {
-        top: 45px; /* Aligns with the back button */
+        top: 45px; 
         left: 15px;
         font-size: 1.1rem;
         font-weight: 600;
         text-shadow: 0 2px 6px rgba(255,255,255,0.9); 
     }
 
-    /* Move arrows slightly lower so they don't hit the back button on small phones */
     .slider-arrow { margin-top: 15px; }
     .slider-arrow.left { left: 5px; }
     .slider-arrow.right { right: 5px; }

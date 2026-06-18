@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (paidStr && parseInt(paidStr) > 0) {
                 // Paid or partially paid -> show refund math
                 let paidAmt = parseInt(paidStr);
-                let fee = 461; // Fixed placeholder fee
+                let fee = 461;
                 let refundAmt = paidAmt - fee;
 
                 document.getElementById('cancel-paid').textContent = `₱${paidAmt.toLocaleString()}`;

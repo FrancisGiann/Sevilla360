@@ -49,7 +49,7 @@
 .section-title { font-size: 2.2rem; margin-bottom: 1.5rem; color: var(--color-gold); }
 
 /* ==========================================================================
-   CALENDAR UI (Airbnb Style)
+   CALENDAR UI 
    ========================================================================== */
 .calendar-ui {
     background: var(--color-white);
@@ -100,13 +100,13 @@
 .cal-days-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 8px 0; /* Horizontal gap 0 for continuous range styling */
+    gap: 8px 0; 
     margin-bottom: 25px;
 }
 
 /* FIXED CALENDAR CELL RESIZING BUG */
 .cal-day-cell {
-    height: 48px; /* Used fixed height instead of aspect ratio to prevent jumping */
+    height: 48px; 
     display: flex;
     justify-content: center;
     align-items: center;
@@ -404,6 +404,5 @@ select:focus, input:focus, textarea:focus {
     .tier-cards { grid-template-columns: 1fr; }
     .mix-row { flex-direction: column; align-items: flex-start; gap: 15px; }
     
-    /* Mobile Height for fix */
     .cal-day-cell { height: 40px; font-size: 0.85rem; margin: 0 2px;}
 }

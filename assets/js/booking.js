@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Mock Booked & Unavailable Dates (Day of the month)
             this.bookedDays = [3, 8, 17, 24]; 
-            this.unavailableDays = [10, 11, 28, 29]; // <-- ADDED: Mock Unavailable Dates
+            this.unavailableDays = [10, 11, 28, 29];
 
             this.init();
         }
@@ -164,7 +164,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.render();
         }
 
-        // <-- UPDATED: Now checks for both booked AND unavailable days
         hasInvalidDaysBetween(start, end) {
             let current = new Date(start);
             current.setDate(current.getDate() + 1);
@@ -202,7 +201,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 cell.className = 'cal-day-cell';
                 cell.innerText = day;
 
-                // <-- UPDATED: Checks for booked OR unavailable days to block them
                 if (this.bookedDays.includes(day)) {
                     cell.classList.add('booked');
                 } else if (this.unavailableDays.includes(day)) {
@@ -269,7 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 this.startDate = cellDate;
                                 this.render();
                             } else {
-                                // <-- UPDATED: Calls the new `hasInvalidDaysBetween` function
                                 if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
                                     alert("Your selection contains unavailable or booked dates. Please select a different range.");
                                     this.startDate = cellDate; 
