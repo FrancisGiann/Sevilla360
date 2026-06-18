@@ -1,27 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - SEVILLA360</title>
-    
+
     <!-- External Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap" rel="stylesheet">
-    
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap"
+        rel="stylesheet">
+
     <!-- Master Stylesheets -->
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/booking.css">
-    
+
     <!-- Admin Specific Styles -->
     <link rel="stylesheet" href="assets/css/admin_dashboard.css">
 
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body class="admin-body">
 
     <div class="admin-layout">
-        
+
         <!-- ================= SIDEBAR ================= -->
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -41,7 +45,7 @@
 
         <!-- ================= MAIN CONTENT ================= -->
         <main class="main-content">
-            
+
             <!-- TOP HEADER -->
             <header class="top-header">
                 <h2 id="page-title" class="page-title">Dashboard Overview</h2>
@@ -176,8 +180,10 @@
                                 <td class="actions-cell">
                                     <button class="action-btn btn-confirm" title="Confirm">✔</button>
                                     <button class="action-btn btn-cancel-act" title="Cancel Booking">✖</button>
-                                    <button class="action-btn btn-reschedule" title="Reschedule" onclick="openModal('reschedule-modal')">🗓</button>
-                                    <button class="action-btn btn-refund" title="Refund" onclick="openModal('refund-modal')">₱</button>
+                                    <button class="action-btn btn-reschedule" title="Reschedule"
+                                        onclick="openModal('reschedule-modal')">🗓</button>
+                                    <button class="action-btn btn-refund" title="Refund"
+                                        onclick="openModal('refund-modal')">₱</button>
                                     <button class="action-btn btn-view" title="View Details">👁</button>
                                 </td>
                             </tr>
@@ -196,33 +202,49 @@
                         <div class="admin-form-section">
                             <h4 class="form-section-title">1. Guest Information</h4>
                             <div class="form-row">
-                                <div class="form-group"><label>Full Name</label><input type="text" placeholder="Juan Dela Cruz"></div>
-                                <div class="form-group"><label>Contact Number</label><input type="text" placeholder="09XX XXX XXXX"></div>
+                                <div class="form-group"><label>Full Name</label><input type="text"
+                                        placeholder="Juan Dela Cruz"></div>
+                                <div class="form-group"><label>Contact Number</label><input type="text"
+                                        placeholder="09XX XXX XXXX"></div>
                             </div>
-                            <div class="form-group"><label>Email Address (Optional)</label><input type="email" placeholder="juan@example.com"></div>
+                            <div class="form-group"><label>Email Address (Optional)</label><input type="email"
+                                    placeholder="juan@example.com"></div>
                         </div>
 
                         <!-- Booking Tabs -->
                         <div class="admin-form-section mt-2">
                             <h4 class="form-section-title">2. Select Accommodation</h4>
                             <div class="booking-tabs admin-tabs">
-                                <button class="tab-btn admin-tab-btn active" data-admintab="admin-event">Event Hall</button>
+                                <button class="tab-btn admin-tab-btn active" data-admintab="admin-event">Event
+                                    Hall</button>
                                 <button class="tab-btn admin-tab-btn" data-admintab="admin-hotel">Hotel Rooms</button>
                                 <button class="tab-btn admin-tab-btn" data-admintab="admin-villa">Resort Villa</button>
                             </div>
 
                             <div class="tab-content active" id="admin-event">
                                 <div class="form-row">
-                                    <div class="form-group"><label>Select Venue Space</label><select><option>Grand Ballroom</option></select></div>
-                                    <div class="form-group"><label>Number of Guests</label><input type="number" placeholder="100"></div>
+                                    <div class="form-group"><label>Select Venue Space</label><select>
+                                            <option>Grand Ballroom</option>
+                                        </select></div>
+                                    <div class="form-group"><label>Number of Guests</label><input type="number"
+                                            placeholder="100"></div>
                                 </div>
-                                <div class="calendar-ui" style="margin-bottom:0;"><!-- Dummy admin calendar --><div class="cal-header"><h4 class="cal-month-year">Select Date</h4></div></div>
+                                <div class="calendar-ui" style="margin-bottom:0;">
+                                    <!-- Dummy admin calendar -->
+                                    <div class="cal-header">
+                                        <h4 class="cal-month-year">Select Date</h4>
+                                    </div>
+                                </div>
                             </div>
                             <div class="tab-content" id="admin-hotel">
-                                <div class="form-group"><label>Room Type</label><select><option>Deluxe Room</option></select></div>
+                                <div class="form-group"><label>Room Type</label><select>
+                                        <option>Deluxe Room</option>
+                                    </select></div>
                             </div>
                             <div class="tab-content" id="admin-villa">
-                                <div class="form-group"><label>Select Villa</label><select><option>La Casita</option></select></div>
+                                <div class="form-group"><label>Select Villa</label><select>
+                                        <option>La Casita</option>
+                                    </select></div>
                             </div>
                         </div>
 
@@ -246,14 +268,17 @@
                     <!-- RIGHT COLUMN: STICKY SUMMARY -->
                     <div class="booking-sidebar" style="margin-top: 0;">
                         <div class="sticky-summary" style="top: 20px;">
-                            <h3 style="font-family: var(--font-heading); margin-bottom: 1.5rem; font-size: 1.6rem; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">Walk-In Summary</h3>
-                            
+                            <h3
+                                style="font-family: var(--font-heading); margin-bottom: 1.5rem; font-size: 1.6rem; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">
+                                Walk-In Summary</h3>
+
                             <div class="summary-container active">
                                 <p><strong>Service:</strong> <span class="sum-val">Event Hall</span></p>
                                 <p><strong>Venue:</strong> <span class="sum-val">Grand Ballroom</span></p>
                                 <p><strong>Guest:</strong> <span class="sum-val">Juan Dela Cruz</span></p>
                                 <p><strong>Date:</strong> <span class="sum-val">Oct 25, 2024</span></p>
-                                <p><strong>Total Due:</strong> <span class="sum-val stat-gold" style="font-weight:bold; font-size:1.1rem;">₱ 150,000</span></p>
+                                <p><strong>Total Due:</strong> <span class="sum-val stat-gold"
+                                        style="font-weight:bold; font-size:1.1rem;">₱ 150,000</span></p>
                             </div>
 
                             <div class="summary-footer">
@@ -267,7 +292,7 @@
             <!-- VIEW 4: MAINTENANCE -->
             <section id="view-maintenance" class="view-section">
                 <div class="maintenance-layout">
-                    
+
                     <div class="maintenance-main">
                         <div class="admin-tabs-text">
                             <button class="m-tab active">Event Hall</button>
@@ -275,7 +300,7 @@
                             <button class="m-tab">Standard Room</button>
                             <button class="m-tab">Deluxe Room</button>
                         </div>
-                        
+
                         <div class="calendar-ui full-width-cal mt-2">
                             <div class="cal-header">
                                 <button class="cal-nav">&larr;</button>
@@ -293,7 +318,9 @@
 
                     <div class="maintenance-sidebar">
                         <div class="maint-card">
-                            <h3 style="font-family: var(--font-heading); margin-bottom: 1.5rem; color: var(--color-dark);">Schedule Maintenance</h3>
+                            <h3
+                                style="font-family: var(--font-heading); margin-bottom: 1.5rem; color: var(--color-dark);">
+                                Schedule Maintenance</h3>
                             <div class="form-group">
                                 <label>AREA / SPECIFIC LOCATION</label>
                                 <input type="text" placeholder="e.g. Garden Pavilion Aircon">
@@ -311,17 +338,18 @@
                                 <label>DESCRIPTION / NOTES</label>
                                 <textarea rows="3" placeholder="Additional details..."></textarea>
                             </div>
-                            
+
                             <div class="toggle-group mt-2">
                                 <label class="switch">
-                                  <input type="checkbox" checked>
-                                  <span class="slider round"></span>
+                                    <input type="checkbox" checked>
+                                    <span class="slider round"></span>
                                 </label>
                                 <span>BLOCK THE VENUE FROM NEW BOOKINGS</span>
                             </div>
 
                             <div class="summary-footer mt-2">
-                                <button class="btn btn-primary" style="width:100%; margin-bottom:10px;">SCHEDULE MAINTENANCE</button>
+                                <button class="btn btn-primary" style="width:100%; margin-bottom:10px;">SCHEDULE
+                                    MAINTENANCE</button>
                                 <button class="btn btn-outline dark-outline" style="width:100%;">CLEAR FORM</button>
                             </div>
                         </div>
@@ -334,7 +362,7 @@
     </div>
 
     <!-- ================= MODALS ================= -->
-    
+
     <!-- Refund Modal -->
     <div class="modal-overlay" id="refund-modal">
         <div class="modal-content admin-modal">
@@ -392,4 +420,5 @@
 
     <script src="assets/js/admin_dashboard.js"></script>
 </body>
+
 </html>

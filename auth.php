@@ -1,23 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Authentication - SEVILLA360</title>
-    
+
     <!-- Link to your master stylesheet -->
     <link rel="stylesheet" href="assets/css/style.css">
-    
+
     <!-- Link to the specific auth page stylesheet -->
     <link rel="stylesheet" href="assets/css/auth.css">
 </head>
+
 <body class="bg-beige">
 
     <div class="auth-page">
 
         <!-- BACK BUTTON TO HOMEPAGE -->
         <a href="index.php" class="back-home-btn">&larr; Back to Home</a>
-        
+
         <!-- Header outside the card -->
         <div class="auth-header">
             <div class="auth-logo">Sevilla360</div>
@@ -26,7 +28,7 @@
 
         <!-- Main Auth Card -->
         <div class="auth-card">
-            
+
             <!-- VIEW 1: USER LOGIN -->
             <div id="view-user-login" class="auth-view active">
                 <h2 class="auth-title">Welcome Back</h2>
@@ -45,7 +47,7 @@
                         </div>
                         <a href="#" class="forgot-link">Forgot password?</a>
                     </div>
-                    
+
                     <button type="submit" class="btn btn-primary btn-full">SIGN IN &rarr;</button>
                     <!-- Using btn-secondary for dark text and gold outline -->
                     <button type="button" class="btn btn-secondary btn-full" id="btn-goto-admin">ADMIN LOGIN</button>
@@ -92,7 +94,8 @@
                     <div class="terms-checkbox-group">
                         <input type="checkbox" id="agree-checkbox" required>
                         <label for="agree-checkbox">
-                            I agree to the <span class="terms-link" id="link-goto-terms">Terms of Service</span> and Privacy Policy.
+                            I agree to the <span class="terms-link" id="link-goto-terms">Terms of Service</span> and
+                            Privacy Policy.
                         </label>
                     </div>
 
@@ -111,11 +114,16 @@
 
                 <div class="terms-content">
                     <ol>
-                        <li><strong>Booking & Payments:</strong> All reservations require a valid payment method. A non-refundable deposit may apply depending on the venue.</li>
-                        <li><strong>Cancellation & Refunds:</strong> Cancellations made 72 hours prior to the event are eligible for a partial refund. Late cancellations are non-refundable.</li>
-                        <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for illustrative purposes. Actual arrangements and lighting may slightly vary.</li>
-                        <li><strong>Resort Rules:</strong> Guests are expected to maintain the property. Damages incurred during the stay or event will be billed to the account holder.</li>
-                        <li><strong>Data Privacy:</strong> We collect and process your personal data in accordance with our Privacy Policy to manage bookings effectively.</li>
+                        <li><strong>Booking & Payments:</strong> All reservations require a valid payment method. A
+                            non-refundable deposit may apply depending on the venue.</li>
+                        <li><strong>Cancellation & Refunds:</strong> Cancellations made 72 hours prior to the event are
+                            eligible for a partial refund. Late cancellations are non-refundable.</li>
+                        <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for
+                            illustrative purposes. Actual arrangements and lighting may slightly vary.</li>
+                        <li><strong>Resort Rules:</strong> Guests are expected to maintain the property. Damages
+                            incurred during the stay or event will be billed to the account holder.</li>
+                        <li><strong>Data Privacy:</strong> We collect and process your personal data in accordance with
+                            our Privacy Policy to manage bookings effectively.</li>
                     </ol>
                 </div>
 
@@ -154,4 +162,5 @@
     <!-- Link to the logic script -->
     <script src="assets/js/auth.js"></script>
 </body>
+
 </html>

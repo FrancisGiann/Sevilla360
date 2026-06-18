@@ -1,22 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Virtual Showroom | SEVILLA360</title>
-    
+
     <!-- Master Stylesheet -->
     <link rel="stylesheet" href="assets/css/style.css">
     <!-- Page-Specific Stylesheet -->
     <link rel="stylesheet" href="assets/css/showroom.css">
 </head>
+
 <body>
 
     <!-- Header / Navbar -->
     <nav class="navbar">
         <div class="container">
             <a href="index.php" class="navbar-brand">Sevilla360</a>
-            
+
             <!-- Hamburger Icon -->
             <div class="hamburger" id="hamburger">
                 <span></span>
@@ -39,10 +41,10 @@
     <!-- Showroom Container -->
     <section class="showroom-wrapper" id="showroom-wrapper">
         <div class="showroom-container">
-            
+
             <!-- 1. The Big Viewer Box (Acts as both 360 Viewer AND Photo Gallery) -->
             <div class="big-viewer-box">
-                
+
                 <!-- === 360 UI Elements (Visible by Default) === -->
                 <div class="viewer-label ui-360">Showroom</div>
                 <div class="viewer-controls ui-360">
@@ -57,19 +59,24 @@
 
                 <!-- === Photo Gallery UI Elements (Hidden by Default) === -->
                 <div class="photo-room-title ui-photos" id="gallery-title">Event Hall</div>
-                
+
                 <button class="slider-arrow left ui-photos" id="slide-prev">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7" />
+                    </svg>
                 </button>
-                
+
                 <button class="slider-arrow right ui-photos" id="slide-next">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
                 </button>
 
                 <!-- Image Container -->
                 <div class="slider-image-container ui-photos">
                     <!-- Example image placeholder -->
-                    <img src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1920&q=80" alt="Room Photo" id="current-slide-img">
+                    <img src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1920&q=80"
+                        alt="Room Photo" id="current-slide-img">
                 </div>
 
                 <!-- Back Button -->
@@ -124,7 +131,7 @@
                         <span class="d-label">Starting Rate</span>
                         <span class="d-value" id="val-rate">₱10,000 /day</span>
                     </div>
-                    
+
                     <div class="action-buttons">
                         <button class="btn-mock btn-book">BOOK THIS VENUE</button>
                         <button class="btn-mock btn-photos" id="btn-view-photos">VIEW PHOTOS</button>
@@ -173,4 +180,5 @@
     <!-- Page Specific Script -->
     <script src="assets/js/showroom.js"></script>
 </body>
+
 </html>

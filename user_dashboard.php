@@ -1,22 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard | SEVILLA360</title>
-    
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <link rel="stylesheet" href="assets/css/style.css"> 
+
+    <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/user_dashboard.css">
 </head>
+
 <body class="dashboard-body">
 
     <div class="dashboard-layout">
-        
+
         <!-- LEFT SIDEBAR -->
         <aside class="dashboard-sidebar">
             <div class="sidebar-header">
@@ -59,7 +63,7 @@
 
         <!-- MAIN CONTENT -->
         <main class="dashboard-main">
-            
+
             <!-- Topbar -->
             <header class="dashboard-topbar">
                 <div class="topbar-right">
@@ -70,7 +74,7 @@
             </header>
 
             <div class="dashboard-content">
-                
+
                 <!-- ================= TAB: MY BOOKINGS ================= -->
                 <div id="tab-bookings" class="tab-pane active">
                     <div class="content-header">
@@ -132,7 +136,8 @@
                                         <td><span class="badge badge-pending">Pending Payment</span></td>
                                         <td class="action-cell">
                                             <button class="btn-action btn-green">Pay Now</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12312" data-venue="Event Hall" data-date="Jun 13, 2026">Cancel</button>
+                                            <button class="btn-action btn-red btn-cancel" data-id="#12312"
+                                                data-venue="Event Hall" data-date="Jun 13, 2026">Cancel</button>
                                         </td>
                                     </tr>
                                     <tr data-status="Partially Paid">
@@ -143,8 +148,11 @@
                                         <td><span class="badge badge-partial">Partially Paid</span></td>
                                         <td class="action-cell">
                                             <button class="btn-action btn-green">Pay Now</button>
-                                            <button class="btn-action btn-blue btn-reschedule" data-id="#12313" data-venue="Standard Room" data-date="May 5-6, 2026">Reschedule</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12313" data-venue="Standard Room" data-date="May 5-6, 2026" data-paid="10000">Refund</button>
+                                            <button class="btn-action btn-blue btn-reschedule" data-id="#12313"
+                                                data-venue="Standard Room" data-date="May 5-6, 2026">Reschedule</button>
+                                            <button class="btn-action btn-red btn-cancel" data-id="#12313"
+                                                data-venue="Standard Room" data-date="May 5-6, 2026"
+                                                data-paid="10000">Refund</button>
                                         </td>
                                     </tr>
                                     <tr data-status="Paid">
@@ -154,8 +162,12 @@
                                         <td>₱ 20,000</td>
                                         <td><span class="badge badge-paid">Paid</span></td>
                                         <td class="action-cell">
-                                            <button class="btn-action btn-outline btn-details" data-id="#12314" data-venue="Resort Villa" data-date="Apr 4-5, 2026" data-paid="20000" data-status="Paid" data-tid="#1923129183">View Details</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12314" data-venue="Resort Villa" data-date="Apr 4-5, 2026" data-paid="20000">Cancel</button>
+                                            <button class="btn-action btn-outline btn-details" data-id="#12314"
+                                                data-venue="Resort Villa" data-date="Apr 4-5, 2026" data-paid="20000"
+                                                data-status="Paid" data-tid="#1923129183">View Details</button>
+                                            <button class="btn-action btn-red btn-cancel" data-id="#12314"
+                                                data-venue="Resort Villa" data-date="Apr 4-5, 2026"
+                                                data-paid="20000">Cancel</button>
                                         </td>
                                     </tr>
                                     <tr data-status="Cancelled">
@@ -165,14 +177,17 @@
                                         <td class="text-muted">₱ 20,000</td>
                                         <td><span class="badge badge-cancelled">Cancelled</span></td>
                                         <td class="action-cell">
-                                            <button class="btn-action btn-outline btn-details" data-id="#12315" data-venue="Event Hall" data-date="Jan 1, 2026" data-paid="0" data-status="Cancelled" data-tid="N/A">View Details</button>
+                                            <button class="btn-action btn-outline btn-details" data-id="#12315"
+                                                data-venue="Event Hall" data-date="Jan 1, 2026" data-paid="0"
+                                                data-status="Cancelled" data-tid="N/A">View Details</button>
                                         </td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to complete or 'Refresh Status' to sync with PayMongo.</p>
+                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
+                        complete or 'Refresh Status' to sync with PayMongo.</p>
                 </div>
 
                 <!-- ================= TAB: SETTINGS ================= -->
@@ -217,11 +232,13 @@
                             <form class="settings-form">
                                 <div class="form-group full-width">
                                     <label>Dietary Requirements / Allergies</label>
-                                    <textarea class="form-control" rows="2" placeholder="e.g., Vegetarian, Peanut Allergy..."></textarea>
+                                    <textarea class="form-control" rows="2"
+                                        placeholder="e.g., Vegetarian, Peanut Allergy..."></textarea>
                                 </div>
                                 <div class="form-group full-width">
                                     <label>Special Requests for Future Stays</label>
-                                    <textarea class="form-control" rows="2" placeholder="e.g., Extra pillows, Ground floor preferred..."></textarea>
+                                    <textarea class="form-control" rows="2"
+                                        placeholder="e.g., Extra pillows, Ground floor preferred..."></textarea>
                                 </div>
                                 <button type="button" class="btn btn-save">Save Preferences</button>
                             </form>
@@ -252,28 +269,30 @@
     </div>
 
     <!-- ================= MODALS ================= -->
-    
+
     <!-- Cancel Modal -->
     <div class="modal-overlay" id="modal-cancel">
         <div class="modal-box">
             <h2 class="modal-title">Cancel Reservation?</h2>
-            
+
             <div class="modal-summary">
                 <p><span>Customer Name:</span> Francis Empleo</p>
                 <p><span>Venue Type:</span> <span id="cancel-venue">Event Hall</span></p>
                 <p><span>Date:</span> <span id="cancel-date">March 30, 2026</span></p>
-                
+
                 <!-- Shown only if partially/fully paid -->
                 <div id="cancel-refund-info" style="display: none;">
                     <p><span>Total Paid by Guest:</span> <span id="cancel-paid">₱20,000</span></p>
                     <p class="fee-note"><i class="fa-solid fa-circle-info"></i> Non-refundable Service Fee: ₱461</p>
-                    <p class="refund-amount"><span>Refund Amount:</span> <span id="cancel-refund-total">₱19,539</span></p>
+                    <p class="refund-amount"><span>Refund Amount:</span> <span id="cancel-refund-total">₱19,539</span>
+                    </p>
                 </div>
             </div>
 
             <div class="form-group">
                 <label>Reason:</label>
-                <textarea class="form-control" rows="3" placeholder="Please tell us why you are cancelling..."></textarea>
+                <textarea class="form-control" rows="3"
+                    placeholder="Please tell us why you are cancelling..."></textarea>
             </div>
 
             <div class="checkbox-group" id="cancel-checkbox-group" style="display: none;">
@@ -295,13 +314,13 @@
     <div class="modal-overlay" id="modal-reschedule">
         <div class="modal-box">
             <h2 class="modal-title">Reschedule Request</h2>
-            
+
             <div class="modal-summary">
                 <p><span>Customer Name:</span> Francis Empleo</p>
                 <p><span>Venue Type:</span> <span id="reschedule-venue">Event Hall</span></p>
                 <p><span>Original Date:</span> <span id="reschedule-date">March 30, 2026</span></p>
                 <p class="new-date-row">
-                    <span>New Date:</span> 
+                    <span>New Date:</span>
                     <input type="date" class="form-control date-picker">
                 </p>
             </div>
@@ -331,7 +350,7 @@
         <div class="modal-box">
             <h2 class="modal-title">Booking Details</h2>
             <p class="details-status">Status: <span id="details-status-badge" class="text-green">Paid</span></p>
-            
+
             <div class="modal-summary details-summary">
                 <p><span>Customer Name:</span> Francis Empleo</p>
                 <p><span>Venue Type:</span> <span id="details-venue">Resort Villa</span></p>
@@ -348,4 +367,5 @@
 
     <script src="assets/js/user_dashboard.js"></script>
 </body>
+
 </html>
