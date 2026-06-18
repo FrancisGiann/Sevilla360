@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            
+
             // Remove active classes
             navItems.forEach(nav => nav.classList.remove('active'));
             tabPanes.forEach(pane => pane.classList.remove('active'));
@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tableRows.forEach(row => {
                 const rowStatus = row.getAttribute('data-status');
                 if (filterValue === 'All' || rowStatus === filterValue) {
-                    row.style.display = ''; 
+                    row.style.display = '';
                 } else {
                     row.style.display = 'none';
                 }
@@ -63,16 +63,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function closeModal() {
         Object.values(modals).forEach(modal => modal.classList.remove('active'));
         document.body.style.overflow = '';
-        
+
         // Reset cancel modal state on close
         const checkboxGrp = document.getElementById('cancel-checkbox-group');
         const refundInfo = document.getElementById('cancel-refund-info');
-        if(checkboxGrp) checkboxGrp.style.display = 'none';
-        if(refundInfo) refundInfo.style.display = 'none';
-        
+        if (checkboxGrp) checkboxGrp.style.display = 'none';
+        if (refundInfo) refundInfo.style.display = 'none';
+
         // Reset inputs
         document.querySelectorAll('.modal-box textarea, .modal-box input').forEach(input => {
-            if(input.type === 'checkbox') input.checked = false;
+            if (input.type === 'checkbox') input.checked = false;
             else input.value = '';
         });
     }
@@ -90,18 +90,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- 4. Bind Action Buttons ---
-    
+
     // A. Cancel Button
     document.querySelectorAll('.btn-cancel').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const venue = btn.getAttribute('data-venue');
             const date = btn.getAttribute('data-date');
             const paidStr = btn.getAttribute('data-paid'); // Can be null if pending
-            
+
             // Populate Modal
             document.getElementById('cancel-venue').textContent = venue;
             document.getElementById('cancel-date').textContent = date;
-            
+
             const refundInfo = document.getElementById('cancel-refund-info');
             const checkboxGrp = document.getElementById('cancel-checkbox-group');
 
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 document.getElementById('cancel-paid').textContent = `₱${paidAmt.toLocaleString()}`;
                 document.getElementById('cancel-refund-total').textContent = `₱${refundAmt.toLocaleString()}`;
-                
+
                 refundInfo.style.display = 'block';
                 checkboxGrp.style.display = 'flex';
             } else {
@@ -140,14 +140,14 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', (e) => {
             const status = btn.getAttribute('data-status');
             const paid = btn.getAttribute('data-paid');
-            
+
             const statusBadge = document.getElementById('details-status-badge');
             statusBadge.textContent = status;
-            
+
             // Color code the status in modal
-            if(status === 'Paid') { statusBadge.className = 'text-green'; }
-            else if(status === 'Cancelled') { statusBadge.style.color = '#d32f2f'; }
-            
+            if (status === 'Paid') { statusBadge.className = 'text-green'; }
+            else if (status === 'Cancelled') { statusBadge.style.color = '#d32f2f'; }
+
             document.getElementById('details-venue').textContent = btn.getAttribute('data-venue');
             document.getElementById('details-date').textContent = btn.getAttribute('data-date');
             document.getElementById('details-paid').textContent = `₱${parseInt(paid).toLocaleString()}`;
@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 5. Modal Confirm Actions (Placeholders) ---
     const btnConfirmCancel = document.querySelector('#modal-cancel .btn-confirm-red');
-    if(btnConfirmCancel) {
+    if (btnConfirmCancel) {
         btnConfirmCancel.addEventListener('click', () => {
             const isRefundable = document.getElementById('cancel-refund-info').style.display === 'block';
             const isChecked = document.getElementById('confirm-fee').checked;
@@ -177,16 +177,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const btnConfirmReschedule = document.querySelector('#modal-reschedule .btn-confirm-red');
-    if(btnConfirmReschedule) {
+    if (btnConfirmReschedule) {
         btnConfirmReschedule.addEventListener('click', () => {
             const newDate = document.querySelector('#modal-reschedule .date-picker').value;
             const isChecked = document.getElementById('confirm-reschedule').checked;
 
-            if(!newDate) {
+            if (!newDate) {
                 alert("Please select a new date.");
                 return;
             }
-            if(!isChecked) {
+            if (!isChecked) {
                 alert("Please acknowledge the reschedule policy.");
                 return;
             }

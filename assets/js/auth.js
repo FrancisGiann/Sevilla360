@@ -1,11 +1,11 @@
 document.addEventListener("DOMContentLoaded", () => {
-    
+
     // --- View Elements ---
     const viewLogin = document.getElementById("view-user-login");
     const viewRegister = document.getElementById("view-user-register");
     const viewTerms = document.getElementById("view-terms");
     const viewAdmin = document.getElementById("view-admin-login");
-    
+
     const allViews = [viewLogin, viewRegister, viewTerms, viewAdmin];
 
     // --- Trigger Elements ---
@@ -23,13 +23,13 @@ document.addEventListener("DOMContentLoaded", () => {
         allViews.forEach(view => {
             view.classList.remove("active");
         });
-        
+
         // Add 'active' class to the target view
         targetView.classList.add("active");
     }
 
     // --- Event Listeners for Navigation ---
-    
+
     // User Login -> User Register
     linkGotoRegister.addEventListener("click", () => switchView(viewRegister));
 
@@ -55,10 +55,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggleButtons = document.querySelectorAll(".password-toggle");
 
     toggleButtons.forEach(button => {
-        button.addEventListener("click", function() {
+        button.addEventListener("click", function () {
             // Find the input field relative to the clicked button
             const inputField = this.previousElementSibling;
-            
+
             if (inputField.type === "password") {
                 inputField.type = "text";
                 this.textContent = "HIDE";

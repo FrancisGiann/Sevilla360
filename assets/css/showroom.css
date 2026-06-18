@@ -34,8 +34,8 @@
 /* --- 1. The Big Viewer Box --- */
 .big-viewer-box {
     background-color: var(--bg-viewer);
-    flex: 1; /* Magic trick: Automatically shrinks/grows to fill all remaining vertical space! */
-    min-height: 0; /* Removes the old 600px limit that forced scrolling */
+    flex: 1; 
+    min-height: 0; 
     position: relative;
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
@@ -85,7 +85,7 @@
 /* Pills (Bottom Left) */
 .room-pills {
     position: absolute;
-    bottom: 20px; /* Tucked slightly tighter to the bottom */
+    bottom: 20px; 
     left: 30px;
     display: flex;
     gap: 10px;
@@ -311,7 +311,7 @@ body.no-scroll .footer {
     .showroom-wrapper {
         height: auto;
         min-height: 100vh; 
-        padding-top: 100px; /* Space for Navbar */
+        padding-top: 100px; 
         padding-bottom: 40px;
         display: block; 
     }
@@ -319,7 +319,7 @@ body.no-scroll .footer {
     .showroom-container { height: auto; }
 
     .big-viewer-box {
-        min-height: 55vh; /* Large map area */
+        min-height: 55vh; 
         flex: none; 
     }
 
@@ -329,9 +329,9 @@ body.no-scroll .footer {
 
     /* --- SWIPEABLE PILL BUTTONS --- */
     .room-pills { 
-        flex-wrap: nowrap; /* Forces them onto one line */
-        overflow-x: auto; /* Allows horizontal swiping */
-        -webkit-overflow-scrolling: touch; /* Smooth iOS scrolling */
+        flex-wrap: nowrap; 
+        overflow-x: auto; 
+        -webkit-overflow-scrolling: touch; 
         left: 15px;
         right: 15px; 
         bottom: 15px;

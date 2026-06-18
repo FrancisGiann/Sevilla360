@@ -20,10 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let timerInterval;
     let timeLimit = 30 * 60; // 30 minutes
     let timerStarted = false;
-    let activeCalendarInstance = null; 
+    let activeCalendarInstance = null;
 
     function startTimer() {
-        if (timerStarted) return; 
+        if (timerStarted) return;
         timerStarted = true;
 
         const timerBox = document.getElementById('timer-box');
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function stopTimerAndReset() {
         clearInterval(timerInterval);
         timerStarted = false;
-        timeLimit = 30 * 60; 
+        timeLimit = 30 * 60;
 
         // Reset UI
         const timerBox = document.getElementById('timer-box');
@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Clear Calendar selection
         if (activeCalendarInstance) {
-            activeCalendarInstance.resetSelection(); 
+            activeCalendarInstance.resetSelection();
         }
 
         // Reset Text in Summary
@@ -85,10 +85,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function requestDateConfirmation(startDate, endDate, calendarInstance) {
         const dateModal = document.getElementById('date-confirm-modal');
         const dateTextEl = document.getElementById('selected-date-text');
-        
+
         const options = { month: 'short', day: 'numeric', year: 'numeric' };
         const startStr = startDate.toLocaleDateString('en-US', options);
-        
+
         let displayStr = startStr;
         if (endDate && startDate.getTime() !== endDate.getTime()) {
             const endStr = endDate.toLocaleDateString('en-US', options);
@@ -108,10 +108,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         newConfirmBtn.addEventListener('click', () => {
             dateModal.classList.remove('active');
-            activeCalendarInstance = calendarInstance; 
-            
+            activeCalendarInstance = calendarInstance;
+
             document.querySelectorAll('.sum-dates-display').forEach(el => el.innerText = displayStr);
-            startTimer(); 
+            startTimer();
         });
 
         newCancelBtn.addEventListener('click', () => {
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     class BookingCalendar {
         constructor(containerId) {
             this.container = document.getElementById(containerId);
-            if(!this.container) return;
+            if (!this.container) return;
 
             this.grid = this.container.querySelector('.cal-days-grid');
             this.monthYearDisplay = this.container.querySelector('.cal-month-year');
@@ -132,13 +132,13 @@ document.addEventListener('DOMContentLoaded', () => {
             this.nextBtn = this.container.querySelector('.next-month');
 
             this.currentDate = new Date();
-            this.currentDate.setDate(1); 
-            
+            this.currentDate.setDate(1);
+
             this.startDate = null;
             this.endDate = null;
 
             // Mock Booked & Unavailable Dates (Day of the month)
-            this.bookedDays = [3, 8, 17, 24]; 
+            this.bookedDays = [3, 8, 17, 24];
             this.unavailableDays = [10, 11, 28, 29];
 
             this.init();
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hasInvalidDaysBetween(start, end) {
             let current = new Date(start);
             current.setDate(current.getDate() + 1);
-            
+
             while (current < end) {
                 if (this.bookedDays.includes(current.getDate()) || this.unavailableDays.includes(current.getDate())) {
                     return true;
@@ -179,23 +179,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         render() {
             this.grid.innerHTML = '';
-            
+
             const year = this.currentDate.getFullYear();
             const month = this.currentDate.getMonth();
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-            
+
             this.monthYearDisplay.innerText = `${monthNames[month]} ${year}`;
 
-            const firstDayIndex = new Date(year, month, 1).getDay(); 
+            const firstDayIndex = new Date(year, month, 1).getDay();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            for(let i = 0; i < firstDayIndex; i++) {
+            for (let i = 0; i < firstDayIndex; i++) {
                 const emptyCell = document.createElement('div');
                 emptyCell.className = 'cal-day-cell empty';
                 this.grid.appendChild(emptyCell);
             }
 
-            for(let day = 1; day <= daysInMonth; day++) {
+            for (let day = 1; day <= daysInMonth; day++) {
                 const cellDate = new Date(year, month, day);
                 const cell = document.createElement('div');
                 cell.className = 'cal-day-cell';
@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (this.unavailableDays.includes(day)) {
                     cell.classList.add('unavailable');
                 } else {
-                    
+
                     if (this.startDate && cellDate.getTime() === this.startDate.getTime()) {
                         cell.classList.add('selected', 'start-date');
                     }
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     cell.addEventListener('click', () => {
-                        
+
                         // Ask to override if session timer is already running
                         if (timerStarted) {
                             const overrideModal = document.getElementById('override-date-modal');
@@ -234,8 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             newYes.addEventListener('click', () => {
                                 overrideModal.classList.remove('active');
-                                stopTimerAndReset(); 
-                                
+                                stopTimerAndReset();
+
                                 this.startDate = cellDate;
                                 this.endDate = null;
                                 this.render();
@@ -245,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 overrideModal.classList.remove('active');
                             });
 
-                            return; 
+                            return;
                         }
 
                         // Normal Selection Logic
@@ -269,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             } else {
                                 if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
                                     alert("Your selection contains unavailable or booked dates. Please select a different range.");
-                                    this.startDate = cellDate; 
+                                    this.startDate = cellDate;
                                     this.render();
                                 } else {
                                     this.endDate = cellDate;
@@ -397,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (val < 1 || isNaN(val)) {
                 uiSpan.innerText = "";
                 summarySpan.innerText = "₱0";
-                if(guestsSum) guestsSum.innerText = "--";
+                if (guestsSum) guestsSum.innerText = "--";
                 return;
             }
 
@@ -461,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         plusBtn.addEventListener('click', () => {
             let current = parseInt(valSpan.innerText);
-            valSpan.innerText = current + 1; 
+            valSpan.innerText = current + 1;
         });
     });
 
@@ -470,17 +470,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateText = (sourceId, targetId, isSelect = false) => {
         const source = document.getElementById(sourceId);
         const target = document.getElementById(targetId);
-        if(source && target) {
+        if (source && target) {
             const eventType = isSelect ? 'change' : 'input';
             source.addEventListener(eventType, () => {
                 target.innerText = isSelect ? source.options[source.selectedIndex].text : source.value;
             });
         }
     }
-    
+
     updateText('event-venue', 'sum-ev-venue', true);
     updateText('event-guests', 'sum-ev-guests', false);
-    
+
     document.querySelectorAll('input[name="payment-scheme"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             document.getElementById('sum-ev-payment').innerText = e.target.value;
@@ -489,7 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateText('hotel-type', 'sum-ht-type', true);
     updateText('villa-type', 'sum-vl-type', true);
-    
+
     document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             document.getElementById('sum-vl-stay').innerText = e.target.value;
@@ -529,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
                 entry.target.classList.add('active');
-                observer.unobserve(entry.target); 
+                observer.unobserve(entry.target);
             }
         });
     }, {
