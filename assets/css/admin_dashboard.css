@@ -542,16 +542,5 @@ input:checked + .slider:before {
 .modal-large {
   max-width: 500px;
 }
-.refund-details p {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 0.95rem;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
-  padding-bottom: 5px;
-}
-.modal-actions-center {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-}
+
+
