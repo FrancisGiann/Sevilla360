@@ -245,6 +245,9 @@
                                     placeholder="Juan Dela Cruz"></div>
                             <div class="form-group"><label>Contact Number</label><input type="text"
                                     placeholder="09XX XXX XXXX"></div>
+                            <div class="form-group"><label>Email</label><input type="text"
+                                    placeholder="juan.delacruz@email.com">
+                            </div>
                         </div>
 
                         <h3 class="form-section-title mt-15">2. Select Accommodation</h3>
