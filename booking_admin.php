@@ -56,7 +56,17 @@
                         <button class="tab-btn" data-tab="hotel-rooms">Hotel Rooms</button>
                         <button class="tab-btn" data-tab="resort-villa">Resort Villa</button>
                     </div>
+                    <h2 class="section-title">Guest Information</h2>
+                    <div class="form-row">
 
+                        <div class="form-group"><label>Full Name</label><input type="text" placeholder="Juan Dela Cruz">
+                        </div>
+                        <div class="form-group"><label>Contact Number</label><input type="text"
+                                placeholder="09XX XXX XXXX"></div>
+                        <div class="form-group"><label>Email</label><input type="text"
+                                placeholder="juan.delacruz@email.com">
+                        </div>
+                    </div>
                     <!-- TAB 1: EVENT HALL -->
                     <div class="tab-content active" id="tab-event-hall">
                         <h2 class="section-title">Reserve an Event Hall</h2>
@@ -78,7 +88,8 @@
                                 <span class="legend-item"><span class="dot selected"></span> Selected</span>
                                 <span class="legend-item"><span class="dot booked"></span> Booked</span>
                                 <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
+                                <span class="legend-item"><span class="dot unavailable"></span>
+                                    Unavailable</span>
                             </div>
                         </div>
 
@@ -90,8 +101,7 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Select Venue Space</label>
-                                <select id="event-venue">
+                                <label>Select Venue Space</label> <select id="event-venue">
                                     <option value="grand-ballroom">Grand Ballroom</option>
                                     <option value="garden-pavilion">Garden Pavilion</option>
                                     <option value="rooftop-terrace">Rooftop Terrace</option>
@@ -186,7 +196,8 @@
                             </div>
 
                             <div class="addon-block">
-                                <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve Hotel
+                                <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve
+                                    Hotel
                                     Rooms</label>
                                 <div class="addon-content hidden" id="rooms-options">
                                     <div class="mix-match">
@@ -270,7 +281,8 @@
                                 <span class="legend-item"><span class="dot selected"></span> Selected</span>
                                 <span class="legend-item"><span class="dot booked"></span> Booked</span>
                                 <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
+                                <span class="legend-item"><span class="dot unavailable"></span>
+                                    Unavailable</span>
                             </div>
                         </div>
 
@@ -293,8 +305,8 @@
                         <div class="form-group">
                             <label>Number of Guests</label>
                             <input type="number" id="hotel-guests" min="1" max="4" value="2">
-                            <small class="extra-pax-note">Additional ₱800 per head exceeding base capacity. <span
-                                    id="hotel-extra-fee"></span></small>
+                            <small class="extra-pax-note">Additional ₱800 per head exceeding base capacity.
+                                <span id="hotel-extra-fee"></span></small>
                         </div>
 
                         <div class="inclusions-card">
@@ -335,7 +347,8 @@
                                 <span class="legend-item"><span class="dot selected"></span> Selected</span>
                                 <span class="legend-item"><span class="dot booked"></span> Booked</span>
                                 <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
+                                <span class="legend-item"><span class="dot unavailable"></span>
+                                    Unavailable</span>
                             </div>
                         </div>
 
@@ -371,8 +384,8 @@
                         <div class="form-group" style="margin-top: 1.5rem;">
                             <label>Number of Guests</label>
                             <input type="number" id="villa-guests" min="1" max="8" value="4">
-                            <small class="extra-pax-note">Additional ₱1,000 per head exceeding base capacity. <span
-                                    id="villa-extra-fee"></span></small>
+                            <small class="extra-pax-note">Additional ₱1,000 per head exceeding base capacity.
+                                <span id="villa-extra-fee"></span></small>
                         </div>
 
                         <div class="inclusions-card villa-inclusions">
@@ -421,8 +434,10 @@
 
                         <div class="summary-container active" id="sum-event-hall">
                             <p><strong>Service:</strong> <span class="sum-val">Event Hall</span></p>
-                            <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span></p>
-                            <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span></p>
+                            <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span>
+                            </p>
+                            <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span>
+                            </p>
                             <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                             <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
                             <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ev-payment">100%
@@ -432,7 +447,8 @@
 
                         <div class="summary-container" id="sum-hotel-rooms">
                             <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
-                            <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span></p>
+                            <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span>
+                            </p>
                             <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                             <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
                             <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
@@ -443,7 +459,8 @@
                             <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita
                                     (Poolside)</span>
                             </p>
-                            <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span></p>
+                            <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span>
+                            </p>
                             <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                             <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
                             <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
