@@ -218,7 +218,6 @@
                             <label class="toggle-label"><input type="checkbox" id="check-av"> Premium A/V Setup</label>
                         </div>
                     </div>
-
                     <div class="form-group">
                         <label class="small-label">PAYMENT SCHEME</label>
                         <div class="radio-group">
@@ -293,6 +292,16 @@
                                 <li>Pool Access</li>
                                 <li>Gym Access</li>
                             </ul>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="small-label">PAYMENT SCHEME</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="hotel-payment" value="100% Full" checked> 100% Full</label>
+                            <label><input type="radio" name="hotel-payment" value="50% Downpayment"> 50%
+                                Downpayment</label>
+                            <label><input type="radio" name="hotel-payment" value="20% Reservation"> 20%
+                                Reservation</label>
                         </div>
                     </div>
                 </div>
@@ -389,6 +398,17 @@
                             </ul>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label class="small-label">PAYMENT SCHEME</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="villa-payment" value="100% Full" checked> 100%
+                                Full</label>
+                            <label><input type="radio" name="villa-payment" value="50% Downpayment"> 50%
+                                Downpayment</label>
+                            <label><input type="radio" name="villa-payment" value="20% Reservation"> 20%
+                                Reservation</label>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -415,6 +435,8 @@
                         <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                         <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
                         <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
+                        <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ht-payment">100% Full</span>
+                        </p>
                     </div>
 
                     <div class="summary-container" id="sum-resort-villa">
@@ -425,6 +447,8 @@
                         <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                         <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
                         <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
+                        <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span>
+                        </p>
                     </div>
 
                     <!-- Universal Summary Footer -->

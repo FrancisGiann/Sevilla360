@@ -560,6 +560,16 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("sum-ev-payment").innerText = e.target.value;
     });
   });
+  document.querySelectorAll('input[name="hotel-payment"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      document.getElementById("sum-ht-payment").innerText = e.target.value;
+    });
+  });
+  document.querySelectorAll('input[name="villa-payment"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      document.getElementById("sum-vl-payment").innerText = e.target.value;
+    });
+  }); 
 
   updateText("hotel-type", "sum-ht-type", true);
   updateText("villa-type", "sum-vl-type", true);

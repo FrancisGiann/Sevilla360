@@ -25,7 +25,7 @@
         <!-- Left Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <a href="#" class="navbar-brand">SEVILLA360</a>
+                <a href="index.php" class="navbar-brand">SEVILLA360</a>
                 <span class="admin-badge">ADMIN</span>
             </div>
 
