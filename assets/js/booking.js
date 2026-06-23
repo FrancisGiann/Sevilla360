@@ -523,8 +523,8 @@ document.addEventListener("DOMContentLoaded", () => {
     .addEventListener("change", updateEventAddonsSummary);
 
   document.querySelectorAll(".counter").forEach((counter) => {
-    const minusBtn = counter.querySelector(".minus");
-    const plusBtn = counter.querySelector(".plus");
+    const minusBtn = counter.querySelector(".btn-minus");
+    const plusBtn = counter.querySelector(".btn-plus");
     const valSpan = counter.querySelector(".val");
 
     minusBtn.addEventListener("click", () => {

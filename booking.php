@@ -180,8 +180,9 @@
                                                 <p>2 Pax | ₱4,500 / night</p>
                                             </div>
                                         </div>
-                                        <div class="counter"><button type="button" class="minus">-</button><span
-                                                class="val">0</span><button type="button" class="plus">+</button></div>
+                                        <div class="counter"><button type="button" class="btn-minus">-</button><span
+                                                class="val">0</span><button type="button" class="btn-plus">+</button>
+                                        </div>
                                     </div>
                                     <div class="mix-row">
                                         <div class="mix-info">
@@ -192,8 +193,9 @@
                                                 <p>4 Pax | ₱8,500 / night</p>
                                             </div>
                                         </div>
-                                        <div class="counter"><button type="button" class="minus">-</button><span
-                                                class="val">0</span><button type="button" class="plus">+</button></div>
+                                        <div class="counter"><button type="button" class="btn-minus">-</button><span
+                                                class="val">0</span><button type="button" class="btn-plus">+</button>
+                                        </div>
                                     </div>
                                     <div class="mix-row">
                                         <div class="mix-info">
@@ -204,8 +206,9 @@
                                                 <p>2 Pax | ₱3,000 / night</p>
                                             </div>
                                         </div>
-                                        <div class="counter"><button type="button" class="minus">-</button><span
-                                                class="val">0</span><button type="button" class="plus">+</button></div>
+                                        <div class="counter"><button type="button" class="btn-minus">-</button><span
+                                                class="val">0</span><button type="button" class="btn-plus">+</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

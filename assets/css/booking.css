@@ -304,7 +304,6 @@ textarea {
   background: var(--color-white);
   transition: var(--transition-smooth);
   resize: vertical;
-  /* Allows user to drag box taller, but not wider */
 }
 
 select:focus,
@@ -510,7 +509,7 @@ textarea:focus {
 .mix-match {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
 }
 
 .mix-row {
@@ -518,9 +517,9 @@ textarea:focus {
   justify-content: space-between;
   align-items: center;
   background: var(--color-white);
-  padding: 15px;
+  padding: 20px 25px;
   border-radius: 6px;
-  border: 1px solid #eee;
+  border: 1px solid rgba(42, 37, 34, 0.1);
 }
 
 .mix-info {

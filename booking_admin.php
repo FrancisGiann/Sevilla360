@@ -4,185 +4,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Book Your Stay - SEVILLA360</title>
-    <!-- Master Stylesheet -->
+    <title>SEVILLA360 - Admin Walk-in Booking</title>
+
+    <!-- Fonts & Icons -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="assets/css/style.css">
-    <!-- Booking Specific Styles -->
-    <link rel="stylesheet" href="assets/css/booking.css">
+    <link rel="stylesheet" href="assets/css/admin_dashboard.css">
+    <link rel="stylesheet" href="assets/css/booking_admin.css">
 </head>
 
-<body>
-
-    <!-- TOP HEADER -->
-    <header class="admin-header">
-        <div class="header-left">
-            <h1 class="admin-brand">Sevilla<span style="font-weight:300; opacity: 0.6;">360</span></h1>
-            <span class="admin-badge">ADMIN</span>
-        </div>
-        <div class="header-right">
-            <a href="index.php" class="btn-home"><i class="fas fa-home"></i> Back to Home</a>
-            <div class="admin-profile-icon"><i class="fas fa-user"></i></div>
-        </div>
-    </header>
+<body class="admin-body">
 
     <div class="admin-layout">
 
-        <!-- SIDEBAR -->
+        <!-- Left Sidebar -->
         <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="#" class="navbar-brand">SEVILLA360</a>
+                <span class="admin-badge">ADMIN</span>
+            </div>
+
             <nav class="sidebar-nav">
-                <a href="#overview" class="nav-item active" data-target="view-overview"><i class="fas fa-chart-pie"></i>
-                    OVERVIEW</a>
-                <a href="#bookings" class="nav-item" data-target="view-bookings"><i class="fas fa-book"></i>
-                    BOOKINGS</a>
-                <a href="#walk-in" class="nav-item" data-target="view-walkin"><i class="fas fa-walking"></i> WALK-IN
-                    ENTRY</a>
-                <a href="#maintenance" class="nav-item" data-target="view-maintenance"><i class="fas fa-tools"></i>
-                    MAINTENANCE</a>
-                <a href="#settings" class="nav-item" data-target="view-settings"><i class="fas fa-cog"></i> SETTINGS</a>
+                <ul class="nav-list">
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php" class="nav-link"><i class="fa-solid fa-chart-pie"></i>
+                            Overview</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link"><i class="fa-solid fa-calendar-check"></i> Bookings</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="booking_admin.php" class="nav-link active"><i
+                                class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link"><i class="fa-solid fa-screwdriver-wrench"></i> Maintenance</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link"><i class="fa-solid fa-gear"></i> Settings</a>
+                    </li>
+                </ul>
             </nav>
+
             <div class="sidebar-footer">
-                <a href="login.php" class="nav-item sign-out"><i class="fas fa-sign-out-alt"></i> Sign out</a>
+                <a href="#" class="nav-link sign-out"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</a>
             </div>
         </aside>
 
-        <!-- Main Booking Section -->
-        <section class="booking-section">
-            <div class="container booking-grid">
+        <!-- Main Content Area (Scrollable Beige Background) -->
+        <main class="main-content booking-main-scroll">
 
-                <!-- LEFT COLUMN (65%) -->
-                <div class="booking-main">
-                    <div class="booking-tabs">
-                        <button class="tab-btn active" data-tab="event-hall">Event Hall</button>
-                        <button class="tab-btn" data-tab="hotel-rooms">Hotel Rooms</button>
-                        <button class="tab-btn" data-tab="resort-villa">Resort Villa</button>
+            <!-- Top Header -->
+            <header class="admin-header">
+                <h2 class="page-title">Walk-In Booking Entry</h2>
+                <div class="header-actions">
+                    <div class="admin-profile">
+                        <i class="fa-solid fa-circle-user profile-icon"></i>
                     </div>
-                    <h2 class="section-title">Guest Information</h2>
+                </div>
+            </header>
+
+            <!-- Expanded, Larger Booking Container -->
+            <div class="admin-booking-container">
+
+                <!-- Guest Information -->
+                <section class="booking-card">
+                    <h3 class="card-title">1. Guest Information</h3>
                     <div class="form-row">
-
-                        <div class="form-group"><label>Full Name</label><input type="text" placeholder="Juan Dela Cruz">
-                        </div>
-                        <div class="form-group"><label>Contact Number</label><input type="text"
-                                placeholder="09XX XXX XXXX"></div>
-                        <div class="form-group"><label>Email</label><input type="text"
-                                placeholder="juan.delacruz@email.com">
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" id="guest-name" placeholder="Enter guest's full name">
                         </div>
                     </div>
-                    <!-- TAB 1: EVENT HALL -->
-                    <div class="tab-content active" id="tab-event-hall">
-                        <h2 class="section-title">Reserve an Event Hall</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Contact Number</label>
+                            <input type="text" id="guest-phone" placeholder="e.g. 09123456789">
+                        </div>
+                        <div class="form-group">
+                            <label>Email Address</label>
+                            <input type="email" id="guest-email" placeholder="Enter guest's email">
+                        </div>
+                    </div>
+                </section>
 
-                        <!-- Advanced Airbnb-Style Calendar UI -->
+                <!-- Booking Details & Tabs -->
+                <section class="booking-card">
+                    <h3 class="card-title">2. Venue & Accommodation</h3>
+
+                    <div class="booking-tabs">
+                        <button class="tab-btn active" data-target="tab-event">Event Hall</button>
+                        <button class="tab-btn" data-target="tab-hotel">Hotel Rooms</button>
+                        <button class="tab-btn" data-target="tab-villa">Resort Villa</button>
+                    </div>
+
+                    <!-- TAB 1: EVENT HALL -->
+                    <div class="tab-content active" id="tab-event">
+
                         <div class="calendar-ui" id="cal-ui-event">
                             <div class="cal-header">
-                                <button type="button" class="cal-nav prev-month">&larr;</button>
-                                <h4 class="cal-month-year">October 2024</h4>
-                                <button type="button" class="cal-nav next-month">&rarr;</button>
+                                <button class="cal-nav prev-month"><i class="fa-solid fa-arrow-left"></i></button>
+                                <h4 class="cal-month-year">Month Year</h4>
+                                <button class="cal-nav next-month"><i class="fa-solid fa-arrow-right"></i></button>
                             </div>
                             <div class="cal-weekdays">
                                 <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
                             </div>
-                            <div class="cal-days-grid">
-                                <!-- JS Injected Days -->
-                            </div>
+                            <div class="cal-days-grid"></div>
                             <div class="cal-legend">
-                                <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                                <span class="legend-item"><span class="dot booked"></span> Booked</span>
-                                <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span>
-                                    Unavailable</span>
+                                <div class="legend-item"><span class="dot selected"></span> Selected</div>
+                                <div class="legend-item"><span class="dot booked"></span> Booked</div>
+                                <div class="legend-item"><span class="dot available"></span> Available</div>
+                                <div class="legend-item"><span class="dot unavailable"></span> Unavailable</div>
                             </div>
                         </div>
 
                         <div class="dynamic-img-wrapper">
                             <img id="event-img"
-                                src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=800"
+                                src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1200&q=80"
                                 alt="Event Hall">
                         </div>
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Select Venue Space</label> <select id="event-venue">
-                                    <option value="grand-ballroom">Grand Ballroom</option>
-                                    <option value="garden-pavilion">Garden Pavilion</option>
-                                    <option value="rooftop-terrace">Rooftop Terrace</option>
+                                <label>Select Venue Space</label>
+                                <select id="event-venue">
+                                    <option value="45000">The Grand Hall (₱45,000)</option>
+                                    <option value="25000">Garden Pavilion (₱25,000)</option>
+                                    <option value="15000">Studio A (₱15,000)</option>
                                 </select>
                             </div>
                             <div class="form-group">
                                 <label>Select Style</label>
                                 <select id="event-style">
-                                    <option>Banquet</option>
-                                    <option>Theater</option>
-                                    <option>Cocktail</option>
+                                    <option value="0">Minimalist (Standard)</option>
+                                    <option value="5000">Classic Elegance (+₱5,000)</option>
                                 </select>
                             </div>
                         </div>
 
                         <div class="form-group">
                             <label>Event Type</label>
-                            <div class="radio-group" id="event-type-group">
-                                <label><input type="radio" name="event-type" value="Plain Hall" checked> Plain
-                                    Hall</label>
-                                <label><input type="radio" name="event-type" value="Wedding"> Wedding (+
-                                    ₱10,000)</label>
-                                <label><input type="radio" name="event-type" value="Birthday"> Birthday (+
-                                    ₱5,000)</label>
-                                <label><input type="radio" name="event-type" value="Others"> Others</label>
+                            <div class="radio-group-inline">
+                                <label><input type="radio" name="event-type" value="0" checked> Plain Hall</label>
+                                <label><input type="radio" name="event-type" value="10000"> Wedding (+₱10,000)</label>
+                                <label><input type="radio" name="event-type" value="5000"> Birthday (+₱5,000)</label>
+                                <label><input type="radio" name="event-type" value="0" id="event-others-radio">
+                                    Others</label>
                             </div>
-                            <input type="text" id="event-type-others" class="hidden custom-input"
-                                placeholder="Please specify your event type...">
+                            <input type="text" id="event-type-others" class="hidden mt-10"
+                                placeholder="Specify event type...">
                         </div>
 
                         <div class="form-group">
                             <label>Number of Guests</label>
-                            <input type="number" id="event-guests" min="10" placeholder="e.g. 100">
+                            <input type="number" id="event-guests" placeholder="e.g. 100" min="1" max="300" value="50">
                         </div>
 
-                        <!-- Add-ons -->
+                        <!-- Enhance Your Event -->
                         <div class="addons-section">
-                            <h3 class="addon-title">Enhance Your Event</h3>
+                            <h4 class="addon-title">Enhance Your Event</h4>
 
                             <div class="addon-block">
-                                <label class="toggle-label"><input type="checkbox" id="check-catering"> Include
-                                    Catering</label>
+                                <label class="toggle-label">
+                                    <input type="checkbox" id="check-catering"> Include Catering
+                                </label>
                                 <div class="addon-content hidden" id="catering-options">
                                     <div class="tier-cards">
                                         <label class="tier-card">
-                                            <div class="tier-header"><input type="radio" name="catering-tier">
+                                            <input type="radio" name="catering-tier" value="750" checked>
+                                            <div class="tier-header">
                                                 <h4>Silver Tier</h4>
                                             </div>
                                             <p class="tier-desc">Standard Buffet</p>
                                             <span class="tier-price">₱750 / head</span>
                                             <ul class="tier-menu">
                                                 <li>1 Soup, 1 Salad</li>
-                                                <li>3 Main Courses (Pork, Chicken, Fish)</li>
-                                                <li>Steamed Rice</li>
+                                                <li>3 Main Courses</li>
                                                 <li>1 Dessert, Iced Tea</li>
                                             </ul>
                                         </label>
                                         <label class="tier-card">
-                                            <div class="tier-header"><input type="radio" name="catering-tier">
+                                            <input type="radio" name="catering-tier" value="1200">
+                                            <div class="tier-header">
                                                 <h4>Gold Tier</h4>
                                             </div>
                                             <p class="tier-desc">Premium Course</p>
                                             <span class="tier-price">₱1,200 / head</span>
                                             <ul class="tier-menu">
                                                 <li>Premium Soup & Salad</li>
-                                                <li>4 Main Courses (Beef Included)</li>
-                                                <li>Pasta Station</li>
-                                                <li>2 Desserts, Bottomless Drinks</li>
+                                                <li>4 Main Courses</li>
+                                                <li>2 Desserts, Drinks</li>
                                             </ul>
                                         </label>
                                         <label class="tier-card">
-                                            <div class="tier-header"><input type="radio" name="catering-tier">
+                                            <input type="radio" name="catering-tier" value="1800">
+                                            <div class="tier-header">
                                                 <h4>Platinum Tier</h4>
                                             </div>
                                             <p class="tier-desc">Luxury Dining</p>
                                             <span class="tier-price">₱1,800 / head</span>
                                             <ul class="tier-menu">
                                                 <li>Gourmet Appetizers</li>
-                                                <li>5 Main Courses (Seafood & Beef)</li>
-                                                <li>Carving Station</li>
-                                                <li>Dessert Buffet & Wine Toast</li>
+                                                <li>5 Main Courses</li>
+                                                <li>Dessert Buffet & Wine</li>
                                             </ul>
                                         </label>
                                     </div>
@@ -196,9 +226,9 @@
                             </div>
 
                             <div class="addon-block">
-                                <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve
-                                    Hotel
-                                    Rooms</label>
+                                <label class="toggle-label">
+                                    <input type="checkbox" id="check-rooms"> Reserve Hotel Rooms
+                                </label>
                                 <div class="addon-content hidden" id="rooms-options">
                                     <div class="mix-match">
                                         <div class="mix-row">
@@ -210,8 +240,12 @@
                                                     <p>2 Pax | ₱4,500 / night</p>
                                                 </div>
                                             </div>
-                                            <div class="counter"><button type="button" class="minus">-</button><span
-                                                    class="val">0</span><button type="button" class="plus">+</button>
+                                            <div class="counter">
+                                                <button type="button" class="btn-minus"
+                                                    data-target="qty-deluxe">-</button>
+                                                <span class="val" id="qty-deluxe">0</span>
+                                                <button type="button" class="btn-plus"
+                                                    data-target="qty-deluxe">+</button>
                                             </div>
                                         </div>
                                         <div class="mix-row">
@@ -223,329 +257,200 @@
                                                     <p>4 Pax | ₱8,500 / night</p>
                                                 </div>
                                             </div>
-                                            <div class="counter"><button type="button" class="minus">-</button><span
-                                                    class="val">0</span><button type="button" class="plus">+</button>
-                                            </div>
-                                        </div>
-                                        <div class="mix-row">
-                                            <div class="mix-info">
-                                                <img src="https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=150"
-                                                    alt="Standard">
-                                                <div>
-                                                    <h5>Standard Room</h5>
-                                                    <p>2 Pax | ₱3,000 / night</p>
-                                                </div>
-                                            </div>
-                                            <div class="counter"><button type="button" class="minus">-</button><span
-                                                    class="val">0</span><button type="button" class="plus">+</button>
+                                            <div class="counter">
+                                                <button type="button" class="btn-minus" data-target="qty-vip">-</button>
+                                                <span class="val" id="qty-vip">0</span>
+                                                <button type="button" class="btn-plus" data-target="qty-vip">+</button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
                             <div class="addon-block">
                                 <label class="toggle-label"><input type="checkbox" id="check-av"> Premium A/V
                                     Setup</label>
                             </div>
                         </div>
-
-                        <div class="form-group">
-                            <label class="small-label">PAYMENT SCHEME</label>
-                            <div class="radio-group">
-                                <label><input type="radio" name="payment-scheme" value="100% Full" checked> 100%
-                                    Full</label>
-                                <label><input type="radio" name="payment-scheme" value="50% Downpayment"> 50%
-                                    Downpayment</label>
-                                <label><input type="radio" name="payment-scheme" value="20% Reservation"> 20%
-                                    Reservation</label>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- TAB 2: HOTEL ROOMS -->
-                    <div class="tab-content" id="tab-hotel-rooms">
-                        <h2 class="section-title">Book a Hotel Room</h2>
-
+                    <div class="tab-content" id="tab-hotel">
                         <div class="calendar-ui" id="cal-ui-hotel">
                             <div class="cal-header">
-                                <button type="button" class="cal-nav prev-month">&larr;</button>
-                                <h4 class="cal-month-year">October 2024</h4>
-                                <button type="button" class="cal-nav next-month">&rarr;</button>
+                                <button class="cal-nav prev-month"><i class="fa-solid fa-arrow-left"></i></button>
+                                <h4 class="cal-month-year">Month Year</h4>
+                                <button class="cal-nav next-month"><i class="fa-solid fa-arrow-right"></i></button>
                             </div>
                             <div class="cal-weekdays">
                                 <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
                             </div>
                             <div class="cal-days-grid"></div>
-                            <div class="cal-legend">
-                                <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                                <span class="legend-item"><span class="dot booked"></span> Booked</span>
-                                <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span>
-                                    Unavailable</span>
-                            </div>
                         </div>
 
                         <div class="dynamic-img-wrapper">
                             <img id="hotel-img"
-                                src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800"
+                                src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=80"
                                 alt="Hotel Room">
                         </div>
 
-                        <div class="form-group">
-                            <label>Room Type</label>
-                            <select id="hotel-type">
-                                <option value="deluxe">Deluxe Room</option>
-                                <option value="vip">VIP Suite</option>
-                                <option value="standard">Standard Room</option>
-                            </select>
-                            <small class="capacity-note">Base Capacity: 2 Pax | Maximum: 4 Pax</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Number of Guests</label>
-                            <input type="number" id="hotel-guests" min="1" max="4" value="2">
-                            <small class="extra-pax-note">Additional ₱800 per head exceeding base capacity.
-                                <span id="hotel-extra-fee"></span></small>
-                        </div>
-
-                        <div class="inclusions-card">
-                            <div class="inc-col">
-                                <h4>Room Features</h4>
-                                <ul>
-                                    <li>King-sized Bed</li>
-                                    <li>En-suite Bathroom</li>
-                                    <li>Smart TV & Wi-Fi</li>
-                                </ul>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Select Room Type <span class="capacity-note">Base: 2 Pax | Max: 4
+                                        Pax</span></label>
+                                <select id="hotel-room">
+                                    <option value="4500">Deluxe Room (₱4,500/night)</option>
+                                    <option value="8500">VIP Suite (₱8,500/night)</option>
+                                </select>
                             </div>
-                            <div class="inc-col">
-                                <h4>Resort Perks</h4>
-                                <ul>
-                                    <li>Free Breakfast for 2</li>
-                                    <li>Pool Access</li>
-                                    <li>Gym Access</li>
-                                </ul>
+                            <div class="form-group">
+                                <label>Number of Guests <span class="extra-pax-note">Exceeding base:
+                                        ₱800/head</span></label>
+                                <input type="number" id="hotel-guests" min="1" max="4" value="2">
+                                <small id="hotel-extra-fee" class="hidden">Extra Pax Fee: ₱0</small>
                             </div>
                         </div>
                     </div>
 
                     <!-- TAB 3: RESORT VILLA -->
-                    <div class="tab-content" id="tab-resort-villa">
-                        <h2 class="section-title">Reserve a Resort Villa</h2>
-
+                    <div class="tab-content" id="tab-villa">
                         <div class="calendar-ui" id="cal-ui-villa">
                             <div class="cal-header">
-                                <button type="button" class="cal-nav prev-month">&larr;</button>
-                                <h4 class="cal-month-year">October 2024</h4>
-                                <button type="button" class="cal-nav next-month">&rarr;</button>
+                                <button class="cal-nav prev-month"><i class="fa-solid fa-arrow-left"></i></button>
+                                <h4 class="cal-month-year">Month Year</h4>
+                                <button class="cal-nav next-month"><i class="fa-solid fa-arrow-right"></i></button>
                             </div>
                             <div class="cal-weekdays">
                                 <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
                             </div>
                             <div class="cal-days-grid"></div>
-                            <div class="cal-legend">
-                                <span class="legend-item"><span class="dot selected"></span> Selected</span>
-                                <span class="legend-item"><span class="dot booked"></span> Booked</span>
-                                <span class="legend-item"><span class="dot available"></span> Available</span>
-                                <span class="legend-item"><span class="dot unavailable"></span>
-                                    Unavailable</span>
-                            </div>
                         </div>
 
                         <div class="dynamic-img-wrapper">
                             <img id="villa-img"
-                                src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=800"
+                                src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=1200&q=80"
                                 alt="Resort Villa">
                         </div>
 
-                        <div class="form-group">
-                            <label>Select Villa</label>
-                            <select id="villa-type">
-                                <option value="casita">La Casita (Poolside)</option>
-                                <option value="hacienda">Hacienda Suite</option>
-                            </select>
-                            <small class="capacity-note">Base Capacity: 4 Pax | Maximum: 8 Pax</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="small-label" style="margin-top: 1.5rem;">STAY TYPE</label>
-                            <div class="radio-group block-radios">
-                                <label>
-                                    <input type="radio" name="villa-stay" value="Day Time Stay" checked>
-                                    <span class="stay-title">Villa Day Time Stay — ₱3,500</span>
-                                </label>
-                                <label>
-                                    <input type="radio" name="villa-stay" value="Overnight">
-                                    <span class="stay-title">Villa Overnight — ₱6,500</span>
-                                </label>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Select Villa <span class="capacity-note">Base: 4 Pax | Max: 8 Pax</span></label>
+                                <select id="villa-type">
+                                    <option value="12000">Casita Villa (₱12,000)</option>
+                                    <option value="18000">Hacienda Villa (₱18,000)</option>
+                                </select>
                             </div>
                         </div>
 
-                        <div class="form-group" style="margin-top: 1.5rem;">
-                            <label>Number of Guests</label>
+                        <div class="form-group">
+                            <label>Stay Type</label>
+                            <div class="block-radios">
+                                <label><input type="radio" name="stay-type" value="0" checked> Day Time (8AM -
+                                    5PM)</label>
+                                <label><input type="radio" name="stay-type" value="2000"> Overnight (+₱2,000)</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Number of Guests <span class="extra-pax-note">Exceeding base:
+                                    ₱1,000/head</span></label>
                             <input type="number" id="villa-guests" min="1" max="8" value="4">
-                            <small class="extra-pax-note">Additional ₱1,000 per head exceeding base capacity.
-                                <span id="villa-extra-fee"></span></small>
-                        </div>
-
-                        <div class="inclusions-card villa-inclusions">
-                            <div class="villa-rules">
-                                <div class="rule-box" id="rule-day">
-                                    <strong>VILLA DAY TIME STAY</strong>
-                                    <p>- ₱3500 for 4 persons</p>
-                                    <p>- Check in: 7AM Check out: 5PM</p>
-                                </div>
-                                <div class="rule-box hidden" id="rule-night">
-                                    <strong>VILLA OVERNIGHT</strong>
-                                    <p>- ₱6500 for 4 persons</p>
-                                    <p>- Complimentary breakfast for 4 persons</p>
-                                    <p>- Check in: 2PM Check out: 12PM</p>
-                                </div>
-                            </div>
-
-                            <div class="inc-col">
-                                <h4 class="script-subtitle">What's inside the house?</h4>
-                                <ul>
-                                    <li>TV</li>
-                                    <li>Bed</li>
-                                    <li>Airconditioner</li>
-                                    <li>Hot and cold shower</li>
-                                    <li>Refrigerator</li>
-                                    <li>Toiletry items (Toothbrush, toothpaste, soap)</li>
-                                </ul>
-                            </div>
-                            <div class="inc-col" style="margin-top: 1.5rem;">
-                                <h4 class="script-subtitle">What's outside the house?</h4>
-                                <ul>
-                                    <li>Small private swimming pool</li>
-                                    <li>Garden</li>
-                                </ul>
-                            </div>
+                            <small id="villa-extra-fee" class="hidden">Extra Pax Fee: ₱0</small>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- RIGHT COLUMN: STICKY SUMMARY (35%) -->
-                <div class="booking-sidebar">
-                    <div class="sticky-summary">
-                        <h3
-                            style="font-family: var(--font-heading); margin-bottom: 1.5rem; font-size: 1.6rem; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">
-                            Booking Summary</h3>
+                <!-- Payment & Checkout -->
+                <section class="booking-card">
+                    <h3 class="card-title">3. Payment & Checkout</h3>
 
-                        <div class="summary-container active" id="sum-event-hall">
-                            <p><strong>Service:</strong> <span class="sum-val">Event Hall</span></p>
-                            <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span>
-                            </p>
-                            <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span>
-                            </p>
-                            <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
-                            <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
-                            <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ev-payment">100%
-                                    Full</span>
-                            </p>
-                        </div>
-
-                        <div class="summary-container" id="sum-hotel-rooms">
-                            <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
-                            <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span>
-                            </p>
-                            <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
-                            <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
-                            <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
-                        </div>
-
-                        <div class="summary-container" id="sum-resort-villa">
-                            <p><strong>Service:</strong> <span class="sum-val">Resort Villa</span></p>
-                            <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita
-                                    (Poolside)</span>
-                            </p>
-                            <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span>
-                            </p>
-                            <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
-                            <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
-                            <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
-                        </div>
-
-                        <!-- Universal Summary Footer -->
-                        <div class="summary-footer">
-                            <div class="timer-box" id="timer-box">
-                                <span id="timer-text">Select your dates to book.</span>
-                                <span id="countdown-wrapper" style="display: none;">Session expires in: <span
-                                        id="countdown">30:00</span></span>
-                            </div>
-
-                            <div class="terms-group">
-                                <input type="checkbox" id="terms-check">
-                                <label for="terms-check">I agree to the <a href="#" id="open-terms">Terms &
-                                        Conditions</a></label>
-                            </div>
-
-                            <button class="btn btn-paymongo" id="btn-proceed">PROCEED VIA PAYMONGO</button>
-                            <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Payment Scheme</label>
+                            <select id="payment-scheme">
+                                <option value="1">Full Payment (100%)</option>
+                                <option value="0.5">Down Payment (50%)</option>
+                                <option value="0.2">Reservation Fee (20%)</option>
+                            </select>
                         </div>
                     </div>
-                </div>
 
+                    <div class="form-group">
+                        <label>Payment Method</label>
+                        <div class="radio-group-inline mt-10">
+                            <label><input type="radio" name="payment-method" value="cash" checked> Cash</label>
+                            <label><input type="radio" name="payment-method" value="gcash"> GCash</label>
+                            <label><input type="radio" name="payment-method" value="maya"> Maya</label>
+                            <label><input type="radio" name="payment-method" value="bank"> Bank Transfer</label>
+                        </div>
+                    </div>
+
+                    <div class="form-group hidden" id="transaction-wrapper">
+                        <label>Reference / Transaction ID</label>
+                        <input type="text" id="transaction-id" placeholder="Enter transaction or reference number">
+                    </div>
+
+                    <!-- Booking Summary Box -->
+                    <div class="checkout-summary">
+                        <h4 class="summary-title">Booking Summary</h4>
+                        <div class="summary-row">
+                            <span>Selected Dates:</span>
+                            <span id="summary-dates" class="selected-date-text">Please select dates</span>
+                        </div>
+                        <div id="summary-breakdown"></div>
+                        <div class="summary-total">
+                            <span>Total Amount</span>
+                            <span id="summary-total-val" class="color-gold">₱0.00</span>
+                        </div>
+                        <div class="summary-total payable">
+                            <span>Amount Due Now</span>
+                            <span id="summary-due-val">₱0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button type="submit" class="btn-confirm-walkin">CONFIRM WALK-IN BOOKING</button>
+                    </div>
+                    <div class="action-buttons">
+                        <button type="button" class="btn-cancel-walkin">CANCEL</button>
+                    </div>
+                    <div class="form-note">
+                        <p><strong>Note:</strong> Confirming this booking will mark the selected dates as reserved and
+                            unavailable for other bookings. Please ensure all details are correct before proceeding.</p>
+                    </div>
+                </section>
             </div>
-        </section>
+        </main>
+    </div>
 
-        <!-- Date Confirmation Modal -->
-        <div class="modal-overlay" id="date-confirm-modal">
-            <div class="modal-content">
-                <h3 style="font-family: var(--font-heading); font-size: 1.8rem; margin-bottom: 15px;">Confirm Dates</h3>
-                <div class="modal-body" style="text-align: center; margin-bottom: 25px;">
-                    <p style="font-size: 1.1rem; color: var(--color-dark);">You have selected:<br><strong
-                            id="selected-date-text"
-                            style="color: var(--color-gold); display: block; margin-top: 10px; font-size: 1.2rem;"></strong>
-                    </p>
-                    <p style="font-size: 0.9rem; margin-top: 15px;">Proceeding will lock these dates for 30 minutes
-                        while
-                        you complete your booking.</p>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="btn btn-primary" id="btn-confirm-date">Confirm</button>
-                    <button class="btn btn-outline" id="btn-cancel-date"
-                        style="color: var(--color-dark); border-color: var(--color-dark);">Cancel</button>
-                </div>
+    <!-- Modals -->
+    <!-- 1. Confirm Dates Modal -->
+    <div class="modal-overlay" id="confirm-dates-modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Confirm Dates</h2>
+            <p class="modal-text">You have selected:</p>
+            <h3 class="modal-highlight-date" id="confirm-date-display">--</h3>
+            <p class="modal-text">Proceeding will lock these dates for 30 minutes while you complete your booking.</p>
+            <div class="modal-actions">
+                <button class="btn-modal-primary" id="btn-confirm-dates">CONFIRM</button>
+                <button class="btn-modal-outline" id="btn-cancel-dates">CANCEL</button>
             </div>
         </div>
+    </div>
 
-        <!-- Override Lock Date Modal -->
-        <div class="modal-overlay" id="override-date-modal">
-            <div class="modal-content">
-                <h3 style="font-family: var(--font-heading); font-size: 1.8rem; margin-bottom: 15px;">Change Dates?</h3>
-                <div class="modal-body" style="text-align: center; margin-bottom: 25px;">
-                    <p style="font-size: 1.1rem; color: var(--color-dark);">You currently have dates locked for this
-                        session.</p>
-                    <p style="font-size: 0.9rem; margin-top: 10px;">Would you like to cancel your current selection and
-                        pick
-                        new dates?</p>
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="btn btn-primary" id="btn-override-yes">Yes, Change Dates</button>
-                    <button class="btn btn-outline" id="btn-override-no"
-                        style="color: var(--color-dark); border-color: var(--color-dark);">No, Keep Current</button>
-                </div>
+    <!-- 2. Change Dates Modal -->
+    <div class="modal-overlay" id="change-dates-modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Change Dates?</h2>
+            <p class="modal-text">You currently have dates locked for this session.</p>
+            <p class="modal-text">Would you like to cancel your current selection and pick new dates?</p>
+            <div class="modal-actions">
+                <button class="btn-modal-primary" id="btn-override-yes">YES, CHANGE DATES</button>
+                <button class="btn-modal-outline" id="btn-override-no">NO, KEEP CURRENT</button>
             </div>
         </div>
+    </div>
 
-        <!-- T&C Modal -->
-        <div class="modal-overlay" id="tnc-modal">
-            <div class="modal-content">
-                <h3>Terms and Conditions</h3>
-                <div class="modal-body">
-                    <p>Welcome to Sevilla360 Booking System. By proceeding, you agree to our standard reservation rules,
-                        cancellation policies, and resort etiquette guidelines.</p>
-                    <p>1. All bookings are final upon payment processing.</p>
-                    <p>2. Maximum capacities are strictly implemented.</p>
-                    <p>3. Damage to resort property will be billed to the client's account.</p>
-                </div>
-                <button class="btn btn-primary" id="btn-agree">I Agree</button>
-            </div>
-        </div>
-
-
-        <script src="assets/js/booking.js"></script>
+    <script src="assets/js/booking_admin.js"></script>
 </body>
 
 </html>
