@@ -1,3 +1,7 @@
+<?php
+// Get the requested page from the URL. If none is set, default to 'overview'
+$page = isset($_GET['page']) ? $_GET['page'] : 'overview';
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -12,12 +16,17 @@
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Base Stylesheets -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/admin_dashboard.css">
 
-    <!-- Stylesheets -->
-    <link rel="stylesheet" href="assets/css/style.css"> <!-- Your master styles -->
-    <link rel="stylesheet" href="assets/css/admin_dashboard.css"> <!-- Admin specific styles -->
+    <!-- Load specific assets based on the active page -->
+    <?php if ($page === 'overview'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php elseif ($page === 'walkin'): ?>
+    <link rel="stylesheet" href="assets/css/booking_admin.css">
+    <?php endif; ?>
+
 </head>
 
 <body class="admin-body">
@@ -27,28 +36,38 @@
         <!-- Left Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <a href="#" class="navbar-brand">SEVILLA360</a>
+                <a href="index.php" class="navbar-brand">SEVILLA360</a>
                 <span class="admin-badge">ADMIN</span>
             </div>
 
             <nav class="sidebar-nav">
                 <ul class="nav-list">
                     <li class="nav-item">
-                        <a href="admin_dashboard.php" class="nav-link active"><i class="fa-solid fa-chart-pie"></i>
-                            Overview</a>
+                        <a href="admin_dashboard.php?page=overview"
+                            class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-chart-pie"></i> Overview
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link"><i class="fa-solid fa-calendar-check"></i> Bookings</a>
+                        <a href="#" class="nav-link">
+                            <i class="fa-solid fa-calendar-check"></i> Bookings
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a href="booking_admin.php" class="nav-link"><i
-                                class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry</a>
+                        <a href="admin_dashboard.php?page=walkin"
+                            class="nav-link <?php echo $page === 'walkin' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link"><i class="fa-solid fa-screwdriver-wrench"></i> Maintenance</a>
+                        <a href="#" class="nav-link">
+                            <i class="fa-solid fa-screwdriver-wrench"></i> Maintenance
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link"><i class="fa-solid fa-gear"></i> Settings</a>
+                        <a href="#" class="nav-link">
+                            <i class="fa-solid fa-gear"></i> Settings
+                        </a>
                     </li>
                 </ul>
             </nav>
@@ -59,11 +78,17 @@
         </aside>
 
         <!-- Main Content Area -->
-        <main class="main-content">
+        <!-- Add the scrolling class specifically if we are on the walkin page -->
+        <main class="main-content <?php echo $page === 'walkin' ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
-                <h2 class="page-title">Dashboard Overview</h2>
+                <h2 class="page-title">
+                    <?php 
+                        if ($page === 'overview') echo 'Dashboard Overview';
+                        elseif ($page === 'walkin') echo 'Walk-In Booking Entry';
+                    ?>
+                </h2>
                 <div class="header-actions">
                     <a href="index.php" class="btn-back"><i class="fa-solid fa-house"></i> Back to Home</a>
                     <div class="admin-profile">
@@ -72,15 +97,25 @@
                 </div>
             </header>
 
-            <!-- Dashboard Content Included Here -->
-            <?php include 'includes/admin_overview.php'; ?>
+            <!-- Dynamically Include Content Here -->
+            <?php 
+                if ($page === 'walkin') {
+                    include 'includes/admin_walkin.php';
+                } else {
+                    include 'includes/admin_overview.php';
+                }
+            ?>
 
         </main>
-
     </div>
 
-    <!-- Admin JS logic -->
+    <!-- Load specific JS based on the active page -->
+    <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin_dashboard.js"></script>
+    <?php elseif ($page === 'walkin'): ?>
+    <script src="assets/js/admin_walkin.js"></script>
+    <?php endif; ?>
+
 </body>
 
 </html>
