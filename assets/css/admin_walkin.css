@@ -481,8 +481,9 @@ textarea:focus {
 
 .cal-legend {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 2rem;
+  gap: 1.5rem; /* Slightly smaller gap */
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   padding-top: 25px;
 }
@@ -731,5 +732,32 @@ textarea:focus {
   }
   .tier-cards {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 768px) {
+  .calendar-ui {
+    padding: 20px 10px;
+  }
+
+  .cal-day-cell {
+    height: 40px;
+    font-size: 0.95rem;
+    margin: 0 2px;
+  }
+
+  .cal-weekdays {
+    font-size: 0.75rem;
+    gap: 0;
+  }
+
+  .booking-tabs {
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+
+  .tab-btn {
+    font-size: 1.1rem;
+    padding: 10px 0;
   }
 }
