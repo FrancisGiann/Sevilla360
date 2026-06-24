@@ -737,8 +737,12 @@
   margin-bottom: 20px;
 }
 
-/* Media Queries */
+/* ==========================================================================
+   Responsive Mobile Adjustments (FIXED)
+   ========================================================================== */
+
 @media (max-width: 992px) {
+  /* Tablet View: Slim Sidebar */
   .dashboard-sidebar {
     width: 80px;
   }
@@ -767,8 +771,87 @@
 }
 
 @media (max-width: 768px) {
+  /* 1. Reset Main Area for Full Width */
+  .dashboard-main {
+    margin-left: 0; /* Remove 80px tablet margin */
+    padding-bottom: 70px; /* Leave space for bottom nav bar */
+  }
+
+  /* 2. Mobile App Bottom Navigation Bar */
+  .dashboard-sidebar {
+    width: 100%;
+    height: 65px;
+    flex-direction: row;
+    top: auto;
+    bottom: 0;
+    border-right: none;
+    border-top: 1px solid rgba(42, 37, 34, 0.08);
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.03);
+    z-index: 1000;
+  }
+
+  /* Hide unneeded elements in bottom bar */
+  .sidebar-header,
+  .user-profile,
+  .nav-heading,
+  .sidebar-footer {
+    display: none;
+  }
+
+  .sidebar-nav {
+    width: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-list {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    justify-content: space-around;
+    align-items: center;
+    margin: 0;
+    height: 100%;
+  }
+
+  .nav-item {
+    flex: 1;
+    height: 100%;
+  }
+
+  .nav-link {
+    width: 100%;
+    height: 100%;
+    justify-content: center;
+    padding: 0;
+    border-left: none !important; /* Remove desktop active line */
+  }
+
+  .nav-item.active .nav-link {
+    border-top: 3px solid var(--color-gold); /* Add app-style top line */
+    background-color: rgba(214, 168, 112, 0.08);
+  }
+
+  .nav-link i {
+    font-size: 1.3rem;
+  }
+
+  /* 3. Topbar Fixes */
+  .dashboard-topbar {
+    padding: 15px 20px;
+  }
+  .topbar-right {
+    width: 100%;
+    justify-content: space-between; /* Space out Home button and Profile icon */
+  }
+
+  /* 4. Content Area Layout Fixes */
+  .dashboard-content {
+    padding: 20px 15px; /* Less padding on phone */
+  }
+
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* Stack stats on top of each other */
   }
 
   .content-header {
@@ -777,12 +860,31 @@
     gap: 15px;
   }
 
-  .filter-pills {
-    flex-wrap: wrap;
+  /* Make header action buttons stretch */
+  .header-actions {
+    width: 100%;
+    display: flex;
+  }
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
   }
 
+  /* History Table Header */
+  .history-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .filter-pills {
+    flex-wrap: wrap; /* Allows filter buttons to wrap to next line safely */
+    gap: 8px;
+  }
+
+  /* 5. Forms & Modals */
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* Stack inputs */
   }
 
   .modal-box {
@@ -790,6 +892,9 @@
   }
 
   .modal-actions {
-    flex-direction: column;
+    flex-direction: column; /* Stack confirm/cancel buttons */
+  }
+  .modal-actions button {
+    width: 100%;
   }
 }
