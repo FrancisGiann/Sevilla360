@@ -23,6 +23,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php elseif ($page === 'bookings'): ?>
+    <link rel="stylesheet" href="assets/css/admin_bookings.css">
     <?php elseif ($page === 'walkin'): ?>
     <link rel="stylesheet" href="assets/css/admin_walkin.css">
     <?php elseif ($page === 'maintenance'): ?>
@@ -51,7 +53,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link">
+                        <a href="admin_dashboard.php?page=bookings"
+                            class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>">
                             <i class="fa-solid fa-calendar-check"></i> Bookings
                         </a>
                     </li>
@@ -81,15 +84,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         </aside>
 
         <!-- Main Content Area -->
-        <!-- Add the scrolling class specifically if we are on the walkin or maintenance page -->
+        <!-- Added 'bookings' to the scroll class condition so the table scrolls properly if it overflows -->
         <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance') ? 'booking-main-scroll' : ''; ?>">
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
                 <h2 class="page-title">
                     <?php 
                         if ($page === 'overview') echo 'Dashboard Overview';
+                        elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking Entry';
                         elseif ($page === 'maintenance') echo 'Facility Maintenance';
                     ?>
@@ -108,6 +112,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     include 'includes/admin_walkin.php';
                 } elseif ($page === 'maintenance') {
                     include 'includes/admin_maintenance.php';
+                } elseif ($page === 'bookings') {
+                    include 'includes/admin_bookings.php';
                 } else {
                     include 'includes/admin_overview.php';
                 }
@@ -119,6 +125,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <!-- Load specific JS based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin_dashboard.js"></script>
+    <?php elseif ($page === 'bookings'): ?>
+    <script src="assets/js/admin_bookings.js"></script>
     <?php elseif ($page === 'walkin'): ?>
     <script src="assets/js/admin_walkin.js"></script>
     <?php elseif ($page === 'maintenance'): ?>
