@@ -406,10 +406,113 @@ textarea:focus {
   background: rgba(42, 37, 34, 0.05);
 }
 
-/* --- Responsive --- */
+/* ==========================================================================
+   RESPONSIVE DESIGN (Tablets & Mobile)
+   ========================================================================== */
+
+/* --- Tablet View (max-width: 992px) --- */
 @media (max-width: 992px) {
+  .admin-maintenance-container {
+    width: 100%;
+    padding: 20px 20px 80px;
+  }
+
   .maintenance-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* Stacks the sidebar below the calendar */
     gap: 2rem;
+  }
+
+  .booking-card,
+  .calendar-ui,
+  .checkout-summary {
+    padding: 30px;
+  }
+}
+
+/* --- Mobile View (max-width: 768px) --- */
+@media (max-width: 768px) {
+  .admin-maintenance-container {
+    padding: 15px 15px 80px;
+  }
+
+  .booking-card,
+  .calendar-ui,
+  .checkout-summary {
+    padding: 20px 15px; /* Reduces massive padding on small screens */
+  }
+
+  .card-title {
+    font-size: 1.6rem;
+  }
+
+  /* Tabs */
+  .booking-tabs {
+    gap: 1rem;
+    flex-wrap: wrap; /* Allows tabs to wrap to next line if they don't fit */
+  }
+
+  .tab-btn {
+    font-size: 1.1rem;
+    padding: 10px 0;
+  }
+
+  /* Calendar Adjustments for Mobile */
+  .cal-header {
+    margin-bottom: 20px;
+  }
+
+  .cal-month-year {
+    font-size: 1.4rem;
+  }
+
+  .cal-weekdays {
+    font-size: 0.75rem;
+  }
+
+  .cal-days-grid {
+    gap: 5px 0;
+  }
+
+  .cal-day-cell {
+    height: 40px; /* Shorter cells for mobile */
+    font-size: 0.95rem;
+    margin: 0 2px;
+  }
+
+  .cal-legend {
+    gap: 1rem;
+    flex-wrap: wrap; /* Keeps legend items from running off screen */
+  }
+
+  /* Toggle Switch Adjustments */
+  .toggle-label-ui {
+    padding: 15px;
+  }
+
+  .toggle-text {
+    font-size: 0.95rem;
+  }
+
+  /* Summary Sidebar */
+  .summary-title {
+    font-size: 1.4rem;
+  }
+
+  .summary-container p {
+    flex-direction: column; /* Stacks the label and value */
+    gap: 5px;
+    align-items: flex-start;
+  }
+
+  .sum-val {
+    text-align: left;
+    max-width: 100%;
+    font-weight: 600;
+  }
+
+  /* Buttons */
+  .btn {
+    width: 100%; /* Full width buttons on mobile */
+    margin-bottom: 10px;
   }
 }
