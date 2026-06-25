@@ -25,6 +25,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php elseif ($page === 'walkin'): ?>
     <link rel="stylesheet" href="assets/css/admin_walkin.css">
+    <?php elseif ($page === 'maintenance'): ?>
+    <link rel="stylesheet" href="assets/css/admin_maintenance.css">
     <?php endif; ?>
 
 </head>
@@ -60,7 +62,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link">
+                        <a href="admin_dashboard.php?page=maintenance"
+                            class="nav-link <?php echo $page === 'maintenance' ? 'active' : ''; ?>">
                             <i class="fa-solid fa-screwdriver-wrench"></i> Maintenance
                         </a>
                     </li>
@@ -78,8 +81,9 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         </aside>
 
         <!-- Main Content Area -->
-        <!-- Add the scrolling class specifically if we are on the walkin page -->
-        <main class="main-content <?php echo $page === 'walkin' ? 'booking-main-scroll' : ''; ?>">
+        <!-- Add the scrolling class specifically if we are on the walkin or maintenance page -->
+        <main
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
@@ -87,6 +91,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     <?php 
                         if ($page === 'overview') echo 'Dashboard Overview';
                         elseif ($page === 'walkin') echo 'Walk-In Booking Entry';
+                        elseif ($page === 'maintenance') echo 'Facility Maintenance';
                     ?>
                 </h2>
                 <div class="header-actions">
@@ -101,6 +106,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
             <?php 
                 if ($page === 'walkin') {
                     include 'includes/admin_walkin.php';
+                } elseif ($page === 'maintenance') {
+                    include 'includes/admin_maintenance.php';
                 } else {
                     include 'includes/admin_overview.php';
                 }
@@ -114,6 +121,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin_dashboard.js"></script>
     <?php elseif ($page === 'walkin'): ?>
     <script src="assets/js/admin_walkin.js"></script>
+    <?php elseif ($page === 'maintenance'): ?>
+    <script src="assets/js/admin_maintenance.js"></script>
     <?php endif; ?>
 
 </body>

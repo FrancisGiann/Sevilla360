@@ -1,0 +1,415 @@
+/* ==========================================================================
+   SEVILLA360 - Admin Maintenance Styles
+   (Complete Standalone Stylesheet)
+   ========================================================================== */
+
+/* --- Layout & Containers --- */
+.admin-maintenance-container {
+  width: 95%;
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 0 20px 100px;
+}
+
+.maintenance-grid {
+  display: grid;
+  grid-template-columns: 65% 33%;
+  gap: 2%;
+  align-items: start;
+}
+
+.booking-card {
+  background: var(--color-white);
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(42, 37, 34, 0.05);
+}
+
+.card-title {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  color: var(--color-gold);
+  border-bottom: 1px solid rgba(214, 168, 112, 0.2);
+  padding-bottom: 15px;
+}
+
+/* --- Tabs --- */
+.maintenance-venue-section {
+  margin-bottom: 2rem;
+}
+
+.booking-tabs {
+  display: flex;
+  gap: 2.5rem;
+  border-bottom: 2px solid rgba(42, 37, 34, 0.05);
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 15px 0;
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  color: var(--color-dark-light);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.4s ease;
+}
+
+.tab-btn::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background-color: var(--color-gold);
+  transition: all 0.4s ease;
+}
+
+.tab-btn:hover {
+  color: var(--color-gold);
+}
+
+.tab-btn.active {
+  color: var(--color-dark);
+  font-weight: 600;
+}
+
+.tab-btn.active::after {
+  width: 100%;
+}
+
+/* --- Calendar UI --- */
+.calendar-ui {
+  background: var(--color-white);
+  border: 1px solid rgba(42, 37, 34, 0.08);
+  padding: 40px;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+.cal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.cal-month-year {
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.cal-nav {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--color-dark-light);
+  padding: 0 10px;
+}
+
+.cal-nav:hover {
+  color: var(--color-gold);
+}
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #888;
+  margin-bottom: 15px;
+  letter-spacing: 1px;
+}
+
+.cal-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px 0;
+  margin-bottom: 25px;
+}
+
+.cal-day-cell {
+  height: 55px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 4px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: #f9f9f9;
+  color: var(--color-dark);
+  margin: 0 4px;
+  transition: 0.2s ease;
+}
+
+.cal-day-cell:hover:not(.empty):not(.booked):not(.selected):not(.in-range) {
+  background: #ebebeb;
+}
+
+.cal-day-cell.empty {
+  background: transparent;
+  cursor: default;
+}
+.cal-day-cell.booked {
+  background: #e06666;
+  color: white;
+  cursor: not-allowed;
+}
+.cal-day-cell.selected {
+  background: var(--color-gold);
+  color: white;
+  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3);
+}
+.cal-day-cell.in-range {
+  background: rgba(214, 168, 112, 0.15);
+  color: var(--color-dark);
+  margin: 0;
+  border-radius: 0;
+}
+
+.cal-day-cell.selected.start-date:not(.end-date) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: 0;
+}
+.cal-day-cell.selected.end-date:not(.start-date) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: 0;
+}
+
+.cal-legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding-top: 25px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot.selected {
+  background: var(--color-gold);
+}
+.dot.booked {
+  background: #e06666;
+}
+.dot.available-green {
+  background: #809b85;
+}
+.dot.unavailable {
+  background: #e0e0e0;
+}
+
+/* --- Form Elements --- */
+.form-group {
+  margin-bottom: 25px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--color-dark);
+  letter-spacing: 0.5px;
+}
+
+select,
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 16px 20px;
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  background: var(--color-white);
+  color: var(--color-dark);
+  transition: all 0.3s ease;
+  resize: vertical;
+}
+
+select:focus,
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.1);
+}
+
+/* --- Beautiful Toggle Switch --- */
+.toggle-label-ui {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  background: var(--color-beige);
+  border: 1px solid rgba(214, 168, 112, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.toggle-label-ui:hover {
+  border-color: var(--color-gold);
+}
+
+.toggle-text {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--color-dark);
+  letter-spacing: 0.5px;
+}
+
+.custom-toggle {
+  position: relative;
+  width: 56px;
+  height: 30px;
+}
+
+.custom-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #d1d5db;
+  transition: 0.4s;
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 22px;
+  width: 22px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.custom-toggle input:checked + .toggle-slider {
+  background-color: #e06666;
+}
+
+.custom-toggle input:checked + .toggle-slider:before {
+  transform: translateX(26px);
+}
+
+/* --- Summary Sidebar --- */
+.checkout-summary {
+  background: var(--color-white);
+  border: 1px solid rgba(42, 37, 34, 0.08);
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+.summary-title {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  margin: 0 0 25px;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.1);
+  padding-bottom: 15px;
+}
+
+.summary-container p {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  font-size: 1.05rem;
+  border-bottom: 1px dashed rgba(42, 37, 34, 0.15);
+  padding-bottom: 10px;
+  color: var(--color-dark-light);
+}
+
+.summary-container p:last-child {
+  border-bottom: none;
+}
+
+.sum-val {
+  font-weight: 500;
+  color: var(--color-dark);
+  text-align: right;
+  max-width: 60%;
+}
+
+/* --- Buttons --- */
+.action-buttons {
+  margin-top: 30px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 16px;
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.btn-confirm-walkin {
+  background-color: var(--color-gold);
+  color: var(--color-white);
+  border: none;
+}
+
+.btn-confirm-walkin:hover {
+  background-color: var(--color-gold-hover);
+  transform: translateY(-2px);
+}
+
+.btn-modal-outline {
+  background: transparent;
+  color: var(--color-dark);
+  border: 1px solid rgba(42, 37, 34, 0.2);
+}
+
+.btn-modal-outline:hover {
+  background: rgba(42, 37, 34, 0.05);
+}
+
+/* --- Responsive --- */
+@media (max-width: 992px) {
+  .maintenance-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+}

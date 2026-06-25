@@ -6,10 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Authentication - SEVILLA360</title>
 
-    <!-- Link to your master stylesheet -->
     <link rel="stylesheet" href="assets/css/style.css">
-
-    <!-- Link to the specific auth page stylesheet -->
     <link rel="stylesheet" href="assets/css/auth.css">
 </head>
 

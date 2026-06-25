@@ -1,11 +1,9 @@
 <?php
-// 1. Set the specific details for this page
 $page_title = 'Virtual Showroom | SEVILLA360';
 $extra_css = 'assets/css/showroom.css';
 $extra_js = 'assets/js/showroom.js';
 $active_page = 'showroom';
 
-// 2. Include the Header
 include 'includes/header.php';
 ?>
 
@@ -108,6 +106,5 @@ include 'includes/header.php';
 </section>
 
 <?php 
-// 3. Include the Footer
 include 'includes/footer.php'; 
 ?>
