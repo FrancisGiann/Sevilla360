@@ -1,0 +1,416 @@
+/* ==========================================================================
+   SEVILLA360 - Admin Settings Styles
+   ========================================================================== */
+
+/* Container & Header Fixes */
+.admin-settings-container {
+  width: 95%;
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 0 20px 100px;
+  font-family: var(--font-body);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.settings-header {
+  margin-bottom: 40px;
+  text-align: left;
+}
+
+.settings-title {
+  font-family: var(--font-heading);
+  font-size: 2.8rem;
+  color: var(--color-dark);
+  margin-bottom: 0.5rem;
+  letter-spacing: 1px;
+}
+
+.settings-subtitle {
+  color: var(--color-dark-light);
+  font-size: 1rem;
+}
+
+/* 2-Column Layout */
+.settings-layout {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* Sidebar Navigation (Desktop - Vertical with Gold Underline) */
+.settings-sidebar {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Added breathing room between tabs */
+}
+
+.tab-link {
+  background: transparent !important;
+  border: none;
+  text-align: left;
+  padding: 10px 0;
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  color: var(--color-dark-light);
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-snappy);
+  white-space: nowrap;
+  width: fit-content; /* Gold line only spans text width */
+  outline: none !important; /* Removes black focus box */
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: none !important;
+}
+
+.tab-link::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background-color: var(--color-gold);
+  transition: var(--transition-snappy);
+}
+
+.tab-link:hover,
+.tab-link:focus {
+  background-color: transparent;
+  color: var(--color-gold);
+}
+
+.tab-link.active {
+  background-color: transparent;
+  font-weight: 600;
+  color: var(--color-dark);
+}
+
+.tab-link.active::after {
+  width: 100%;
+}
+
+/* Content Area (White Cards) */
+.settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-panel {
+  display: none;
+  background-color: var(--color-white);
+  border-radius: 8px;
+  padding: 50px;
+  width: 100%;
+  box-shadow: var(--shadow-soft);
+  animation: fadeIn 0.4s ease forwards;
+  box-sizing: border-box;
+}
+
+.settings-panel.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.panel-heading {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  margin-bottom: 35px;
+  color: var(--color-gold);
+  border-bottom: 1px solid rgba(214, 168, 112, 0.2);
+  padding-bottom: 15px;
+  text-align: left;
+}
+
+.panel-subheading {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  margin-bottom: 20px;
+  color: var(--color-dark);
+  text-align: left;
+}
+
+.panel-divider {
+  border: none;
+  border-top: 1px solid rgba(42, 37, 34, 0.1);
+  margin: 30px 0;
+}
+
+/* Forms & Inputs */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 30px;
+  width: 100%;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.form-group label {
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--color-dark);
+}
+
+.form-control {
+  width: 100%;
+  padding: 16px 20px;
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  color: var(--color-dark);
+  background-color: var(--color-white);
+  transition: var(--transition-snappy);
+  box-sizing: border-box;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.1);
+}
+
+.form-control::placeholder {
+  color: #a09c99;
+}
+
+/* System Preferences Toggles */
+.preference-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+}
+
+.preference-info h4 {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--color-dark);
+}
+
+.preference-info p {
+  font-size: 0.95rem;
+  color: var(--color-dark-light);
+  margin: 0;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 54px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #d1cfcd;
+  transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 4px;
+  bottom: 4px;
+  background-color: var(--color-white);
+  transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+input:checked + .toggle-slider {
+  background-color: var(--color-gold);
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(26px);
+}
+
+/* Panel Footer & Buttons */
+.panel-footer {
+  margin-top: 40px;
+  text-align: right;
+}
+
+.save-btn {
+  padding: 16px 32px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+/* Toast Notification */
+.toast-notification {
+  position: fixed;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--color-dark);
+  color: var(--color-white);
+  padding: 16px 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-hover);
+  z-index: 9999;
+  transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.toast-notification.show {
+  bottom: 40px;
+}
+
+.toast-notification svg {
+  color: var(--color-gold);
+}
+
+/* ==========================================================================
+   Responsive Adjustments (Tablet & Mobile)
+   ========================================================================== */
+
+@media (max-width: 992px) {
+  .admin-settings-container {
+    width: 100%;
+    padding: 20px;
+    margin-top: 0;
+  }
+
+  .settings-header {
+    margin-bottom: 20px;
+  }
+
+  .settings-layout {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* Horizontal Swipeable Tabs */
+  .settings-sidebar {
+    flex: 1 1 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-bottom: 2px solid rgba(42, 37, 34, 0.08);
+    gap: 0;
+  }
+
+  .settings-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-link {
+    flex-shrink: 0;
+    padding: 0 0 12px 0;
+    margin-right: 25px;
+    font-size: 1.15rem;
+  }
+
+  .tab-link:last-child {
+    margin-right: 15px;
+  }
+
+  /* Gold active underline shift to match border */
+  .tab-link::after {
+    bottom: -2px;
+  }
+
+  .settings-panel {
+    padding: 40px 30px;
+  }
+}
+
+/* Mobile Phones */
+@media (max-width: 768px) {
+  .admin-settings-container {
+    padding: 15px;
+  }
+
+  .settings-title {
+    font-size: 2.2rem;
+  }
+
+  .settings-subtitle {
+    font-size: 0.95rem;
+  }
+
+  .tab-link {
+    font-size: 1.05rem;
+    margin-right: 20px;
+  }
+
+  .settings-panel {
+    padding: 30px 20px;
+  }
+
+  .panel-heading {
+    font-size: 1.6rem;
+    margin-bottom: 25px;
+  }
+
+  .form-grid {
+    gap: 20px;
+  }
+
+  .preference-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .panel-footer {
+    text-align: center;
+    margin-top: 30px;
+  }
+
+  .panel-footer .save-btn {
+    width: 100%;
+    display: block;
+    padding: 20px;
+  }
+
+  .toast-notification {
+    width: 90%;
+    justify-content: center;
+    padding: 14px 20px;
+  }
+}

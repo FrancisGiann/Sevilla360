@@ -1,4 +1,13 @@
 <?php
+// CRITICAL: Start the session at the very top so the Settings page can check $_SESSION['role'] for Super Admin
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+// --- TEMPORARY TESTING --- 
+// (Delete this when you connect your real login system later!)
+$_SESSION['role'] = 'superadmin'; 
+// -------------------------
+
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 ?>
@@ -29,6 +38,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin_walkin.css">
     <?php elseif ($page === 'maintenance'): ?>
     <link rel="stylesheet" href="assets/css/admin_maintenance.css">
+    <?php elseif ($page === 'settings'): ?>
+    <link rel="stylesheet" href="assets/css/admin_settings.css">
     <?php endif; ?>
 
 </head>
@@ -41,7 +52,17 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="index.php" class="navbar-brand">SEVILLA360</a>
-                <span class="admin-badge">ADMIN</span>
+
+                <!-- DYNAMIC ROLE BADGE -->
+                <span class="admin-badge">
+                    <?php 
+                if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
+                    echo 'SUPER ADMIN';
+                } else {
+                    echo 'ADMIN';
+                }
+            ?>
+                </span>
             </div>
 
             <nav class="sidebar-nav">
@@ -71,7 +92,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" class="nav-link">
+                        <a href="admin_dashboard.php?page=settings"
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>">
                             <i class="fa-solid fa-gear"></i> Settings
                         </a>
                     </li>
@@ -84,9 +106,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         </aside>
 
         <!-- Main Content Area -->
-        <!-- Added 'bookings' to the scroll class condition so the table scrolls properly if it overflows -->
         <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings') ? 'booking-main-scroll' : ''; ?>">
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
@@ -96,6 +117,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking Entry';
                         elseif ($page === 'maintenance') echo 'Facility Maintenance';
+                        elseif ($page === 'settings') echo 'System Settings'; 
                     ?>
                 </h2>
                 <div class="header-actions">
@@ -114,6 +136,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     include 'includes/admin_maintenance.php';
                 } elseif ($page === 'bookings') {
                     include 'includes/admin_bookings.php';
+                } elseif ($page === 'settings') {
+                    include 'includes/admin_settings.php'; 
                 } else {
                     include 'includes/admin_overview.php';
                 }
@@ -121,8 +145,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         </main>
     </div>
-
-    <!-- Load specific JS based on the active page -->
+    // specific js for each page
     <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin_dashboard.js"></script>
     <?php elseif ($page === 'bookings'): ?>
@@ -131,6 +154,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin_walkin.js"></script>
     <?php elseif ($page === 'maintenance'): ?>
     <script src="assets/js/admin_maintenance.js"></script>
+    <?php elseif ($page === 'settings'): ?>
+    <script src="assets/js/admin_settings.js"></script>
     <?php endif; ?>
 
 </body>
