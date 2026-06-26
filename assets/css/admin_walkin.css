@@ -1,24 +1,22 @@
 /* ==========================================================================
    SEVILLA360 - Admin Walk-in Booking Styles
-   (Enlarged UI & Scroll Override)
+   (Enlarged UI, Scroll Override, Consistent Header)
    ========================================================================== */
 
 /* Fix layout overrides from admin dashboard */
 .admin-body {
   overflow: hidden;
-} /* Locks overall window to prevent double scrollbars */
+}
 .booking-main-scroll {
   overflow-y: auto !important;
   height: 100vh;
-  background-color: var(
-    --color-beige
-  ); /* Exact match to the beige background requested */
+  background-color: var(--color-beige);
 }
 
-/* Expanded Container (Larger Scale) */
+/* Expanded Container (Larger Scale & Matched Width) */
 .admin-booking-container {
   width: 95%;
-  max-width: 1100px; /* Made much wider */
+  max-width: 1200px; /* MATCHED TO SETTINGS/MAINTENANCE */
   margin: 40px auto;
   padding: 0 20px 100px;
   display: flex;
@@ -26,7 +24,30 @@
   gap: 40px;
 }
 
-/* Booking Cards (Larger padding) */
+/* --- NEW CONSISTENT HEADER --- */
+.walkin-header {
+  margin-bottom: -10px;
+}
+
+.walkin-title {
+  font-family: var(--font-heading);
+  font-size: 2.2rem;
+  color: var(--color-gold);
+  margin-bottom: 25px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.walkin-subtitle {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-dark);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Booking Cards */
 .booking-card {
   background: var(--color-white);
   padding: 50px;
@@ -36,23 +57,29 @@
 
 .card-title {
   font-family: var(--font-heading);
-  font-size: 2rem; /* Larger title */
+  font-size: 2rem;
   color: var(--color-gold);
   margin-bottom: 35px;
   border-bottom: 1px solid rgba(214, 168, 112, 0.2);
   padding-bottom: 15px;
 }
 
-/* Tabs */
+/* Tabs (Swipeable, No-outline Fixes) */
 .booking-tabs {
   display: flex;
   gap: 2.5rem;
   border-bottom: 2px solid rgba(42, 37, 34, 0.05);
   margin-bottom: 35px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.booking-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-btn {
-  background: none;
+  background: transparent !important;
   border: none;
   padding: 15px 0;
   font-family: var(--font-heading);
@@ -61,7 +88,13 @@
   cursor: pointer;
   position: relative;
   transition: var(--transition-snappy);
+  outline: none !important; /* Fixes Black Box */
+  -webkit-tap-highlight-color: transparent; /* Fixes Blue flash on mobile */
+  flex-shrink: 0; /* Prevents squishing */
+  white-space: nowrap;
+  box-shadow: none !important;
 }
+
 .tab-btn::after {
   content: "";
   position: absolute;
@@ -72,13 +105,17 @@
   background-color: var(--color-gold);
   transition: var(--transition-snappy);
 }
-.tab-btn:hover {
+
+.tab-btn:hover,
+.tab-btn:focus {
   color: var(--color-gold);
 }
+
 .tab-btn.active {
   color: var(--color-dark);
-  font-weight: 500;
+  font-weight: 600;
 }
+
 .tab-btn.active::after {
   width: 100%;
 }
@@ -101,7 +138,7 @@
   }
 }
 
-/* Form Elements (Larger inputs and text) */
+/* Form Elements */
 .form-row {
   display: flex;
   gap: 30px;
@@ -123,11 +160,11 @@ input[type="text"],
 input[type="email"],
 input[type="number"] {
   width: 100%;
-  padding: 16px 20px; /* Larger padding */
+  padding: 16px 20px;
   border: 1px solid rgba(42, 37, 34, 0.15);
   border-radius: 4px;
   font-family: var(--font-body);
-  font-size: 1.05rem; /* Larger font */
+  font-size: 1.05rem;
   background: var(--color-white);
   color: var(--color-dark);
   transition: var(--transition-snappy);
@@ -204,7 +241,6 @@ textarea:focus {
 #catering-options .form-group {
   width: 100%;
 }
-
 #catering-notes {
   width: 100%;
   resize: vertical;
@@ -326,7 +362,6 @@ textarea:focus {
   align-items: center;
   gap: 15px;
 }
-
 .mix-info img {
   width: 80px;
   height: 60px;
@@ -338,7 +373,6 @@ textarea:focus {
   font-size: 1rem;
   font-family: var(--font-body);
 }
-
 .mix-info p {
   margin: 0;
   font-size: 0.85rem;
@@ -374,7 +408,7 @@ textarea:focus {
 }
 
 /* ==========================================================================
-   AIRBNB-STYLE ADMIN CALENDAR UI (Larger Scale)
+   AIRBNB-STYLE ADMIN CALENDAR UI
    ========================================================================== */
 .calendar-ui {
   background: var(--color-white);
@@ -424,7 +458,7 @@ textarea:focus {
   margin-bottom: 25px;
 }
 .cal-day-cell {
-  height: 55px; /* Larger hit area */
+  height: 55px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -483,7 +517,7 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 1.5rem; /* Slightly smaller gap */
+  gap: 1.5rem;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   padding-top: 25px;
 }
@@ -565,12 +599,11 @@ textarea:focus {
   text-align: center;
   margin-top: 10px;
 }
-.btn-confirm-walkin {
+.btn-confirm-walkin,
+.btn-cancel-walkin {
   width: 100%;
   max-width: 450px;
   padding: 20px;
-  background-color: var(--color-gold);
-  color: var(--color-white);
   border: none;
   border-radius: 4px;
   font-family: var(--font-body);
@@ -579,28 +612,21 @@ textarea:focus {
   letter-spacing: 1px;
   cursor: pointer;
   transition: var(--transition-snappy);
+  color: var(--color-white);
+}
+
+.btn-confirm-walkin {
+  background-color: var(--color-gold);
 }
 .btn-confirm-walkin:hover {
   background-color: #c4965e;
   transform: translateY(-3px);
   box-shadow: var(--shadow-hover);
 }
-.btn-cancel-walkin {
-  width: 100%;
-  max-width: 450px;
-  padding: 20px;
-  background-color: #fa3e3e;
-  color: var(--color-white);
-  border: none;
-  border-radius: 4px;
-  font-family: var(--font-body);
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: var(--transition-snappy);
-}
 
+.btn-cancel-walkin {
+  background-color: #fa3e3e;
+}
 .btn-cancel-walkin:hover {
   background-color: #e27e7e;
   transform: translateY(-3px);
@@ -686,6 +712,7 @@ textarea:focus {
 .btn-modal-primary:hover {
   background: #c4965e;
 }
+
 .btn-modal-outline {
   background: transparent;
   color: var(--color-dark);
@@ -705,19 +732,21 @@ textarea:focus {
 
 /* bottom note*/
 .form-note {
-  background-color: rgba(214, 168, 112, 0.1); /* light gold */
+  background-color: rgba(214, 168, 112, 0.1);
   border-left: 4px solid var(--color-gold);
   padding: 15px 20px;
   border-radius: 4px;
   margin-top: 20px;
 }
-
 .form-note p {
   margin: 0;
   font-size: 0.95rem;
   color: var(--color-dark-light);
 }
 
+/* ==========================================================================
+   Responsive Adjustments
+   ========================================================================== */
 @media (max-width: 992px) {
   .admin-booking-container {
     width: 100%;
@@ -734,30 +763,34 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
 @media (max-width: 768px) {
+  .walkin-title {
+    font-size: 2rem;
+  }
+
+  .booking-tabs {
+    gap: 1.5rem;
+    flex-wrap: nowrap;
+    margin-right: -20px;
+    padding-right: 20px;
+  }
+
+  .tab-btn {
+    font-size: 1.15rem;
+    padding: 10px 0 12px 0;
+  }
+
   .calendar-ui {
     padding: 20px 10px;
   }
-
   .cal-day-cell {
     height: 40px;
     font-size: 0.95rem;
     margin: 0 2px;
   }
-
   .cal-weekdays {
     font-size: 0.75rem;
     gap: 0;
-  }
-
-  .booking-tabs {
-    flex-wrap: wrap;
-    gap: 1rem;
-    justify-content: center;
-  }
-
-  .tab-btn {
-    font-size: 1.1rem;
-    padding: 10px 0;
   }
 }

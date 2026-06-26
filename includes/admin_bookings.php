@@ -1,7 +1,13 @@
 <div class="admin-bookings-container">
-    <!-- Header Section -->
-    <div class="bookings-header">
-        <h1>BOOKINGS</h1>
+
+    <!-- 1. NEW CONSISTENT HEADER -->
+    <div class="bookings-page-header">
+        <div class="header-titles">
+            <h1 class="bookings-title">BOOKINGS</h1>
+            <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
+        </div>
+
+        <!-- Search & Dropdowns -->
         <div class="top-controls">
             <div class="search-bar">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -23,14 +29,14 @@
 
     <!-- Table Card -->
     <div class="table-card">
-        <div class="table-card-top">
-            <h2 class="card-title">Booking History</h2>
-            <div class="table-filters" id="bookingFilters">
-                <button class="filter-pill active" data-filter="all">All</button>
-                <button class="filter-pill" data-filter="pending">Pending</button>
-                <button class="filter-pill" data-filter="paid">Paid</button>
-                <button class="filter-pill" data-filter="cancelled">Cancelled</button>
-            </div>
+        <h3 class="card-title">Booking History</h3>
+
+        <!-- 3. CONSISTENT GOLD TABS (Replaced the brown pills) -->
+        <div class="booking-tabs" id="bookingFilters">
+            <button class="tab-btn active" data-filter="all">All</button>
+            <button class="tab-btn" data-filter="pending">Pending</button>
+            <button class="tab-btn" data-filter="paid">Paid</button>
+            <button class="tab-btn" data-filter="cancelled">Cancelled</button>
         </div>
 
         <div class="table-responsive">

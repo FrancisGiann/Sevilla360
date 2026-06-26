@@ -1,29 +1,46 @@
 /* ==========================================================================
-   SEVILLA360 - Admin Bookings Table & Modals
+   SEVILLA360 - Admin Bookings Table & Modals (Consistent UI)
    ========================================================================== */
 
-/* Container & Header Setup */
+/* --- Container Fixes --- */
 .admin-bookings-container {
-  padding: 30px 40px;
-  background-color: var(--color-white);
-  min-height: 100vh;
+  width: 95%;
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 0 20px 100px;
+  font-family: var(--font-body);
 }
 
-.bookings-header {
+/* --- Consistent Header --- */
+.bookings-page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
+  align-items: flex-end;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
-.bookings-header h1 {
-  font-size: 2.5rem;
+.bookings-title {
   font-family: var(--font-heading);
-  margin: 0;
+  font-size: 2.2rem;
+  color: var(--color-gold);
+  margin-bottom: 5px;
+  text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--color-dark);
 }
 
+.bookings-subtitle {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-dark);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+/* --- Top Controls (Search & Selects) --- */
 .top-controls {
   display: flex;
   gap: 15px;
@@ -38,14 +55,14 @@
 
 .search-icon {
   position: absolute;
-  left: 12px;
-  color: #888;
+  left: 15px;
+  color: var(--color-dark-light);
   font-size: 1rem;
 }
 
 .search-bar input,
 .control-select {
-  padding: 10px 15px;
+  padding: 14px 18px;
   border: 1px solid rgba(42, 37, 34, 0.15);
   border-radius: 4px;
   font-family: var(--font-body);
@@ -53,97 +70,112 @@
   background-color: var(--color-white);
   color: var(--color-dark);
   transition: var(--transition-snappy);
+  box-shadow: var(--shadow-soft);
 }
 
 .search-bar input {
-  padding-left: 35px;
+  padding-left: 40px;
   width: 280px;
 }
 
-.search-bar input:focus {
+.search-bar input:focus,
+.control-select:focus {
   outline: none;
   border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.1);
 }
 
 .control-select {
-  background-color: #d6a870;
-  color: var(--color-dark);
-  border: 1px solid #c4965e;
   cursor: pointer;
   font-weight: 500;
 }
 
-.control-select:hover {
-  background-color: #c4965e;
-}
-
-/* Table Card Styling */
+/* --- Standard White Card --- */
 .table-card {
-  background-color: var(--color-beige);
+  background: var(--color-white);
+  padding: 50px;
   border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-  border: 1px solid #e5d3b3;
-}
-
-.table-card-top {
-  background-color: #c89f6d; /* Darker Gold header matching screenshot */
-  padding: 18px 25px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  box-shadow: var(--shadow-soft);
 }
 
 .card-title {
-  margin: 0;
-  font-size: 1.4rem;
-  font-family: var(--font-body);
-  font-weight: 600;
-  color: var(--color-dark);
+  font-family: var(--font-heading);
+  font-size: 2rem; 
+  color: var(--color-gold);
+  margin-bottom: 25px;
+  text-align: left;
 }
 
-.table-filters {
+/* --- Swipeable Gold Tabs (Replaces Brown Pills) --- */
+.booking-tabs {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 2.5rem;
+  border-bottom: 2px solid rgba(42, 37, 34, 0.05);
+  margin-bottom: 35px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.filter-pill {
-  background: transparent;
+.booking-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn {
+  background: transparent !important;
   border: none;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-family: var(--font-body);
-  font-size: 0.9rem;
+  padding: 10px 0 15px 0;
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  color: var(--color-dark-light);
   cursor: pointer;
-  color: var(--color-dark);
+  position: relative;
   transition: var(--transition-snappy);
-  opacity: 0.8;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+  white-space: nowrap;
+  box-shadow: none !important;
 }
 
-.filter-pill.active {
-  background-color: var(--color-white);
+.tab-btn::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background-color: var(--color-gold);
+  transition: var(--transition-snappy);
+}
+
+.tab-btn:hover,
+.tab-btn:focus {
+  color: var(--color-gold);
+}
+
+.tab-btn.active {
+  color: var(--color-dark);
   font-weight: 600;
-  opacity: 1;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.filter-pill:hover:not(.active) {
-  background-color: rgba(255, 255, 255, 0.3);
+.tab-btn.active::after {
+  width: 100%;
 }
 
-/* Responsive Table Structure */
+/* --- Table Structure --- */
 .table-responsive {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(42, 37, 34, 0.1); 
+  border-radius: 8px;
 }
 
 .bookings-table {
   width: 100%;
   border-collapse: collapse;
-  text-align: center;
-  min-width: 900px; /* Forces scroll on mobile */
+  text-align: left; 
+  min-width: 900px; 
 }
 
 .bookings-table th {
@@ -151,63 +183,51 @@
   text-transform: uppercase;
   font-size: 0.85rem;
   padding: 20px 15px;
-  border-bottom: 2px solid #e5d3b3;
-  color: var(--color-dark);
+  background-color: #faf9f7; 
+  border-bottom: 2px solid rgba(214, 168, 112, 0.4); 
+  color: var(--color-dark-light);
+  letter-spacing: 0.5px;
 }
 
 .bookings-table td {
-  padding: 18px 15px;
+  padding: 20px 15px;
   font-size: 0.95rem;
-  border-bottom: 1px solid #e5d3b3;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.12); /* Darkened from 0.05 to 0.12 */
   vertical-align: middle;
   color: var(--color-dark);
 }
 
 .bookings-table tbody tr:last-child td {
-  border-bottom: none;
+  border-bottom: none; 
 }
 
-.faded-row .faded-text {
-  color: #999;
+.bookings-table tbody tr:nth-child(even) {
+  background-color: rgba(253, 242, 226, 0.3); 
 }
 
-/* Status Badges */
+.bookings-table tbody tr:hover {
+  background-color: rgba(214, 168, 112, 0.1); 
+}
+
+/* --- Status Badges --- */
 .status-badge {
   padding: 6px 14px;
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-dark);
   display: inline-block;
   white-space: nowrap;
 }
 
-.status-pending {
-  background-color: #fde047;
-}
-.status-paid {
-  background-color: #4ade80;
-}
-.status-partial {
-  background-color: #a7f3d0;
-}
-.status-refunded {
-  background-color: #4ade80;
-}
-.status-pending-refund {
-  background-color: #ef4444;
-  color: white;
-}
+.status-pending { background-color: #fde047; color: var(--color-dark); }
+.status-paid { background-color: #86efac; color: var(--color-dark); }
+.status-partial { background-color: #dbeafe; color: #1e40af; }
+.status-refunded { background-color: #e5e7eb; color: var(--color-dark); }
+.status-pending-refund { background-color: #ef4444; color: white; }
 
-/* =========================================
-   Action Buttons (Fixed Table Alignment)
-   ========================================= */
-
+/* --- Action Buttons --- */
 .action-cells {
-  /* Removed display: flex to prevent broken table borders */
-  white-space: nowrap; /* Prevents buttons from stacking */
-  text-align: center;
-  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .btn-action {
@@ -216,49 +236,13 @@
   border: none;
   padding: 8px 14px;
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
   transition: var(--transition-snappy);
   color: var(--color-white);
-  margin: 0 4px; /* Simulates the flex gap */
-}
-
-.btn-confirm {
-  background-color: #86efac;
-  color: var(--color-dark);
-}
-.btn-cancel {
-  background-color: #ef4444;
-}
-.btn-reschedule {
-  background-color: #3b82f6;
-}
-.btn-refund {
-  background-color: #ef4444;
-}
-.btn-view {
-  background-color: var(--color-white);
-  color: var(--color-dark);
-  border: 1px solid rgba(42, 37, 34, 0.2);
-}
-
-.btn-icon {
-  display: inline-block;
-  vertical-align: middle;
-  background: transparent;
-  border: none;
-  font-size: 1.1rem;
-  color: #a3a3a3;
-  cursor: pointer;
-  padding: 4px 6px;
-  transition: 0.2s;
-  margin-left: 4px; /* Spacing from the last button */
-}
-
-.btn-icon:hover {
-  color: var(--color-dark);
+  margin-right: 8px;
 }
 
 .btn-action:hover {
@@ -266,14 +250,37 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Modals System */
+.btn-confirm { background-color: #4ade80; color: var(--color-dark); }
+.btn-cancel { background-color: #ef4444; }
+.btn-reschedule { background-color: #3b82f6; }
+.btn-refund { background-color: #ef4444; }
+.btn-view {
+  background-color: transparent;
+  color: var(--color-dark);
+  border: 1px solid rgba(42, 37, 34, 0.2);
+}
+.btn-view:hover {
+  background-color: rgba(42, 37, 34, 0.05);
+  color: var(--color-dark);
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  color: #a3a3a3;
+  cursor: pointer;
+  padding: 4px;
+  transition: 0.2s;
+}
+
+.btn-icon:hover { color: var(--color-dark); }
+
+/* --- Modals System --- */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(42, 37, 34, 0.6);
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -290,18 +297,18 @@
 }
 
 .admin-modal {
-  background-color: #eaddcb;
+  background-color: var(--color-white);
   width: 90%;
   max-width: 500px;
-  padding: 40px;
+  padding: 50px;
   border-radius: 8px;
   box-shadow: var(--shadow-hover);
   transform: translateY(20px);
   transition: var(--transition-smooth);
   display: none;
   position: relative;
-  max-height: 90vh;
-  overflow-y: visible; /* Needed for dropdown */
+  max-height: 90vh; /* Limits modal height so it doesn't run off screen */
+  overflow-y: auto; /* CRITICAL FIX: Adds scrollbar inside modal if content overflows */
 }
 
 .modal-overlay.active .admin-modal.active {
@@ -311,10 +318,10 @@
 
 .modal-main-title {
   font-family: var(--font-heading);
-  font-size: 1.8rem;
+  font-size: 2.2rem;
+  color: var(--color-dark);
   margin-bottom: 20px;
   text-align: center;
-  color: var(--color-dark);
 }
 
 .modal-subtitle {
@@ -395,7 +402,7 @@
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   border: 1px solid #d6a870;
   z-index: 100;
-  display: none; /* Toggled by JS */
+  display: none; 
 }
 
 .calendar-dropdown.active {
@@ -404,14 +411,8 @@
 }
 
 @keyframes dropDownAnim {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .calendar-header {
@@ -456,27 +457,11 @@
   user-select: none;
 }
 
-.cal-day.empty {
-  background: transparent;
-}
-.cal-day.available {
-  background: #86efac;
-  cursor: pointer;
-  transition: 0.2s;
-}
-.cal-day.available:hover {
-  background: #4ade80;
-}
-.cal-day.booked {
-  background: #ef4444;
-  color: #fff;
-  cursor: not-allowed;
-}
-.cal-day.selected {
-  background: #d6a870;
-  color: #fff;
-  font-weight: bold;
-}
+.cal-day.empty { background: transparent; }
+.cal-day.available { background: #86efac; cursor: pointer; transition: 0.2s; }
+.cal-day.available:hover { background: #4ade80; }
+.cal-day.booked { background: #ef4444; color: #fff; cursor: not-allowed; }
+.cal-day.selected { background: #d6a870; color: #fff; font-weight: bold; }
 
 /* Buttons in Modal */
 .modal-actions {
@@ -498,32 +483,21 @@
   color: var(--color-white);
 }
 
-.btn-modal-cancel {
-  background-color: #4ade80;
-  color: var(--color-dark);
-}
-.btn-modal-cancel:hover {
-  background-color: #22c55e;
-}
+.btn-modal-cancel { background-color: #4ade80; color: var(--color-dark); }
+.btn-modal-cancel:hover { background-color: #22c55e; }
 
-.btn-modal-refund {
-  background-color: #ef4444;
-}
-.btn-modal-refund:hover {
-  background-color: #dc2626;
-}
+.btn-modal-refund { background-color: #ef4444; }
+.btn-modal-refund:hover { background-color: #dc2626; }
 
 /* ==========================================================================
    RESPONSIVE QUERIES
    ========================================================================== */
 
 @media (max-width: 1100px) {
-  .bookings-header {
+  .bookings-page-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 15px;
   }
-
   .top-controls {
     width: 100%;
     flex-wrap: wrap;
@@ -532,32 +506,48 @@
 
 @media (max-width: 768px) {
   .admin-bookings-container {
-    padding: 20px 15px;
+    padding: 0 15px 80px;
   }
 
-  .table-card-top {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
+  .bookings-title {
+    font-size: 2rem;
   }
 
-  .table-filters {
-    width: 100%;
-    overflow-x: auto;
-    padding-bottom: 5px;
+  .table-card {
+    padding: 30px 20px;
   }
 
-  .filter-pill {
-    white-space: nowrap;
+  .card-title {
+    font-size: 1.6rem;
   }
 
-  .search-bar input {
-    width: 100%;
+  .booking-tabs {
+    gap: 1.5rem;
+    margin-right: -20px;
+    padding-right: 20px;
   }
 
+  .tab-btn {
+    font-size: 1.15rem;
+  }
+
+  .search-bar { width: 100%; }
+  .search-bar input { width: 100%; }
+  .control-select { flex: 1; }
+
+  /* Modal Mobile Fixes */
   .admin-modal {
-    padding: 25px 20px;
+    padding: 30px 20px;
     width: 95%;
+  }
+
+  .modal-main-title {
+    font-size: 1.5rem; /* Shrunk from 2.2rem to fit screen better */
+    margin-bottom: 15px;
+  }
+
+  .modal-subtitle {
+    font-size: 1.1rem; /* Shrunk from 1.3rem to fit screen better */
   }
 
   .summary-grid {
@@ -580,14 +570,8 @@
 }
 
 @keyframes dropDownMobile {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -10px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 @media (max-width: 480px) {
@@ -595,10 +579,6 @@
     flex-direction: column;
     gap: 10px;
   }
-  .btn-modal {
-    width: 100%;
-  }
-  .calendar-dropdown {
-    width: 270px;
-  }
+  .btn-modal { width: 100%; }
+  .calendar-dropdown { width: 270px; }
 }
