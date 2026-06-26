@@ -115,8 +115,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     <?php 
                         if ($page === 'overview') echo 'Dashboard Overview';
                         elseif ($page === 'bookings') echo 'Bookings Management';
-                        elseif ($page === 'walkin') echo 'Walk-In Booking Entry';
-                        elseif ($page === 'maintenance') echo 'Facility Maintenance';
+                        elseif ($page === 'walkin') echo 'Walk-In Booking';
+                        elseif ($page === 'maintenance') echo 'Maintenance';
                         elseif ($page === 'settings') echo 'System Settings'; 
                     ?>
                 </h2>
