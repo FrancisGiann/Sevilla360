@@ -5,7 +5,7 @@
 /* Container & Header */
 .admin-settings-container {
   width: 95%;
-  max-width: 1200px; /* Matched perfectly to Maintenance width */
+  max-width: 1200px; 
   margin: 40px auto;
   padding: 0 20px 100px;
   font-family: var(--font-body);
@@ -14,13 +14,13 @@
 }
 
 .settings-header {
-  margin-bottom: 0; /* Let the title and subtitle dictate the spacing */
+  margin-bottom: 0; 
 }
 
 .settings-title {
   font-family: var(--font-heading);
-  font-size: 2.2rem; /* Shrunk to match Maintenance */
-  color: var(--color-gold); /* Changed to Gold to match Maintenance */
+  font-size: 2.2rem; 
+  color: var(--color-gold); 
   margin-bottom: 25px;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -28,21 +28,20 @@
 
 .settings-subtitle {
   font-family: var(--font-body);
-  font-size: 0.9rem; /* Matched to "SELECT VENUE CATEGORY" */
+  font-size: 0.9rem; 
   font-weight: 600;
   color: var(--color-dark);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 15px; /* Sits perfectly above the tabs */
+  margin-bottom: 15px; 
 }
 
-/* Layout - Stacked Vertically instead of side-by-side */
 .settings-layout {
   display: block;
   width: 100%;
 }
 
-/* Horizontal Tabs (Formerly the sidebar) */
+/* Horizontal Tabs  */
 .settings-sidebar {
   display: flex;
   flex-direction: row;
@@ -79,7 +78,7 @@
 .tab-link::after {
   content: "";
   position: absolute;
-  bottom: -2px; /* Aligns perfectly with the grey border */
+  bottom: -2px; 
   left: 0;
   width: 0%;
   height: 2px;
@@ -101,7 +100,7 @@
   width: 100%;
 }
 
-/* Content Area (White Cards) */
+/* Content Area */
 .settings-content {
   width: 100%;
 }
