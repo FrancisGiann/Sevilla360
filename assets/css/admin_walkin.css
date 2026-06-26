@@ -24,19 +24,6 @@
   gap: 40px;
 }
 
-/* --- NEW CONSISTENT HEADER --- */
-.walkin-header {
-  margin-bottom: -10px;
-}
-
-.walkin-title {
-  font-family: var(--font-heading);
-  font-size: 2.2rem;
-  color: var(--color-gold);
-  margin-bottom: 25px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
 
 .walkin-subtitle {
   font-family: var(--font-body);

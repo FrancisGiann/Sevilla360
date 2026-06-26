@@ -1,11 +1,7 @@
 <div class="admin-bookings-container">
-
+    <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
     <!-- 1. NEW CONSISTENT HEADER -->
     <div class="bookings-page-header">
-        <div class="header-titles">
-            <h1 class="bookings-title">BOOKINGS</h1>
-            <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
-        </div>
 
         <!-- Search & Dropdowns -->
         <div class="top-controls">

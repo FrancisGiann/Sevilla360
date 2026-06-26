@@ -3,7 +3,6 @@
 
     <!-- NEW CONSISTENT HEADER -->
     <div class="walkin-header">
-        <h1 class="walkin-title">WALK-IN ENTRY</h1>
         <p class="walkin-subtitle">MANAGE DIRECT BOOKINGS AND RESERVATIONS</p>
     </div>
 

@@ -1,5 +1,4 @@
 <div class="admin-maintenance-container admin-booking-container">
-    <h1 class="card-title" style="margin-bottom: 20px;">MAINTENANCE</h1>
 
     <!-- Top Section: Venue Selection -->
     <div class="maintenance-venue-section">

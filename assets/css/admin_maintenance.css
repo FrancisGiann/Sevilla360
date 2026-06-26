@@ -32,6 +32,15 @@
   border-bottom: 1px solid rgba(214, 168, 112, 0.2);
   padding-bottom: 15px;
 }
+.subtitle {
+  font-family: var(--font-heading);
+  font-size: 2rem; 
+  color: var(--color-gold); 
+  margin-bottom: 25px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 
 /* --- Tabs --- */
 .maintenance-venue-section {

@@ -21,14 +21,6 @@
   gap: 20px;
 }
 
-.bookings-title {
-  font-family: var(--font-heading);
-  font-size: 2.2rem;
-  color: var(--color-gold);
-  margin-bottom: 5px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
 
 .bookings-subtitle {
   font-family: var(--font-body);
@@ -37,7 +29,7 @@
   color: var(--color-dark);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin: 0;
+  margin-bottom: 20px;
 }
 
 /* --- Top Controls (Search & Selects) --- */

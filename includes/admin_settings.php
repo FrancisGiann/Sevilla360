@@ -1,6 +1,5 @@
 <div class="admin-settings-container">
     <div class="settings-header">
-        <h1 class="settings-title">SETTINGS</h1>
         <p class="settings-subtitle">Manage your account and system preferences.</p>
     </div>
 
