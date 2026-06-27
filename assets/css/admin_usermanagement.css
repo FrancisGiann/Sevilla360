@@ -1,0 +1,333 @@
+/* ==========================================================================
+   SEVILLA360 - Admin User Management Styles
+   ========================================================================== */
+
+.um-container {
+  padding: 2rem;
+  font-family: var(--font-body);
+  color: var(--color-dark);
+  animation: fade-in 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* --- Top Header (Tabs & Controls) --- */
+.um-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.1);
+  padding-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.um-tabs {
+  display: flex;
+  gap: 2rem;
+}
+
+.um-tab {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 400;
+  color: var(--color-dark-light);
+  cursor: pointer;
+  padding-bottom: 0.5rem;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+
+.um-tab:hover {
+  color: var(--color-dark);
+}
+
+.um-tab.active {
+  font-weight: 600;
+  color: var(--color-dark);
+}
+
+.um-tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: -1rem; /* Aligns with the border-bottom of um-header */
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: var(--color-gold);
+  border-radius: 3px 3px 0 0;
+}
+
+.um-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.um-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.um-search-wrapper svg {
+  position: absolute;
+  left: 12px;
+  color: var(--color-dark-light);
+}
+
+.um-search-wrapper input {
+  padding: 10px 16px 10px 36px;
+  font-family: var(--font-body);
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.um-search-wrapper input:focus {
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.15);
+}
+
+/* --- Table Card --- */
+.um-card {
+  background-color: var(--color-white);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  overflow-x: auto;
+}
+
+.um-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  display: none; /* Hidden by default via JS tab logic */
+}
+
+.um-table.active {
+  display: table;
+  animation: fade-in 0.4s ease-out;
+}
+
+.um-table th {
+  padding: 1.5rem 1.2rem;
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-dark-light);
+  border-bottom: 1px solid rgba(42, 37, 34, 0.08);
+}
+
+.um-table td {
+  padding: 1.2rem;
+  font-size: 0.95rem;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.04);
+}
+
+.um-table tbody tr:hover {
+  background-color: var(--color-beige);
+}
+
+/* --- Status Pills --- */
+.um-pill {
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pill-active {
+  background-color: rgba(74, 124, 89, 0.1);
+  color: #4a7c59; /* Green */
+}
+
+.pill-inactive {
+  background-color: rgba(42, 37, 34, 0.08);
+  color: #7a7571; /* Gray */
+}
+
+/* --- Action Buttons --- */
+.um-actions button {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-right: 1rem;
+  transition: opacity 0.3s ease;
+}
+
+.um-actions button:hover {
+  opacity: 0.7;
+}
+
+.action-edit,
+.action-view {
+  color: var(--color-gold);
+}
+
+.action-delete {
+  color: #c75c5c; /* Soft red */
+}
+
+/* --- Modals --- */
+.um-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(25, 22, 20, 0.6); /* Dark warm overlay */
+  backdrop-filter: blur(4px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.um-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.um-modal-content {
+  background-color: var(--color-white);
+  width: 90%;
+  max-width: 450px;
+  padding: 2.5rem;
+  border-radius: 8px;
+  box-shadow: var(--shadow-hover);
+  transform: translateY(20px) scale(0.95);
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.um-modal-overlay.active .um-modal-content {
+  transform: translateY(0) scale(1);
+}
+
+.um-modal-large {
+  max-width: 600px;
+}
+
+.um-modal-title {
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  margin-bottom: 1.5rem;
+  color: var(--color-dark);
+}
+
+/* Modal Forms */
+.um-form-group {
+  margin-bottom: 1.2rem;
+}
+
+.um-form-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-dark-light);
+  margin-bottom: 0.5rem;
+}
+
+.um-form-group input,
+.um-form-group select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.um-form-group input:focus,
+.um-form-group select:focus {
+  border-color: var(--color-gold);
+}
+
+.um-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.um-modal-actions .btn-outline {
+  color: var(--color-dark);
+  border-color: rgba(42, 37, 34, 0.2);
+}
+
+.um-modal-actions .btn-outline:hover {
+  background-color: rgba(42, 37, 34, 0.05);
+  border-color: var(--color-dark);
+  transform: none;
+}
+
+.um-modal-actions .btn-primary {
+  border: none;
+}
+
+/* History Modal Table */
+.um-history-table-wrapper {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid rgba(42, 37, 34, 0.1);
+  border-radius: 4px;
+}
+
+.um-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.um-history-table th {
+  padding: 1rem;
+  font-size: 0.8rem;
+  background-color: var(--color-beige);
+  text-transform: uppercase;
+  color: var(--color-dark-light);
+}
+
+.um-history-table td {
+  padding: 1rem;
+  font-size: 0.9rem;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.05);
+}
+
+/* --- Animations & Media Queries --- */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .um-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .um-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .um-modal-content {
+    padding: 1.5rem;
+  }
+}

@@ -5,7 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 // --- TEMPORARY TESTING --- 
 // (Delete this when you connect your real login system later!)
-$_SESSION['role'] = 'superadmin'; 
+$_SESSION['role'] = 'superadmin'; // Change to 'superadmin' to test Super Admin features
 // -------------------------
 
 // Get the requested page from the URL. If none is set, default to 'overview'
@@ -40,8 +40,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin_maintenance.css">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin_settings.css">
+
+    <!-- SUPER ADMIN CSS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <link rel="stylesheet" href="assets/css/admin_auditlog.css">
+    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <link rel="stylesheet" href="assets/css/admin_usermanagement.css">
     <?php endif; ?>
 
 </head>
@@ -93,15 +97,15 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                             <i class="fa-solid fa-screwdriver-wrench"></i> Maintenance
                         </a>
                     </li>
+
+                    <!-- SUPER ADMIN ONLY LINKS -->
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
                     <li class="nav-item">
-                        <a href="admin_dashboard.php?page=settings"
-                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-gear"></i> Settings
+                        <a href="admin_dashboard.php?page=usermanagement"
+                            class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-users-gear"></i> User Management
                         </a>
                     </li>
-
-                    <!-- SUPER ADMIN ONLY -->
-                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=auditlog"
                             class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>">
@@ -109,6 +113,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         </a>
                     </li>
                     <?php endif; ?>
+
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=settings"
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-gear"></i> Settings
+                        </a>
+                    </li>
                 </ul>
             </nav>
 
@@ -119,7 +130,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         <!-- Main Content Area -->
         <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog') ? 'booking-main-scroll' : ''; ?>">
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog' || $page === 'usermanagement') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
@@ -130,7 +141,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
                         elseif ($page === 'settings') echo 'System Settings'; 
-                        elseif ($page === 'auditlog') echo 'System Audit Log'; 
+                        elseif ($page === 'auditlog') echo 'System Audit Log';
+                        elseif ($page === 'usermanagement') echo 'User Management';
                     ?>
                 </h2>
                 <div class="header-actions">
@@ -155,7 +167,23 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
                         include 'includes/admin_auditlog.php';
                     } else {
-                        echo '<div style="padding: 2rem; color: #c75c5c;"><h3>Unauthorized Access</h3><p>You do not have permission to view the audit log.</p></div>';
+                        echo '
+                        <div class="unauthorized-access">
+                            <i class="fa-solid fa-lock"></i>
+                            <h3>Unauthorized Access</h3>
+                            <p>You do not have permission to view the Audit Log.</p>
+                        </div>';
+                    }
+                } elseif ($page === 'usermanagement') {
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
+                        include 'includes/admin_usermanagement.php';
+                    } else {
+                        echo '
+                        <div class="unauthorized-access">
+                            <i class="fa-solid fa-lock"></i>
+                            <h3>Unauthorized Access</h3>
+                            <p>You do not have permission to view User Management.</p>
+                        </div>';
                     }
                 } else {
                     include 'includes/admin_overview.php';
@@ -176,8 +204,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin_maintenance.js"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin_settings.js"></script>
+
+    <!-- SUPER ADMIN JS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin_auditlog.js"></script>
+    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <script src="assets/js/admin_usermanagement.js"></script>
     <?php endif; ?>
 
 </body>

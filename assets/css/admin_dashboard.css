@@ -205,10 +205,10 @@
 }
 .color-green {
   color: #88a096;
-} /* Muted green matching minimal theme */
+} 
 .color-red {
   color: #c27c7c;
-} /* Muted red matching minimal theme */
+} 
 .color-dark {
   color: var(--color-dark);
 }
@@ -306,7 +306,7 @@
 }
 
 .admin-table tr:hover td {
-  background-color: rgba(253, 242, 226, 0.3); /* Subtle beige hover */
+  background-color: rgba(253, 242, 226, 0.3); 
 }
 
 .admin-table tr:last-child td {
@@ -469,4 +469,37 @@
     padding: 8px 12px;
     font-size: 0.85rem;
   }
+}
+/* ==========================================================================
+   Unauthorized Access Error Card
+   ========================================================================== */
+.unauthorized-access {
+    background-color: var(--color-white);
+    padding: 4rem 2rem;
+    margin: 2rem auto;
+    max-width: 500px;
+    text-align: center;
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
+    border-top: 4px solid #c75c5c; 
+    animation: fade-in 0.5s ease-out;
+}
+
+.unauthorized-access i {
+    font-size: 3rem;
+    color: #c75c5c;
+    margin-bottom: 1.5rem;
+}
+
+.unauthorized-access h3 {
+    font-family: var(--font-heading);
+    font-size: 2rem;
+    color: var(--color-dark);
+    margin-bottom: 0.5rem;
+}
+
+.unauthorized-access p {
+    font-family: var(--font-body);
+    color: var(--color-dark-light);
+    font-size: 1.05rem;
 }
