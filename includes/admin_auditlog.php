@@ -4,7 +4,6 @@
     <!-- Header & Controls -->
     <div class="audit-log-header">
         <div class="audit-titles">
-            <h2>System Audit Log</h2>
             <p>Super Admin Access Only - Track all staff activity.</p>
         </div>
         <div class="audit-controls">

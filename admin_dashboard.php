@@ -40,6 +40,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin_maintenance.css">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin_settings.css">
+    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <link rel="stylesheet" href="assets/css/admin_auditlog.css">
     <?php endif; ?>
 
 </head>
@@ -97,6 +99,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                             <i class="fa-solid fa-gear"></i> Settings
                         </a>
                     </li>
+
+                    <!-- SUPER ADMIN ONLY -->
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=auditlog"
+                            class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-clipboard-list"></i> Audit Log
+                        </a>
+                    </li>
+                    <?php endif; ?>
                 </ul>
             </nav>
 
@@ -107,7 +119,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         <!-- Main Content Area -->
         <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings') ? 'booking-main-scroll' : ''; ?>">
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
@@ -118,6 +130,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
                         elseif ($page === 'settings') echo 'System Settings'; 
+                        elseif ($page === 'auditlog') echo 'System Audit Log'; 
                     ?>
                 </h2>
                 <div class="header-actions">
@@ -138,6 +151,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     include 'includes/admin_bookings.php';
                 } elseif ($page === 'settings') {
                     include 'includes/admin_settings.php'; 
+                } elseif ($page === 'auditlog') {
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
+                        include 'includes/admin_auditlog.php';
+                    } else {
+                        echo '<div style="padding: 2rem; color: #c75c5c;"><h3>Unauthorized Access</h3><p>You do not have permission to view the audit log.</p></div>';
+                    }
                 } else {
                     include 'includes/admin_overview.php';
                 }
@@ -145,7 +164,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         </main>
     </div>
-    // specific js for each page
+
+    <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin_dashboard.js"></script>
     <?php elseif ($page === 'bookings'): ?>
@@ -156,6 +176,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin_maintenance.js"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin_settings.js"></script>
+    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <script src="assets/js/admin_auditlog.js"></script>
     <?php endif; ?>
 
 </body>
