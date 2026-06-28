@@ -27,25 +27,27 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
     <!-- Base Stylesheets -->
     <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/admin_dashboard.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_dashboard.css">
 
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <link rel="stylesheet" href="assets/css/admin_bookings.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css">
     <?php elseif ($page === 'walkin'): ?>
-    <link rel="stylesheet" href="assets/css/admin_walkin.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css">
     <?php elseif ($page === 'maintenance'): ?>
-    <link rel="stylesheet" href="assets/css/admin_maintenance.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css">
     <?php elseif ($page === 'settings'): ?>
-    <link rel="stylesheet" href="assets/css/admin_settings.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css">
 
     <!-- SUPER ADMIN CSS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <link rel="stylesheet" href="assets/css/admin_auditlog.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <link rel="stylesheet" href="assets/css/admin_usermanagement.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css">
+    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css">
     <?php endif; ?>
 
 </head>
@@ -112,6 +114,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                             <i class="fa-solid fa-clipboard-list"></i> Audit Log
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=cms"
+                            class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-images"></i> Media CMS
+                        </a>
+                    </li>
                     <?php endif; ?>
 
                     <li class="nav-item">
@@ -130,7 +138,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         <!-- Main Content Area -->
         <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog' || $page === 'usermanagement') ? 'booking-main-scroll' : ''; ?>">
+            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog' || $page === 'usermanagement' || $page === 'cms') ? 'booking-main-scroll' : ''; ?>">
 
             <!-- Top Header -->
             <header class="admin-header">
@@ -143,6 +151,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'settings') echo 'System Settings'; 
                         elseif ($page === 'auditlog') echo 'System Audit Log';
                         elseif ($page === 'usermanagement') echo 'User Management';
+                        elseif ($page === 'cms') echo 'Media CMS';
                     ?>
                 </h2>
                 <div class="header-actions">
@@ -156,16 +165,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
             <!-- Dynamically Include Content Here -->
             <?php 
                 if ($page === 'walkin') {
-                    include 'includes/admin_walkin.php';
+                    include 'includes/admin-page/admin_walkin.php';
                 } elseif ($page === 'maintenance') {
-                    include 'includes/admin_maintenance.php';
+                    include 'includes/admin-page/admin_maintenance.php';
                 } elseif ($page === 'bookings') {
-                    include 'includes/admin_bookings.php';
+                    include 'includes/admin-page/admin_bookings.php';
                 } elseif ($page === 'settings') {
-                    include 'includes/admin_settings.php'; 
+                    include 'includes/admin-page/admin_settings.php'; 
                 } elseif ($page === 'auditlog') {
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                        include 'includes/admin_auditlog.php';
+                        include 'includes/admin-page/admin_auditlog.php';
                     } else {
                         echo '
                         <div class="unauthorized-access">
@@ -176,7 +185,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     }
                 } elseif ($page === 'usermanagement') {
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                        include 'includes/admin_usermanagement.php';
+                        include 'includes/admin-page/admin_usermanagement.php';
                     } else {
                         echo '
                         <div class="unauthorized-access">
@@ -185,8 +194,19 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                             <p>You do not have permission to view User Management.</p>
                         </div>';
                     }
+                }elseif ($page === 'cms') {
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
+                        include 'includes/admin-page/admin_cms.php';
+                    } else {
+                        echo '
+                        <div class="unauthorized-access">
+                            <i class="fa-solid fa-lock"></i>
+                            <h3>Unauthorized Access</h3>
+                            <p>You do not have permission to view CMS.</p>
+                        </div>';
+                    }
                 } else {
-                    include 'includes/admin_overview.php';
+                    include 'includes/admin-page/admin_overview.php';
                 }
             ?>
 
@@ -195,21 +215,23 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
-    <script src="assets/js/admin_dashboard.js"></script>
+    <script src="assets/js/admin-page/admin_dashboard.js"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <script src="assets/js/admin_bookings.js"></script>
+    <script src="assets/js/admin-page/admin_bookings.js"></script>
     <?php elseif ($page === 'walkin'): ?>
-    <script src="assets/js/admin_walkin.js"></script>
+    <script src="assets/js/admin-page/admin_walkin.js"></script>
     <?php elseif ($page === 'maintenance'): ?>
-    <script src="assets/js/admin_maintenance.js"></script>
+    <script src="assets/js/admin-page/admin_maintenance.js"></script>
     <?php elseif ($page === 'settings'): ?>
-    <script src="assets/js/admin_settings.js"></script>
+    <script src="assets/js/admin-page/admin_settings.js"></script>
 
     <!-- SUPER ADMIN JS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin_auditlog.js"></script>
+    <script src="assets/js/admin-page/admin_auditlog.js"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin_usermanagement.js"></script>
+    <script src="assets/js/admin-page/admin_usermanagement.js"></script>
+    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <script src="assets/js/admin-page/admin_cms.js"></script>
     <?php endif; ?>
 
 </body>
