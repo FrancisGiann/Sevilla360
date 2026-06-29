@@ -31,22 +31,22 @@
                 <h2 class="auth-title">Welcome Back</h2>
                 <p class="auth-subtitle">Sign in to manage your bookings</p>
 
-                <form id="form-login">
+                <form id="form-login" action="actions/login_process.php" method="POST">
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
-                        <input type="email" class="form-control" placeholder="Enter your email" required>
+                        <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
                     </div>
                     <div class="form-group">
                         <label>PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" class="form-control" placeholder="Enter your password" required>
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Enter your password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
                         <a href="#" class="forgot-link">Forgot password?</a>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">SIGN IN &rarr;</button>
-                    <!-- Using btn-secondary for dark text and gold outline -->
                     <button type="button" class="btn btn-secondary btn-full" id="btn-goto-admin">ADMIN LOGIN</button>
                 </form>
 
