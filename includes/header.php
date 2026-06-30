@@ -40,7 +40,6 @@ $active_page = isset($active_page) ? $active_page : '';
 
             <!-- Nav Links -->
             <div class="nav-links" id="nav-links">
-                <!-- We use PHP to add the gold color to the active page -->
                 <a href="index.php"
                     <?php echo ($active_page === 'home') ? 'style="color: var(--color-gold);"' : ''; ?>>Home</a>
                 <a href="index.php#about">About</a>
@@ -50,32 +49,28 @@ $active_page = isset($active_page) ? $active_page : '';
                     <?php echo ($active_page === 'showroom') ? 'style="color: var(--color-gold);"' : ''; ?>>Virtual
                     Showroom</a>
 
-                <!--------lOGIN------->
+                <!-------- LOGIN / USER MENU ------->
                 <?php if (!isset($_SESSION['logged_in'])) : ?>
+                <a href="auth.php" class="btn btn-primary">Login / Register</a>
+                <?php else : ?>
 
-                <a href="auth.php" class="btn btn-primary">
-                    Login / Register
-                </a>
+                <!-- NEW DROPDOWN MENU -->
+                <div class="nav-dropdown">
+                    <button class="btn-user-menu">
+                        <?php echo ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') ? '⚙ Admin' : '👤 My Account'; ?>
+                        <span class="dropdown-arrow">▼</span>
+                    </button>
 
-                <?php elseif ($_SESSION['role'] === 'customer') : ?>
+                    <div class="nav-dropdown-menu">
+                        <?php if ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') : ?>
+                        <a href="admin_dashboard.php">Dashboard</a>
+                        <?php else : ?>
+                        <a href="user_dashboard.php">Dashboard</a>
+                        <?php endif; ?>
 
-                <a href="user_dashboard.php" class="btn btn-primary">
-                    👤 My Account
-                </a>
-
-                <a href="actions/auth/logout.php" class="btn btn-secondary">
-                    Logout
-                </a>
-
-                <?php elseif ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') : ?>
-
-                <a href="admin_dashboard.php" class="btn btn-primary">
-                    ⚙ Admin Dashboard
-                </a>
-
-                <a href="actions/auth/logout.php" class="btn btn-secondary">
-                    Logout
-                </a>
+                        <a href="actions/auth/logout.php" class="logout-link">Logout</a>
+                    </div>
+                </div>
 
                 <?php endif; ?>
             </div>

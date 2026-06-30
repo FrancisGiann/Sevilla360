@@ -177,6 +177,7 @@ section {
   transform-origin: center;
 }
 
+
 /* --- Buttons --- */
 .btn {
   display: inline-block;
@@ -225,6 +226,102 @@ section {
   background-color: var(--color-gold);
   transform: translateY(-3px);
 }
+/* ==========================================================================
+   NEW: User Account Dropdown Menu
+   ========================================================================== */
+
+/* Dropdown Container */
+.nav-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+/* New User Menu Button (Replaces btn-primary/secondary conflict) */
+.btn-user-menu {
+  background-color: var(--color-gold);
+  color: var(--color-white);
+  padding: 12px 24px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-smooth);
+}
+
+.btn-user-menu:hover {
+  background-color: var(--color-gold-hover);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-soft);
+}
+
+.dropdown-arrow {
+  font-size: 0.7rem;
+  transition: transform 0.3s ease;
+}
+
+/* Dropdown Content Box */
+.nav-dropdown-menu {
+  position: absolute;
+  top: 120%;
+  right: 0;
+  background-color: var(--color-white);
+  min-width: 200px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-hover);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(15px);
+  transition: var(--transition-snappy);
+  z-index: 1050;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hover effect to reveal dropdown on Desktop */
+.nav-dropdown:hover .nav-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  top: 100%;
+  transform: translateY(10px);
+}
+
+.nav-dropdown:hover .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Links */
+.nav-dropdown-menu a {
+  padding: 15px 20px;
+  color: var(--color-dark) !important; /* Overrides white text if any */
+  text-transform: none; /* Keeps it readable, unlike uppercase nav links */
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-beige);
+  display: block;
+}
+
+.nav-dropdown-menu a:last-child {
+  border-bottom: none;
+}
+
+.nav-dropdown-menu a:hover {
+  background-color: var(--color-beige);
+  color: var(--color-gold) !important;
+  transform: none; /* Removes any floating transform from global links */
+}
+
+.nav-dropdown-menu .logout-link {
+  color: #d9534f !important; /* Subtle red for logout */
+}
+
 
 /* --- Hero Section --- */
 .hero {
@@ -524,6 +621,43 @@ section {
   }
   .hamburger.active span:nth-child(3) {
     transform: translateY(-8px) rotate(-45deg);
+  }
+
+  /*DropDown Menu Adjustments for Mobile*/
+  .nav-dropdown {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .nav-dropdown-menu {
+    position: static; /* Removes absolute positioning */
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    box-shadow: none;
+    background-color: transparent;
+    min-width: 100%;
+    margin-top: 10px;
+    align-items: center;
+  }
+
+  .nav-dropdown:hover .nav-dropdown-menu {
+    transform: none;
+  }
+
+  .btn-user-menu {
+    font-size: 1rem;
+    padding: 10px 30px;
+  }
+
+  /* Make dropdown links look like mobile nav links */
+  .nav-dropdown-menu a {
+    font-size: 1.2rem;
+    font-family: var(--font-heading);
+    border-bottom: none;
+    padding: 10px;
   }
 }
 
