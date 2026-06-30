@@ -1,12 +1,16 @@
 <?php
-// CRITICAL: Start the session at the very top so the Settings page can check $_SESSION['role'] for Super Admin
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-// --- TEMPORARY TESTING --- 
-// (Delete this when you connect your real login system later!)
-$_SESSION['role'] = 'superadmin'; // Change to 'superadmin' to test Super Admin features
-// -------------------------
+
+// Only allow logged-in admins
+if (
+    !isset($_SESSION['logged_in']) ||
+    ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin')
+) {
+    header("Location: index.php");
+    exit();
+}
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
@@ -132,7 +136,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
             </nav>
 
             <div class="sidebar-footer">
-                <a href="#" class="nav-link sign-out"><i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</a>
+                <a href="actions/auth/logout.php" class="nav-link sign-out"><i
+                        class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</a>
             </div>
         </aside>
 

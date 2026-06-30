@@ -1,8 +1,11 @@
 <?php
 session_start();
 
-if (!isset($_SESSION['logged_in'])) {
-    header("Location: auth.php");
+if (
+    !isset($_SESSION['logged_in']) ||
+    $_SESSION['role'] !== 'customer'
+) {
+    header("Location: index.php");
     exit();
 }
 ?>
@@ -62,7 +65,7 @@ if (!isset($_SESSION['logged_in'])) {
             </nav>
 
             <div class="sidebar-footer">
-                <a href="#" class="nav-link sign-out">
+                <a href="actions/auth/logout.php" class="nav-link sign-out">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i>
                     <span>Sign out</span>
                 </a>

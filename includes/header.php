@@ -51,10 +51,32 @@ $active_page = isset($active_page) ? $active_page : '';
                     Showroom</a>
 
                 <!--------lOGIN------->
-                <?php if (isset($_SESSION['logged_in']) && $_SESSION['logged_in']) : ?>
-                <a href="user_dashboard.php" class="btn btn-primary">👤 My Account</a>
-                <?php else : ?>
-                <a href="auth.php" class="btn btn-primary">Login / Register</a>
+                <?php if (!isset($_SESSION['logged_in'])) : ?>
+
+                <a href="auth.php" class="btn btn-primary">
+                    Login / Register
+                </a>
+
+                <?php elseif ($_SESSION['role'] === 'customer') : ?>
+
+                <a href="user_dashboard.php" class="btn btn-primary">
+                    👤 My Account
+                </a>
+
+                <a href="actions/auth/logout.php" class="btn btn-secondary">
+                    Logout
+                </a>
+
+                <?php elseif ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') : ?>
+
+                <a href="admin_dashboard.php" class="btn btn-primary">
+                    ⚙ Admin Dashboard
+                </a>
+
+                <a href="actions/auth/logout.php" class="btn btn-secondary">
+                    Logout
+                </a>
+
                 <?php endif; ?>
             </div>
         </div>
