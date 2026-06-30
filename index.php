@@ -1,7 +1,6 @@
 <?php
 $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
 $extra_css = 'assets/css/style.css'; 
-$extra_js = 'assets/js/index.js';  
 $active_page = 'home';
 
 include 'includes/header.php';

@@ -624,6 +624,7 @@ section {
   }
 
   /*DropDown Menu Adjustments for Mobile*/
+  /*DropDown Menu Adjustments for Mobile*/
   .nav-dropdown {
     width: 100%;
     display: flex;
@@ -632,15 +633,25 @@ section {
   }
 
   .nav-dropdown-menu {
-    position: static; /* Removes absolute positioning */
-    opacity: 1;
-    visibility: visible;
+    position: static; 
+    opacity: 0;              /* Changed from 1 to 0 */
+    visibility: hidden;      /* Changed from visible to hidden */
+    display: none;           /* Hides it entirely until clicked */
     transform: none;
     box-shadow: none;
     background-color: transparent;
     min-width: 100%;
     margin-top: 10px;
     align-items: center;
+    transition: all 0.3s ease;
+  }
+
+  /* The JS adds this class when you tap the button */
+  .nav-dropdown-menu.active-mobile {
+    opacity: 1;
+    visibility: visible;
+    display: flex;
+    flex-direction: column;
   }
 
   .nav-dropdown:hover .nav-dropdown-menu {

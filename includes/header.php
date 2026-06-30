@@ -16,7 +16,7 @@ $active_page = isset($active_page) ? $active_page : '';
     <title><?php echo $page_title; ?></title>
 
     <!-- Master Stylesheet -->
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=<?php echo time(); ?>">
 
     <!-- Page-Specific Stylesheet (Loads dynamically) -->
     <?php if (!empty($extra_css)): ?>

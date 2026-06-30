@@ -32,10 +32,10 @@
 </footer>
 
 <!-- Global Scripts (Nav Menu etc) -->
-<script src="assets/js/index.js"></script>
+<script src="assets/js/index.js?v=<?php echo time(); ?>"></script>
 
 <!-- Page Specific Script (Loads dynamically) -->
-<?php if (isset($extra_js) && !empty($extra_js)): ?>
+<?php if (isset($extra_js) && !empty($extra_js) && $extra_js !== 'assets/js/index.js'): ?>
 <script src="<?php echo $extra_js; ?>"></script>
 <?php endif; ?>
 
