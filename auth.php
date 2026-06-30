@@ -31,7 +31,7 @@
                 <h2 class="auth-title">Welcome Back</h2>
                 <p class="auth-subtitle">Sign in to manage your bookings</p>
 
-                <form id="form-login" action="actions/login_process.php" method="POST">
+                <form id="form-login" action="actions/auth/login_process.php" method="POST">
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
                         <input type="email" name="email" class="form-control" placeholder="Enter your email" required>

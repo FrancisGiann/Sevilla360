@@ -1,4 +1,7 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 // Default values if variables aren't set on the main page
 $page_title = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css = isset($extra_css) ? $extra_css : '';
@@ -46,7 +49,13 @@ $active_page = isset($active_page) ? $active_page : '';
                 <a href="showroom.php"
                     <?php echo ($active_page === 'showroom') ? 'style="color: var(--color-gold);"' : ''; ?>>Virtual
                     Showroom</a>
+
+                <!--------lOGIN------->
+                <?php if (isset($_SESSION['logged_in']) && $_SESSION['logged_in']) : ?>
+                <a href="user_dashboard.php" class="btn btn-primary">👤 My Account</a>
+                <?php else : ?>
                 <a href="auth.php" class="btn btn-primary">Login / Register</a>
+                <?php endif; ?>
             </div>
         </div>
     </nav>
