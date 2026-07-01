@@ -30,6 +30,37 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['role'] = $user['role'];
             $_SESSION['logged_in'] = true;
 
+            $display_name = 'Account'; 
+
+            if ($user['role'] === 'customer') {
+                $name_stmt = $conn->prepare("SELECT first_name FROM customers WHERE user_id = ?");
+                $name_stmt->bind_param("i", $user['id']);
+                $name_stmt->execute();
+                $name_result = $name_stmt->get_result();
+                
+                if ($name_result->num_rows === 1) {
+                    $customer_data = $name_result->fetch_assoc();
+                    $display_name = $customer_data['first_name'];
+                }
+                $name_stmt->close();
+
+            } else if ($user['role'] === 'admin' || $user['role'] === 'superadmin') {
+                $name_stmt = $conn->prepare("SELECT full_name FROM staff WHERE user_id = ?");
+                $name_stmt->bind_param("i", $user['id']);
+                $name_stmt->execute();
+                $name_result = $name_stmt->get_result();
+                
+                if ($name_result->num_rows === 1) {
+                    $staff_data = $name_result->fetch_assoc();
+                    $name_parts = explode(' ', trim($staff_data['full_name']));
+                    $display_name = $name_parts[0]; 
+                }
+                $name_stmt->close();
+            }
+
+            $_SESSION['first_name'] = $display_name;
+
+
             // 7. Redirect based on their role
             if ($user['role'] === 'admin' || $user['role'] === 'superadmin') {
                 header("Location: ../../admin_dashboard.php");

@@ -57,7 +57,16 @@ $active_page = isset($active_page) ? $active_page : '';
                 <!-- NEW DROPDOWN MENU -->
                 <div class="nav-dropdown">
                     <button class="btn-user-menu">
-                        <?php echo ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') ? '⚙ Admin' : '👤 My Account'; ?>
+                        <?php 
+                                // Get the name from the session. Fallback to 'Account' just in case.
+                                $firstName = !empty($_SESSION['first_name']) ? $_SESSION['first_name'] : 'Account';
+                                
+                                // Set the icon based on role
+                                $icon = ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') ? '⚙ ' : '👤 ';
+                                
+                                // Display icon + name securely
+                                echo $icon . htmlspecialchars($firstName);
+                            ?>
                         <span class="dropdown-arrow">▼</span>
                     </button>
 
