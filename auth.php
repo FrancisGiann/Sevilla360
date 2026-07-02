@@ -169,11 +169,47 @@
                 </div>
             </div>
 
+
+        </div>
+    </div>
+    <!-- EMAIL VERIFICATION MODAL -->
+    <div id="verification-modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center;">
+
+        <div class="auth-card"
+            style="position: relative; max-width: 450px; width: 100%; text-align: center; background: #fff5e8; border: 1px solid var(--color-gold); padding: 30px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+            <a href="auth.php"
+                style="position: absolute; top: 15px; right: 20px; font-size: 1.5rem; text-decoration: none; color: var(--color-dark-light); font-weight: bold;">&times;</a>
+            <h2 class="auth-title" style="margin-bottom: 10px; font-family: var(--font-heading);">Verify Your Email</h2>
+
+            <p class="auth-subtitle" style="font-size: 0.95rem; line-height: 1.5; color: var(--color-dark);">
+                A 6-digit verification code has been sent to <br>
+                <strong id="verify-email-display" style="color: var(--color-gold);">you@email.com</strong>.<br>
+                Please check your inbox and enter the code below.
+            </p>
+
+            <form id="form-verify" action="actions/auth/verify_process.php" method="POST" style="margin-top: 20px;">
+                <!-- Hidden input to pass the email to PHP -->
+                <input type="hidden" name="email" id="verify-email-input">
+
+                <div class="form-group">
+                    <input type="text" name="verification_code" class="form-control" placeholder="000000" maxlength="6"
+                        style="text-align: center; font-size: 2rem; letter-spacing: 8px; font-weight: bold; padding: 15px;"
+                        required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full" style="margin-top: 15px;">VERIFY ACCOUNT</button>
+            </form>
+
+            <div class="auth-footer" style="margin-top: 15px;">
+                <a href="#" id="resend-code-btn"
+                    style="color: var(--color-dark-light); text-decoration: underline;">Resend verification email</a>
+            </div>
         </div>
     </div>
 
     <!-- Link to the logic script -->
-    <script src="assets/js/auth.js"></script>
+    <script src="assets/js/auth.js?v=1.1"></script>
 </body>
 
 </html>
