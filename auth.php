@@ -60,30 +60,46 @@
                 <h2 class="auth-title">Create Account</h2>
                 <p class="auth-subtitle">Book venues & manage reservations online</p>
 
-                <form id="form-register">
+                <form id="form-register" action="actions/auth/register_process.php" method="POST">
+
                     <div class="form-group">
-                        <label>FULL NAME</label>
-                        <input type="text" class="form-control" placeholder="Juan Dela Cruz" required>
+                        <label>FIRST NAME</label>
+                        <input type="text" name="first_name" class="form-control" placeholder="Juan" required>
                     </div>
+
+                    <div class="form-group">
+                        <label>LAST NAME</label>
+                        <input type="text" name="last_name" class="form-control" placeholder="Dela Cruz" required>
+                    </div>
+
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
-                        <input type="email" class="form-control" placeholder="you@example.com" required>
+                        <!-- MUST HAVE name="email" -->
+                        <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
                     </div>
+
                     <div class="form-group">
                         <label>DATE OF BIRTH</label>
-                        <input type="date" class="form-control" required>
+                        <!-- MUST HAVE name="dob" -->
+                        <input type="date" name="dob" class="form-control" required>
                     </div>
+
                     <div class="form-group">
                         <label>PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" class="form-control" placeholder="Create a password" required>
+                            <!-- MUST HAVE name="password" -->
+                            <input type="password" name="password" class="form-control" placeholder="Create a password"
+                                required>
                             <span class="password-toggle">SHOW</span>
                         </div>
                     </div>
+
                     <div class="form-group">
                         <label>CONFIRM PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" class="form-control" placeholder="Confirm your password" required>
+                            <!-- MUST HAVE name="confirm_password" -->
+                            <input type="password" name="confirm_password" class="form-control"
+                                placeholder="Confirm your password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
                     </div>
