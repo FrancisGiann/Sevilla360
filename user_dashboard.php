@@ -1,13 +1,6 @@
 <?php
-session_start();
-
-if (
-    !isset($_SESSION['logged_in']) ||
-    $_SESSION['role'] !== 'customer'
-) {
-    header("Location: index.php");
-    exit();
-}
+$required_role = 'customer';
+require 'includes/auth_guard.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">

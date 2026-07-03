@@ -1,16 +1,6 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Only allow logged-in admins
-if (
-    !isset($_SESSION['logged_in']) ||
-    ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin')
-) {
-    header("Location: index.php");
-    exit();
-}
+$required_role = 'admin';
+require 'includes/auth_guard.php';
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
