@@ -2,9 +2,22 @@
 session_start();
 require '../../config/db_connect.php';
 
+// =========================================================================
+// DATABASE HYGIENE: The "Piggyback" Auto-Delete
+// Automatically delete unverified accounts that are older than 24 hours.
+// =========================================================================
+$cleanup_stmt = $conn->prepare("
+    DELETE FROM users 
+    WHERE is_verified = FALSE 
+    AND verification_expires_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+");
+$cleanup_stmt->execute();
+$cleanup_stmt->close();
+// =========================================================================
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
-    // 1. Sanitize and retrieve POST data
+    //  Sanitize and retrieve POST data
     $first_name = trim($_POST['first_name']);
     $last_name = trim($_POST['last_name']);
     $email = trim($_POST['email']);
@@ -12,7 +25,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
 
-    // 2. Basic Validation
+    //  Basic Validation
     if ($password !== $confirm_password) {
         echo "<script>alert('Passwords do not match!'); window.history.back();</script>";
         exit();
@@ -23,21 +36,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
-    // 3. Hash the password
+    // Hash the password
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
-    // 4. Generate Verification Details
+    //  Generate Verification Details
     // Creates a random 6-digit string (e.g., "049215")
-    $verification_code = sprintf("%06d", mt_rand(1, 999999));
+    $verification_code = sprintf("%06d", random_int(1, 999999));
     
     // Set expiration time to 15 minutes from now (Matches the Philippine Timezone set in db_connect.php)
     $expires_at = date('Y-m-d H:i:s', strtotime('+15 minutes'));
 
     try {
-        // 5. START TRANSACTION
+        // START TRANSACTION
         $conn->begin_transaction();
 
-        // 6. Insert into USERS table
+        //  Insert into USERS table
         // We set role = 'customer' and pass the verification code and expiration
         $stmt1 = $conn->prepare("INSERT INTO users (email, password_hash, role, verification_code, verification_expires_at) VALUES (?, ?, 'customer', ?, ?)");
         $stmt1->bind_param("ssss", $email, $hashed_password, $verification_code, $expires_at);
@@ -46,15 +59,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Grab the auto-incremented ID of the user we just created
         $new_user_id = $conn->insert_id; 
 
-        // 7. Insert into CUSTOMERS table
+        //  Insert into CUSTOMERS table
         $stmt2 = $conn->prepare("INSERT INTO customers (user_id, first_name, last_name, email, dob) VALUES (?, ?, ?, ?, ?)");
         $stmt2->bind_param("issss", $new_user_id, $first_name, $last_name, $email, $dob);
         $stmt2->execute();
 
-        // 8. COMMIT TRANSACTION (Save both queries to database)
+        // COMMIT TRANSACTION (Save both queries to database)
         $conn->commit();
 
-        // 9. Send to Verification Page
+        // Send to Verification Page
         // NOTE: In production, you will use PHPMailer to send $verification_code to $email here.
         // For development, we alert the code so you can copy/paste it into the modal!
         

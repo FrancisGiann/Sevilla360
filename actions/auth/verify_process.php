@@ -34,6 +34,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $update_stmt->bind_param("i", $user['id']);
             $update_stmt->execute();
             
+            // Protect against session fixation attacks
+            session_regenerate_id(true);
+            
             // Log them in immediately!
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = 'customer';

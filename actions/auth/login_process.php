@@ -1,28 +1,37 @@
 <?php
-// 1. Start the session so we can remember the user after they log in
+// Start the session so we can remember the user after they log in
 session_start();
 
-// 2. Connect to the database
+// Connect to the database
 require '../../config/db_connect.php';
 
-// 3. Check if the form was actually submitted
+// Check if the form was actually submitted
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // Grab the data from the HTML form's 'name' attributes
     $email = $_POST['email'];
     $password = $_POST['password'];
 
-    // 4. Secure Database Query (Prepared Statements prevent SQL Injection hacking)
-    $stmt = $conn->prepare("SELECT id, password_hash, role FROM users WHERE email = ?");
+    // Secure Database Query (Prepared Statements prevent SQL Injection hacking)
+    $stmt = $conn->prepare("SELECT id, password_hash, role, is_verified FROM users WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
 
-    // 5. Did we find an account with that email?
+    // check if we found a user with that email
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
+        
+        // Check if the user is verified
+        if ($user['is_verified'] == 0) {
+            echo "<script>
+                alert('Please verify your email address first!'); 
+                window.location.href = '../../auth.php?verify_email=" . urlencode($email) . "';
+            </script>";
+            exit();
+        }
 
-        // 6. Verify the typed password against the encrypted one in the database
+        //Verify the typed password against the encrypted one in the database
         if (password_verify($password, $user['password_hash'])) {
             
             // Success! Save user data into the Session
@@ -61,7 +70,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['first_name'] = $display_name;
 
 
-            // 7. Redirect based on their role
+            // Redirect based on their role
             if ($user['role'] === 'admin' || $user['role'] === 'superadmin') {
                 header("Location: ../../admin_dashboard.php");
             } else {

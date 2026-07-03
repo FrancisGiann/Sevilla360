@@ -77,4 +77,48 @@ document.addEventListener("DOMContentLoaded", () => {
       }
   }
 
+  // --- RESEND CODE 60-SECOND TIMER LOGIC ---
+      const resendBtn = document.getElementById('resend-code-btn');
+      if (resendBtn) {
+          resendBtn.addEventListener('click', function (e) {
+              e.preventDefault();
+              
+              // If the button is disabled (timer is running), do nothing
+              if (this.style.pointerEvents === 'none') return;
+
+              // 1. Tell PHP to generate a new code in the background
+              fetch('actions/auth/resend_code.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: 'email=' + encodeURIComponent(verifyEmail)
+              })
+              .then(response => response.text())
+              .then(data => {
+                  // For testing: Show the new code in an alert
+                  alert("DEVELOPMENT MODE:\nYour NEW verification code is: " + data);
+              });
+
+              // 2. Disable the button and start the 60-second UI timer
+              this.style.pointerEvents = 'none';
+              this.style.color = 'gray';
+              this.style.textDecoration = 'none';
+              
+              let timeLeft = 60;
+              this.innerText = `Resend code in ${timeLeft}s`;
+
+              const timer = setInterval(() => {
+                  timeLeft--;
+                  this.innerText = `Resend code in ${timeLeft}s`;
+                  
+                  if (timeLeft <= 0) {
+                      clearInterval(timer);
+                      this.style.pointerEvents = 'auto';
+                      this.style.color = 'var(--color-dark-light)';
+                      this.style.textDecoration = 'underline';
+                      this.innerText = 'Resend verification email';
+                  }
+              }, 1000);
+          });
+      }
+
 });
