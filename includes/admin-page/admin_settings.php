@@ -1,3 +1,20 @@
+<?php
+require_once 'config/db_connect.php';
+
+// fetch the current settings from the database
+$settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
+$current_settings = [];
+
+if ($settings_query) {
+    while($row = $settings_query->fetch_assoc()) {
+        $current_settings[$row['setting_key']] = $row['setting_value'];
+    }
+}
+
+// check if the settings exist, if not, set defaults
+$maintenance_checked = (isset($current_settings['maintenance_mode']) && $current_settings['maintenance_mode'] === 'true') ? 'checked' : '';
+$walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
+?>
 <div class="admin-settings-container">
     <div class="settings-header">
         <p class="settings-subtitle">Manage your account and system preferences.</p>
@@ -152,7 +169,9 @@
             <!-- PANEL 4: System Preferences -->
             <div class="settings-panel" id="panel-prefs">
                 <h2 class="panel-heading">System Preferences</h2>
-                <form class="settings-form" onsubmit="return false;">
+
+                <!-- Added id="form-prefs" -->
+                <form id="form-prefs" class="settings-form" onsubmit="return false;">
 
                     <div class="preference-item">
                         <div class="preference-info">
@@ -160,7 +179,8 @@
                             <p>Disable user access to the booking frontend while updating systems.</p>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox">
+                            <input type="checkbox" name="maintenance_mode" id="maintenance_mode"
+                                <?php echo $maintenance_checked; ?>>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -173,13 +193,15 @@
                             <p>Enable reception to accept walk-in bookings through the dashboard.</p>
                         </div>
                         <label class="toggle-switch">
-                            <input type="checkbox" checked>
+                            <input type="checkbox" name="allow_walkins" id="allow_walkins"
+                                <?php echo $walkins_checked; ?>>
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
 
                     <div class="panel-footer">
-                        <button type="button" class="btn btn-primary save-btn">Save Changes</button>
+                        <!-- Added id="btn-save-prefs" -->
+                        <button type="button" id="btn-save-prefs" class="btn btn-primary save-btn">Save Changes</button>
                     </div>
                 </form>
             </div>
@@ -199,4 +221,18 @@
         <polyline points="22 4 12 14.01 9 11.01"></polyline>
     </svg>
     <span>Settings Saved Successfully</span>
+</div>
+<!-- UNSAVED CHANGES MODAL -->
+<div class="modal-overlay" id="unsaved-modal">
+    <div class="modal-content unsaved-modal-content">
+        <i class="fa-solid fa-triangle-exclamation unsaved-icon"></i>
+        <h2 class="modal-title">Unsaved Changes</h2>
+        <p class="modal-text unsaved-text">
+            You have unsaved changes on this page. If you leave now, your changes will be lost.
+        </p>
+        <div class="unsaved-actions">
+            <button class="btn btn-primary btn-unsaved-stay" id="btn-stay-save">Stay</button>
+            <button class="btn btn-outline btn-unsaved-discard" id="btn-discard-leave">Discard & Leave</button>
+        </div>
+    </div>
 </div>

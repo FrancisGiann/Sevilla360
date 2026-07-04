@@ -307,6 +307,82 @@ input:checked + .toggle-slider:before {
 .toast-notification svg {
   color: var(--color-gold);
 }
+/* =========================================================
+   UNSAVED CHANGES MODAL
+   ========================================================= */
+
+/* 1. The Dark Screen Overlay */
+#unsaved-modal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6); /* Dark semi-transparent background */
+    z-index: 9999; /* Ensure it stays on top of the header/sidebar */
+    align-items: center;
+    justify-content: center;
+}
+
+/* Show the modal when JS adds the 'active' class */
+#unsaved-modal.active {
+    display: flex; 
+}
+
+/* 2. The White Card Container */
+.unsaved-modal-content {
+    background-color: #ffffff; /* Make the card white */
+    border-radius: 12px;       /* Soft rounded edges */
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); /* Pop-out shadow */
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    padding: 40px 30px;
+}
+
+/* 3. Icons and Text */
+.unsaved-icon {
+    font-size: 3.5rem;
+    color: #e06666; /* Warning Red */
+    margin-bottom: 15px;
+}
+
+.unsaved-modal-content .modal-title {
+    margin-bottom: 10px;
+    font-family: var(--font-heading); /* Use your beautiful serif font */
+    font-size: 1.8rem;
+}
+
+.unsaved-text {
+    color: var(--color-dark);
+    margin-bottom: 25px;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+/* 4. Buttons */
+.unsaved-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.btn-unsaved-stay {
+    flex: 1;
+}
+
+.btn-unsaved-discard {
+    flex: 1;
+    color: #e06666;
+    border-color: #e06666;
+    background: transparent;
+}
+
+.btn-unsaved-discard:hover {
+    background-color: #e06666;
+    color: #ffffff;
+}
 
 /* ==========================================================================
    Responsive Adjustments (Tablet & Mobile)
