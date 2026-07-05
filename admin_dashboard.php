@@ -214,7 +214,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'bookings'): ?>
     <script src="assets/js/admin-page/admin_bookings.js"></script>
     <?php elseif ($page === 'walkin'): ?>
-    <script src="assets/js/admin-page/admin_walkin.js"></script>
+    <script src="assets/js/admin-page/admin_walkin.js?v=1"></script>
     <?php elseif ($page === 'maintenance'): ?>
     <script src="assets/js/admin-page/admin_maintenance.js"></script>
     <?php elseif ($page === 'settings'): ?>

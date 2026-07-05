@@ -5,15 +5,27 @@ require_once 'config/db_connect.php';
 $halls_query = $conn->query("SELECT v.id, v.name, e.base_rate FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
 $event_halls = $halls_query->fetch_all(MYSQLI_ASSOC);
 
-// fetch hotel rooms (grouped by type)
+// Fetch Hotel Rooms (Grouped by Type AND Name)
 $rooms_query = $conn->query("
-    SELECT h.room_type AS name, h.nightly_rate AS base_rate, COUNT(v.id) as total_units 
+    SELECT 
+        h.room_type, 
+        v.name AS building_name, 
+        h.base_capacity, 
+        h.nightly_rate AS base_rate, 
+        COUNT(v.id) as total_units 
     FROM venues v 
     JOIN hotel_rooms h ON v.id = h.venue_id 
     WHERE v.status = 'Available'
-    GROUP BY h.room_type, h.nightly_rate
+    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate
+    ORDER BY h.room_type, v.name
 ");
-$hotel_rooms = $rooms_query->fetch_all(MYSQLI_ASSOC);
+$hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
+
+// Group them by Room Type so Javascript can easily filter them!
+$grouped_hotel_rooms = [];
+foreach ($hotel_rooms_flat as $room) {
+    $grouped_hotel_rooms[$room['room_type']][] = $room;
+}
 
 // fetch villas
 $villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
@@ -89,9 +101,12 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                 <div class="form-group">
                     <label>Select Venue Space</label>
                     <select id="event-venue">
-                        <option value="45000">The Grand Hall (₱45,000)</option>
-                        <option value="25000">Garden Pavilion (₱25,000)</option>
-                        <option value="15000">Studio A (₱15,000)</option>
+                        <?php foreach($event_halls as $hall): ?>
+                        <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>">
+                            <?php echo htmlspecialchars($hall['name']); ?>
+                            (₱<?php echo number_format($hall['base_rate']); ?>)
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group">
@@ -246,20 +261,37 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 
             <div class="form-row">
                 <div class="form-group">
-                    <label>Select Room Type <span class="capacity-note">Base: 2 Pax | Max: 4
-                            Pax</span></label>
-                    <select id="hotel-room">
-                        <option value="4500">Deluxe Room (₱4,500/night)</option>
-                        <option value="8500">VIP Suite (₱8,500/night)</option>
+                    <label>Select Room Category</label>
+                    <select id="hotel-room-type">
+                        <option value="" disabled selected>Select category...</option>
+                        <?php foreach(array_keys($grouped_hotel_rooms) as $type): ?>
+                        <option value="<?php echo htmlspecialchars($type); ?>"><?php echo htmlspecialchars($type); ?>
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Number of Guests <span class="extra-pax-note">Exceeding base:
-                            ₱800/head</span></label>
-                    <input type="number" id="hotel-guests" min="1" max="4" value="2">
+                    <label>Select Specific Room</label>
+                    <!-- Disabled until they pick a category -->
+                    <select id="hotel-room-name" disabled>
+                        <option value="" disabled selected>Select category first...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row" style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Number of Guests <span class="extra-pax-note">Exceeding base: ₱800/head</span></label>
+                    <input type="number" id="hotel-guests" min="1" value="2">
                     <small id="hotel-extra-fee" class="hidden">Extra Pax Fee: ₱0</small>
                 </div>
             </div>
+
+            <!-- Pass the grouped data to Javascript! -->
+            <script>
+            // We MUST attach it to 'window' so external JS files can access it!
+            window.hotelRoomData = <?php echo json_encode($grouped_hotel_rooms); ?>;
+            </script>
         </div>
 
         <!-- TAB 3: RESORT VILLA -->
@@ -286,8 +318,12 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                 <div class="form-group">
                     <label>Select Villa <span class="capacity-note">Base: 4 Pax | Max: 8 Pax</span></label>
                     <select id="villa-type">
-                        <option value="12000">Casita Villa (₱12,000)</option>
-                        <option value="18000">Hacienda Villa (₱18,000)</option>
+                        <?php foreach($villas as $villa): ?>
+                        <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>">
+                            <?php echo htmlspecialchars($villa['name']); ?>
+                            (₱<?php echo number_format($villa['base_rate']); ?>)
+                        </option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
             </div>
