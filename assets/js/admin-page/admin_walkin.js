@@ -51,19 +51,17 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    async fetchBookedDates(venue_id) {
-      if (!venue_id) return;
-      try {
-        const response = await fetch(
-          `/sevilla360/actions/bookings/fetch_dates.php?venue_id=${venue_id}`,
-        );
-        const data = await response.json();
-        this.bookedDatesList = data;
-        this.render();
-      } catch (error) {
-        console.error("Error fetching dates:", error);
-      }
-    }
+    async fetchBookedDates(room_type, room_name) {
+            if(!room_type || !room_name) return;
+            try {
+                const response = await fetch(`/Sevilla360/actions/bookings/fetch_dates.php?room_type=${encodeURIComponent(room_type)}&room_name=${encodeURIComponent(room_name)}`);
+                const data = await response.json();
+                this.bookedDatesList = data; 
+                this.render(); 
+            } catch (error) {
+                console.error("Error fetching dates:", error);
+            }
+        }
 
     hasInvalidDaysBetween(start, end) {
       let current = new Date(start);
@@ -333,10 +331,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // When the Specific Room changes... update everything else
-    nameSelect.addEventListener("change", () => {
-      calHotel.clearSelection();
-      calculateSummary();
-    });
+    nameSelect.addEventListener('change', () => {
+            calHotel.clearSelection();
+            calculateSummary(); 
+            
+            const selectedOption = nameSelect.options[nameSelect.selectedIndex];
+            const type = selectedOption.getAttribute('data-type');
+            const name = selectedOption.getAttribute('data-name');
+            
+            calHotel.fetchBookedDates(type, name);
+        });
   }
 
   /* ==========================================
