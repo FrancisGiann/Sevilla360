@@ -1,3 +1,24 @@
+<?php
+require_once 'config/db_connect.php';
+
+// fetch event halls
+$halls_query = $conn->query("SELECT v.id, v.name, e.base_rate FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
+$event_halls = $halls_query->fetch_all(MYSQLI_ASSOC);
+
+// fetch hotel rooms (grouped by type)
+$rooms_query = $conn->query("
+    SELECT h.room_type AS name, h.nightly_rate AS base_rate, COUNT(v.id) as total_units 
+    FROM venues v 
+    JOIN hotel_rooms h ON v.id = h.venue_id 
+    WHERE v.status = 'Available'
+    GROUP BY h.room_type, h.nightly_rate
+");
+$hotel_rooms = $rooms_query->fetch_all(MYSQLI_ASSOC);
+
+// fetch villas
+$villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
+$villas = $villas_query->fetch_all(MYSQLI_ASSOC);
+?>
 <!-- Expanded, Larger Booking Container -->
 <div class="admin-booking-container">
 
