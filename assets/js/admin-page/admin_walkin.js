@@ -240,12 +240,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  document.getElementById("btn-confirm-dates").addEventListener("click", () => {
-    document.getElementById("confirm-dates-modal").classList.remove("active");
-    window.isDatesLocked = true;
-    activeCalendar.updateDateDisplay();
-    calculateSummary();
-  });
+  const btnConfirmDates = document.getElementById("btn-confirm-dates");
+  if(btnConfirmDates) {
+      btnConfirmDates.addEventListener("click", () => {
+          document.getElementById("confirm-dates-modal").classList.remove("active");
+          window.isDatesLocked = true;
+          if(activeCalendar) activeCalendar.updateDateDisplay();
+          calculateSummary();
+      });
+  }
 
   document.getElementById("btn-cancel-dates").addEventListener("click", () => {
     document.getElementById("confirm-dates-modal").classList.remove("active");
@@ -441,8 +444,15 @@ document.addEventListener("DOMContentLoaded", () => {
             const selectedOption = selectEl.options[selectEl.selectedIndex];
 
             // 3. Format Dates & Money
-            const sDate = calHotel.startDate.toISOString().split("T")[0];
-            let eDate = calHotel.endDate ? calHotel.endDate.toISOString().split("T")[0] : sDate;
+             const formatLocal = (dateObj) => {
+                const y = dateObj.getFullYear();
+                const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const d = String(dateObj.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
+
+            const sDate = formatLocal(calHotel.startDate);
+            let eDate = calHotel.endDate ? formatLocal(calHotel.endDate) : sDate;
             const totalAmt = document.getElementById("summary-total-val").innerText.replace(/[₱,]/g, "");
 
             // 4. Determine Payment Scheme Text (MUST BE INSIDE THE CLICK EVENT!)

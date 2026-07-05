@@ -23,7 +23,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // 2. DETERMINE STATUS
         $payment_status = ($amount_paid >= $total_amount) ? 'Paid' : 'Partial';
 
-        // 3. MAP PAYMENT METHOD FOR DATABASE ENUM
+        // 3. MAP PAYMENT METHOD
         $raw_method = strtolower($_POST['payment_method']);
         $pay_method = 'Cash';
         if ($raw_method === 'gcash') $pay_method = 'GCash';
@@ -36,7 +36,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_cust->execute();
         $customer_id = $conn->insert_id;
 
-        // 5. Find Room
+        // 5. Find Room (Search right now!)
         $stmt_room = $conn->prepare("
             SELECT v.id 
             FROM venues v 
@@ -45,7 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             AND v.id NOT IN (
                 SELECT venue_id FROM bookings 
                 WHERE booking_status IN ('Pending', 'Confirmed') 
-                AND (start_date <= ? AND end_date >= ?)
+                AND (start_date < ? AND end_date > ?)
             )
             LIMIT 1
         ");
@@ -54,11 +54,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $room_result = $stmt_room->get_result();
         
         if ($room_result->num_rows === 0) {
-            throw new Exception("All units for this specific room are booked on these dates!");
+            throw new Exception("All units for this specific room were just booked by someone online! Please select different dates.");
         }
         $venue_id = $room_result->fetch_assoc()['id'];
 
-        // 6. SAVE BOOKING (Now with dynamic amount_paid and payment_status!)
+        // 6. SAVE BOOKING
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
@@ -70,7 +70,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // 7. NEW: SAVE THE RECEIPT IN THE PAYMENTS TABLE!
+        // 7. SAVE RECEIPT
         $transaction_id = !empty($_POST['transaction_id']) ? $_POST['transaction_id'] : null;
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);

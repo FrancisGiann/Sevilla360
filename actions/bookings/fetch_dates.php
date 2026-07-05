@@ -30,9 +30,13 @@ if (isset($_GET['room_type']) && isset($_GET['room_name'])) {
         $start = new DateTime($row['start_date']);
         $end = new DateTime($row['end_date']);
         
-        while ($start <= $end) {
+        while ($start < $end) {
             $blocked_dates[] = $start->format('Y-m-d');
             $start->modify('+1 day');
+        }
+        
+        if ($row['start_date'] === $row['end_date']) {
+            $blocked_dates[] = $start->format('Y-m-d');
         }
     }
     $stmt->close();
