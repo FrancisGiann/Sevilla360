@@ -207,6 +207,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
         </main>
     </div>
+    <!-- Calendar Engine -->
+    <script src="assets/js/calendar.js?v=1"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>

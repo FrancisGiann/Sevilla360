@@ -13,191 +13,8 @@ document.addEventListener("DOMContentLoaded", () => {
   window.isDatesLocked = false;
   let activeCalendar = null;
 
-  /* ==========================================
-       1. AIRBNB-STYLE ADMIN CALENDAR
-       ========================================== */
-  class AdminBookingCalendar {
-    constructor(containerId) {
-      this.container = document.getElementById(containerId);
-      if (!this.container) return;
-
-      this.grid = this.container.querySelector(".cal-days-grid");
-      this.monthYearDisplay = this.container.querySelector(".cal-month-year");
-      this.prevBtn = this.container.querySelector(".prev-month");
-      this.nextBtn = this.container.querySelector(".next-month");
-
-      this.currentDate = new Date();
-      this.currentDate.setDate(1);
-
-      this.startDate = null;
-      this.endDate = null;
-      this.totalNights = 1;
-
-      this.bookedDatesList = [];
-      this.init();
-    }
-
-    init() {
-      this.render();
-      this.prevBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.currentDate.setMonth(this.currentDate.getMonth() - 1);
-        this.render();
-      });
-      this.nextBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        this.currentDate.setMonth(this.currentDate.getMonth() + 1);
-        this.render();
-      });
-    }
-
-    async fetchBookedDates(room_type, room_name) {
-            if(!room_type || !room_name) return;
-            try {
-                const response = await fetch(`/Sevilla360/actions/bookings/fetch_dates.php?room_type=${encodeURIComponent(room_type)}&room_name=${encodeURIComponent(room_name)}`);
-                const data = await response.json();
-                this.bookedDatesList = data; 
-                this.render(); 
-            } catch (error) {
-                console.error("Error fetching dates:", error);
-            }
-        }
-
-    hasInvalidDaysBetween(start, end) {
-      let current = new Date(start);
-      current.setDate(current.getDate() + 1);
-      while (current < end) {
-        const checkStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
-        if (this.bookedDatesList.includes(checkStr)) return true;
-        current.setDate(current.getDate() + 1);
-      }
-      return false;
-    }
-
-    render() {
-      this.grid.innerHTML = "";
-      const year = this.currentDate.getFullYear();
-      const month = this.currentDate.getMonth();
-      const monthNames = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-      ];
-
-      this.monthYearDisplay.innerText = `${monthNames[month]} ${year}`;
-
-      const firstDayIndex = new Date(year, month, 1).getDay();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-      for (let i = 0; i < firstDayIndex; i++) {
-        const emptyCell = document.createElement("div");
-        emptyCell.className = "cal-day-cell empty";
-        this.grid.appendChild(emptyCell);
-      }
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const cellDate = new Date(year, month, day);
-        const cell = document.createElement("div");
-        cell.className = "cal-day-cell";
-        cell.innerText = day;
-
-        const cellDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-        if (this.bookedDatesList.includes(cellDateStr)) {
-          cell.classList.add("booked");
-        } else {
-          if (
-            this.startDate &&
-            cellDate.getTime() === this.startDate.getTime()
-          ) {
-            cell.classList.add("selected", "start-date");
-          }
-          if (this.endDate && cellDate.getTime() === this.endDate.getTime()) {
-            cell.classList.add("selected", "end-date");
-          }
-          if (
-            this.startDate &&
-            this.endDate &&
-            cellDate > this.startDate &&
-            cellDate < this.endDate
-          ) {
-            cell.classList.add("in-range");
-          }
-
-          cell.addEventListener("click", () => {
-            if (window.isDatesLocked) {
-              showOverrideModal(cellDate, this);
-              return;
-            }
-            if (this.startDate && this.endDate) {
-              this.startDate = cellDate;
-              this.endDate = null;
-              this.render();
-            } else if (!this.startDate) {
-              this.startDate = cellDate;
-              this.render();
-            } else if (this.startDate && !this.endDate) {
-              if (cellDate < this.startDate) {
-                this.startDate = cellDate;
-                this.render();
-              } else {
-                if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
-                  alert("Selection contains unavailable or booked dates.");
-                  this.startDate = cellDate;
-                  this.render();
-                } else {
-                  this.endDate = cellDate;
-                  this.render();
-                  requestDateConfirmation(this.startDate, this.endDate, this);
-                }
-              }
-            }
-          });
-        }
-        this.grid.appendChild(cell);
-      }
-    }
-
-    updateDateDisplay() {
-      const dateDisplayEl = document.getElementById("summary-dates");
-      if (!this.startDate || !window.isDatesLocked) {
-        dateDisplayEl.innerText = "Please select dates";
-        this.totalNights = 1;
-        return;
-      }
-      const opts = { month: "short", day: "numeric", year: "numeric" };
-      const startStr = this.startDate.toLocaleDateString("en-US", opts);
-
-      if (this.endDate && this.startDate.getTime() !== this.endDate.getTime()) {
-        const endStr = this.endDate.toLocaleDateString("en-US", opts);
-        dateDisplayEl.innerText = `${startStr} — ${endStr}`;
-        const diffTime = Math.abs(this.endDate - this.startDate);
-        this.totalNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      } else {
-        dateDisplayEl.innerText = startStr;
-        this.totalNights = 1;
-      }
-    }
-
-    clearSelection() {
-      this.startDate = null;
-      this.endDate = null;
-      this.render();
-      this.updateDateDisplay();
-    }
-  }
-
   // Modal Triggers
-  function requestDateConfirmation(startDate, endDate, calendarInstance) {
+  window.requestDateConfirmation = function(startDate, endDate, calendarInstance) {
     activeCalendar = calendarInstance;
     const dateModal = document.getElementById("confirm-dates-modal");
     const dateDisplay = document.getElementById("confirm-date-display");
@@ -208,9 +25,9 @@ document.addEventListener("DOMContentLoaded", () => {
     dateDisplay.innerText = `${startStr} — ${endStr}`;
 
     dateModal.classList.add("active");
-  }
+  };
 
-  function showOverrideModal(newDate, calendarInstance) {
+  window.showOverrideModal = function(newDate, calendarInstance) {
     const overrideModal = document.getElementById("change-dates-modal");
     overrideModal.classList.add("active");
 
@@ -232,22 +49,23 @@ document.addEventListener("DOMContentLoaded", () => {
       activeCalendar.endDate = null;
       activeCalendar.render();
       activeCalendar.updateDateDisplay();
-      calculateSummary();
+      
+      if (typeof calculateSummary === "function") calculateSummary();
     });
 
     newNo.addEventListener("click", () => {
       overrideModal.classList.remove("active");
     });
-  }
+  };
 
   const btnConfirmDates = document.getElementById("btn-confirm-dates");
-  if(btnConfirmDates) {
-      btnConfirmDates.addEventListener("click", () => {
-          document.getElementById("confirm-dates-modal").classList.remove("active");
-          window.isDatesLocked = true;
-          if(activeCalendar) activeCalendar.updateDateDisplay();
-          calculateSummary();
-      });
+  if (btnConfirmDates) {
+    btnConfirmDates.addEventListener("click", () => {
+      document.getElementById("confirm-dates-modal").classList.remove("active");
+      window.isDatesLocked = true;
+      if (activeCalendar) activeCalendar.updateDateDisplay();
+      calculateSummary();
+    });
   }
 
   document.getElementById("btn-cancel-dates").addEventListener("click", () => {
@@ -256,9 +74,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize 3 separate calendars
-  const calEvent = new AdminBookingCalendar("cal-ui-event");
-  const calHotel = new AdminBookingCalendar("cal-ui-hotel");
-  const calVilla = new AdminBookingCalendar("cal-ui-villa");
+  const calEvent = new SevillaCalendar("cal-ui-event");
+  const calHotel = new SevillaCalendar("cal-ui-hotel");
+  const calVilla = new SevillaCalendar("cal-ui-villa");
 
   /* ==========================================
        2. TABS & DYNAMIC IMAGES
@@ -334,16 +152,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // When the Specific Room changes... update everything else
-    nameSelect.addEventListener('change', () => {
-            calHotel.clearSelection();
-            calculateSummary(); 
-            
-            const selectedOption = nameSelect.options[nameSelect.selectedIndex];
-            const type = selectedOption.getAttribute('data-type');
-            const name = selectedOption.getAttribute('data-name');
-            
-            calHotel.fetchBookedDates(type, name);
-        });
+    nameSelect.addEventListener("change", () => {
+      calHotel.clearSelection();
+      calculateSummary();
+
+      const selectedOption = nameSelect.options[nameSelect.selectedIndex];
+      const type = selectedOption.getAttribute("data-type");
+      const name = selectedOption.getAttribute("data-name");
+
+      calHotel.fetchBookedDates(type, name);
+    });
   }
 
   /* ==========================================
@@ -424,86 +242,98 @@ document.addEventListener("DOMContentLoaded", () => {
   /* ==========================================
        5. SUBMIT BOOKING TO DATABASE
        ========================================== */
-    const btnConfirm = document.querySelector(".btn-confirm-walkin");
-    
-    if (btnConfirm) {
-        btnConfirm.addEventListener("click", () => {
-            
-            // 1. Validate Calendar
-            if (!window.isDatesLocked || !calHotel.startDate) {
-                alert("Please select dates on the calendar and lock them first!");
-                return;
-            }
+  const btnConfirm = document.querySelector(".btn-confirm-walkin");
 
-            // 2. Validate Room Selection
-            const selectEl = document.getElementById("hotel-room-name");
-            if (selectEl.selectedIndex <= 0) {
-                alert("Please select a specific room.");
-                return;
-            }
-            const selectedOption = selectEl.options[selectEl.selectedIndex];
+  if (btnConfirm) {
+    btnConfirm.addEventListener("click", () => {
+      // 1. Validate Calendar
+      if (!window.isDatesLocked || !calHotel.startDate) {
+        alert("Please select dates on the calendar and lock them first!");
+        return;
+      }
 
-            // 3. Format Dates & Money
-             const formatLocal = (dateObj) => {
-                const y = dateObj.getFullYear();
-                const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-                const d = String(dateObj.getDate()).padStart(2, '0');
-                return `${y}-${m}-${d}`;
-            };
+      // 2. Validate Room Selection
+      const selectEl = document.getElementById("hotel-room-name");
+      if (selectEl.selectedIndex <= 0) {
+        alert("Please select a specific room.");
+        return;
+      }
+      const selectedOption = selectEl.options[selectEl.selectedIndex];
 
-            const sDate = formatLocal(calHotel.startDate);
-            let eDate = calHotel.endDate ? formatLocal(calHotel.endDate) : sDate;
-            const totalAmt = document.getElementById("summary-total-val").innerText.replace(/[₱,]/g, "");
+      // 3. Format Dates & Money
+      const formatLocal = (dateObj) => {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const d = String(dateObj.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      };
 
-            // 4. Determine Payment Scheme Text (MUST BE INSIDE THE CLICK EVENT!)
-            const schemeVal = document.getElementById('payment-scheme').value;
-            let schemeEnum = '100% Full';
-            if (schemeVal === '0.5') schemeEnum = '50% Downpayment';
-            if (schemeVal === '0.2') schemeEnum = '20% Reservation';
+      const sDate = formatLocal(calHotel.startDate);
+      let eDate = calHotel.endDate ? formatLocal(calHotel.endDate) : sDate;
+      const totalAmt = document
+        .getElementById("summary-total-val")
+        .innerText.replace(/[₱,]/g, "");
 
-            // 5. Determine Payment Method & Transaction ID
-            const paymentMethod = document.querySelector('input[name="payment-method"]:checked').value;
-            const transactionId = document.getElementById('transaction-id').value;
+      // 4. Determine Payment Scheme Text (MUST BE INSIDE THE CLICK EVENT!)
+      const schemeVal = document.getElementById("payment-scheme").value;
+      let schemeEnum = "100% Full";
+      if (schemeVal === "0.5") schemeEnum = "50% Downpayment";
+      if (schemeVal === "0.2") schemeEnum = "20% Reservation";
 
-            // 6. Build the FormData
-            const formData = new FormData();
-            formData.append("guest_name", document.getElementById("guest-name").value);
-            formData.append("guest_email", document.getElementById("guest-email").value);
-            formData.append("guest_phone", document.getElementById("guest-phone").value);
-            
-            formData.append("room_type", selectedOption.getAttribute("data-type"));
-            formData.append("room_name", selectedOption.getAttribute("data-name"));
-            
-            formData.append("start_date", sDate);
-            formData.append("end_date", eDate);
-            formData.append("guests", document.getElementById("hotel-guests").value);
-            formData.append("base_amount", selectedOption.value);
-            formData.append("total_amount", totalAmt);
-            
-            formData.append('payment_scheme', schemeEnum);
-            formData.append('payment_method', paymentMethod);
-            formData.append('transaction_id', transactionId);
+      // 5. Determine Payment Method & Transaction ID
+      const paymentMethod = document.querySelector(
+        'input[name="payment-method"]:checked',
+      ).value;
+      const transactionId = document.getElementById("transaction-id").value;
 
-            // 7. Send to PHP
-            btnConfirm.innerText = "PROCESSING...";
-            btnConfirm.disabled = true;
+      // 6. Build the FormData
+      const formData = new FormData();
+      formData.append(
+        "guest_name",
+        document.getElementById("guest-name").value,
+      );
+      formData.append(
+        "guest_email",
+        document.getElementById("guest-email").value,
+      );
+      formData.append(
+        "guest_phone",
+        document.getElementById("guest-phone").value,
+      );
 
-            fetch('actions/bookings/submit_walkin.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.text())
-            .then(data => {
-                const response = data.split('|');
-                if (response[0] === 'Success') {
-                    alert("Booking Successful! Reference No: " + response[1]);
-                    window.location.reload(); 
-                } else {
-                    alert("Error: " + response[1]);
-                    btnConfirm.innerText = "CONFIRM WALK-IN BOOKING";
-                    btnConfirm.disabled = false;
-                }
-            });
+      formData.append("room_type", selectedOption.getAttribute("data-type"));
+      formData.append("room_name", selectedOption.getAttribute("data-name"));
+
+      formData.append("start_date", sDate);
+      formData.append("end_date", eDate);
+      formData.append("guests", document.getElementById("hotel-guests").value);
+      formData.append("base_amount", selectedOption.value);
+      formData.append("total_amount", totalAmt);
+
+      formData.append("payment_scheme", schemeEnum);
+      formData.append("payment_method", paymentMethod);
+      formData.append("transaction_id", transactionId);
+
+      // 7. Send to PHP
+      btnConfirm.innerText = "PROCESSING...";
+      btnConfirm.disabled = true;
+
+      fetch("actions/bookings/submit_walkin.php", {
+        method: "POST",
+        body: formData,
+      })
+        .then((res) => res.text())
+        .then((data) => {
+          const response = data.split("|");
+          if (response[0] === "Success") {
+            alert("Booking Successful! Reference No: " + response[1]);
+            window.location.reload();
+          } else {
+            alert("Error: " + response[1]);
+            btnConfirm.innerText = "CONFIRM WALK-IN BOOKING";
+            btnConfirm.disabled = false;
+          }
         });
-    }
-}); 
+    });
+  }
+});

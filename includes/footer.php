@@ -33,6 +33,7 @@
 
 <!-- Global Scripts (Nav Menu etc) -->
 <script src="assets/js/index.js?v=<?php echo time(); ?>"></script>
+<script src="assets/js/calendar.js?v=1"></script>
 
 <!-- Page Specific Script (Loads dynamically) -->
 <?php if (isset($extra_js) && !empty($extra_js) && $extra_js !== 'assets/js/index.js'): ?>
