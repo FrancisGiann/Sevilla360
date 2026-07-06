@@ -2,23 +2,11 @@
 <div class="tab-content" id="tab-hotel-rooms">
     <h2 class="section-title">Book a Hotel Room</h2>
 
-    <div class="calendar-ui" id="cal-ui-hotel">
-        <div class="cal-header">
-            <button type="button" class="cal-nav prev-month">&larr;</button>
-            <h4 class="cal-month-year">Month Year</h4>
-            <button type="button" class="cal-nav next-month">&rarr;</button>
-        </div>
-        <div class="cal-weekdays">
-            <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
-        </div>
-        <div class="cal-days-grid"></div>
-        <div class="cal-legend">
-            <span class="legend-item"><span class="dot selected"></span> Selected</span>
-            <span class="legend-item"><span class="dot booked"></span> Booked</span>
-            <span class="legend-item"><span class="dot available"></span> Available</span>
-            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
-        </div>
-    </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-hotel';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="hotel-img"

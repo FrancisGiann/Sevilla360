@@ -1,16 +1,10 @@
 <!-- RESORT VILLA TAB -->
 <div class="tab-content" id="tab-villa">
-    <div class="calendar-ui" id="cal-ui-villa">
-        <div class="cal-header">
-            <button class="cal-nav prev-month"><i class="fa-solid fa-arrow-left"></i></button>
-            <h4 class="cal-month-year">Month Year</h4>
-            <button class="cal-nav next-month"><i class="fa-solid fa-arrow-right"></i></button>
-        </div>
-        <div class="cal-weekdays">
-            <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
-        </div>
-        <div class="cal-days-grid"></div>
-    </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-villa';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="villa-img"

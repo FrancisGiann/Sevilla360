@@ -1,23 +1,10 @@
 <!-- EVENT HALL TAB -->
 <div class="tab-content active" id="tab-event">
-
-    <div class="calendar-ui" id="cal-ui-event">
-        <div class="cal-header">
-            <button class="cal-nav prev-month"><i class="fa-solid fa-arrow-left"></i></button>
-            <h4 class="cal-month-year">Month Year</h4>
-            <button class="cal-nav next-month"><i class="fa-solid fa-arrow-right"></i></button>
-        </div>
-        <div class="cal-weekdays">
-            <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
-        </div>
-        <div class="cal-days-grid"></div>
-        <div class="cal-legend">
-            <div class="legend-item"><span class="dot selected"></span> Selected</div>
-            <div class="legend-item"><span class="dot booked"></span> Booked</div>
-            <div class="legend-item"><span class="dot available"></span> Available</div>
-            <div class="legend-item"><span class="dot unavailable"></span> Unavailable</div>
-        </div>
-    </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-event';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="event-img"

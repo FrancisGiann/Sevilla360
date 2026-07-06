@@ -2,26 +2,11 @@
 <div class="tab-content active" id="tab-event-hall">
     <h2 class="section-title">Reserve an Event Hall</h2>
 
-    <!-- Advanced Airbnb-Style Calendar UI -->
-    <div class="calendar-ui" id="cal-ui-event">
-        <div class="cal-header">
-            <button type="button" class="cal-nav prev-month">&larr;</button>
-            <h4 class="cal-month-year">October 2024</h4>
-            <button type="button" class="cal-nav next-month">&rarr;</button>
-        </div>
-        <div class="cal-weekdays">
-            <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
-        </div>
-        <div class="cal-days-grid">
-            <!-- JS Injected Days -->
-        </div>
-        <div class="cal-legend">
-            <span class="legend-item"><span class="dot selected"></span> Selected</span>
-            <span class="legend-item"><span class="dot booked"></span> Booked</span>
-            <span class="legend-item"><span class="dot available"></span> Available</span>
-            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
-        </div>
-    </div>
+    <!--  Calendar UI -->
+    <?php
+    $calendarId = 'cal-ui-event';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="event-img"
@@ -29,21 +14,24 @@
             alt="Event Hall">
     </div>
 
+    <!-- DYNAMIC DATABASE DROPDOWN -->
     <div class="form-row">
         <div class="form-group">
             <label>Select Venue Space</label>
             <select id="event-venue">
-                <option value="grand-ballroom">Grand Ballroom</option>
-                <option value="garden-pavilion">Garden Pavilion</option>
-                <option value="rooftop-terrace">Rooftop Terrace</option>
+                <option value="" disabled selected>Select an Event Hall...</option>
+                <?php foreach($event_halls as $hall): ?>
+                <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>">
+                    <?php echo htmlspecialchars($hall['name']); ?> (₱<?php echo number_format($hall['base_rate']); ?>)
+                </option>
+                <?php endforeach; ?>
             </select>
         </div>
         <div class="form-group">
             <label>Select Style</label>
             <select id="event-style">
-                <option>Banquet</option>
-                <option>Theater</option>
-                <option>Cocktail</option>
+                <option value="0">Minimalist (Standard)</option>
+                <option value="5000">Classic Elegance (+₱5,000)</option>
             </select>
         </div>
     </div>
@@ -64,6 +52,9 @@
         <label>Number of Guests</label>
         <input type="number" id="event-guests" min="10" placeholder="e.g. 100">
     </div>
+
+    <!-- ADD-ONS -->
+    <?php include 'includes/partials/addons_section.php'; ?>
 
     <div class="form-group">
         <label class="small-label">PAYMENT SCHEME</label>

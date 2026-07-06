@@ -151,6 +151,68 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // --- 5. Cascading Dropdowns (Event Type) ---
+  const typeSelect = document.getElementById("hotel-room-type");
+  const nameSelect = document.getElementById("hotel-room-name");
+
+  if (typeSelect && nameSelect) {
+    // Listen for the Category change
+    typeSelect.addEventListener("change", function () {
+      
+      // We use window.hotelRoomData to ensure it looks globally at the HTML script
+      if (typeof window.hotelRoomData === "undefined") {
+        console.error("CRITICAL ERROR: hotelRoomData is missing from the HTML!");
+        return;
+      }
+
+      const selectedCategory = this.value;
+      const rooms = window.hotelRoomData[selectedCategory];
+
+      if (!rooms) {
+        console.error("Could not find rooms for category:", selectedCategory);
+        return;
+      }
+
+      // 1. Clear the second dropdown
+      nameSelect.innerHTML = '<option value="" disabled selected>Select a specific room...</option>';
+
+      // 2. Fill it with the correct rooms
+      rooms.forEach((room) => {
+        const option = document.createElement("option");
+        option.value = room.base_rate;
+        option.setAttribute("data-type", room.room_type);
+        option.setAttribute("data-name", room.building_name);
+
+        // Format the text beautifully
+        option.textContent = `${room.building_name} (${room.base_capacity} pax) - ₱${parseInt(room.base_rate).toLocaleString()} [${room.total_units} units]`;
+
+        nameSelect.appendChild(option);
+      });
+
+      // 3. Unlock the dropdown!
+      nameSelect.disabled = false;
+    });
+
+    // When the Specific Room changes... fetch the dates for the calendar!
+    nameSelect.addEventListener('change', () => {
+        
+        // Ensure activeCalendar is set to the hotel calendar!
+        if (typeof activeCalendar !== 'undefined' && calHotel) {
+             calHotel.clearSelection();
+        }
+        
+        if (typeof calculateSummary === "function") {
+             calculateSummary(); 
+        }
+        
+        const selectedOption = nameSelect.options[nameSelect.selectedIndex];
+        const type = selectedOption.getAttribute('data-type');
+        const name = selectedOption.getAttribute('data-name');
+        
+        if (calHotel) calHotel.fetchBookedDates(type, name);
+    });
+  }
+
   // --- 5. Dynamic Image Changing ---
   const imagesDict = {
     "grand-ballroom":

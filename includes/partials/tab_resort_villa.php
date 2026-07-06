@@ -2,23 +2,11 @@
 <div class="tab-content" id="tab-resort-villa">
     <h2 class="section-title">Reserve a Resort Villa</h2>
 
-    <div class="calendar-ui" id="cal-ui-villa">
-        <div class="cal-header">
-            <button type="button" class="cal-nav prev-month">&larr;</button>
-            <h4 class="cal-month-year">October 2024</h4>
-            <button type="button" class="cal-nav next-month">&rarr;</button>
-        </div>
-        <div class="cal-weekdays">
-            <span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span>
-        </div>
-        <div class="cal-days-grid"></div>
-        <div class="cal-legend">
-            <span class="legend-item"><span class="dot selected"></span> Selected</span>
-            <span class="legend-item"><span class="dot booked"></span> Booked</span>
-            <span class="legend-item"><span class="dot available"></span> Available</span>
-            <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>
-        </div>
-    </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-villa';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="villa-img"
@@ -26,11 +14,16 @@
             alt="Resort Villa">
     </div>
 
+    <!-- DYNAMIC DATABASE DROPDOWN -->
     <div class="form-group">
         <label>Select Villa</label>
         <select id="villa-type">
-            <option value="casita">La Casita (Poolside)</option>
-            <option value="hacienda">Hacienda Suite</option>
+            <option value="" disabled selected>Select a Villa...</option>
+            <?php foreach($villas as $villa): ?>
+            <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>">
+                <?php echo htmlspecialchars($villa['name']); ?> (₱<?php echo number_format($villa['base_rate']); ?>)
+            </option>
+            <?php endforeach; ?>
         </select>
         <small class="capacity-note">Base Capacity: 4 Pax | Maximum: 8 Pax</small>
     </div>
