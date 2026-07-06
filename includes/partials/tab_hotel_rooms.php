@@ -61,4 +61,14 @@
             </ul>
         </div>
     </div>
+    <div class="form-group">
+        <label class="small-label">PAYMENT SCHEME</label>
+        <div class="radio-group">
+            <label><input type="radio" name="hotel-payment" value="100% Full" checked> 100% Full</label>
+            <label><input type="radio" name="hotel-payment" value="50% Downpayment"> 50%
+                Downpayment</label>
+            <label><input type="radio" name="hotel-payment" value="20% Reservation"> 20%
+                Reservation</label>
+        </div>
+    </div>
 </div>

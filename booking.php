@@ -29,6 +29,9 @@ require_once 'config/db_connect.php';
             <?php include 'includes/partials/tab_hotel_rooms.php'; ?>
             <?php include 'includes/partials/tab_resort_villa.php'; ?>
 
+            <!----PAYMENT SCHEME---->
+
+
         </div>
 
         <!-- RIGHT COLUMN: STICKY SUMMARY (35%) -->
@@ -43,19 +46,33 @@ require_once 'config/db_connect.php';
                 <div class="summary-container active" id="sum-event-hall">
                     <p><strong>Service:</strong> <span class="sum-val">Event Hall</span></p>
                     <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span></p>
+                    <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
+                    <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
+                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ev-payment">100% Full</span>
+                    </p>
                 </div>
 
                 <div class="summary-container" id="sum-hotel-rooms">
                     <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
                     <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
+                    <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
+                    <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
+                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ht-payment">100% Full</span>
+                    </p>
                 </div>
 
                 <div class="summary-container" id="sum-resort-villa">
                     <p><strong>Service:</strong> <span class="sum-val">Resort Villa</span></p>
-                    <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita</span></p>
+                    <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita (Poolside)</span>
+                    </p>
+                    <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
+                    <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
+                    <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
+                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span>
+                    </p>
                 </div>
 
                 <!-- Universal Summary Footer -->

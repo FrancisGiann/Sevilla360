@@ -65,5 +65,17 @@
         <input type="number" id="event-guests" min="10" placeholder="e.g. 100">
     </div>
 
+    <div class="form-group">
+        <label class="small-label">PAYMENT SCHEME</label>
+        <div class="radio-group">
+            <label><input type="radio" name="payment-scheme" value="100% Full" checked> 100%
+                Full</label>
+            <label><input type="radio" name="payment-scheme" value="50% Downpayment"> 50%
+                Downpayment</label>
+            <label><input type="radio" name="payment-scheme" value="20% Reservation"> 20%
+                Reservation</label>
+        </div>
+    </div>
+
 
 </div>
