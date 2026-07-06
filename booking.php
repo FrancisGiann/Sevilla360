@@ -7,7 +7,28 @@ $active_page = 'booking';
 include 'includes/header.php';
 
 require_once 'config/db_connect.php';
-// (Add your $hotel_rooms grouped query here, exactly like we did for admin_walkin.php!)
+
+// Fetch Event Halls 
+$halls_query = $conn->query("SELECT v.id, v.name, e.base_rate FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
+$event_halls = $halls_query->fetch_all(MYSQLI_ASSOC);
+
+// Fetch Hotel Rooms (Grouped for Cascading Dropdown)
+$rooms_query = $conn->query("
+    SELECT h.room_type, v.name AS building_name, h.base_capacity, h.nightly_rate AS base_rate, COUNT(v.id) as total_units 
+    FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+    WHERE v.status = 'Available'
+    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate
+    ORDER BY h.room_type, v.name
+");
+$hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
+$grouped_hotel_rooms = [];
+foreach ($hotel_rooms_flat as $room) {
+    $grouped_hotel_rooms[$room['room_type']][] = $room;
+}
+
+// Fetch Villas 
+$villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
+$villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 ?>
 
 <!-- Main Booking Section -->

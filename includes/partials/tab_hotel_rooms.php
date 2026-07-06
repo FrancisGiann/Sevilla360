@@ -5,7 +5,7 @@
     <div class="calendar-ui" id="cal-ui-hotel">
         <div class="cal-header">
             <button type="button" class="cal-nav prev-month">&larr;</button>
-            <h4 class="cal-month-year">October 2024</h4>
+            <h4 class="cal-month-year">Month Year</h4>
             <button type="button" class="cal-nav next-month">&rarr;</button>
         </div>
         <div class="cal-weekdays">
@@ -26,14 +26,23 @@
             alt="Hotel Room">
     </div>
 
-    <div class="form-group">
-        <label>Room Type</label>
-        <select id="hotel-type">
-            <option value="deluxe">Deluxe Room</option>
-            <option value="vip">VIP Suite</option>
-            <option value="standard">Standard Room</option>
-        </select>
-        <small class="capacity-note">Base Capacity: 2 Pax | Maximum: 4 Pax</small>
+    <!-- DYNAMIC DATABASE DROPDOWNS -->
+    <div class="form-row">
+        <div class="form-group">
+            <label>Select Room Category</label>
+            <select id="hotel-room-type">
+                <option value="" disabled selected>Select category...</option>
+                <?php foreach(array_keys($grouped_hotel_rooms) as $type): ?>
+                <option value="<?php echo htmlspecialchars($type); ?>"><?php echo htmlspecialchars($type); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Select Specific Room</label>
+            <select id="hotel-room-name" disabled>
+                <option value="" disabled selected>Select category first...</option>
+            </select>
+        </div>
     </div>
 
     <div class="form-group">
@@ -61,14 +70,19 @@
             </ul>
         </div>
     </div>
+
+    <!-- PAYMENT SCHEME IS BACK! -->
     <div class="form-group">
         <label class="small-label">PAYMENT SCHEME</label>
         <div class="radio-group">
             <label><input type="radio" name="hotel-payment" value="100% Full" checked> 100% Full</label>
-            <label><input type="radio" name="hotel-payment" value="50% Downpayment"> 50%
-                Downpayment</label>
-            <label><input type="radio" name="hotel-payment" value="20% Reservation"> 20%
-                Reservation</label>
+            <label><input type="radio" name="hotel-payment" value="50% Downpayment"> 50% Downpayment</label>
+            <label><input type="radio" name="hotel-payment" value="20% Reservation"> 20% Reservation</label>
         </div>
     </div>
+
+    <!-- Inject the PHP Data for Javascript -->
+    <script>
+    window.hotelRoomData = <?php echo json_encode($grouped_hotel_rooms); ?>;
+    </script>
 </div>
