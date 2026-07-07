@@ -1,6 +1,9 @@
 <?php
 require '../../config/db_connect.php';
 
+// AUTO-CLEANUP: Delete expired 30-minute locks automatically
+$conn->query("DELETE FROM booking_locks WHERE expires_at <= NOW()");
+
 if (isset($_GET['room_type']) && isset($_GET['room_name'])) {
     $room_type = $_GET['room_type'];
     $room_name = $_GET['room_name'];

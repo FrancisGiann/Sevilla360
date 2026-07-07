@@ -1,7 +1,7 @@
 <?php
 $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = 'assets/css/booking.css'; 
-$extra_js = 'assets/js/booking.js?v=1';    
+$extra_js = 'assets/js/booking.js?v=1.3';    
 $active_page = 'booking';              
 
 include 'includes/header.php';
@@ -94,6 +94,19 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                     <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
                     <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span>
                     </p>
+                </div>
+
+                <div id="summary-breakdown" style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                </div>
+                <div class="summary-total"
+                    style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem; margin-top: 10px;">
+                    <span>Total Amount</span>
+                    <span id="summary-total-val" style="color: var(--color-gold);">₱0.00</span>
+                </div>
+                <div class="summary-total payable"
+                    style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px;">
+                    <span>Amount Due Now</span>
+                    <span id="summary-due-val">₱0.00</span>
                 </div>
 
                 <!-- Universal Summary Footer -->

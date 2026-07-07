@@ -153,24 +153,34 @@ class SevillaCalendar {
   }
 
   updateDateDisplay() {
-    const dateDisplayEl = document.getElementById("summary-dates");
-    if (!this.startDate || !window.isDatesLocked) {
-      dateDisplayEl.innerText = "Please select dates";
-      this.totalNights = 1;
-      return;
-    }
-    const opts = { month: "short", day: "numeric", year: "numeric" };
-    const startStr = this.startDate.toLocaleDateString("en-US", opts);
+    // 1. Try to find the single Admin summary date span
+    const adminDateDisplay = document.getElementById("summary-dates");
+    
+    // 2. Try to find the multiple User summary date spans
+    const userDateDisplays = document.querySelectorAll(".sum-dates-display");
 
-    if (this.endDate && this.startDate.getTime() !== this.endDate.getTime()) {
-      const endStr = this.endDate.toLocaleDateString("en-US", opts);
-      dateDisplayEl.innerText = `${startStr} — ${endStr}`;
-      const diffTime = Math.abs(this.endDate - this.startDate);
-      this.totalNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    } else {
-      dateDisplayEl.innerText = startStr;
+    let displayStr = "Please select dates";
+
+    if (!this.startDate || !window.isDatesLocked) {
       this.totalNights = 1;
+    } else {
+      const opts = { month: "short", day: "numeric", year: "numeric" };
+      const startStr = this.startDate.toLocaleDateString("en-US", opts);
+
+      if (this.endDate && this.startDate.getTime() !== this.endDate.getTime()) {
+        const endStr = this.endDate.toLocaleDateString("en-US", opts);
+        displayStr = `${startStr} — ${endStr}`;
+        const diffTime = Math.abs(this.endDate - this.startDate);
+        this.totalNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      } else {
+        displayStr = startStr;
+        this.totalNights = 1;
+      }
     }
+
+    // Update whichever elements actually exist on the page!
+    if (adminDateDisplay) adminDateDisplay.innerText = displayStr;
+    userDateDisplays.forEach(el => el.innerText = displayStr);
   }
 
   clearSelection() {
