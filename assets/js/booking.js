@@ -78,6 +78,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnCancel) {
       btnCancel.addEventListener("click", () => {
         stopTimerAndReset();
+        window.isDatesLocked = false;
+        
+        fetch('actions/bookings/unlock_dates.php');
       });
   }
 
@@ -112,7 +115,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const sDate = formatLocal(calendarInstance.startDate);
         const eDate = calendarInstance.endDate ? formatLocal(calendarInstance.endDate) : sDate;
 
-        // NOTE: We check whichever dropdown is active!
         let roomType = '', roomName = '';
         let activeTabId = '';
         document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -121,23 +123,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (activeTabId === 'hotel-rooms') {
             const selectEl = document.getElementById('hotel-room-name');
-            if (!selectEl || selectEl.selectedIndex <= 0) {
-                alert("Please select a specific room from the dropdown first!");
-                return;
-            }
-            const selectedOption = selectEl.options[selectEl.selectedIndex];
-            roomType = selectedOption.getAttribute('data-type');
-            roomName = selectedOption.getAttribute('data-name');
+            if (!selectEl || selectEl.selectedIndex <= 0) { alert("Please select a specific room from the dropdown first!"); return; }
+            roomType = selectEl.options[selectEl.selectedIndex].getAttribute('data-type');
+            roomName = selectEl.options[selectEl.selectedIndex].getAttribute('data-name');
         } else if (activeTabId === 'event-hall') {
             const selectEl = document.getElementById('event-venue');
             if (!selectEl || selectEl.selectedIndex <= 0) { alert("Please select a specific hall."); return; }
-            roomType = "Event Hall";
-            roomName = selectEl.options[selectEl.selectedIndex].text.split('(')[0].trim();
+            roomType = selectEl.options[selectEl.selectedIndex].getAttribute('data-type');
+            roomName = selectEl.options[selectEl.selectedIndex].getAttribute('data-name');
         } else if (activeTabId === 'resort-villa') {
             const selectEl = document.getElementById('villa-type');
             if (!selectEl || selectEl.selectedIndex <= 0) { alert("Please select a specific villa."); return; }
-            roomType = "Resort Villa";
-            roomName = selectEl.options[selectEl.selectedIndex].text.split('(')[0].trim();
+            roomType = selectEl.options[selectEl.selectedIndex].getAttribute('data-type');
+            roomName = selectEl.options[selectEl.selectedIndex].getAttribute('data-name');
         }
 
         const formData = new FormData();
@@ -149,7 +147,6 @@ document.addEventListener("DOMContentLoaded", () => {
         newConfirmBtn.innerText = "Locking...";
         newConfirmBtn.disabled = true;
 
-        // Ask PHP to lock the room in the database!
         fetch('actions/bookings/lock_dates.php', {
             method: 'POST',
             body: formData
@@ -164,8 +161,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 dateModal.classList.remove("active");
                 window.isDatesLocked = true;
                 
+                // 1. Force the Calendar engine to update the text!
+                calendarInstance.updateDateDisplay(); 
+                
+                // 2. Force the Math to calculate!
                 if (typeof calculateSummary === "function") calculateSummary();
-                startTimer(); // Start the 30-minute countdown!
+                
+                startTimer(); 
             } else {
                 alert("Error: " + response[1]);
                 dateModal.classList.remove("active");
@@ -195,6 +197,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     newYes.addEventListener("click", () => {
       overrideModal.classList.remove("active");
+      
+      // 1. UNLOCK THE OLD DATES IN THE DATABASE!
+      fetch('actions/bookings/unlock_dates.php');
+      
       window.isDatesLocked = false;
       stopTimerAndReset(); 
       
@@ -376,13 +382,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 10. UNIFIED SUMMARY GENERATOR ---
   const formatCurrency = (amount) => '₱' + parseFloat(amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-  function calcExtraPax(guestInputId, baseCapacity, feePerHead, feeLabelId) {
+  function calcExtraPax(guestInputId, baseCapacity, feePerHead, feeLabelId, guestsSumId) {
       const guestsInput = document.getElementById(guestInputId);
       if(!guestsInput) return 0;
       
       const guests = parseInt(guestsInput.value) || 0;
       let extraFee = 0;
       const feeLabel = document.getElementById(feeLabelId);
+      const guestsSum = document.getElementById(guestsSumId); // NEW: Get the summary span
+      
+      // NEW: Update the summary text with the total guest count!
+      if (guestsSum) {
+          guestsSum.innerText = guests > 0 ? guests : "--";
+      }
       
       if (guests > baseCapacity) {
           extraFee = (guests - baseCapacity) * feePerHead;
@@ -426,7 +438,7 @@ document.addEventListener("DOMContentLoaded", () => {
               addRow(`Base Room Rate (x${nights} nights)`, roomTotal);
           }
 
-          const extraFeePerNight = calcExtraPax('hotel-guests', 2, 800, 'hotel-extra-fee');
+          const extraFeePerNight = calcExtraPax('hotel-guests', 2, 800, 'hotel-extra-fee', 'sum-ht-guests');
           if(extraFeePerNight > 0) { 
               const totalExtra = extraFeePerNight * nights; 
               total += totalExtra; 
@@ -442,7 +454,9 @@ document.addEventListener("DOMContentLoaded", () => {
           const style = styleEl && styleEl.value ? parseFloat(styleEl.value) * daysMultiplier : 0;
           const typeRadio = document.querySelector('input[name="event-type"]:checked');
           const typeFee = typeRadio && typeRadio.id !== 'event-others-radio' ? parseFloat(typeRadio.value) * daysMultiplier : 0;
-          
+          const guestsEl = document.getElementById('event-guests');
+          const sumEvGuests = document.getElementById('sum-ev-guests');
+
           total += venue + style + typeFee;
           if(venue > 0) addRow(`Venue Rate (x${daysMultiplier} days)`, venue);
           if(style > 0) addRow('Style Upgrade', style);
@@ -463,8 +477,11 @@ document.addEventListener("DOMContentLoaded", () => {
               if (roomTotal > 0) { total += roomTotal; addRow(`Reserved Rooms (x${daysMultiplier} nights)`, roomTotal); }
           }
           if (document.getElementById('check-av') && document.getElementById('check-av').checked) {
-              total += 5000; addRow('Premium A/V Setup', 5000);
+              // Ensure we add as a number to prevent NaN
+              total += parseFloat(5000); 
+              addRow('Premium A/V Setup', 5000);
           }
+          if (guestsEl && sumEvGuests) sumEvGuests.innerText = guestsEl.value || "--";
       }
       // --- VILLA MATH ---
       else if (activeTabId === 'resort-villa') {
@@ -477,7 +494,7 @@ document.addEventListener("DOMContentLoaded", () => {
           total += villa + stayType; 
           if(villa > 0) addRow(`Base Villa Rate (x${nights} days)`, villa);
           if(stayType > 0) addRow('Overnight Upgrade', stayType);
-          const extraFeePerDay = calcExtraPax('villa-guests', 4, 1000, 'villa-extra-fee');
+          const extraFeePerDay = calcExtraPax('villa-guests', 4, 1000, 'villa-extra-fee', 'sum-vl-guests');
           if(extraFeePerDay > 0) { const totalExtra = extraFeePerDay * nights; total += totalExtra; addRow('Extra Pax Fee', totalExtra); }
       }
 

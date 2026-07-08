@@ -20,7 +20,9 @@
         <select id="villa-type">
             <option value="" disabled selected>Select a Villa...</option>
             <?php foreach($villas as $villa): ?>
-            <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>">
+            <!-- ADDED data-name AND data-type HERE -->
+            <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>"
+                data-name="<?php echo htmlspecialchars($villa['name']); ?>" data-type="Resort Villa">
                 <?php echo htmlspecialchars($villa['name']); ?> (₱<?php echo number_format($villa['base_rate']); ?>)
             </option>
             <?php endforeach; ?>

@@ -21,7 +21,9 @@
             <select id="event-venue">
                 <option value="" disabled selected>Select an Event Hall...</option>
                 <?php foreach($event_halls as $hall): ?>
-                <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>">
+                <!-- ADDED data-name AND data-type HERE -->
+                <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>"
+                    data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall">
                     <?php echo htmlspecialchars($hall['name']); ?> (₱<?php echo number_format($hall['base_rate']); ?>)
                 </option>
                 <?php endforeach; ?>
@@ -30,7 +32,7 @@
         <div class="form-group">
             <label>Select Style</label>
             <select id="event-style">
-                <option value="0">Minimalist (Standard)</option>
+                <option value="0">Minimalist (Standard) - ₱0</option>
                 <option value="5000">Classic Elegance (+₱5,000)</option>
             </select>
         </div>

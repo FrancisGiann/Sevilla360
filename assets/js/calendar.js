@@ -161,7 +161,7 @@ class SevillaCalendar {
 
     let displayStr = "Please select dates";
 
-    if (!this.startDate || !window.isDatesLocked) {
+    if (!this.startDate) {
       this.totalNights = 1;
     } else {
       const opts = { month: "short", day: "numeric", year: "numeric" };
@@ -181,6 +181,9 @@ class SevillaCalendar {
     // Update whichever elements actually exist on the page!
     if (adminDateDisplay) adminDateDisplay.innerText = displayStr;
     userDateDisplays.forEach(el => el.innerText = displayStr);
+    
+    // Tell the page to recalculate the money based on the new totalNights!
+    if (typeof calculateSummary === "function") calculateSummary();
   }
 
   clearSelection() {
