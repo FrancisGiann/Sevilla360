@@ -41,10 +41,12 @@
     <div class="form-group">
         <label>Event Type</label>
         <div class="radio-group" id="event-type-group">
-            <label><input type="radio" name="event-type" value="Plain Hall" checked> Plain Hall</label>
-            <label><input type="radio" name="event-type" value="Wedding"> Wedding (+ ₱10,000)</label>
-            <label><input type="radio" name="event-type" value="Birthday"> Birthday (+ ₱5,000)</label>
-            <label><input type="radio" name="event-type" value="Others"> Others</label>
+            <!-- value is the price, data-text is the name! -->
+            <label><input type="radio" name="event-type" value="0" data-text="Plain Hall" checked> Plain Hall</label>
+            <label><input type="radio" name="event-type" value="10000" data-text="Wedding"> Wedding (+ ₱10,000)</label>
+            <label><input type="radio" name="event-type" value="5000" data-text="Birthday"> Birthday (+ ₱5,000)</label>
+            <label><input type="radio" name="event-type" value="0" id="event-others-radio" data-text="Custom Event">
+                Others</label>
         </div>
         <input type="text" id="event-type-others" class="hidden custom-input"
             placeholder="Please specify your event type...">

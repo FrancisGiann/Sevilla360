@@ -223,23 +223,72 @@ document.addEventListener("DOMContentLoaded", () => {
   const calHotel = new SevillaCalendar("cal-ui-hotel");
   const calVilla = new SevillaCalendar("cal-ui-villa");
 
-  // --- 4. Tab Switching Logic ---
+  // --- 4. Tab Switching Logic with Unlock Warning ---
   const tabBtns = document.querySelectorAll(".tab-btn");
   const tabContents = document.querySelectorAll(".tab-content");
   const summaryContainers = document.querySelectorAll(".summary-container");
-
-  tabBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
+  
+  // Helper function to actually change the visuals
+  function executeTabSwitch(btn, target) {
       tabBtns.forEach((b) => b.classList.remove("active"));
       tabContents.forEach((c) => c.classList.remove("active"));
       summaryContainers.forEach((s) => s.classList.remove("active"));
 
       btn.classList.add("active");
-      const target = btn.getAttribute("data-tab");
       document.getElementById(`tab-${target}`).classList.add("active");
       document.getElementById(`sum-${target}`).classList.add("active");
       
       if (typeof calculateSummary === "function") calculateSummary();
+  }
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+        // If they click the tab they are already on, do nothing
+        if (btn.classList.contains("active")) return;
+        
+        const target = btn.getAttribute("data-tab");
+
+        // CHECK: Do they have dates locked OR dates selected but not confirmed yet?
+        if (window.isDatesLocked || (activeCalendarInstance && activeCalendarInstance.startDate)) {
+            
+            const switchModal = document.getElementById('switch-tab-modal');
+            if(switchModal) switchModal.classList.add('active');
+
+            // Clone buttons to prevent duplicate event listeners
+            const oldConfirm = document.getElementById("btn-confirm-switch");
+            const newConfirm = oldConfirm.cloneNode(true);
+            oldConfirm.parentNode.replaceChild(newConfirm, oldConfirm);
+
+            const oldCancel = document.getElementById("btn-cancel-switch");
+            const newCancel = oldCancel.cloneNode(true);
+            oldCancel.parentNode.replaceChild(newCancel, oldCancel);
+
+            // If they click "Yes, Switch"
+            newConfirm.addEventListener("click", () => {
+                switchModal.classList.remove("active");
+                
+                // 1. Unlock the database!
+                if (window.isDatesLocked) {
+                    fetch('actions/bookings/unlock_dates.php');
+                }
+                
+                // 2. Clear state and timer
+                window.isDatesLocked = false;
+                stopTimerAndReset(); 
+                
+                // 3. Switch the tab
+                executeTabSwitch(btn, target);
+            });
+
+            // If they click "No, Cancel"
+            newCancel.addEventListener("click", () => {
+                switchModal.classList.remove("active");
+            });
+
+        } else {
+            // No dates selected at all? Just switch the tab normally!
+            executeTabSwitch(btn, target);
+        }
     });
   });
 
@@ -318,17 +367,36 @@ document.addEventListener("DOMContentLoaded", () => {
   updateImage("hotel-room-type", "hotel-img"); // Updated to match new ID
   updateImage("villa-type", "villa-img");
 
-  // --- 7. Event Type "Others" Reveal ---
+  // --- 7. Event Type "Others" Reveal & Summary Sync ---
   const eventTypeRadios = document.querySelectorAll('input[name="event-type"]');
   const othersInput = document.getElementById("event-type-others");
+  const sumEvType = document.getElementById("sum-ev-type");
+
   eventTypeRadios.forEach((radio) => {
     radio.addEventListener("change", (e) => {
+      // Handle the "Others" input box reveal
       if(othersInput) {
-          if (e.target.value === "Others") othersInput.classList.remove("hidden");
+          if (e.target.id === "event-others-radio") othersInput.classList.remove("hidden");
           else othersInput.classList.add("hidden");
+      }
+      
+      // Update the Summary Sidebar Text!
+      if (sumEvType) {
+          if (e.target.id === "event-others-radio") {
+              sumEvType.innerText = othersInput && othersInput.value ? othersInput.value : "Custom Event";
+          } else {
+              sumEvType.innerText = e.target.getAttribute('data-text');
+          }
       }
     });
   });
+
+  // Keep it synced if they type in the "Others" box
+  if (othersInput) {
+    othersInput.addEventListener("input", (e) => {
+      if (sumEvType) sumEvType.innerText = e.target.value ? e.target.value : "Custom Event";
+    });
+  }
 
   // --- 8. Resort Villa Stay Type Details Toggle ---
   const villaStayRadios = document.querySelectorAll('input[name="villa-stay"]');

@@ -50,3 +50,21 @@
         <button class="btn btn-primary" id="btn-agree">I Agree</button>
     </div>
 </div>
+
+<!-- Switch Tab Warning Modal -->
+<div class="modal-overlay" id="switch-tab-modal">
+    <div class="modal-content" style="text-align: center; max-width: 400px; padding: 30px;">
+        <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; color: #e06666; margin-bottom: 15px;"></i>
+        <h3 style="font-family: var(--font-heading); font-size: 1.5rem; margin-bottom: 10px;">Change Service?</h3>
+        <p style="font-size: 0.95rem; color: var(--color-dark); margin-bottom: 25px;">
+            You are currently booking a space. Switching tabs will cancel your current selection and release any locked
+            dates. Do you want to proceed?
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button class="btn btn-outline" id="btn-cancel-switch"
+                style="flex: 1; color: var(--color-dark); border-color: rgba(42, 37, 34, 0.2);">No, Cancel</button>
+            <button class="btn btn-primary" id="btn-confirm-switch"
+                style="flex: 1; background-color: #e06666; border-color: #e06666;">Yes, Switch</button>
+        </div>
+    </div>
+</div>
