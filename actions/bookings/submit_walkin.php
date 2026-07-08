@@ -36,19 +36,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_cust->execute();
         $customer_id = $conn->insert_id;
 
-        // 5. Find Room (Search right now!)
-        $stmt_room = $conn->prepare("
-            SELECT v.id 
-            FROM venues v 
-            JOIN hotel_rooms h ON v.id = h.venue_id 
-            WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
-            AND v.id NOT IN (
-                SELECT venue_id FROM bookings 
-                WHERE booking_status IN ('Pending', 'Confirmed') 
-                AND (start_date < ? AND end_date > ?)
-            )
-            LIMIT 1
-        ");
+        // 5. Find Room 
+        if ($_POST['room_type'] === 'Event Hall' || $_POST['room_type'] === 'Resort Villa') {
+            $stmt_room = $conn->prepare("
+                SELECT id FROM venues 
+                WHERE category = ? AND name = ? AND status = 'Available'
+                AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                LIMIT 1
+            ");
+        } else {
+            $stmt_room = $conn->prepare("
+                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+                AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                LIMIT 1
+            ");
+        }
         $stmt_room->bind_param("ssss", $_POST['room_type'], $_POST['room_name'], $eDate, $sDate);
         $stmt_room->execute();
         $room_result = $stmt_room->get_result();
