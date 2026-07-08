@@ -1,7 +1,7 @@
 <?php
 $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = 'assets/css/booking.css'; 
-$extra_js = 'assets/js/booking.js?v=1.3';    
+$extra_js = 'assets/js/booking.js?v=1.4';    
 $active_page = 'booking';              
 
 include 'includes/header.php';
