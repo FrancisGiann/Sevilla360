@@ -1,25 +1,59 @@
-# Sevilla360 (WIP)
+# Sevilla360
 
-A web-based booking system featuring an interactive virtual showroom built for the M.I. Sevilla Resort. 
+Sevilla360 is a web-based booking and virtual showroom platform developed for M.I. Sevilla Resort. It combines an interactive 360-degree tour with reservation features for guests and administrative tools for staff.
 
-*Note: This project is currently a Work in Progress (WIP).*
+Status: work in progress.
 
-## 🌟 Features
+## Overview
 
-* **Interactive 360° Virtual Tour:** Explore the resort through a fully interactive virtual showroom using Panolens.js.
-* **Virtual Tour Tags:** Easily navigate and discover key areas of the resort through clickable hotspots and tags.
-* **Integrated Booking System:** A straightforward online reservation setup for guests to book their stay directly.
-* **Responsive Design:** Works smoothly on both desktop and mobile devices.
+The application provides a digital resort experience that allows visitors to explore the property virtually, check availability, and submit bookings through a browser-based interface.
 
-## 🛠️ Built With
+## Key Features
 
-* **Frontend:** HTML, CSS, JavaScript
-* **Virtual Tour:** Panolens.js
-* **Project Management:** Agile Scrum Framework
+- Interactive 360-degree virtual showroom powered by Panolens.js.
+- Clickable tags and hotspots for navigating resort areas.
+- Online booking flow for guests.
+- Separate user and admin interfaces.
+- Responsive layouts for desktop and mobile devices.
 
-## 🚀 Getting Started
+## Technology Stack
 
-*(Instructions on how to set up the project locally will be added once the project is closer to completion.)*
+- PHP
+- MySQL
+- HTML, CSS, JavaScript
+- Panolens.js
 
----
-*Created by Francis Giann Mendevil Empleo for portfolio purposes.*
+## Requirements
+
+- PHP environment with a web server such as Apache or Nginx.
+- MySQL database.
+- A browser for local testing.
+
+## Local Setup
+
+1. Clone the repository into your web server directory.
+2. Create a MySQL database named `sevilla360` or update the database name in `config/db_connect.php`.
+3. Update the database credentials in `config/db_connect.php` to match your local environment.
+4. Import the project database schema and seed data if available.
+5. Open `index.php` in your browser through the configured local server.
+
+## Project Structure
+
+- `index.php` - main landing page.
+- `booking.php` - booking interface.
+- `showroom.php` - virtual showroom experience.
+- `user_dashboard.php` - user dashboard.
+- `admin_dashboard.php` - admin dashboard entry point.
+- `actions/` - authentication and booking processing scripts.
+- `includes/` - shared layout components and page sections.
+- `assets/` - CSS and JavaScript assets.
+- `config/` - database connection and configuration.
+
+## Notes
+
+- The project is currently under active development.
+- Some setup details may change as the system matures.
+
+## Author
+
+Created by Francis Giann Mendevil Empleo for portfolio purposes.
