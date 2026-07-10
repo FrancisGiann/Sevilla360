@@ -486,20 +486,38 @@ class BookingController {
             case 'resort-villa': this.calcVillaMath(); break;
         }
 
-        // Apply Payment Scheme Math
+        // Apply Payment Scheme Math & Update Sidebar Text
         let activeRadioName = 'hotel-payment';
-        if (this.state.activeTabId === 'event-hall') activeRadioName = 'payment-scheme';
-        if (this.state.activeTabId === 'resort-villa') activeRadioName = 'villa-payment';
+        let summaryTextId = 'sum-ht-payment'; // Target the span in the HTML
+        
+        if (this.state.activeTabId === 'event-hall') {
+            activeRadioName = 'payment-scheme';
+            summaryTextId = 'sum-ev-payment';
+        } else if (this.state.activeTabId === 'resort-villa') {
+            activeRadioName = 'villa-payment';
+            summaryTextId = 'sum-vl-payment';
+        }
 
         let schemePct = 1.0;
+        let schemeText = '100% Full';
+
+        // Loop through radios to find what is checked
         document.querySelectorAll(`input[name="${activeRadioName}"]`).forEach(radio => {
             if (radio.checked) {
+                schemeText = radio.value; // Grabs "20% Reservation" or "50% Downpayment"
                 if (radio.value.includes('50%')) schemePct = 0.5;
                 if (radio.value.includes('20%')) schemePct = 0.2;
             }
         });
 
+        // 1. UPDATE THE MATH
         this.state.summary.amountDue = this.state.summary.total * schemePct;
+
+        // 2. UPDATE THE TEXT IN THE SIDEBAR UI!
+        const paymentTextEl = this.getEl(summaryTextId);
+        if (paymentTextEl) {
+            paymentTextEl.innerText = schemeText; 
+        }
 
         // Render to UI
         this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
