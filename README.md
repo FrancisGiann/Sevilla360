@@ -56,4 +56,4 @@ The application provides a digital resort experience that allows visitors to exp
 
 ## Author
 
-Created by Francis Giann Mendevil Empleo for portfolio purposes.
+Created by Francis Giann Mendevil Empleo
