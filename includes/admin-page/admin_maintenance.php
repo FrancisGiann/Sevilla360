@@ -1,3 +1,23 @@
+<?php
+require_once 'config/db_connect.php';
+
+// Fetch all available venues grouped by category
+$venues_query = $conn->query("SELECT category, name FROM venues WHERE status = 'Available' ORDER BY category, name");
+$grouped_venues = [
+    'Event Hall' => [],
+    'Hotel Room' => [],
+    'Resort Villa' => []
+];
+
+while ($row = $venues_query->fetch_assoc()) {
+    $grouped_venues[$row['category']][] = $row['name'];
+}
+?>
+
+<script>
+window.venueData = <?php echo json_encode($grouped_venues); ?>;
+</script>
+
 <div class="admin-maintenance-container admin-booking-container">
 
     <!-- Top Section: Venue Selection -->
@@ -19,37 +39,13 @@
         <div class="maintenance-main">
 
             <!-- Calendar UI -->
-            <div class="calendar-ui maintenance-calendar-ui">
-                <label class="small-label" style="display: block; margin-bottom: 20px; font-weight: 600;">AVAILABILITY
+            <div style="margin-bottom: 20px;">
+                <label class="small-label" style="display: block; margin-bottom: 10px; font-weight: 600;">AVAILABILITY
                     CALENDAR</label>
-
-                <div class="cal-header">
-                    <!-- FIXED ARROWS -->
-                    <button class="cal-nav" id="maint-prev-month"><i class="fas fa-chevron-left"></i></button>
-                    <h3 class="cal-month-year" id="maint-month-year">Month Year</h3>
-                    <button class="cal-nav" id="maint-next-month"><i class="fas fa-chevron-right"></i></button>
-                </div>
-
-                <div class="cal-weekdays">
-                    <div>SUN</div>
-                    <div>MON</div>
-                    <div>TUE</div>
-                    <div>WED</div>
-                    <div>THU</div>
-                    <div>FRI</div>
-                    <div>SAT</div>
-                </div>
-
-                <div class="cal-days-grid" id="maint-calendar-grid">
-                    <!-- Calendar Days Injected via JS -->
-                </div>
-
-                <div class="cal-legend">
-                    <div class="legend-item"><span class="dot selected"></span> Selected</div>
-                    <div class="legend-item"><span class="dot booked"></span> Booked</div>
-                    <div class="legend-item"><span class="dot available-green"></span> Available</div>
-                    <div class="legend-item"><span class="dot unavailable"></span> Unavailable</div>
-                </div>
+                <?php
+        $calendarId = 'cal-ui-maint';
+        include 'includes/partials/booking_calendar.php';
+    ?>
             </div>
 
             <!-- Form Inputs Section -->

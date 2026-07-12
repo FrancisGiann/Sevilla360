@@ -1,288 +1,149 @@
 document.addEventListener("DOMContentLoaded", () => {
-  if (!document.getElementById("maint-calendar-grid")) return;
+    if (!document.getElementById("cal-ui-maint")) return;
 
-  // --- 1. Dynamic Venue Data ---
-  const venueOptions = {
-    "Event Hall": ["Grand Ballroom", "Garden Pavilion", "Rooftop Terrace"],
-    "Resort Villa": ["Casita (Standard Villa)", "Hacienda (Family Villa)"],
-    "Hotel Room": ["Standard Room", "Deluxe Room", "VIP Suite"],
-  };
+    const maintTabs = document.querySelectorAll("#maintenance-tabs .tab-btn");
+    const specificVenueSelect = document.getElementById("maint-specific-venue");
+    const specificVenueLabel = document.getElementById("label-specific-venue");
+    const sumMaintCategory = document.getElementById("sum-maint-category");
+    const sumMaintUnit = document.getElementById("sum-maint-unit");
 
-  const maintTabs = document.querySelectorAll("#maintenance-tabs .tab-btn");
-  const specificVenueSelect = document.getElementById("maint-specific-venue");
-  const specificVenueLabel = document.getElementById("label-specific-venue");
+    let currentCategory = "Event Hall";
 
-  const sumMaintCategory = document.getElementById("sum-maint-category");
-  const sumMaintUnit = document.getElementById("sum-maint-unit");
+    // --- 1. Populate Dropdown dynamically from DB ---
+    function populateSpecificVenues(category) {
+        specificVenueSelect.innerHTML = '<option value="" disabled selected>Select a unit...</option>';
+        
+        const venues = window.venueData ? window.venueData[category] : null;
 
-  // Function to populate the dropdown based on selected tab
-  function populateSpecificVenues(category) {
-    specificVenueSelect.innerHTML = ""; // Clear existing options
-
-    // Create default unselected option
-    const defaultOpt = document.createElement("option");
-    defaultOpt.value = "";
-    defaultOpt.disabled = true;
-    defaultOpt.selected = true;
-    defaultOpt.innerText = `Select ${category}...`;
-    specificVenueSelect.appendChild(defaultOpt);
-
-    // Populate actual options
-    if (venueOptions[category]) {
-      venueOptions[category].forEach((venue) => {
-        const opt = document.createElement("option");
-        opt.value = venue;
-        opt.innerText = venue;
-        specificVenueSelect.appendChild(opt);
-      });
-    }
-
-    // Update the label text
-    specificVenueLabel.innerText = `WHICH ${category.toUpperCase()}?`;
-
-    // Reset Summary Unit
-    sumMaintUnit.innerText = "--";
-  }
-
-  // Initialize with the default active tab (Event Hall)
-  populateSpecificVenues("Event Hall");
-
-  // Tab Clicking Logic
-  maintTabs.forEach((tab) => {
-    tab.addEventListener("click", (e) => {
-      maintTabs.forEach((t) => t.classList.remove("active"));
-      e.target.classList.add("active");
-
-      const categoryName = e.target.getAttribute("data-venue");
-
-      // Update Summary Mirror
-      sumMaintCategory.innerText = categoryName;
-
-      // Update Dropdown
-      populateSpecificVenues(categoryName);
-
-      // Reset Calendar selection when category changes
-      maintCalendar.resetSelection();
-    });
-  });
-
-  // --- 2. Form Inputs Mirroring ---
-  const inputArea = document.getElementById("maint-area");
-  const selectType = document.getElementById("maint-type");
-  const toggleBlock = document.getElementById("maint-block");
-
-  const sumArea = document.getElementById("sum-maint-area");
-  const sumType = document.getElementById("sum-maint-type");
-  const sumBlock = document.getElementById("sum-maint-block");
-
-  // Listen to the new Specific Venue dropdown
-  specificVenueSelect.addEventListener("change", (e) => {
-    sumMaintUnit.innerText = e.target.value;
-  });
-
-  inputArea.addEventListener("input", (e) => {
-    sumArea.innerText = e.target.value.trim() !== "" ? e.target.value : "--";
-  });
-
-  selectType.addEventListener("change", (e) => {
-    sumType.innerText = e.target.value;
-  });
-
-  toggleBlock.addEventListener("change", (e) => {
-    if (e.target.checked) {
-      sumBlock.innerText = "ON";
-      sumBlock.style.color = "#e06666"; // Soft red
-    } else {
-      sumBlock.innerText = "OFF";
-      sumBlock.style.color = "#888"; // Inactive grey
-    }
-  });
-
-  // --- 3. Maintenance Calendar System ---
-  class MaintenanceCalendar {
-    constructor() {
-      this.grid = document.getElementById("maint-calendar-grid");
-      this.monthYearDisplay = document.getElementById("maint-month-year");
-      this.prevBtn = document.getElementById("maint-prev-month");
-      this.nextBtn = document.getElementById("maint-next-month");
-
-      this.currentDate = new Date();
-      this.currentDate.setDate(1);
-
-      this.startDate = null;
-      this.endDate = null;
-
-      // Mock Data: Pre-booked dates
-      this.bookedDays = [5, 6, 18, 19];
-
-      this.init();
-    }
-
-    init() {
-      this.render();
-      this.prevBtn.addEventListener("click", () => {
-        this.currentDate.setMonth(this.currentDate.getMonth() - 1);
-        this.render();
-      });
-      this.nextBtn.addEventListener("click", () => {
-        this.currentDate.setMonth(this.currentDate.getMonth() + 1);
-        this.render();
-      });
-    }
-
-    resetSelection() {
-      this.startDate = null;
-      this.endDate = null;
-      this.updateSummary();
-      this.render();
-    }
-
-    updateSummary() {
-      const sumDate = document.getElementById("sum-maint-date");
-      const sumDuration = document.getElementById("sum-maint-duration");
-      const options = { month: "short", day: "numeric" };
-
-      if (!this.startDate) {
-        sumDate.innerText = "--";
-        sumDuration.innerText = "--";
-        return;
-      }
-
-      const startStr = this.startDate.toLocaleDateString("en-US", options);
-
-      if (this.startDate && !this.endDate) {
-        sumDate.innerText = startStr;
-        sumDuration.innerText = "1 day";
-      } else if (this.startDate && this.endDate) {
-        const endStr = this.endDate.toLocaleDateString("en-US", options);
-        sumDate.innerText = `${startStr} - ${endStr}`;
-
-        const diffTime = Math.abs(this.endDate - this.startDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        sumDuration.innerText = `${diffDays} days`;
-      }
-    }
-
-    render() {
-      this.grid.innerHTML = "";
-      const year = this.currentDate.getFullYear();
-      const month = this.currentDate.getMonth();
-      const monthNames = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-      ];
-
-      this.monthYearDisplay.innerText = `${monthNames[month]} ${year}`;
-
-      const firstDayIndex = new Date(year, month, 1).getDay();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-      for (let i = 0; i < firstDayIndex; i++) {
-        const emptyCell = document.createElement("div");
-        emptyCell.className = "cal-day-cell empty";
-        this.grid.appendChild(emptyCell);
-      }
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const cellDate = new Date(year, month, day);
-        const cell = document.createElement("div");
-        cell.className = "cal-day-cell";
-        cell.innerText = day;
-
-        if (this.bookedDays.includes(day)) {
-          cell.classList.add("booked");
+        if (venues && venues.length > 0) {
+            venues.forEach(venueName => {
+                const opt = document.createElement("option");
+                opt.value = venueName;
+                opt.innerText = venueName;
+                specificVenueSelect.appendChild(opt);
+            });
         } else {
-          if (
-            this.startDate &&
-            cellDate.getTime() === this.startDate.getTime()
-          ) {
-            cell.classList.add("selected", "start-date");
-          }
-          if (this.endDate && cellDate.getTime() === this.endDate.getTime()) {
-            cell.classList.add("selected", "end-date");
-          }
-          if (
-            this.startDate &&
-            this.endDate &&
-            cellDate > this.startDate &&
-            cellDate < this.endDate
-          ) {
-            cell.classList.add("in-range");
-          }
-
-          cell.addEventListener("click", () => {
-            if (this.startDate && this.endDate) {
-              this.startDate = cellDate;
-              this.endDate = null;
-            } else if (!this.startDate) {
-              this.startDate = cellDate;
-            } else if (this.startDate && !this.endDate) {
-              if (cellDate < this.startDate) {
-                this.startDate = cellDate;
-              } else {
-                this.endDate = cellDate;
-              }
-            }
-            this.updateSummary();
-            this.render();
-          });
+            specificVenueSelect.innerHTML = '<option value="" disabled selected>No units available</option>';
         }
-        this.grid.appendChild(cell);
-      }
+
+        specificVenueLabel.innerText = `WHICH ${category.toUpperCase()}?`;
+        sumMaintUnit.innerText = "--";
     }
-  }
 
-  const maintCalendar = new MaintenanceCalendar();
+    populateSpecificVenues(currentCategory);
 
-  // --- 4. Clear Form & Submit Buttons ---
-  document.getElementById("btn-clear-maint").addEventListener("click", () => {
-    // Reset Form Fields
-    specificVenueSelect.selectedIndex = 0;
-    inputArea.value = "";
-    selectType.selectedIndex = 0;
-    document.getElementById("maint-notes").value = "";
-    toggleBlock.checked = false;
+    // Tab Clicking
+    maintTabs.forEach(tab => {
+        tab.addEventListener("click", (e) => {
+            maintTabs.forEach(t => t.classList.remove("active"));
+            e.target.classList.add("active");
 
-    // Reset Calendar
-    maintCalendar.resetSelection();
-
-    // Reset Summary Text
-    sumMaintUnit.innerText = "--";
-    inputArea.dispatchEvent(new Event("input"));
-    toggleBlock.dispatchEvent(new Event("change"));
-    sumType.innerText = "--";
-  });
-
-  document
-    .getElementById("btn-schedule-maint")
-    .addEventListener("click", () => {
-      // Simple validation
-      if (!specificVenueSelect.value) {
-        alert("Please select a specific Unit/Venue first.");
-        return;
-      }
-      if (!maintCalendar.startDate) {
-        alert("Please select dates from the Availability Calendar.");
-        return;
-      }
-      if (!selectType.value) {
-        alert("Please select a Maintenance Type.");
-        return;
-      }
-
-      alert(
-        `Maintenance successfully scheduled for ${sumMaintUnit.innerText}!`,
-      );
-      document.getElementById("btn-clear-maint").click();
+            currentCategory = e.target.getAttribute("data-venue");
+            sumMaintCategory.innerText = currentCategory;
+            populateSpecificVenues(currentCategory);
+            maintCalendar.clearSelection();
+            updateSummary();
+        });
     });
+
+    // --- 2. Form Inputs Mirroring ---
+    const inputArea = document.getElementById("maint-area");
+    const selectType = document.getElementById("maint-type");
+    const toggleBlock = document.getElementById("maint-block");
+
+    specificVenueSelect.addEventListener("change", (e) => {
+        sumMaintUnit.innerText = e.target.value;
+        // Tell the global SevillaCalendar to fetch the booked dates!
+        maintCalendar.fetchBookedDates(currentCategory, e.target.value);
+    });
+
+    inputArea.addEventListener("input", (e) => { document.getElementById("sum-maint-area").innerText = e.target.value.trim() || "--"; });
+    selectType.addEventListener("change", (e) => { document.getElementById("sum-maint-type").innerText = e.target.value; });
+    toggleBlock.addEventListener("change", (e) => {
+        const sumBlock = document.getElementById("sum-maint-block");
+        sumBlock.innerText = e.target.checked ? "ON" : "OFF";
+        sumBlock.style.color = e.target.checked ? "#e06666" : "#888";
+    });
+
+    // --- 3. Use the Global Calendar Engine ---
+    // Instantiate the global SevillaCalendar!
+    const maintCalendar = new SevillaCalendar("cal-ui-maint");
+    window.isDatesLocked = false; // Maintenance doesn't use the 30-min lock
+
+    // When SevillaCalendar finishes a selection, it calls this global function.
+    // We intercept it to update our maintenance summary without popping up a modal.
+    window.requestDateConfirmation = function(startDate, endDate, calendarInstance) {
+        updateSummary();
+    };
+
+    // Also update summary when clicking (for single day selections)
+    document.getElementById("cal-ui-maint").addEventListener("click", () => updateSummary());
+
+    function updateSummary() {
+        const sumDate = document.getElementById("sum-maint-date");
+        const sumDuration = document.getElementById("sum-maint-duration");
+        
+        if (!maintCalendar.startDate) {
+            sumDate.innerText = "--";
+            sumDuration.innerText = "--";
+            return;
+        }
+
+        const opts = { month: "short", day: "numeric", year: "numeric" };
+        const startStr = maintCalendar.startDate.toLocaleDateString("en-US", opts);
+
+        if (!maintCalendar.endDate) {
+            sumDate.innerText = startStr;
+            sumDuration.innerText = "1 day";
+        } else {
+            sumDate.innerText = `${startStr} - ${maintCalendar.endDate.toLocaleDateString("en-US", opts)}`;
+            // Total nights from calendar + 1 gives us total days of maintenance
+            sumDuration.innerText = `${maintCalendar.totalNights + 1} days`;
+        }
+    }
+
+
+    // --- 4. Submit Form to Backend ---
+    document.getElementById("btn-schedule-maint").addEventListener("click", async (e) => {
+        const btn = e.target;
+        
+        if (!specificVenueSelect.value) return alert("Please select a specific Unit/Venue first.");
+        if (!maintCalendar.startDate) return alert("Please select dates from the Availability Calendar.");
+        if (!selectType.value) return alert("Please select a Maintenance Type.");
+
+        const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+        const formData = new FormData();
+        formData.append("category", currentCategory);
+        formData.append("venue_name", specificVenueSelect.value);
+        formData.append("area", inputArea.value);
+        formData.append("type", selectType.value);
+        formData.append("notes", document.getElementById("maint-notes").value);
+        formData.append("block_unit", toggleBlock.checked);
+        formData.append("start_date", formatLocal(maintCalendar.startDate));
+        formData.append("end_date", maintCalendar.endDate ? formatLocal(maintCalendar.endDate) : formatLocal(maintCalendar.startDate));
+
+        try {
+            btn.innerText = "SCHEDULING...";
+            btn.disabled = true;
+
+            const res = await fetch("actions/admin/schedule_maintenance.php", { method: "POST", body: formData });
+            const data = await res.text();
+            const response = data.split("|");
+
+            if (response[0] === "Success") {
+                alert("Maintenance successfully scheduled!");
+                window.location.reload();
+            } else {
+                throw new Error(response[1]);
+            }
+        } catch (error) {
+            alert("Error: " + error.message);
+            btn.innerText = "SCHEDULE MAINTENANCE";
+            btn.disabled = false;
+        }
+    });
+
+    // Clear Form
+    document.getElementById("btn-clear-maint").addEventListener("click", () => window.location.reload());
 });
