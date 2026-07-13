@@ -1,8 +1,91 @@
+<?php
+// --- 1. DATABASE CONNECTION ---
+require_once 'config/db_connect.php';
+
+// --- 2. FETCH DATA ---
+// Join bookings with customers and venues to get all necessary details
+$query = "
+    SELECT 
+        b.id AS booking_id,
+        b.reference_no,
+        b.start_date,
+        b.end_date,
+        b.total_amount,
+        b.booking_status,
+        b.payment_status,
+        c.first_name,
+        c.last_name,
+        v.name AS venue_name,
+        v.category AS venue_category
+    FROM bookings b
+    JOIN customers c ON b.customer_id = c.id
+    JOIN venues v ON b.venue_id = v.id
+    ORDER BY b.created_at DESC
+";
+
+// Execute query using MySQLi
+$result = $conn->query($query);
+$bookings = [];
+
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $bookings[] = $row;
+    }
+}
+
+// --- 3. HELPER FUNCTIONS ---
+
+/**
+ * Formats the booking dates to match the UI (e.g. "May 5-6, 2026" or "Jun 13, 2026")
+ */
+function formatBookingDate($start, $end) {
+    $s = strtotime($start);
+    $e = strtotime($end);
+    
+    if ($s === $e) {
+        return date('M j, Y', $s);
+    }
+    
+    // If same month and year
+    if (date('m Y', $s) === date('m Y', $e)) {
+        return date('M j', $s) . '-' . date('j, Y', $e);
+    }
+    
+    // If different months or years
+    return date('M j, Y', $s) . ' - ' . date('M j, Y', $e);
+}
+
+/**
+ * Maps database payment/booking status to UI CSS classes and labels
+ */
+function getStatusBadge($booking_status, $payment_status) {
+    // Check for cancellations and refunds first
+    if ($booking_status === 'Cancelled') {
+        if ($payment_status === 'Refunded') {
+            return ['class' => 'status-refunded', 'label' => 'Refunded'];
+        } elseif ($payment_status === 'Paid' || $payment_status === 'Partial') {
+            return ['class' => 'status-pending-refund', 'label' => 'Pending Refund'];
+        }
+        return ['class' => 'status-refunded', 'label' => 'Cancelled'];
+    }
+
+    // Default payment status logic
+    switch ($payment_status) {
+        case 'Unpaid':
+            return ['class' => 'status-pending', 'label' => 'Pending Payment'];
+        case 'Partial':
+            return ['class' => 'status-partial', 'label' => 'Partial'];
+        case 'Paid':
+            return ['class' => 'status-paid', 'label' => 'Paid'];
+        default:
+            return ['class' => 'status-pending', 'label' => $payment_status];
+    }
+}
+?>
 <div class="admin-bookings-container">
     <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
-    <!-- 1. NEW CONSISTENT HEADER -->
+    <!-- NEW CONSISTENT HEADER -->
     <div class="bookings-page-header">
-
         <!-- Search & Dropdowns -->
         <div class="top-controls">
             <div class="search-bar">
@@ -27,7 +110,7 @@
     <div class="table-card">
         <h3 class="card-title">Booking History</h3>
 
-        <!-- 3. CONSISTENT GOLD TABS (Replaced the brown pills) -->
+        <!-- CONSISTENT GOLD TABS -->
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
             <button class="tab-btn" data-filter="pending">Pending</button>
@@ -49,67 +132,72 @@
                     </tr>
                 </thead>
                 <tbody>
+                    <?php if (count($bookings) > 0): ?>
+                    <?php foreach ($bookings as $row): ?>
+                    <?php 
+                                // Process Status Badge
+                                $badge = getStatusBadge($row['booking_status'], $row['payment_status']);
+                                
+                                // Determine if row should be faded (Refunded / Cancelled)
+                                $rowClass = ($badge['class'] === 'status-refunded') ? 'faded-row' : '';
+                                $textClass = ($badge['class'] === 'status-refunded') ? 'faded-text' : '';
+                                
+                                // Format Customer Name
+                                $customerName = htmlspecialchars($row['first_name'] . ' ' . $row['last_name']);
+                                
+                                // Format Venue Name (or Category)
+                                $venueDisplay = htmlspecialchars($row['venue_category']); // Or use $row['venue_name']
+                                
+                                // Format Date
+                                $formattedDate = formatBookingDate($row['start_date'], $row['end_date']);
+                                
+                                // Format Amount (Strips trailing .00 if whole number for clean UI, else leaves 2 decimals)
+                                $amount = number_format($row['total_amount'], 2);
+                                $amount = str_replace('.00', '', $amount); 
+                            ?>
+                    <tr class="<?= $rowClass ?>">
+                        <td>#<?= htmlspecialchars($row['reference_no']) ?></td>
+                        <td><?= $venueDisplay ?></td>
+                        <td><?= $customerName ?></td>
+                        <td><?= $formattedDate ?></td>
+                        <td class="<?= $textClass ?>">P <?= $amount ?></td>
+                        <td><span class="status-badge <?= $badge['class'] ?>"><?= $badge['label'] ?></span></td>
+                        <td class="action-cells">
+                            <!-- 
+                                      Added data-id to buttons so they are ready for Phase 2 (AJAX) 
+                                      We selectively show buttons based on status for better UI logic
+                                    -->
+                            <?php if ($row['booking_status'] === 'Pending'): ?>
+                            <button class="btn-action btn-confirm" data-id="<?= $row['booking_id'] ?>">Confirm</button>
+                            <button class="btn-action btn-cancel" data-id="<?= $row['booking_id'] ?>">Cancel</button>
+                            <?php elseif ($row['payment_status'] === 'Paid' && $row['booking_status'] !== 'Cancelled'): ?>
+                            <button class="btn-action btn-reschedule open-reschedule"
+                                data-id="<?= $row['booking_id'] ?>">Reschedule</button>
+                            <button class="btn-action btn-refund open-refund"
+                                data-id="<?= $row['booking_id'] ?>">Refund</button>
+                            <?php elseif ($row['booking_status'] === 'Confirmed' && $row['payment_status'] === 'Partial'): ?>
+                            <button class="btn-action btn-confirm" data-id="<?= $row['booking_id'] ?>">Confirm</button>
+                            <?php elseif ($badge['class'] === 'status-pending-refund'): ?>
+                            <button class="btn-action btn-refund open-refund"
+                                data-id="<?= $row['booking_id'] ?>">Refund</button>
+                            <button class="btn-action btn-view" data-id="<?= $row['booking_id'] ?>">View
+                                Details</button>
+                            <?php else: ?>
+                            <button class="btn-action btn-view" data-id="<?= $row['booking_id'] ?>">View
+                                Details</button>
+                            <?php endif; ?>
+
+                            <button class="btn-icon" title="More Info" data-id="<?= $row['booking_id'] ?>">
+                                <i class="fa-solid fa-circle-info"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php else: ?>
                     <tr>
-                        <td>#12312</td>
-                        <td>Event Hall</td>
-                        <td>Francis Empleo</td>
-                        <td>Jun 13, 2026</td>
-                        <td>P 20,000</td>
-                        <td><span class="status-badge status-pending">Pending Payment</span></td>
-                        <td class="action-cells">
-                            <button class="btn-action btn-confirm">Confirm</button>
-                            <button class="btn-action btn-cancel">Cancel</button>
-                            <button class="btn-icon"><i class="fa-solid fa-circle-info"></i></button>
-                        </td>
+                        <td colspan="7" style="text-align: center; padding: 30px;">No bookings found.</td>
                     </tr>
-                    <tr>
-                        <td>#12312</td>
-                        <td>Standard Room</td>
-                        <td>Lebron James</td>
-                        <td>May 5-6, 2026</td>
-                        <td>P 20,000</td>
-                        <td><span class="status-badge status-paid">Paid</span></td>
-                        <td class="action-cells">
-                            <button class="btn-action btn-reschedule open-reschedule">Reschedule</button>
-                            <button class="btn-action btn-refund open-refund">Refund</button>
-                            <button class="btn-icon"><i class="fa-solid fa-circle-info"></i></button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>#12312</td>
-                        <td>Resort Villa</td>
-                        <td>Kai Sotto</td>
-                        <td>Apr 4-5, 2026</td>
-                        <td>P 20,000</td>
-                        <td><span class="status-badge status-partial">Partial</span></td>
-                        <td class="action-cells">
-                            <button class="btn-action btn-confirm">Confirm</button>
-                            <button class="btn-icon"><i class="fa-solid fa-circle-info"></i></button>
-                        </td>
-                    </tr>
-                    <tr class="faded-row">
-                        <td>#12312</td>
-                        <td>Event Hall</td>
-                        <td>James Ready</td>
-                        <td>April 1, 2026</td>
-                        <td class="faded-text">P 20,000</td>
-                        <td><span class="status-badge status-refunded">Refunded</span></td>
-                        <td class="action-cells">
-                            <button class="btn-action btn-view">View Details</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>#12312</td>
-                        <td>Event Hall</td>
-                        <td>Alex</td>
-                        <td>March 30, 2026</td>
-                        <td class="faded-text">P 10,000</td>
-                        <td><span class="status-badge status-pending-refund">Pending Refund</span></td>
-                        <td class="action-cells">
-                            <button class="btn-action btn-refund open-refund">Refund</button>
-                            <button class="btn-action btn-view">View Details</button>
-                        </td>
-                    </tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -118,106 +206,20 @@
     <!-- Modals Overlay -->
     <div class="modal-overlay" id="modalOverlay">
 
-        <!-- Refund Modal -->
+        <!-- Refund Modal (Kept Static for now) -->
         <div class="admin-modal" id="refundModal">
-            <h3 class="modal-main-title">Process Refund - Booking #12312</h3>
-            <h4 class="modal-subtitle">Transaction Summary</h4>
-            <div class="summary-grid">
-                <span class="label">Customer Name:</span> <span class="value">Alex</span>
-                <span class="label">Venue Type:</span> <span class="value">Event Hall</span>
-                <span class="label">Date:</span> <span class="value">March 30, 2026</span>
-                <span class="label">Total Paid by Guest:</span> <span class="value">P20,000</span>
-                <span class="label">PayMongo Fee:</span> <span class="value">P461</span>
-                <span class="label">Reason:</span>
-                <span class="value">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-                    incididunt ut labore et dolore magna aliqua.</span>
-            </div>
-            <div class="refund-total">
-                <span class="label">Refund Amount:</span>
-                <span class="value amount">P19,539</span>
-            </div>
+            <!-- ... Keep your existing Refund Modal HTML here ... -->
+            <h3 class="modal-main-title">Process Refund</h3>
             <div class="modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
                 <button class="btn-modal btn-modal-refund">Refund</button>
             </div>
         </div>
 
-        <!-- Reschedule Modal -->
+        <!-- Reschedule Modal (Kept Static for now) -->
         <div class="admin-modal" id="rescheduleModal">
+            <!-- ... Keep your existing Reschedule Modal HTML here ... -->
             <h3 class="modal-main-title text-center">Reschedule Booking</h3>
-            <h4 class="modal-subtitle">Booking Summary</h4>
-
-            <div class="summary-grid reschedule-grid">
-                <span class="label">Customer Name:</span> <span class="value">Alex</span>
-                <span class="label">Venue Type:</span> <span class="value">Event Hall</span>
-                <span class="label">Original Date:</span> <span class="value">May 5-6, 2026</span>
-
-                <span class="label align-center">New Date:</span>
-                <div class="date-picker-wrapper">
-                    <div class="date-input-display" id="rescheduleDateInput">
-                        <span id="selectedNewDate">April 20, 2026</span>
-                        <i class="fa-regular fa-calendar"></i>
-                    </div>
-
-                    <!-- Hidden Calendar Dropdown -->
-                    <div class="calendar-dropdown" id="rescheduleCalendarDropdown">
-                        <div class="calendar-header">
-                            <span class="cal-nav">&#8592;</span>
-                            <strong>February 2026</strong>
-                            <span class="cal-nav">&#8594;</span>
-                        </div>
-                        <div class="calendar-grid">
-                            <div class="day-name">SUN</div>
-                            <div class="day-name">MON</div>
-                            <div class="day-name">TUE</div>
-                            <div class="day-name">WED</div>
-                            <div class="day-name">THU</div>
-                            <div class="day-name">FRI</div>
-                            <div class="day-name">SAT</div>
-
-                            <!-- Sample Dates matching wireframe -->
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day num">1</div>
-                            <div class="cal-day num">2</div>
-                            <div class="cal-day num">3</div>
-                            <div class="cal-day num">4</div>
-                            <div class="cal-day num">5</div>
-                            <div class="cal-day num">6</div>
-                            <div class="cal-day num">7</div>
-                            <div class="cal-day num">8</div>
-                            <div class="cal-day num">9</div>
-                            <div class="cal-day num">10</div>
-                            <div class="cal-day num">11</div>
-                            <div class="cal-day num">12</div>
-                            <div class="cal-day num">13</div>
-                            <div class="cal-day available">14</div>
-                            <div class="cal-day booked">15</div>
-                            <div class="cal-day booked">16</div>
-                            <div class="cal-day available">17</div>
-                            <div class="cal-day available">18</div>
-                            <div class="cal-day available">19</div>
-                            <div class="cal-day available">20</div>
-                            <div class="cal-day available">21</div>
-                            <div class="cal-day available">22</div>
-                            <div class="cal-day selected" data-date="February 23, 2026">23</div>
-                            <div class="cal-day available">24</div>
-                            <div class="cal-day available">25</div>
-                            <div class="cal-day available">26</div>
-                            <div class="cal-day booked">27</div>
-                            <div class="cal-day booked">28</div>
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day empty"></div>
-                            <div class="cal-day empty"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <span class="label align-center">Reason:</span> <span class="value">Typhoon</span>
-            </div>
-
             <div class="modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
                 <button class="btn-modal btn-modal-refund">Reschedule</button>
