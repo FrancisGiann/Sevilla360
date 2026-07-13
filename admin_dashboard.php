@@ -27,9 +27,9 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=1.1">
     <?php elseif ($page === 'walkin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=1.1">
     <?php elseif ($page === 'maintenance'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=1.1">
     <?php elseif ($page === 'settings'): ?>
@@ -214,7 +214,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin-page/admin_dashboard.js"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <script src="assets/js/admin-page/admin_bookings.js"></script>
+    <script src="assets/js/admin-page/admin_bookings.js?v=1"></script>
     <?php elseif ($page === 'walkin'): ?>
     <script src="assets/js/admin-page/admin_walkin.js?v=1"></script>
     <?php elseif ($page === 'maintenance'): ?>

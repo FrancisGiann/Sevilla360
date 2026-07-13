@@ -1,6 +1,14 @@
 <?php
+session_start(); // 1. Start the session!
+
 // Set response type to JSON
 header('Content-Type: application/json');
+
+// 2. AUTH GUARD: Kick out anyone who isn't an admin or superadmin
+if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin')) {
+    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+    exit;
+}
 
 // Include your database connection
 require_once '../../config/db_connect.php'; 

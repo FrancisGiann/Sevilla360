@@ -117,4 +117,56 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+  
+  // --- 4. AJAX Status Updates (Confirm & Cancel) ---
+  
+  // Reusable function to send the Fetch request
+  const processBookingAction = (bookingId, action) => {
+    fetch('actions/admin/update_booking_status.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        booking_id: bookingId,
+        action: action
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Show success message and reload page to reflect new status & buttons
+        alert(data.message);
+        window.location.reload(); 
+      } else {
+        alert("Error: " + data.message);
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert("An error occurred while communicating with the server.");
+    });
+  };
+
+  // Attach click events to all Confirm buttons
+  const confirmBtns = document.querySelectorAll('.btn-confirm');
+  confirmBtns.forEach((btn) => {
+    btn.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      if (confirm('Are you sure you want to confirm Booking #' + bookingId + '?')) {
+        processBookingAction(bookingId, 'confirm');
+      }
+    });
+  });
+
+  // Attach click events to all Cancel buttons
+  const cancelBtns = document.querySelectorAll('.btn-cancel');
+  cancelBtns.forEach((btn) => {
+    btn.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      if (confirm('Are you sure you want to cancel Booking #' + bookingId + '? This action cannot be undone.')) {
+        processBookingAction(bookingId, 'cancel');
+      }
+    });
+  });
 });
