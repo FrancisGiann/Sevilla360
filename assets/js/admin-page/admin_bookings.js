@@ -117,11 +117,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
-  
+
   // --- 4. AJAX Status Updates (Confirm & Cancel) ---
   
   // Reusable function to send the Fetch request
-  const processBookingAction = (bookingId, action) => {
+  const processBookingAction = (bookingId, action, buttonElement) => {
+    
+    // 1. Disable the button to prevent double-clicks
+    const originalText = buttonElement.innerText;
+    buttonElement.innerText = "Processing...";
+    buttonElement.disabled = true;
+    buttonElement.style.opacity = "0.7";
+
     fetch('actions/admin/update_booking_status.php', {
       method: 'POST',
       headers: {
@@ -135,16 +142,23 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(response => response.json())
     .then(data => {
       if (data.success) {
-        // Show success message and reload page to reflect new status & buttons
         alert(data.message);
         window.location.reload(); 
       } else {
         alert("Error: " + data.message);
+        // Re-enable button if there was an error
+        buttonElement.innerText = originalText;
+        buttonElement.disabled = false;
+        buttonElement.style.opacity = "1";
       }
     })
     .catch(error => {
       console.error('Error:', error);
       alert("An error occurred while communicating with the server.");
+      // Re-enable button if there was a network error
+      buttonElement.innerText = originalText;
+      buttonElement.disabled = false;
+      buttonElement.style.opacity = "1";
     });
   };
 
@@ -154,7 +168,8 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener('click', function() {
       const bookingId = this.getAttribute('data-id');
       if (confirm('Are you sure you want to confirm Booking #' + bookingId + '?')) {
-        processBookingAction(bookingId, 'confirm');
+        // Pass 'this' (the button) into the function
+        processBookingAction(bookingId, 'confirm', this);
       }
     });
   });
@@ -165,7 +180,8 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener('click', function() {
       const bookingId = this.getAttribute('data-id');
       if (confirm('Are you sure you want to cancel Booking #' + bookingId + '? This action cannot be undone.')) {
-        processBookingAction(bookingId, 'cancel');
+         // Pass 'this' (the button) into the function
+        processBookingAction(bookingId, 'cancel', this);
       }
     });
   });
