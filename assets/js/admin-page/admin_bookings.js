@@ -1,143 +1,42 @@
-document.addEventListener("DOMContentLoaded", () => {
-  // --- 1. Filter Pills Logic ---
-  const filters = document.querySelectorAll(".filter-pill");
+/**
+ * ==========================================================================
+ * SEVILLA360 - Admin Bookings Controller
+ * Handles table filtering, dynamic modal population, and AJAX actions.
+ * ==========================================================================
+ */
 
+document.addEventListener("DOMContentLoaded", () => {
+  
+  // --- 1. Filter Pills Logic ---
+  const filters = document.querySelectorAll(".tab-btn");
   filters.forEach((filter) => {
     filter.addEventListener("click", () => {
-      // Remove active class from all
       filters.forEach((f) => f.classList.remove("active"));
-      // Add active class to clicked
       filter.classList.add("active");
-
+      
       const filterType = filter.getAttribute("data-filter");
-      // Logic to filter table rows based on filterType goes here
+      // Add table filtering logic here if needed, or trigger a page reload with ?filter=type
     });
   });
 
-  // --- 2. Modals Setup ---
-  const modalOverlay = document.getElementById("modalOverlay");
-  const refundModal = document.getElementById("refundModal");
-  const rescheduleModal = document.getElementById("rescheduleModal");
-  const closeButtons = document.querySelectorAll(".close-modal");
-
-  // Open Refund Modal
-  const refundBtns = document.querySelectorAll(".open-refund");
-  refundBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      modalOverlay.classList.add("active");
-      document
-        .querySelectorAll(".admin-modal")
-        .forEach((m) => m.classList.remove("active"));
-      refundModal.classList.add("active");
-    });
-  });
-
-  // Open Reschedule Modal
-  const rescheduleBtns = document.querySelectorAll(".open-reschedule");
-  rescheduleBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      modalOverlay.classList.add("active");
-      document
-        .querySelectorAll(".admin-modal")
-        .forEach((m) => m.classList.remove("active"));
-      rescheduleModal.classList.add("active");
-      // Ensure calendar is closed when opening modal
-      calendarDropdown.classList.remove("active");
-    });
-  });
-
-  // Close Modals Function
-  const closeModal = () => {
-    modalOverlay.classList.remove("active");
-    document.querySelectorAll(".admin-modal").forEach((m) => {
-      m.classList.remove("active");
-    });
-    // Hide calendar pop-up if open
-    calendarDropdown.classList.remove("active");
-  };
-
-  closeButtons.forEach((btn) => {
-    btn.addEventListener("click", closeModal);
-  });
-
-  // Close on background overlay click
-  modalOverlay.addEventListener("click", (e) => {
-    if (e.target === modalOverlay) {
-      closeModal();
-    }
-  });
-
-  // --- 3. Calendar Popup Logic (Reschedule Modal) ---
-  const dateInputWrapper = document.getElementById("rescheduleDateInput");
-  const calendarDropdown = document.getElementById(
-    "rescheduleCalendarDropdown",
-  );
-  const selectedNewDateSpan = document.getElementById("selectedNewDate");
-  const availableDays = document.querySelectorAll(
-    ".calendar-grid .cal-day.available",
-  );
-
-  // Toggle calendar popup when input is clicked
-  if (dateInputWrapper && calendarDropdown) {
-    dateInputWrapper.addEventListener("click", (e) => {
-      e.stopPropagation(); // Prevents immediate closing
-      calendarDropdown.classList.toggle("active");
-    });
-
-    // Date Selection inside calendar
-    availableDays.forEach((day) => {
-      day.addEventListener("click", (e) => {
-        e.stopPropagation();
-
-        // Remove selected class from all
-        document
-          .querySelectorAll(".calendar-grid .cal-day")
-          .forEach((d) => d.classList.remove("selected"));
-
-        // Add selected class to clicked
-        day.classList.add("selected");
-
-        // Update text in the input display
-        const selectedDateStr =
-          day.getAttribute("data-date") || `February ${day.textContent}, 2026`;
-        selectedNewDateSpan.textContent = selectedDateStr;
-
-        // Hide calendar after selection
-        calendarDropdown.classList.remove("active");
-      });
-    });
-
-    // Close calendar if clicking anywhere outside the date-picker-wrapper
-    document.addEventListener("click", (e) => {
-      if (
-        !dateInputWrapper.contains(e.target) &&
-        !calendarDropdown.contains(e.target)
-      ) {
-        calendarDropdown.classList.remove("active");
-      }
-    });
-  }
-
-  // --- 4. AJAX Status Updates (Confirm & Cancel) ---
-  
-  // Reusable function to send the Fetch request
-  const processBookingAction = (bookingId, action, buttonElement) => {
-    
-    // 1. Disable the button to prevent double-clicks
+  // --- 2. Shared AJAX Function ---
+  // Added 'extraData' parameter to handle things like new dates or refund reasons
+  const processBookingAction = (bookingId, action, buttonElement, extraData = {}) => {
     const originalText = buttonElement.innerText;
     buttonElement.innerText = "Processing...";
     buttonElement.disabled = true;
     buttonElement.style.opacity = "0.7";
 
+    const payload = {
+      booking_id: bookingId,
+      action: action,
+      ...extraData // Merges any extra data (like new_start_date) into the payload
+    };
+
     fetch('actions/admin/update_booking_status.php', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        booking_id: bookingId,
-        action: action
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     })
     .then(response => response.json())
     .then(data => {
@@ -146,7 +45,6 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.reload(); 
       } else {
         alert("Error: " + data.message);
-        // Re-enable button if there was an error
         buttonElement.innerText = originalText;
         buttonElement.disabled = false;
         buttonElement.style.opacity = "1";
@@ -155,34 +53,152 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch(error => {
       console.error('Error:', error);
       alert("An error occurred while communicating with the server.");
-      // Re-enable button if there was a network error
       buttonElement.innerText = originalText;
       buttonElement.disabled = false;
       buttonElement.style.opacity = "1";
     });
   };
 
-  // Attach click events to all Confirm buttons
-  const confirmBtns = document.querySelectorAll('.btn-confirm');
-  confirmBtns.forEach((btn) => {
+  // --- 3. Modal System Setup ---
+  const modalOverlay = document.getElementById("modalOverlay");
+  const refundModal = document.getElementById("refundModal");
+  const rescheduleModal = document.getElementById("rescheduleModal");
+
+  const closeModal = () => {
+    modalOverlay.classList.remove("active");
+    document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
+  };
+
+  document.querySelectorAll(".close-modal").forEach((btn) => {
+    btn.addEventListener("click", closeModal);
+  });
+
+  modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
+
+  // --- 4. REFUND MODAL LOGIC ---
+  document.querySelectorAll('.open-refund').forEach(btn => {
     btn.addEventListener('click', function() {
+      // 1. Grab data from the button (Ensure you add these data-* attributes to your PHP table!)
       const bookingId = this.getAttribute('data-id');
-      if (confirm('Are you sure you want to confirm Booking #' + bookingId + '?')) {
-        // Pass 'this' (the button) into the function
-        processBookingAction(bookingId, 'confirm', this);
+      const customerName = this.getAttribute('data-customer') || "Unknown";
+      const venueName = this.getAttribute('data-venue') || "Unknown";
+      const bookDate = this.getAttribute('data-date') || "--";
+      const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
+
+      // 2. Calculate Refund (e.g., deducting ₱461 PayMongo fee)
+      const fee = 461;
+      let refundAmt = totalPaid - fee;
+      if (refundAmt < 0) refundAmt = 0; // Prevent negative refunds
+
+      // 3. Inject into Modal DOM
+      // Note: Make sure to add these ID's to the <span> tags in your admin_bookings.php HTML
+      const titleEl = document.querySelector('#refundModal .modal-main-title');
+      if(titleEl) titleEl.innerText = `Process Refund - Booking #${bookingId}`;
+
+      // Update text using querySelector matching your structure
+      const spans = document.querySelectorAll('#refundModal .summary-grid .value');
+      if (spans.length >= 5) {
+          spans[0].innerText = customerName;
+          spans[1].innerText = venueName;
+          spans[2].innerText = bookDate;
+          spans[3].innerText = `₱${totalPaid.toLocaleString()}`;
+          spans[4].innerText = `₱${fee.toLocaleString()}`;
       }
+
+      const refundTotalEl = document.querySelector('#refundModal .refund-total .amount');
+      if (refundTotalEl) refundTotalEl.innerText = `₱${refundAmt.toLocaleString()}`;
+
+      // 4. Attach booking ID to the final execute button
+      const executeBtn = document.querySelector('.btn-modal-refund');
+      executeBtn.setAttribute('data-id', bookingId);
+
+      // 5. Open Modal
+      modalOverlay.classList.add('active');
+      refundModal.classList.add('active');
     });
   });
 
-  // Attach click events to all Cancel buttons
-  const cancelBtns = document.querySelectorAll('.btn-cancel');
-  cancelBtns.forEach((btn) => {
+  // Execute Refund
+  document.querySelector('.btn-modal-refund')?.addEventListener('click', function() {
+    const bookingId = this.getAttribute('data-id');
+    if (confirm("Are you sure you want to process this refund? This cannot be undone.")) {
+      processBookingAction(bookingId, 'refund', this);
+    }
+  });
+
+
+  // --- 5. RESCHEDULE MODAL LOGIC ---
+  let rescheduleCalendar = null;
+  if (typeof SevillaCalendar !== 'undefined' && document.getElementById("cal-ui-reschedule")) {
+      rescheduleCalendar = new SevillaCalendar("cal-ui-reschedule");
+  }
+
+  document.querySelectorAll('.open-reschedule').forEach(btn => {
     btn.addEventListener('click', function() {
       const bookingId = this.getAttribute('data-id');
-      if (confirm('Are you sure you want to cancel Booking #' + bookingId + '? This action cannot be undone.')) {
-         // Pass 'this' (the button) into the function
-        processBookingAction(bookingId, 'cancel', this);
+      const customerName = this.getAttribute('data-customer') || "Unknown";
+      const venueType = this.getAttribute('data-type') || "Hotel Room"; 
+      const venueName = this.getAttribute('data-venue') || "Standard Room"; 
+      const originalDate = this.getAttribute('data-date') || "--";
+
+      // 1. Inject data into modal
+      const spans = document.querySelectorAll('#rescheduleModal .summary-grid .value');
+      if (spans.length >= 3) {
+          spans[0].innerText = customerName;
+          spans[1].innerText = venueName;
+          spans[2].innerText = originalDate;
       }
+
+      // 2. Clear old calendar selection and fetch booked dates for this specific room
+      if (rescheduleCalendar) {
+          rescheduleCalendar.clearSelection();
+          rescheduleCalendar.fetchBookedDates(venueType, venueName);
+      }
+
+      // 3. Attach ID to the final execute button
+      const executeBtn = document.querySelector('#rescheduleModal .btn-modal-refund'); // Note: You might want to change this class name to btn-modal-primary in HTML
+      if (executeBtn) executeBtn.setAttribute('data-id', bookingId);
+
+      // 4. Open Modal
+      modalOverlay.classList.add('active');
+      rescheduleModal.classList.add('active');
     });
   });
+
+  // Execute Reschedule
+  document.querySelector('#rescheduleModal .btn-modal-refund')?.addEventListener('click', function() {
+    const bookingId = this.getAttribute('data-id');
+    
+    // Validate Calendar
+    if (!rescheduleCalendar || !rescheduleCalendar.startDate) {
+        alert("Please select the new dates from the calendar first!");
+        return;
+    }
+
+    // Format Dates securely
+    const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const newStart = formatLocal(rescheduleCalendar.startDate);
+    const newEnd = rescheduleCalendar.endDate ? formatLocal(rescheduleCalendar.endDate) : newStart;
+
+    if (confirm("Confirm rescheduling to these new dates?")) {
+        // Send AJAX request, passing the new dates as extra data
+        processBookingAction(bookingId, 'reschedule', this, {
+            new_start_date: newStart,
+            new_end_date: newEnd
+        });
+    }
+  });
+
+  // --- 6. Quick Confirm Button (No Modal needed) ---
+  document.querySelectorAll('.btn-confirm').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          if (confirm('Approve and confirm Booking #' + bookingId + '?')) {
+              processBookingAction(bookingId, 'confirm', this);
+          }
+      });
+  });
+
 });
