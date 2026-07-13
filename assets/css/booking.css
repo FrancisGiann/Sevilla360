@@ -78,7 +78,6 @@
     opacity: 0;
     transform: translateY(10px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -92,176 +91,8 @@
 }
 
 /* ==========================================================================
-   CALENDAR UI 
+   Forms & Inputs 
    ========================================================================== */
-.calendar-ui {
-  background: var(--color-white);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  padding: 30px;
-  border-radius: 8px;
-  margin-bottom: 2.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-}
-
-.cal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.cal-month-year {
-  font-family: var(--font-heading);
-  font-size: 1.6rem;
-  font-weight: 500;
-  color: var(--color-dark);
-  margin: 0;
-}
-
-.cal-nav {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: var(--color-dark-light);
-  transition: color 0.3s;
-  padding: 0 10px;
-}
-
-.cal-nav:hover {
-  color: var(--color-gold);
-}
-
-.cal-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #888;
-  margin-bottom: 10px;
-  letter-spacing: 1px;
-}
-
-.cal-days-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px 0;
-  margin-bottom: 25px;
-}
-
-/* FIXED CALENDAR CELL RESIZING BUG */
-.cal-day-cell {
-  height: 48px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    color 0.2s ease;
-  background: #f9f9f9;
-  color: var(--color-dark);
-  border: none;
-  margin: 0 4px;
-}
-
-.cal-day-cell:hover:not(.booked):not(.unavailable):not(.empty):not(
-    .selected
-  ):not(.in-range) {
-  background: #ebebeb;
-}
-
-.cal-day-cell.empty {
-  background: transparent;
-  cursor: default;
-}
-
-.cal-day-cell.booked {
-  background: #e06666;
-  color: white;
-  cursor: not-allowed;
-}
-
-.cal-day-cell.unavailable {
-  background: #e0e0e0;
-  color: #999;
-  cursor: not-allowed;
-  text-decoration: line-through;
-}
-
-/* Range Styles */
-.cal-day-cell.selected {
-  background: var(--color-gold);
-  color: white;
-  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3);
-}
-
-.cal-day-cell.in-range {
-  background: rgba(214, 168, 112, 0.15);
-  color: var(--color-dark);
-  margin: 0;
-  border-radius: 0;
-}
-
-.cal-day-cell.selected.start-date:not(.end-date) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  margin-right: 0;
-}
-
-.cal-day-cell.selected.end-date:not(.start-date) {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  margin-left: 0;
-}
-
-/* Legend */
-.cal-legend {
-  display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  padding-top: 20px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--color-dark);
-}
-
-.legend-item .dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot.selected {
-  background: var(--color-gold);
-}
-
-.dot.booked {
-  background: #e06666;
-}
-
-.dot.available {
-  background: #e7eae8;
-}
-
-.dot.unavailable {
-  background: #999;
-}
-
-/* Forms & Inputs */
 .form-row {
   display: flex;
   gap: 1.5rem;
@@ -398,7 +229,9 @@ textarea:focus {
   transition: opacity 0.4s ease;
 }
 
-/* Add-ons */
+/* ==========================================================================
+   Add-ons 
+   ========================================================================== */
 .addons-section {
   background: #faf6f0;
   border: 1px solid rgba(214, 168, 112, 0.2);
@@ -738,8 +571,9 @@ textarea:focus {
   color: #c0392b;
 }
 
-
-/* Responsive */
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
 @media (max-width: 992px) {
   .booking-grid {
     grid-template-columns: 1fr;
@@ -760,17 +594,6 @@ textarea:focus {
 }
 
 @media (max-width: 768px) {
-  .cal-header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0;
-  }
-
-  .cal-month-year {
-    font-size: 1.3rem;
-  }
-
   .tier-cards {
     grid-template-columns: 1fr;
   }
@@ -779,11 +602,5 @@ textarea:focus {
     flex-direction: column;
     align-items: flex-start;
     gap: 15px;
-  }
-
-  .cal-day-cell {
-    height: 40px;
-    font-size: 0.85rem;
-    margin: 0 2px;
   }
 }

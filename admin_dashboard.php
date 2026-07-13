@@ -20,7 +20,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Base Stylesheets -->
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
     <link rel="stylesheet" href="assets/css/admin-page/admin_dashboard.css">
 
     <!-- Load specific assets based on the active page -->
@@ -31,7 +31,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'walkin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css">
     <?php elseif ($page === 'maintenance'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=1.1">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=1.1">
 
@@ -218,7 +218,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'walkin'): ?>
     <script src="assets/js/admin-page/admin_walkin.js?v=1"></script>
     <?php elseif ($page === 'maintenance'): ?>
-    <script src="assets/js/admin-page/admin_maintenance.js"></script>
+    <script src="assets/js/admin-page/admin_maintenance.js?v=1.1"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin-page/admin_settings.js?v=1.2"></script>
 

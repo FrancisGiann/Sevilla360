@@ -1,6 +1,5 @@
 /* ==========================================================================
    SEVILLA360 - Admin Maintenance Styles
-   (Complete Standalone Stylesheet)
    ========================================================================== */
 
 /* --- Layout & Containers --- */
@@ -32,6 +31,7 @@
   border-bottom: 1px solid rgba(214, 168, 112, 0.2);
   padding-bottom: 15px;
 }
+
 .subtitle {
   font-family: var(--font-heading);
   font-size: 2rem; 
@@ -41,6 +41,79 @@
   letter-spacing: 1px;
 }
 
+/* --- Extracted Inline Styles (New Classes) --- */
+.maint-section-label {
+  display: block;
+  margin-bottom: 15px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.maint-calendar-wrapper {
+  margin-bottom: 20px;
+}
+
+.maint-calendar-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.maint-form-card {
+  padding: 40px;
+}
+
+.maint-uppercase-label {
+  text-transform: uppercase;
+}
+
+.maint-optional-text {
+  color: #888;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.maint-mb-0 {
+  margin-bottom: 0 !important;
+}
+
+.maint-summary-box {
+  margin-top: 0;
+}
+
+.maint-sum-category {
+  color: var(--color-dark);
+  font-weight: 500;
+}
+
+.maint-sum-unit {
+  color: var(--color-gold);
+  font-weight: 600;
+}
+
+.maint-sum-last-row {
+  border-bottom: none !important;
+}
+
+.maint-sum-block {
+  font-weight: 600;
+  color: #888;
+}
+
+.maint-action-buttons {
+  margin-top: 30px;
+}
+
+.maint-btn-full {
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.maint-btn-clear {
+  width: 100%;
+  color: var(--color-dark-light);
+  border-color: rgba(42, 37, 34, 0.2);
+}
 
 /* --- Tabs --- */
 .maintenance-venue-section {
@@ -90,145 +163,7 @@
   width: 100%;
 }
 
-/* --- Calendar UI --- */
-.calendar-ui {
-  background: var(--color-white);
-  border: 1px solid rgba(42, 37, 34, 0.08);
-  padding: 40px;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-}
-
-.cal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-}
-
-.cal-month-year {
-  font-family: var(--font-heading);
-  font-size: 1.8rem;
-  font-weight: 500;
-  margin: 0;
-}
-
-.cal-nav {
-  background: none;
-  border: none;
-  font-size: 1.4rem;
-  cursor: pointer;
-  color: var(--color-dark-light);
-  padding: 0 10px;
-}
-
-.cal-nav:hover {
-  color: var(--color-gold);
-}
-
-.cal-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #888;
-  margin-bottom: 15px;
-  letter-spacing: 1px;
-}
-
-.cal-days-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px 0;
-  margin-bottom: 25px;
-}
-
-.cal-day-cell {
-  height: 55px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  border-radius: 4px;
-  font-size: 1.05rem;
-  font-weight: 500;
-  cursor: pointer;
-  background: #f9f9f9;
-  color: var(--color-dark);
-  margin: 0 4px;
-  transition: 0.2s ease;
-}
-
-.cal-day-cell:hover:not(.empty):not(.booked):not(.selected):not(.in-range) {
-  background: #ebebeb;
-}
-
-.cal-day-cell.empty {
-  background: transparent;
-  cursor: default;
-}
-.cal-day-cell.booked {
-  background: #e06666;
-  color: white;
-  cursor: not-allowed;
-}
-.cal-day-cell.selected {
-  background: var(--color-gold);
-  color: white;
-  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3);
-}
-.cal-day-cell.in-range {
-  background: rgba(214, 168, 112, 0.15);
-  color: var(--color-dark);
-  margin: 0;
-  border-radius: 0;
-}
-
-.cal-day-cell.selected.start-date:not(.end-date) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  margin-right: 0;
-}
-.cal-day-cell.selected.end-date:not(.start-date) {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  margin-left: 0;
-}
-
-.cal-legend {
-  display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  padding-top: 25px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-.dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.dot.selected {
-  background: var(--color-gold);
-}
-.dot.booked {
-  background: #e06666;
-}
-.dot.available-green {
-  background: #809b85;
-}
-.dot.unavailable {
-  background: #e0e0e0;
-}
+/* NOTE: CALENDAR STYLES HAVE BEEN REMOVED AND SHOULD BE IN YOUR MASTER STYLE.CSS */
 
 /* --- Form Elements --- */
 .form-group {
@@ -376,10 +311,6 @@ textarea:focus {
 }
 
 /* --- Buttons --- */
-.action-buttons {
-  margin-top: 30px;
-}
-
 .btn {
   display: inline-block;
   padding: 16px;
@@ -419,7 +350,6 @@ textarea:focus {
    RESPONSIVE DESIGN (Tablets & Mobile)
    ========================================================================== */
 
-/* --- Tablet View (max-width: 992px) --- */
 @media (max-width: 992px) {
   .admin-maintenance-container {
     width: 100%;
@@ -427,37 +357,33 @@ textarea:focus {
   }
 
   .maintenance-grid {
-    grid-template-columns: 1fr; /* Stacks the sidebar below the calendar */
+    grid-template-columns: 1fr;
     gap: 2rem;
   }
 
   .booking-card,
-  .calendar-ui,
   .checkout-summary {
     padding: 30px;
   }
 }
 
-/* --- Mobile View (max-width: 768px) --- */
 @media (max-width: 768px) {
   .admin-maintenance-container {
     padding: 15px 15px 80px;
   }
 
   .booking-card,
-  .calendar-ui,
   .checkout-summary {
-    padding: 20px 15px; /* Reduces massive padding on small screens */
+    padding: 20px 15px; 
   }
 
   .card-title {
     font-size: 1.6rem;
   }
 
-  /* Tabs */
   .booking-tabs {
     gap: 1rem;
-    flex-wrap: wrap; /* Allows tabs to wrap to next line if they don't fit */
+    flex-wrap: wrap; 
   }
 
   .tab-btn {
@@ -465,35 +391,6 @@ textarea:focus {
     padding: 10px 0;
   }
 
-  /* Calendar Adjustments for Mobile */
-  .cal-header {
-    margin-bottom: 20px;
-  }
-
-  .cal-month-year {
-    font-size: 1.4rem;
-  }
-
-  .cal-weekdays {
-    font-size: 0.75rem;
-  }
-
-  .cal-days-grid {
-    gap: 5px 0;
-  }
-
-  .cal-day-cell {
-    height: 40px; /* Shorter cells for mobile */
-    font-size: 0.95rem;
-    margin: 0 2px;
-  }
-
-  .cal-legend {
-    gap: 1rem;
-    flex-wrap: wrap; /* Keeps legend items from running off screen */
-  }
-
-  /* Toggle Switch Adjustments */
   .toggle-label-ui {
     padding: 15px;
   }
@@ -502,13 +399,12 @@ textarea:focus {
     font-size: 0.95rem;
   }
 
-  /* Summary Sidebar */
   .summary-title {
     font-size: 1.4rem;
   }
 
   .summary-container p {
-    flex-direction: column; /* Stacks the label and value */
+    flex-direction: column; 
     gap: 5px;
     align-items: flex-start;
   }
@@ -519,9 +415,8 @@ textarea:focus {
     font-weight: 600;
   }
 
-  /* Buttons */
   .btn {
-    width: 100%; /* Full width buttons on mobile */
+    width: 100%; 
     margin-bottom: 10px;
   }
 }

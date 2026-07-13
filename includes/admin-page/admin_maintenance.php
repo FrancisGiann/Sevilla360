@@ -22,9 +22,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
     <!-- Top Section: Venue Selection -->
     <div class="maintenance-venue-section">
-        <label class="small-label"
-            style="display: block; margin-bottom: 15px; font-weight: 600; font-size: 0.95rem;">SELECT VENUE
-            CATEGORY</label>
+        <label class="small-label maint-section-label">SELECT VENUE CATEGORY</label>
 
         <!-- COMBINED TABS -->
         <div class="booking-tabs venue-tabs" id="maintenance-tabs">
@@ -39,21 +37,19 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
         <div class="maintenance-main">
 
             <!-- Calendar UI -->
-            <div style="margin-bottom: 20px;">
-                <label class="small-label" style="display: block; margin-bottom: 10px; font-weight: 600;">AVAILABILITY
-                    CALENDAR</label>
+            <div class="maint-calendar-wrapper">
                 <?php
-        $calendarId = 'cal-ui-maint';
-        include 'includes/partials/booking_calendar.php';
-    ?>
+                    $calendarId = 'cal-ui-maint';
+                    include 'includes/partials/booking_calendar.php';
+                ?>
             </div>
 
             <!-- Form Inputs Section -->
-            <div class="booking-card form-section" style="padding: 40px;">
+            <div class="booking-card form-section maint-form-card">
 
                 <!-- NEW DYNAMIC SPECIFIC VENUE DROPDOWN -->
                 <div class="form-group">
-                    <label for="maint-specific-venue" id="label-specific-venue" style="text-transform: uppercase;">WHICH
+                    <label for="maint-specific-venue" id="label-specific-venue" class="maint-uppercase-label">WHICH
                         EVENT HALL?</label>
                     <select id="maint-specific-venue">
                         <!-- Options injected by JavaScript based on active tab -->
@@ -62,7 +58,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
                 <div class="form-group">
                     <label for="maint-area">SPECIFIC AFFECTED AREA <span
-                            style="color: #888; font-weight: 400; font-size: 0.85rem;">(Optional)</span></label>
+                            class="maint-optional-text">(Optional)</span></label>
                     <input type="text" id="maint-area" placeholder="e.g., Master Bathroom, Air Conditioning Unit...">
                 </div>
 
@@ -85,7 +81,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                         placeholder="Add specific details regarding the maintenance..."></textarea>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 0;">
+                <div class="form-group maint-mb-0">
                     <label class="toggle-label-ui" for="maint-block">
                         <span class="toggle-text">BLOCK UNIT FROM NEW BOOKINGS</span>
                         <div class="custom-toggle">
@@ -99,29 +95,24 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
         <!-- Right Section: Summary Sidebar -->
         <div class="maintenance-sidebar">
-            <div class="sticky-summary checkout-summary" style="margin-top: 0;">
+            <div class="sticky-summary checkout-summary maint-summary-box">
                 <h3 class="summary-title">Maintenance Summary</h3>
 
                 <div class="summary-container active">
-                    <p>Category <span class="sum-val" id="sum-maint-category"
-                            style="color: var(--color-dark); font-weight: 500;">Event Hall</span></p>
-                    <p>Unit <span class="sum-val" id="sum-maint-unit"
-                            style="color: var(--color-gold); font-weight: 600;">--</span></p>
+                    <p>Category <span class="sum-val maint-sum-category" id="sum-maint-category">Event Hall</span></p>
+                    <p>Unit <span class="sum-val maint-sum-unit" id="sum-maint-unit">--</span></p>
                     <p>Date <span class="sum-val" id="sum-maint-date">--</span></p>
                     <p>Duration <span class="sum-val" id="sum-maint-duration">--</span></p>
                     <p>Area <span class="sum-val" id="sum-maint-area">--</span></p>
                     <p>Type <span class="sum-val" id="sum-maint-type">--</span></p>
-                    <p style="border-bottom: none;">Booking Block
-                        <span class="sum-val" id="sum-maint-block" style="font-weight: 600; color: #888;">OFF</span>
-                    </p>
+                    <p class="maint-sum-last-row">Booking Block <span class="sum-val maint-sum-block"
+                            id="sum-maint-block">OFF</span></p>
                 </div>
 
-                <div class="action-buttons" style="margin-top: 30px;">
-                    <button class="btn btn-confirm-walkin" id="btn-schedule-maint"
-                        style="width: 100%; margin-bottom: 15px;">SCHEDULE MAINTENANCE</button>
-                    <button class="btn btn-modal-outline" id="btn-clear-maint"
-                        style="width: 100%; color: var(--color-dark-light); border-color: rgba(42, 37, 34, 0.2);">CLEAR
-                        FORM</button>
+                <div class="action-buttons maint-action-buttons">
+                    <button class="btn btn-confirm-walkin maint-btn-full" id="btn-schedule-maint">SCHEDULE
+                        MAINTENANCE</button>
+                    <button class="btn btn-modal-outline maint-btn-clear" id="btn-clear-maint">CLEAR FORM</button>
                 </div>
             </div>
         </div>
