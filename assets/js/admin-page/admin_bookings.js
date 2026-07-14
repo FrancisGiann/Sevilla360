@@ -201,4 +201,107 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
+  // --- 6. VIEW DETAILS MODAL LOGIC ---
+  const viewDetailsModal = document.getElementById("viewDetailsModal");
+
+  document.querySelectorAll('.btn-view').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const bookingId = this.getAttribute('data-id');
+        const originalText = this.innerText;
+        
+        // Show loading state
+        this.innerText = "Loading...";
+        this.disabled = true;
+
+        // Fetch all details from API
+        fetch(`actions/admin/get_booking_details.php?id=${bookingId}`)
+        .then(response => response.json())
+        .then(res => {
+            this.innerText = originalText;
+            this.disabled = false;
+
+            if (!res.success) {
+                alert("Error loading details: " + res.message);
+                return;
+            }
+
+            const data = res.data.booking;
+            const specifics = res.data.specifics;
+            const addons = res.data.addons;
+
+            // 1. Header
+            document.getElementById('vd-title').innerText = `Booking #${data.id}`;
+            const badge = document.getElementById('vd-status-badge');
+            badge.innerText = data.booking_status;
+            badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
+
+            // 2. Customer
+            document.getElementById('vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;
+            document.getElementById('vd-customer-email').innerText = data.email;
+            document.getElementById('vd-customer-phone').innerText = data.phone || "N/A";
+
+            // 3. Booking
+            document.getElementById('vd-venue').innerText = `${data.venue_name} (${data.venue_category})`;
+            document.getElementById('vd-guests').innerText = data.guests_count;
+            
+            // Format Dates
+            const opts = { month: "short", day: "numeric", year: "numeric" };
+            const sDate = new Date(data.start_date).toLocaleDateString("en-US", opts);
+            const eDate = new Date(data.end_date).toLocaleDateString("en-US", opts);
+            document.getElementById('vd-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
+
+            // Specifics (Event / Villa details)
+            const specLabel = document.getElementById('vd-specific-label');
+            const specValue = document.getElementById('vd-specific-value');
+            if (specifics) {
+                specLabel.style.display = 'block';
+                specValue.style.display = 'block';
+                if (data.venue_category === 'Event Hall') {
+                    specLabel.innerText = "Event Type:";
+                    specValue.innerText = `${specifics.event_type} (${specifics.event_style})`;
+                } else if (data.venue_category === 'Resort Villa') {
+                    specLabel.innerText = "Stay Type:";
+                    specValue.innerText = specifics.stay_type;
+                }
+            } else {
+                specLabel.style.display = 'none';
+                specValue.style.display = 'none';
+            }
+
+            // 4. Add-ons
+            const addonsContainer = document.getElementById('vd-addons-container');
+            const addonsList = document.getElementById('vd-addons-list');
+            addonsList.innerHTML = ''; // Clear old ones
+            if (addons && addons.length > 0) {
+                addonsContainer.style.display = 'block';
+                addons.forEach(addon => {
+                    addonsList.innerHTML += `<span class="label">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString()}</span>`;
+                });
+            } else {
+                addonsContainer.style.display = 'none';
+            }
+
+            // 5. Financials
+            const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('vd-base-amt').innerText = formatCash(data.base_amount);
+            document.getElementById('vd-addons-amt').innerText = formatCash(data.addons_amount);
+            document.getElementById('vd-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
+            document.getElementById('vd-total-amt').innerText = formatCash(data.total_amount);
+            
+            document.getElementById('vd-scheme').innerText = data.payment_scheme;
+            document.getElementById('vd-paid-amt').innerText = formatCash(data.amount_paid);
+
+            // Open Modal
+            modalOverlay.classList.add('active');
+            viewDetailsModal.classList.add('active');
+        })
+        .catch(err => {
+            console.error(err);
+            this.innerText = originalText;
+            this.disabled = false;
+            alert("Network error fetching details.");
+        });
+    });
+  });
+
 });
