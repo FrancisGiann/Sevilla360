@@ -219,22 +219,29 @@
 
 /* --- Action Buttons --- */
 .action-cells {
-  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 180px;
+  max-width: 240px;
 }
 
 .btn-action {
-  display: inline-block;
-  vertical-align: middle;
+  flex: 1 1 calc(50% - 6px); /* Forces buttons into a neat 2-column grid */
+  display: flex;
+  justify-content: center;
+  align-items: center;
   border: none;
-  padding: 8px 14px;
+  padding: 8px 10px;
   border-radius: 4px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
   transition: var(--transition-snappy);
   color: var(--color-white);
-  margin-right: 8px;
+  margin: 0; /* Clears old margins */
+  white-space: nowrap;
 }
 
 .btn-action:hover {
@@ -242,12 +249,14 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+/* Button Colors */
 .btn-confirm { background-color: #4ade80; color: var(--color-dark); }
 .btn-cancel { background-color: #ef4444; }
 .btn-reschedule { background-color: #3b82f6; }
 .btn-refund { background-color: #ef4444; }
+
 .btn-view {
-  background-color: transparent;
+  background-color: var(--color-white);
   color: var(--color-dark);
   border: 1px solid rgba(42, 37, 34, 0.2);
 }

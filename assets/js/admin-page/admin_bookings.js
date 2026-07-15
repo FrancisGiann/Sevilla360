@@ -304,4 +304,62 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // --- 7. COLLECT PAYMENT MODAL LOGIC ---
+  const paymentModal = document.getElementById("paymentModal");
+  const pmtMethodSelect = document.getElementById("pmt-method");
+  const pmtTransWrapper = document.getElementById("pmt-trans-wrapper");
+  const btnExecutePayment = document.getElementById("btn-execute-payment");
+
+  // Show/Hide Transaction ID based on payment method
+  if (pmtMethodSelect) {
+      pmtMethodSelect.addEventListener("change", function() {
+          if (this.value === "Cash") {
+              pmtTransWrapper.classList.add("hidden");
+          } else {
+              pmtTransWrapper.classList.remove("hidden");
+          }
+      });
+  }
+
+  // Open the Modal
+  document.querySelectorAll('.open-payment').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          const balanceDue = parseFloat(this.getAttribute('data-due')) || 0;
+
+          document.getElementById('pmt-balance').innerText = `₱${balanceDue.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+          
+          if (btnExecutePayment) {
+              btnExecutePayment.setAttribute('data-id', bookingId);
+              btnExecutePayment.setAttribute('data-amt', balanceDue);
+          }
+
+          modalOverlay.classList.add('active');
+          paymentModal.classList.add('active');
+      });
+  });
+
+  // Execute Payment
+  if (btnExecutePayment) {
+      btnExecutePayment.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          const amount = this.getAttribute('data-amt');
+          const method = pmtMethodSelect.value;
+          const transId = document.getElementById('pmt-trans-id').value.trim();
+
+          if (method !== 'Cash' && transId === '') {
+              alert("Please enter a Transaction ID for online/bank payments.");
+              return;
+          }
+
+          if (confirm(`Confirm receipt of ₱${parseFloat(amount).toLocaleString()} via ${method}?`)) {
+              // We reuse the processBookingAction, adding extra data!
+              processBookingAction(bookingId, 'add_payment', this, {
+                  amount: amount,
+                  method: method,
+                  transaction_id: transId
+              });
+          }
+      });
+  }
 });

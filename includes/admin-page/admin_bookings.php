@@ -127,8 +127,7 @@ if ($result && $result->num_rows > 0) {
                         <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>
                         </td>
 
-                        <!-- UX FIX: Flexbox wrap for buttons to prevent table stretching -->
-                        <td class="action-cells" style="display: flex; flex-wrap: wrap; gap: 6px; max-width: 250px;">
+                        <td class="action-cells">
 
                             <?php if ($b['booking_status'] === 'Pending'): ?>
                             <button class="btn-action btn-confirm" data-id="<?php echo $b['id']; ?>">Confirm</button>

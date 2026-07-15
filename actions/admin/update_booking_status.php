@@ -30,8 +30,32 @@ $new_status = '';
 // Determine what the new status should be based on the button clicked
 if ($action === 'confirm') {
     $new_status = 'Confirmed';
+    $query = "UPDATE bookings SET booking_status = ? WHERE id = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("si", $new_status, $booking_id);
+
 } elseif ($action === 'cancel') {
     $new_status = 'Cancelled';
+    $query = "UPDATE bookings SET booking_status = ? WHERE id = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("si", $new_status, $booking_id);
+
+} elseif ($action === 'add_payment') {
+    // Add Payment Logic!
+    $amount = floatval($data['amount']);
+    $method = $data['method'];
+    $trans_id = isset($data['transaction_id']) ? $data['transaction_id'] : null;
+
+    // 1. Insert into payments table
+    $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
+    $stmt_pay->bind_param("issd", $booking_id, $trans_id, $method, $amount);
+    $stmt_pay->execute();
+
+    // 2. Update booking to Fully Paid
+    $query = "UPDATE bookings SET payment_status = 'Paid', amount_paid = total_amount WHERE id = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $booking_id);
+
 } else {
     echo json_encode(['success' => false, 'message' => 'Invalid action provided.']);
     exit;
