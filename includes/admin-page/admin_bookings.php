@@ -87,40 +87,35 @@ if ($result && $result->num_rows > 0) {
                     </tr>
                     <?php else: ?>
                     <?php foreach ($bookings as $b): 
-                            
-                            // Date Formatting
-                            $start = new DateTime($b['start_date']);
-                            $end = new DateTime($b['end_date']);
-                            if ($b['start_date'] === $b['end_date']) {
-                                $date_str = $start->format('M j, Y');
-                            } else {
-                                $date_str = $start->format('M j') . ' - ' . $end->format('M j, Y');
-                            }
+            
+            // Date Formatting
+            $start = new DateTime($b['start_date']);
+            $end = new DateTime($b['end_date']);
+            $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
 
-                            // Full Name
-                            $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
-                            $venue_name = htmlspecialchars($b['venue_name']);
-                            $venue_type = htmlspecialchars($b['venue_type']);
-                            $total_amt = floatval($b['total_amount']);
-                            
-                            // Safe Amount Paid (Defaults to 0 if null)
-                            $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
+            $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
+            $venue_name = htmlspecialchars($b['venue_name']);
+            $total_amt = floatval($b['total_amount']);
+            $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
+            $balance_due = $total_amt - $amount_paid;
 
-                            // Badge Styling Logic
-                            $badge_class = 'status-pending'; // Default
-                            $status_text = $b['booking_status'];
+            // Strict Status Logic
+            $badge_class = 'status-pending'; 
+            $status_text = 'Pending';
 
-                            if ($b['booking_status'] === 'Confirmed') {
-                                $badge_class = 'status-paid';
-                            } elseif ($b['booking_status'] === 'Cancelled') {
-                                $badge_class = 'status-refunded';
-                            }
-
-                            if ($b['payment_status'] === 'Partial' && $b['booking_status'] !== 'Cancelled') {
-                                $badge_class = 'status-partial';
-                                $status_text = 'Partial Pay';
-                            }
-                        ?>
+            if ($b['booking_status'] === 'Confirmed') {
+                if ($b['payment_status'] === 'Partial') {
+                    $badge_class = 'status-partial';
+                    $status_text = 'Partially Paid';
+                } else {
+                    $badge_class = 'status-paid';
+                    $status_text = 'Fully Paid';
+                }
+            } elseif ($b['booking_status'] === 'Cancelled') {
+                $badge_class = 'status-refunded';
+                $status_text = 'Cancelled';
+            }
+        ?>
                     <tr class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-row' : ''; ?>">
                         <td>#<?php echo $b['id']; ?></td>
                         <td><?php echo $venue_name; ?></td>
@@ -132,39 +127,39 @@ if ($result && $result->num_rows > 0) {
                         <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>
                         </td>
 
-                        <td class="action-cells">
+                        <!-- UX FIX: Flexbox wrap for buttons to prevent table stretching -->
+                        <td class="action-cells" style="display: flex; flex-wrap: wrap; gap: 6px; max-width: 250px;">
 
-                            <!-- 1. PENDING BOOKINGS -->
                             <?php if ($b['booking_status'] === 'Pending'): ?>
                             <button class="btn-action btn-confirm" data-id="<?php echo $b['id']; ?>">Confirm</button>
                             <button class="btn-action btn-cancel" data-id="<?php echo $b['id']; ?>">Decline</button>
 
-                            <!-- 2. CONFIRMED BOOKINGS -->
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
 
-                            <!-- Only show "Process Refund" IF the customer actually requested a cancellation -->
-                            <?php if ($b['cancel_status'] === 'Pending'): ?>
-                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>"
-                                data-reason="<?php echo htmlspecialchars($b['cancel_reason']); ?>">
-                                Process Refund Request
+                            <!-- If Partial, show Collect Payment Button -->
+                            <?php if ($b['payment_status'] === 'Partial' && $balance_due > 0): ?>
+                            <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
+                                data-due="<?php echo $balance_due; ?>">
+                                Collect Pay
                             </button>
-                            <?php else: ?>
-                            <!-- Normal Confirmed Booking Operations -->
+                            <?php endif; ?>
+
                             <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
                                 data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-type="<?php echo $venue_type; ?>" data-date="<?php echo $date_str; ?>">
+                                data-type="<?php echo $b['venue_type']; ?>" data-date="<?php echo $date_str; ?>">
                                 Reschedule
                             </button>
-                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View Details</button>
+
+                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
+                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
+                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>">
+                                Refund
+                            </button>
+
                             <?php endif; ?>
 
-                            <!-- 3. CANCELLED / COMPLETED BOOKINGS -->
-                            <?php elseif ($b['booking_status'] === 'Cancelled' || $b['booking_status'] === 'Completed'): ?>
-                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View Details</button>
-                            <?php endif; ?>
-
+                            <!-- View Details is ALWAYS available -->
+                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View</button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -288,6 +283,38 @@ if ($result && $result->num_rows > 0) {
 
             <div class="modal-actions" style="margin-top: 30px;">
                 <button class="btn-modal btn-modal-cancel close-modal" style="width: 100%;">Close</button>
+            </div>
+        </div>
+
+        <!-- Collect Payment Modal -->
+        <div class="admin-modal" id="paymentModal">
+            <h3 class="modal-main-title">Collect Payment</h3>
+            <h4 class="modal-subtitle">Remaining Balance: <span id="pmt-balance" style="color: #e06666;">₱0.00</span>
+            </h4>
+
+            <div style="margin-top: 20px;">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Payment Method</label>
+                    <select id="pmt-method"
+                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="Cash" selected>Cash (Front Desk)</option>
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+                </div>
+
+                <div class="form-group hidden" id="pmt-trans-wrapper" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Transaction / Reference
+                        ID</label>
+                    <input type="text" id="pmt-trans-id" placeholder="Enter reference number"
+                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                </div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 25px;">
+                <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
+                <button class="btn-modal btn-modal-primary" id="btn-execute-payment">Confirm Payment</button>
             </div>
         </div>
 
