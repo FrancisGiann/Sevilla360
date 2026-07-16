@@ -369,5 +369,29 @@ if ($result && $result->num_rows > 0) {
                 <button class="btn btn-primary btn-modal-danger" id="btn-execute-decline">Yes, Cancel It</button>
             </div>
         </div>
+        <!--  Confirm Modal -->
+        <div class="admin-modal modal-sm" id="uniConfirmModal">
+            <i class="fa-solid fa-circle-question modal-icon-warning" style="color: var(--color-gold);"></i>
+            <h3 class="modal-title">Confirm Action</h3>
+            <div class="modal-body modal-text-center">
+                <p id="uc-message">Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel" id="uc-btn-no">No, Go Back</button>
+                <button class="btn btn-primary" id="uc-btn-yes">Yes, Proceed</button>
+            </div>
+        </div>
+
+        <!--  Alert Modal  -->
+        <div class="admin-modal modal-sm" id="uniAlertModal">
+            <i class="fa-solid fa-circle-info modal-icon-warning" id="ua-icon"></i>
+            <h3 class="modal-title" id="ua-title">Notice</h3>
+            <div class="modal-body modal-text-center">
+                <p id="ua-message">Message text goes here.</p>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-primary" id="ua-btn-ok" style="width: 100%;">OK</button>
+            </div>
+        </div>
     </div>
 </div>
