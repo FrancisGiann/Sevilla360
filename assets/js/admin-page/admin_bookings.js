@@ -191,17 +191,47 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // --- 6. Quick Confirm Button (No Modal needed) ---
-  document.querySelectorAll('.btn-confirm').forEach(btn => {
+  // --- 6. APPROVE & DECLINE MODALS (Replaced ugly window.confirm) ---
+  const approveModal = document.getElementById("approveModal");
+  const declineModal = document.getElementById("declineModal");
+
+  // Open Approve Modal
+  document.querySelectorAll('.open-approve').forEach(btn => {
       btn.addEventListener('click', function() {
           const bookingId = this.getAttribute('data-id');
-          if (confirm('Approve and confirm Booking #' + bookingId + '?')) {
-              processBookingAction(bookingId, 'confirm', this);
-          }
+          document.getElementById('approve-booking-id').innerText = bookingId;
+          document.getElementById('btn-execute-approve').setAttribute('data-id', bookingId);
+          
+          modalOverlay.classList.add('active');
+          approveModal.classList.add('active');
       });
   });
 
-  // --- 6. VIEW DETAILS MODAL LOGIC ---
+  // Execute Approve
+  document.getElementById('btn-execute-approve')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      processBookingAction(bookingId, 'confirm', this);
+  });
+
+  // Open Decline Modal
+  document.querySelectorAll('.open-decline').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          document.getElementById('decline-booking-id').innerText = bookingId;
+          document.getElementById('btn-execute-decline').setAttribute('data-id', bookingId);
+          
+          modalOverlay.classList.add('active');
+          declineModal.classList.add('active');
+      });
+  });
+
+  // Execute Decline
+  document.getElementById('btn-execute-decline')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      processBookingAction(bookingId, 'cancel', this);
+  });
+
+  // --- 7. VIEW DETAILS MODAL LOGIC ---
   const viewDetailsModal = document.getElementById("viewDetailsModal");
 
   document.querySelectorAll('.btn-view').forEach(btn => {
@@ -304,19 +334,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // --- 7. COLLECT PAYMENT MODAL LOGIC ---
+  // --- 8. COLLECT PAYMENT MODAL LOGIC ---
   const paymentModal = document.getElementById("paymentModal");
   const pmtMethodSelect = document.getElementById("pmt-method");
   const pmtTransWrapper = document.getElementById("pmt-trans-wrapper");
+  const pmtAmountInput = document.getElementById("pmt-amount-input");
   const btnExecutePayment = document.getElementById("btn-execute-payment");
 
-  // Show/Hide Transaction ID based on payment method
+  // Show/Hide Transaction ID based on payment method (Foolproof JS method)
   if (pmtMethodSelect) {
       pmtMethodSelect.addEventListener("change", function() {
           if (this.value === "Cash") {
-              pmtTransWrapper.classList.add("hidden");
+              pmtTransWrapper.style.display = "none"; // Hide it securely
           } else {
-              pmtTransWrapper.classList.remove("hidden");
+              pmtTransWrapper.style.display = "block"; // Show it
           }
       });
   }
@@ -327,11 +358,22 @@ document.addEventListener("DOMContentLoaded", () => {
           const bookingId = this.getAttribute('data-id');
           const balanceDue = parseFloat(this.getAttribute('data-due')) || 0;
 
+          // Display the balance text
           document.getElementById('pmt-balance').innerText = `₱${balanceDue.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+          
+          // DO NOT PREFILL. Leave it blank so admin must type it!
+          if (pmtAmountInput) {
+              pmtAmountInput.value = ""; 
+              pmtAmountInput.placeholder = `Enter amount (Max: ₱${balanceDue.toLocaleString()})`;
+          }
+          
+          // Reset dropdown to Cash and securely HIDE trans ID wrapper
+          if (pmtMethodSelect) pmtMethodSelect.value = "Cash";
+          if (pmtTransWrapper) pmtTransWrapper.style.display = "none";
+          if (document.getElementById('pmt-trans-id')) document.getElementById('pmt-trans-id').value = "";
           
           if (btnExecutePayment) {
               btnExecutePayment.setAttribute('data-id', bookingId);
-              btnExecutePayment.setAttribute('data-amt', balanceDue);
           }
 
           modalOverlay.classList.add('active');
@@ -343,17 +385,22 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnExecutePayment) {
       btnExecutePayment.addEventListener('click', function() {
           const bookingId = this.getAttribute('data-id');
-          const amount = this.getAttribute('data-amt');
+          const amount = parseFloat(pmtAmountInput.value); // Get amount from the INPUT BOX
           const method = pmtMethodSelect.value;
           const transId = document.getElementById('pmt-trans-id').value.trim();
+
+          // Validations
+          if (isNaN(amount) || amount <= 0) {
+              alert("Please enter a valid payment amount.");
+              return;
+          }
 
           if (method !== 'Cash' && transId === '') {
               alert("Please enter a Transaction ID for online/bank payments.");
               return;
           }
 
-          if (confirm(`Confirm receipt of ₱${parseFloat(amount).toLocaleString()} via ${method}?`)) {
-              // We reuse the processBookingAction, adding extra data!
+          if (confirm(`Confirm receipt of ₱${amount.toLocaleString()} via ${method}?`)) {
               processBookingAction(bookingId, 'add_payment', this, {
                   amount: amount,
                   method: method,

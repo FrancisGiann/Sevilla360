@@ -129,13 +129,28 @@ if ($result && $result->num_rows > 0) {
 
                         <td class="action-cells">
 
+                            <!-- 1. PENDING BOOKINGS -->
                             <?php if ($b['booking_status'] === 'Pending'): ?>
-                            <button class="btn-action btn-confirm" data-id="<?php echo $b['id']; ?>">Confirm</button>
-                            <button class="btn-action btn-cancel" data-id="<?php echo $b['id']; ?>">Decline</button>
+                            <button class="btn-action btn-confirm open-approve"
+                                data-id="<?php echo $b['id']; ?>">Approve</button>
+                            <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
+                                data-due="<?php echo $balance_due; ?>">
+                                Collect Pay
+                            </button>
+                            <button class="btn-action btn-cancel open-decline"
+                                data-id="<?php echo $b['id']; ?>">Decline</button>
 
+                            <!-- 2. CONFIRMED BOOKINGS -->
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
 
-                            <!-- If Partial, show Collect Payment Button -->
+                            <?php if ($b['cancel_status'] === 'Pending'): ?>
+                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
+                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
+                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>"
+                                data-reason="<?php echo htmlspecialchars($b['cancel_reason']); ?>">
+                                Refund Req
+                            </button>
+                            <?php else: ?>
                             <?php if ($b['payment_status'] === 'Partial' && $balance_due > 0): ?>
                             <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
                                 data-due="<?php echo $balance_due; ?>">
@@ -145,20 +160,15 @@ if ($result && $result->num_rows > 0) {
 
                             <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
                                 data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-type="<?php echo $b['venue_type']; ?>" data-date="<?php echo $date_str; ?>">
+                                data-type="<?php echo $venue_type; ?>" data-date="<?php echo $date_str; ?>">
                                 Reschedule
                             </button>
-
-                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>">
-                                Refund
-                            </button>
+                            <?php endif; ?>
 
                             <?php endif; ?>
 
                             <!-- View Details is ALWAYS available -->
-                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View</button>
+                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View Details</button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -286,16 +296,26 @@ if ($result && $result->num_rows > 0) {
         </div>
 
         <!-- Collect Payment Modal -->
-        <div class="admin-modal" id="paymentModal">
-            <h3 class="modal-main-title">Collect Payment</h3>
-            <h4 class="modal-subtitle">Remaining Balance: <span id="pmt-balance" style="color: #e06666;">₱0.00</span>
-            </h4>
+        <div class="admin-modal modal-sm" id="paymentModal">
+            <h3 class="modal-title">Collect Payment</h3>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px;">Remaining Balance: <strong id="pmt-balance"
+                        style="color: #e06666; font-size: 1.2rem;">₱0.00</strong></p>
 
-            <div style="margin-top: 20px;">
                 <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Payment Method</label>
+                    <label
+                        style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--color-dark);">Amount
+                        to Collect (₱)</label>
+                    <input type="number" id="pmt-amount-input" step="0.01"
+                        style="width: 100%; padding: 12px; border: 1px solid rgba(42, 37, 34, 0.15); border-radius: 4px;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label
+                        style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--color-dark);">Payment
+                        Method</label>
                     <select id="pmt-method"
-                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                        style="width: 100%; padding: 12px; border: 1px solid rgba(42, 37, 34, 0.15); border-radius: 4px;">
                         <option value="Cash" selected>Cash (Front Desk)</option>
                         <option value="GCash">GCash</option>
                         <option value="Maya">Maya</option>
@@ -303,19 +323,51 @@ if ($result && $result->num_rows > 0) {
                     </select>
                 </div>
 
+                <!-- Hidden by default because "Cash" is selected -->
                 <div class="form-group hidden" id="pmt-trans-wrapper" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Transaction / Reference
-                        ID</label>
+                    <label
+                        style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--color-dark);">Transaction
+                        / Ref ID</label>
                     <input type="text" id="pmt-trans-id" placeholder="Enter reference number"
-                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                        style="width: 100%; padding: 12px; border: 1px solid rgba(42, 37, 34, 0.15); border-radius: 4px;">
                 </div>
             </div>
 
-            <div class="modal-actions" style="margin-top: 25px;">
-                <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
-                <button class="btn-modal btn-modal-primary" id="btn-execute-payment">Confirm Payment</button>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
+                <!-- Used btn-primary so it gets the brand Gold color -->
+                <button class="btn btn-primary" id="btn-execute-payment">Confirm</button>
+            </div>
+        </div>
+        <!-- Approve Booking Modal -->
+        <div class="admin-modal modal-sm" id="approveModal">
+            <i class="fa-solid fa-circle-check modal-icon-warning" style="color: #4ade80;"></i>
+            <h3 class="modal-title">Approve Booking?</h3>
+            <div class="modal-body modal-text-center">
+                <p>Are you sure you want to manually confirm Booking #<span id="approve-booking-id"
+                        class="modal-date-highlight"></span>?</p>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
+                <button class="btn btn-primary" id="btn-execute-approve"
+                    style="background-color: #4ade80; border-color: #4ade80; color: var(--color-dark);">Yes,
+                    Approve</button>
             </div>
         </div>
 
+        <!-- Decline/Cancel Booking Modal -->
+        <div class="admin-modal modal-sm" id="declineModal">
+            <i class="fa-solid fa-triangle-exclamation modal-icon-warning"></i>
+            <h3 class="modal-title">Decline Booking?</h3>
+            <div class="modal-body modal-text-center">
+                <p>Are you sure you want to cancel Booking #<span id="decline-booking-id"
+                        class="modal-date-highlight"></span>?</p>
+                <p class="modal-subtext">This action cannot be undone and will free up the dates.</p>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel close-modal">Go Back</button>
+                <button class="btn btn-primary btn-modal-danger" id="btn-execute-decline">Yes, Cancel It</button>
+            </div>
+        </div>
     </div>
 </div>
