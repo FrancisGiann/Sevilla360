@@ -344,11 +344,14 @@ if ($result && $result->num_rows > 0) {
             <i class="fa-solid fa-circle-check modal-icon-warning" style="color: #4ade80;"></i>
             <h3 class="modal-title">Approve Booking?</h3>
             <div class="modal-body modal-text-center">
-                <p>Are you sure you want to manually confirm Booking #<span id="approve-booking-id"
-                        class="modal-date-highlight"></span>?</p>
+                <!-- FIX: Removed display: block class so text stays on one line -->
+                <p>Are you sure you want to manually confirm Booking <strong style="color: var(--color-gold);">#<span
+                            id="approve-booking-id"></span></strong>?</p>
             </div>
             <div class="modal-actions-center">
-                <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
+                <!-- FIX: Forced transparent background and dark text -->
+                <button class="btn btn-modal-cancel close-modal"
+                    style="background: transparent; color: var(--color-dark); border: 1px solid rgba(42, 37, 34, 0.2);">Cancel</button>
                 <button class="btn btn-primary" id="btn-execute-approve"
                     style="background-color: #4ade80; border-color: #4ade80; color: var(--color-dark);">Yes,
                     Approve</button>
@@ -360,12 +363,15 @@ if ($result && $result->num_rows > 0) {
             <i class="fa-solid fa-triangle-exclamation modal-icon-warning"></i>
             <h3 class="modal-title">Decline Booking?</h3>
             <div class="modal-body modal-text-center">
-                <p>Are you sure you want to cancel Booking #<span id="decline-booking-id"
-                        class="modal-date-highlight"></span>?</p>
+                <!-- FIX: Removed display: block class so text stays on one line -->
+                <p>Are you sure you want to cancel Booking <strong style="color: #e06666;">#<span
+                            id="decline-booking-id"></span></strong>?</p>
                 <p class="modal-subtext">This action cannot be undone and will free up the dates.</p>
             </div>
             <div class="modal-actions-center">
-                <button class="btn btn-outline btn-modal-cancel close-modal">Go Back</button>
+                <button class="btn btn-modal-cancel close-modal"
+                    style="background: transparent; color: var(--color-dark); border: 1px solid rgba(42, 37, 34, 0.2);">Go
+                    Back</button>
                 <button class="btn btn-primary btn-modal-danger" id="btn-execute-decline">Yes, Cancel It</button>
             </div>
         </div>
