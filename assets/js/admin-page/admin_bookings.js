@@ -6,6 +6,29 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // =========================================================
+  // CALENDAR ENGINE OVERRIDES (Prevents calendar.js crashes)
+  // =========================================================
+  
+  // When the Admin selects dates on the Reschedule Calendar, do nothing special.
+  // Just let the calendar highlight the dates in Gold.
+  window.requestDateConfirmation = function(startDate, endDate, calendarInstance) {
+      // We don't need to pop up a "Lock Dates" modal for the Admin backend.
+      // The dates are stored safely in calendarInstance.startDate
+  };
+
+  // The calendar engine also looks for this function to update sidebar text.
+  // We don't have a sidebar on the Admin Bookings page, so we leave it empty.
+  window.calculateSummary = function() {
+      // Do nothing
+  };
+
+  window.showOverrideModal = function(newDate, calendarInstance) {
+      // If the admin clicks a third date, just clear the old selection and start over
+      calendarInstance.clearSelection();
+      calendarInstance.startDate = newDate;
+      calendarInstance.render();
+  };
   
   // =========================================================
   // 1. UNIVERSAL MODAL UTILITIES (Replaces alert and confirm)
@@ -227,10 +250,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 7. RESCHEDULE MODAL LOGIC ---
   const rescheduleModal = document.getElementById("rescheduleModal");
   let rescheduleCalendar = null;
+  
+  // 1. Initialize the calendar if the HTML exists
   if (typeof SevillaCalendar !== 'undefined' && document.getElementById("cal-ui-reschedule")) {
       rescheduleCalendar = new SevillaCalendar("cal-ui-reschedule");
   }
 
+  // 2. Open the Modal & Fetch Booked Dates
   document.querySelectorAll('.open-reschedule').forEach(btn => {
     btn.addEventListener('click', function() {
       const bookingId = this.getAttribute('data-id');
@@ -239,6 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const venueName = this.getAttribute('data-venue') || "Standard Room"; 
       const originalDate = this.getAttribute('data-date') || "--";
 
+      // Inject text data into modal
       const spans = document.querySelectorAll('#rescheduleModal .summary-grid .value');
       if (spans.length >= 3) {
           spans[0].innerText = customerName;
@@ -246,9 +273,13 @@ document.addEventListener("DOMContentLoaded", () => {
           spans[2].innerText = originalDate;
       }
 
+      // CRITICAL: Fetch the booked dates from the database for this specific room!
       if (rescheduleCalendar) {
           rescheduleCalendar.clearSelection();
           rescheduleCalendar.fetchBookedDates(venueType, venueName);
+          
+          // Re-render calendar so it resizes correctly inside the newly opened modal
+          setTimeout(() => rescheduleCalendar.render(), 100); 
       }
 
       const executeBtn = document.querySelector('#rescheduleModal .btn-modal-refund'); 
@@ -259,20 +290,27 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // 3. Execute the Reschedule Action
   document.querySelector('#rescheduleModal .btn-modal-refund')?.addEventListener('click', function() {
     const bookingId = this.getAttribute('data-id');
     
+    // Guard: Ensure they actually clicked a new date on the calendar!
     if (!rescheduleCalendar || !rescheduleCalendar.startDate) {
         showAlertModal("Missing Data", "Please select the new dates from the calendar first!", "error", 'rescheduleModal');
         return;
     }
 
+    // Format Dates safely to prevent timezone shifting
     const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const newStart = formatLocal(rescheduleCalendar.startDate);
     const newEnd = rescheduleCalendar.endDate ? formatLocal(rescheduleCalendar.endDate) : newStart;
 
+    // Use our beautiful Universal Confirm Modal
     showConfirmModal(`Confirm rescheduling to ${newStart}?`, () => {
-        processBookingAction(bookingId, 'reschedule', this, { new_start_date: newStart, new_end_date: newEnd });
+        processBookingAction(bookingId, 'reschedule', this, { 
+            new_start_date: newStart, 
+            new_end_date: newEnd 
+        });
     }, 'rescheduleModal');
   });
 

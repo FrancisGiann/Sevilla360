@@ -1,7 +1,7 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch Bookings + Check for Pending Cancellation Requests!
+// 1. Fetch Bookings + Cancel Status + Hotel Room Types
 $query = "
     SELECT 
         b.id, 
@@ -14,13 +14,15 @@ $query = "
         c.first_name, 
         c.last_name, 
         v.name AS venue_name, 
-        v.category AS venue_type,
+        v.category AS venue_category,
+        hr.room_type AS hotel_room_type,
         cx.status AS cancel_status,
         cx.reason AS cancel_reason
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     ORDER BY b.id DESC
 ";
 $result = $conn->query($query);
@@ -95,6 +97,10 @@ if ($result && $result->num_rows > 0) {
 
             $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
             $venue_name = htmlspecialchars($b['venue_name']);
+            
+            // SMART FIX: Get exact room type (Deluxe Room) instead of generic "Hotel Room"
+            $actual_room_type = ($b['venue_category'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_category'];
+            
             $total_amt = floatval($b['total_amount']);
             $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
             $balance_due = $total_amt - $amount_paid;
@@ -160,7 +166,8 @@ if ($result && $result->num_rows > 0) {
 
                             <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
                                 data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-type="<?php echo $venue_type; ?>" data-date="<?php echo $date_str; ?>">
+                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
+                                data-date="<?php echo $date_str; ?>">
                                 Reschedule
                             </button>
                             <?php endif; ?>
