@@ -1,6 +1,49 @@
 <?php
 $required_role = 'customer';
 require 'includes/auth_guard.php';
+require_once 'config/db_connect.php';
+
+// 1. Get the Customer ID associated with this User Account
+$user_id = $_SESSION['user_id'];
+$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone FROM customers WHERE user_id = ?");
+$stmt_cust->bind_param("i", $user_id);
+$stmt_cust->execute();
+$customer_res = $stmt_cust->get_result();
+
+if ($customer_res->num_rows === 0) {
+    die("Customer profile not found. Please contact support.");
+}
+$customer = $customer_res->fetch_assoc();
+$customer_id = $customer['id'];
+
+// 2. Fetch all bookings for THIS customer
+$stmt_bookings = $conn->prepare("
+    SELECT 
+        b.*, 
+        v.name AS venue_name, 
+        v.category AS venue_type,
+        cx.status AS cancel_status
+    FROM bookings b
+    JOIN venues v ON b.venue_id = v.id
+    LEFT JOIN cancellations cx ON b.id = cx.booking_id
+    WHERE b.customer_id = ?
+    ORDER BY b.id DESC
+");
+$stmt_bookings->bind_param("i", $customer_id);
+$stmt_bookings->execute();
+$bookings_result = $stmt_bookings->get_result();
+
+$bookings = [];
+$stat_total = 0;
+$stat_pending = 0;
+$stat_confirmed = 0;
+
+while ($row = $bookings_result->fetch_assoc()) {
+    $bookings[] = $row;
+    $stat_total++;
+    if ($row['booking_status'] === 'Pending') $stat_pending++;
+    if ($row['booking_status'] === 'Confirmed') $stat_confirmed++;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -22,7 +65,6 @@ require 'includes/auth_guard.php';
 </head>
 
 <body class="dashboard-body">
-
     <div class="dashboard-layout">
 
         <!-- LEFT SIDEBAR -->
@@ -32,10 +74,14 @@ require 'includes/auth_guard.php';
             </div>
 
             <div class="user-profile">
-                <div class="avatar">FE</div>
+                <!-- Auto-generate Avatar Initials -->
+                <div class="avatar">
+                    <?php echo strtoupper(substr($customer['first_name'], 0, 1) . substr($customer['last_name'], 0, 1)); ?>
+                </div>
                 <div class="user-info">
-                    <h3 class="user-name">Francis Empleo</h3>
-                    <p class="user-email">user@email.com</p>
+                    <h3 class="user-name">
+                        <?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></h3>
+                    <p class="user-email"><?php echo htmlspecialchars($customer['email']); ?></p>
                 </div>
             </div>
 
@@ -43,24 +89,17 @@ require 'includes/auth_guard.php';
                 <p class="nav-heading">MENU</p>
                 <ul class="nav-list">
                     <li class="nav-item active" data-tab="bookings">
-                        <a href="#" class="nav-link">
-                            <i class="fa-solid fa-bars"></i>
-                            <span>My Bookings</span>
-                        </a>
+                        <a href="#" class="nav-link"><i class="fa-solid fa-bars"></i><span>My Bookings</span></a>
                     </li>
                     <li class="nav-item" data-tab="settings">
-                        <a href="#" class="nav-link">
-                            <i class="fa-regular fa-user"></i>
-                            <span>Settings</span>
-                        </a>
+                        <a href="#" class="nav-link"><i class="fa-regular fa-user"></i><span>Settings</span></a>
                     </li>
                 </ul>
             </nav>
 
             <div class="sidebar-footer">
                 <a href="actions/auth/logout.php" class="nav-link sign-out">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                    <span>Sign out</span>
+                    <i class="fa-solid fa-arrow-right-from-bracket"></i><span>Sign out</span>
                 </a>
             </div>
         </aside>
@@ -87,22 +126,25 @@ require 'includes/auth_guard.php';
                             <p class="page-subtitle">TRACK AND MANAGE ALL YOUR RESERVATIONS</p>
                         </div>
                         <div class="header-actions">
-                            <button class="btn-outline-dash"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
-                            <button class="btn-primary-dash"><i class="fa-solid fa-plus"></i> New Booking</button>
+                            <button class="btn-outline-dash" onclick="window.location.reload();"><i
+                                    class="fa-solid fa-rotate-right"></i> Refresh</button>
+                            <a href="booking.php" style="text-decoration:none;"><button class="btn-primary-dash"><i
+                                        class="fa-solid fa-plus"></i> New Booking</button></a>
                         </div>
                     </div>
 
+                    <!-- Dynamic Stats Grid -->
                     <div class="stats-grid">
                         <div class="stat-card">
-                            <div class="stat-value text-gold">3</div>
+                            <div class="stat-value text-gold"><?php echo $stat_total; ?></div>
                             <div class="stat-label">TOTAL BOOKINGS</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">1</div>
+                            <div class="stat-value"><?php echo $stat_pending; ?></div>
                             <div class="stat-label">PENDING PAYMENT</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value text-green">2</div>
+                            <div class="stat-value text-green"><?php echo $stat_confirmed; ?></div>
                             <div class="stat-label">CONFIRMED</div>
                         </div>
                     </div>
@@ -132,61 +174,85 @@ require 'includes/auth_guard.php';
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr data-status="Pending">
-                                        <td class="fw-500">#12312</td>
-                                        <td>Event Hall</td>
-                                        <td>Jun 13, 2026</td>
-                                        <td>₱ 20,000</td>
-                                        <td><span class="badge badge-pending">Pending Payment</span></td>
+                                    <?php if (empty($bookings)): ?>
+                                    <tr>
+                                        <td colspan="6" style="text-align:center; padding:30px;">You have no bookings
+                                            yet. Time to plan a vacation!</td>
+                                    </tr>
+                                    <?php else: ?>
+                                    <?php foreach ($bookings as $b): 
+        // Date Formatting
+        $start = new DateTime($b['start_date']);
+        $end = new DateTime($b['end_date']);
+        $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
+
+        // Money
+        $total_amt = floatval($b['total_amount']);
+        $amount_paid = floatval($b['amount_paid']);
+
+        // Badge & Filtering Logic
+        $badge_class = 'badge-pending'; 
+        $status_text = 'Pending Payment';
+        $filter_data = 'Pending';
+
+        if ($b['booking_status'] === 'Confirmed') {
+            if ($b['payment_status'] === 'Partial') {
+                $badge_class = 'badge-partial';
+                $status_text = 'Partially Paid';
+                $filter_data = 'Partially Paid';
+            } else {
+                $badge_class = 'badge-paid';
+                $status_text = 'Fully Paid';
+                $filter_data = 'Paid';
+            }
+        } elseif ($b['booking_status'] === 'Cancelled') {
+            $badge_class = 'badge-cancelled';
+            $status_text = 'Cancelled';
+            $filter_data = 'Cancelled';
+        }
+    ?>
+                                    <tr data-status="<?php echo $filter_data; ?>">
+                                        <td class="fw-500">#<?php echo $b['id']; ?></td>
+                                        <td><?php echo htmlspecialchars($b['venue_name']); ?></td>
+                                        <td><?php echo $date_str; ?></td>
+                                        <td
+                                            class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'text-muted' : ''; ?>">
+                                            ₱<?php echo number_format($total_amt, 2); ?>
+                                        </td>
+                                        <td>
+                                            <span class="badge <?php echo $badge_class; ?>">
+                                                <?php echo ($b['cancel_status'] === 'Pending') ? 'Cancel Requested' : $status_text; ?>
+                                            </span>
+                                        </td>
                                         <td class="action-cell">
+
+                                            <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && $b['payment_status'] === 'Partial')): ?>
                                             <button class="btn-action btn-green">Pay Now</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12312"
-                                                data-venue="Event Hall" data-date="Jun 13, 2026">Cancel</button>
+                                            <?php endif; ?>
+
+                                            <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
+                                            <!-- Cancel Button -->
+                                            <button class="btn-action btn-red btn-cancel"
+                                                data-id="<?php echo $b['id']; ?>"
+                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                data-date="<?php echo $date_str; ?>"
+                                                data-paid="<?php echo $amount_paid; ?>">
+                                                <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
+                                            </button>
+                                            <?php endif; ?>
+
+                                            <button class="btn-action btn-outline btn-details"
+                                                data-id="<?php echo $b['id']; ?>"
+                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                data-date="<?php echo $date_str; ?>"
+                                                data-paid="<?php echo $amount_paid; ?>"
+                                                data-status="<?php echo $status_text; ?>" data-tid="--">
+                                                View Details
+                                            </button>
                                         </td>
                                     </tr>
-                                    <tr data-status="Partially Paid">
-                                        <td class="fw-500">#12313</td>
-                                        <td>Standard Room</td>
-                                        <td>May 5-6, 2026</td>
-                                        <td>₱ 20,000</td>
-                                        <td><span class="badge badge-partial">Partially Paid</span></td>
-                                        <td class="action-cell">
-                                            <button class="btn-action btn-green">Pay Now</button>
-                                            <button class="btn-action btn-blue btn-reschedule" data-id="#12313"
-                                                data-venue="Standard Room" data-date="May 5-6, 2026">Reschedule</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12313"
-                                                data-venue="Standard Room" data-date="May 5-6, 2026"
-                                                data-paid="10000">Refund</button>
-                                        </td>
-                                    </tr>
-                                    <tr data-status="Paid">
-                                        <td class="fw-500">#12314</td>
-                                        <td>Resort Villa</td>
-                                        <td>Apr 4-5, 2026</td>
-                                        <td>₱ 20,000</td>
-                                        <td><span class="badge badge-paid">Paid</span></td>
-                                        <td class="action-cell">
-                                            <button class="btn-action btn-outline btn-details" data-id="#12314"
-                                                data-venue="Resort Villa" data-date="Apr 4-5, 2026" data-paid="20000"
-                                                data-status="Paid" data-tid="#1923129183">View Details</button>
-                                            <button class="btn-action btn-red btn-cancel" data-id="#12314"
-                                                data-venue="Resort Villa" data-date="Apr 4-5, 2026"
-                                                data-paid="20000">Cancel</button>
-                                        </td>
-                                    </tr>
-                                    <tr data-status="Cancelled">
-                                        <td class="fw-500">#12315</td>
-                                        <td>Event Hall</td>
-                                        <td>Jan 1, 2026</td>
-                                        <td class="text-muted">₱ 20,000</td>
-                                        <td><span class="badge badge-cancelled">Cancelled</span></td>
-                                        <td class="action-cell">
-                                            <button class="btn-action btn-outline btn-details" data-id="#12315"
-                                                data-venue="Event Hall" data-date="Jan 1, 2026" data-paid="0"
-                                                data-status="Cancelled" data-tid="N/A">View Details</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
+                                    <?php endforeach; ?>
+                                    <?php endif; ?>
                             </table>
                         </div>
                     </div>
