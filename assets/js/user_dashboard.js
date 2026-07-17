@@ -95,9 +95,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // A. Cancel Button
   document.querySelectorAll(".btn-cancel").forEach((btn) => {
     btn.addEventListener("click", (e) => {
+      const bookingId = btn.getAttribute("data-id"); // Grab the ID
       const venue = btn.getAttribute("data-venue");
       const date = btn.getAttribute("data-date");
-      const paidStr = btn.getAttribute("data-paid"); // Can be null if pending
+      const paidStr = btn.getAttribute("data-paid");
 
       // Populate Modal
       document.getElementById("cancel-venue").textContent = venue;
@@ -107,10 +108,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const checkboxGrp = document.getElementById("cancel-checkbox-group");
 
       if (paidStr && parseInt(paidStr) > 0) {
-        // Paid or partially paid -> show refund math
         let paidAmt = parseInt(paidStr);
         let fee = 461;
         let refundAmt = paidAmt - fee;
+        if (refundAmt < 0) refundAmt = 0;
 
         document.getElementById("cancel-paid").textContent =
           `₱${paidAmt.toLocaleString()}`;
@@ -120,10 +121,15 @@ document.addEventListener("DOMContentLoaded", () => {
         refundInfo.style.display = "block";
         checkboxGrp.style.display = "flex";
       } else {
-        // Pending (no money paid)
         refundInfo.style.display = "none";
         checkboxGrp.style.display = "none";
       }
+
+      // NEW: Attach the Booking ID to the red Confirm button in the modal!
+      const confirmBtn = document.querySelector(
+        "#modal-cancel .btn-confirm-red",
+      );
+      if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
 
       openModal("cancel");
     });
@@ -169,15 +175,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // --- 5. Modal Confirm Actions (Placeholders) ---
+  // --- 5. Modal Confirm Actions ---
   const btnConfirmCancel = document.querySelector(
     "#modal-cancel .btn-confirm-red",
   );
   if (btnConfirmCancel) {
-    btnConfirmCancel.addEventListener("click", () => {
+    btnConfirmCancel.addEventListener("click", function () {
+      const bookingId = this.getAttribute("data-id");
+      const reasonInput = document.querySelector("#modal-cancel textarea");
+      const reason = reasonInput ? reasonInput.value.trim() : "";
       const isRefundable =
         document.getElementById("cancel-refund-info").style.display === "block";
       const isChecked = document.getElementById("confirm-fee").checked;
+
+      if (reason === "") {
+        alert("Please provide a reason for the cancellation.");
+        return;
+      }
 
       if (isRefundable && !isChecked) {
         alert(
@@ -186,35 +200,37 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      console.log("Processing cancellation...");
-      alert("Reservation Cancelled successfully.");
-      closeModal();
-      // location.reload(); // Un-comment to refresh page after db action
-    });
-  }
+      // UX: Disable button while loading
+      const originalText = this.innerText;
+      this.innerText = "Processing...";
+      this.disabled = true;
 
-  const btnConfirmReschedule = document.querySelector(
-    "#modal-reschedule .btn-confirm-red",
-  );
-  if (btnConfirmReschedule) {
-    btnConfirmReschedule.addEventListener("click", () => {
-      const newDate = document.querySelector(
-        "#modal-reschedule .date-picker",
-      ).value;
-      const isChecked = document.getElementById("confirm-reschedule").checked;
-
-      if (!newDate) {
-        alert("Please select a new date.");
-        return;
-      }
-      if (!isChecked) {
-        alert("Please acknowledge the reschedule policy.");
-        return;
-      }
-
-      console.log("Submitting reschedule request for: " + newDate);
-      alert("Reschedule request submitted. Staff will review shortly.");
-      closeModal();
+      // Send to our new PHP backend!
+      fetch("actions/user/request_cancel.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: bookingId,
+          reason: reason,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.success) {
+            alert(data.message);
+            window.location.reload(); // Refresh to show "Cancel Requested" badge
+          } else {
+            alert("Error: " + data.message);
+            this.innerText = originalText;
+            this.disabled = false;
+          }
+        })
+        .catch((error) => {
+          console.error(error);
+          alert("Network error occurred.");
+          this.innerText = originalText;
+          this.disabled = false;
+        });
     });
   }
 });

@@ -441,7 +441,7 @@ while ($row = $bookings_result->fetch_assoc()) {
         </div>
     </div>
 
-    <script src="assets/js/user_dashboard.js"></script>
+    <script src="assets/js/user_dashboard.js?v=1.0"></script>
 </body>
 
 </html>
