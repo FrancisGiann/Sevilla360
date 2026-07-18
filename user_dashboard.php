@@ -438,16 +438,42 @@ while ($row = $bookings_result->fetch_assoc()) {
 
     <!-- Booking Details Modal -->
     <div class="modal-overlay" id="modal-details">
-        <div class="modal-box">
-            <h2 class="modal-title">Booking Details</h2>
-            <p class="details-status">Status: <span id="details-status-badge" class="text-green">Paid</span></p>
+        <div class="modal-box" style="max-width: 550px;">
+            <h2 class="modal-title" id="ud-title">Booking Details</h2>
+            <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
 
             <div class="modal-summary details-summary">
-                <p><span>Customer Name:</span> Francis Empleo</p>
-                <p><span>Venue Type:</span> <span id="details-venue">Resort Villa</span></p>
-                <p><span>Date:</span> <span id="details-date">Apr 4-5, 2026</span></p>
-                <p><span>Total Amount Paid:</span> <span id="details-paid">₱20,000</span></p>
-                <p><span>Transaction ID:</span> <span id="details-tid">#1923129183</span></p>
+                <p><span>Customer Name:</span> <span id="ud-customer-name">--</span></p>
+                <p><span>Venue:</span> <span id="ud-venue">--</span></p>
+                <p><span>Dates:</span> <span id="ud-dates">--</span></p>
+                <p><span>Guests:</span> <span id="ud-guests">--</span></p>
+                <p id="ud-specific-row" style="display:none;">
+                    <span id="ud-specific-label">Specifics:</span>
+                    <span id="ud-specific-value">--</span>
+                </p>
+
+                <!-- Dynamic Add-ons -->
+                <div id="ud-addons-container"
+                    style="display: none; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <strong style="display:block; margin-bottom:5px; color: var(--color-dark);">Add-ons:</strong>
+                    <div id="ud-addons-list"></div>
+                </div>
+
+                <!-- Financials -->
+                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <p><span>Base Amount:</span> <span id="ud-base-amt">₱0.00</span></p>
+                    <p><span>Add-ons Amount:</span> <span id="ud-addons-amt">₱0.00</span></p>
+                    <p><span>Extra Pax Amount:</span> <span id="ud-extrapax-amt">₱0.00</span></p>
+                    <p style="font-weight: bold; font-size: 1.1rem; color: var(--color-gold); margin-top: 5px;">
+                        <span>Total Amount:</span> <span id="ud-total-amt">₱0.00</span>
+                    </p>
+                </div>
+
+                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
+                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #4ade80;">₱0.00</span></p>
+                    <p><span>Transaction ID:</span> <span id="ud-tid">--</span></p>
+                </div>
             </div>
 
             <div class="modal-actions center-actions">

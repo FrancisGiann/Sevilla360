@@ -165,30 +165,96 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // C. View Details Button
   document.querySelectorAll(".btn-details").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const status = btn.getAttribute("data-status");
-      const paid = btn.getAttribute("data-paid");
+    btn.addEventListener("click", function(e) {
+        const bookingId = this.getAttribute('data-id');
+        const originalText = this.innerText;
+        
+        // Show loading state
+        this.innerText = "Loading...";
+        this.disabled = true;
 
-      const statusBadge = document.getElementById("details-status-badge");
-      statusBadge.textContent = status;
+        fetch(`actions/user/get_my_booking_details.php?id=${bookingId}`)
+        .then(response => response.json())
+        .then(res => {
+            this.innerText = originalText;
+            this.disabled = false;
 
-      // Color code the status in modal
-      if (status === "Paid") {
-        statusBadge.className = "text-green";
-      } else if (status === "Cancelled") {
-        statusBadge.style.color = "#d32f2f";
-      }
+            if (!res.success) {
+                alert("Error loading details: " + res.message);
+                return;
+            }
 
-      document.getElementById("details-venue").textContent =
-        btn.getAttribute("data-venue");
-      document.getElementById("details-date").textContent =
-        btn.getAttribute("data-date");
-      document.getElementById("details-paid").textContent =
-        `₱${parseInt(paid).toLocaleString()}`;
-      document.getElementById("details-tid").textContent =
-        btn.getAttribute("data-tid");
+            const data = res.data.booking;
+            const specifics = res.data.specifics;
+            const addons = res.data.addons;
 
-      openModal("details");
+            document.getElementById('ud-title').innerText = `Booking #${data.id}`;
+            
+            // Status Badge
+            const badge = document.getElementById('ud-status-badge');
+            badge.innerText = data.booking_status;
+            badge.className = 'badge ' + (data.booking_status === 'Confirmed' ? 'badge-paid' : (data.booking_status === 'Cancelled' ? 'badge-cancelled' : 'badge-pending'));
+
+            document.getElementById('ud-customer-name').innerText = `${data.first_name} ${data.last_name}`;
+            document.getElementById('ud-venue').innerText = `${data.venue_name} (${data.venue_category})`;
+            document.getElementById('ud-guests').innerText = data.guests_count;
+
+            // Dates
+            const opts = { month: "short", day: "numeric", year: "numeric" };
+            const sDate = new Date(data.start_date).toLocaleDateString("en-US", opts);
+            const eDate = new Date(data.end_date).toLocaleDateString("en-US", opts);
+            document.getElementById('ud-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
+
+            // Specifics
+            const specRow = document.getElementById('ud-specific-row');
+            const specLabel = document.getElementById('ud-specific-label');
+            const specValue = document.getElementById('ud-specific-value');
+            
+            if (specifics) {
+                specRow.style.display = 'flex';
+                if (data.venue_category === 'Event Hall') {
+                    specLabel.innerText = "Event Type:";
+                    specValue.innerText = `${specifics.event_type} (${specifics.event_style})`;
+                } else if (data.venue_category === 'Resort Villa') {
+                    specLabel.innerText = "Stay Type:";
+                    specValue.innerText = specifics.stay_type;
+                }
+            } else {
+                specRow.style.display = 'none';
+            }
+
+            // Add-ons
+            const addonsContainer = document.getElementById('ud-addons-container');
+            const addonsList = document.getElementById('ud-addons-list');
+            addonsList.innerHTML = ''; 
+            if (addons && addons.length > 0) {
+                addonsContainer.style.display = 'block';
+                addons.forEach(addon => {
+                    addonsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${addon.name} (x${addon.quantity})</span> <span style="color:var(--color-dark-light);">₱${parseFloat(addon.total_price).toLocaleString()}</span></p>`;
+                });
+            } else {
+                addonsContainer.style.display = 'none';
+            }
+
+            // Money
+            const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
+            document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
+            document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
+            document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
+            
+            document.getElementById('ud-scheme').innerText = data.payment_scheme;
+            document.getElementById('ud-paid-amt').innerText = formatCash(data.amount_paid);
+            document.getElementById('ud-tid').innerText = res.data.transaction_id;
+
+            openModal("details");
+        })
+        .catch(err => {
+            console.error(err);
+            this.innerText = originalText;
+            this.disabled = false;
+            alert("Network error fetching details.");
+        });
     });
   });
 
