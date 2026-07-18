@@ -248,8 +248,22 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             <button class="btn-action btn-green">Pay Now</button>
                                             <?php endif; ?>
 
+                                            <!-- Only show Reschedule/Cancel if the booking isn't cancelled and doesn't have a pending request -->
                                             <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
-                                            <!-- Cancel Button -->
+
+                                            <!-- RESCHEDULE BUTTON -->
+                                            <!-- Only allow reschedule if the booking is Confirmed! -->
+                                            <?php if ($b['booking_status'] === 'Confirmed'): ?>
+                                            <button class="btn-action btn-blue btn-reschedule"
+                                                data-id="<?php echo $b['id']; ?>"
+                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                data-type="<?php echo htmlspecialchars($b['venue_type']); ?>"
+                                                data-date="<?php echo $date_str; ?>">
+                                                Reschedule
+                                            </button>
+                                            <?php endif; ?>
+
+                                            <!-- CANCEL/REFUND BUTTON -->
                                             <button class="btn-action btn-red btn-cancel"
                                                 data-id="<?php echo $b['id']; ?>"
                                                 data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
@@ -257,8 +271,10 @@ while ($row = $bookings_result->fetch_assoc()) {
                                                 data-paid="<?php echo $amount_paid; ?>">
                                                 <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
                                             </button>
+
                                             <?php endif; ?>
 
+                                            <!-- VIEW DETAILS BUTTON -->
                                             <button class="btn-action btn-outline btn-details"
                                                 data-id="<?php echo $b['id']; ?>"
                                                 data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
@@ -403,22 +419,28 @@ while ($row = $bookings_result->fetch_assoc()) {
 
     <!-- Reschedule Modal -->
     <div class="modal-overlay" id="modal-reschedule">
-        <div class="modal-box">
+        <div class="modal-box" style="max-width: 550px;">
             <h2 class="modal-title">Reschedule Request</h2>
 
             <div class="modal-summary">
-                <p><span>Customer Name:</span> Francis Empleo</p>
-                <p><span>Venue Type:</span> <span id="reschedule-venue">Event Hall</span></p>
-                <p><span>Original Date:</span> <span id="reschedule-date">March 30, 2026</span></p>
-                <p class="new-date-row">
-                    <span>New Date:</span>
-                    <input type="date" class="form-control date-picker">
-                </p>
+                <p><span>Venue:</span> <span id="reschedule-venue">--</span></p>
+                <p><span>Original Date:</span> <span id="reschedule-date">--</span></p>
             </div>
 
-            <div class="form-group">
-                <label>Reason:</label>
-                <textarea class="form-control" rows="3"></textarea>
+            <!-- DYNAMIC CALENDAR INJECTION -->
+            <div style="margin-top: 15px;">
+                <label style="display: block; margin-bottom: 10px; font-weight: 500; font-size: 0.95rem;">Select New
+                    Dates:</label>
+                <?php
+                    $calendarId = 'cal-ui-user-resched';
+                    include 'includes/partials/booking_calendar.php';
+                ?>
+            </div>
+
+            <div class="form-group" style="margin-top: 15px;">
+                <label style="font-weight: 500;">Reason:</label>
+                <textarea id="reschedule-reason" class="form-control" rows="2"
+                    placeholder="Why do you need to change dates?"></textarea>
             </div>
 
             <div class="checkbox-group">
@@ -431,7 +453,7 @@ while ($row = $bookings_result->fetch_assoc()) {
 
             <div class="modal-actions">
                 <button class="btn-modal btn-go-back close-modal">Go back</button>
-                <button class="btn-modal btn-confirm-red">Confirm Reschedule</button>
+                <button class="btn-modal btn-confirm-red" id="btn-submit-resched">Submit Request</button>
             </div>
         </div>
     </div>
@@ -481,8 +503,8 @@ while ($row = $bookings_result->fetch_assoc()) {
             </div>
         </div>
     </div>
-
-    <script src="assets/js/user_dashboard.js?v=1.1"></script>
+    <script src="assets/js/calendar.js"></script>
+    <script src="assets/js/user_dashboard.js?v=1.5"></script>
 </body>
 
 </html>

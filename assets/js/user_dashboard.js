@@ -152,16 +152,102 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // B. Reschedule Button
+// B. Reschedule Button Logic
+  let userReschedCalendar = null;
+  if (typeof SevillaCalendar !== 'undefined' && document.getElementById("cal-ui-user-resched")) {
+      userReschedCalendar = new SevillaCalendar("cal-ui-user-resched");
+  }
+
+  // 1. Open the Modal & Fetch Calendar Dates
   document.querySelectorAll(".btn-reschedule").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      document.getElementById("reschedule-venue").textContent =
-        btn.getAttribute("data-venue");
-      document.getElementById("reschedule-date").textContent =
-        btn.getAttribute("data-date");
+      const bookingId = btn.getAttribute("data-id");
+      const venueName = btn.getAttribute("data-venue");
+      const originalDate = btn.getAttribute("data-date");
+      // (Assumes you add data-type to the PHP table button just like admin!)
+      const venueType = btn.getAttribute("data-type") || "Hotel Room"; 
+
+      document.getElementById("reschedule-venue").textContent = venueName;
+      document.getElementById("reschedule-date").textContent = originalDate;
+      
+      const submitBtn = document.getElementById("btn-submit-resched");
+      if (submitBtn) submitBtn.setAttribute("data-id", bookingId);
+
+      // Clear input and checkbox
+      const reasonInput = document.getElementById("reschedule-reason");
+      const confirmCheck = document.getElementById("confirm-reschedule");
+      if (reasonInput) reasonInput.value = "";
+      if (confirmCheck) confirmCheck.checked = false;
+
+      // Load booked dates so the user can't select red dates!
+      if (userReschedCalendar) {
+          userReschedCalendar.clearSelection();
+          userReschedCalendar.fetchBookedDates(venueType, venueName);
+          setTimeout(() => userReschedCalendar.render(), 100);
+      }
+
       openModal("reschedule");
     });
   });
+
+  // 2. Execute Submit Request
+  const btnSubmitResched = document.getElementById("btn-submit-resched");
+  if (btnSubmitResched) {
+      btnSubmitResched.addEventListener("click", function() {
+          const bookingId = this.getAttribute("data-id");
+          const reason = document.getElementById("reschedule-reason")?.value.trim() || "";
+          const isChecked = document.getElementById("confirm-reschedule")?.checked;
+
+          if (!userReschedCalendar || !userReschedCalendar.startDate) {
+              alert("Please select your new dates on the calendar.");
+              return;
+          }
+          if (reason === "") {
+              alert("Please provide a reason for rescheduling.");
+              return;
+          }
+          if (!isChecked) {
+              alert("Please acknowledge the reschedule policy by checking the box.");
+              return;
+          }
+
+          const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const newStart = formatLocal(userReschedCalendar.startDate);
+          const newEnd = userReschedCalendar.endDate ? formatLocal(userReschedCalendar.endDate) : newStart;
+
+          const originalText = this.innerText;
+          this.innerText = "Submitting...";
+          this.disabled = true;
+
+          fetch('actions/user/request_reschedule.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  booking_id: bookingId,
+                  new_start_date: newStart,
+                  new_end_date: newEnd,
+                  reason: reason
+              })
+          })
+          .then(res => res.json())
+          .then(data => {
+              if (data.success) {
+                  alert(data.message);
+                  window.location.reload();
+              } else {
+                  alert("Error: " + data.message);
+                  this.innerText = originalText;
+                  this.disabled = false;
+              }
+          })
+          .catch(err => {
+              console.error(err);
+              alert("Network error occurred.");
+              this.innerText = originalText;
+              this.disabled = false;
+          });
+      });
+  }
 
   // C. View Details Button
   document.querySelectorAll(".btn-details").forEach((btn) => {
