@@ -95,43 +95,60 @@ document.addEventListener("DOMContentLoaded", () => {
   // A. Cancel Button
   document.querySelectorAll(".btn-cancel").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const bookingId = btn.getAttribute("data-id"); // Grab the ID
+      const bookingId = btn.getAttribute("data-id");
       const venue = btn.getAttribute("data-venue");
       const date = btn.getAttribute("data-date");
       const paidStr = btn.getAttribute("data-paid");
+      const amountPaid = parseFloat(paidStr) || 0;
 
-      // Populate Modal
-      document.getElementById("cancel-venue").textContent = venue;
-      document.getElementById("cancel-date").textContent = date;
+      if (amountPaid === 0) {
+          // INSTANT CANCEL: If they haven't paid, don't ask for a reason. Just ask "Are you sure?"
+          if (confirm(`Are you sure you want to cancel your reservation for ${venue} on ${date}?`)) {
+              
+              const originalText = btn.innerText;
+              btn.innerText = "Cancelling...";
+              btn.disabled = true;
 
-      const refundInfo = document.getElementById("cancel-refund-info");
-      const checkboxGrp = document.getElementById("cancel-checkbox-group");
-
-      if (paidStr && parseInt(paidStr) > 0) {
-        let paidAmt = parseInt(paidStr);
-        let fee = 461;
-        let refundAmt = paidAmt - fee;
-        if (refundAmt < 0) refundAmt = 0;
-
-        document.getElementById("cancel-paid").textContent =
-          `₱${paidAmt.toLocaleString()}`;
-        document.getElementById("cancel-refund-total").textContent =
-          `₱${refundAmt.toLocaleString()}`;
-
-        refundInfo.style.display = "block";
-        checkboxGrp.style.display = "flex";
+              fetch('actions/user/request_cancel.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ booking_id: bookingId, reason: 'Unpaid Auto-Cancel' })
+              })
+              .then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      alert("Reservation instantly cancelled.");
+                      window.location.reload();
+                  } else {
+                      alert("Error: " + data.message);
+                      btn.innerText = originalText;
+                      btn.disabled = false;
+                  }
+              });
+          }
       } else {
-        refundInfo.style.display = "none";
-        checkboxGrp.style.display = "none";
+          // REFUND REQUEST: If they HAVE paid, show the modal to explain the fees and ask for a reason.
+          document.getElementById("cancel-venue").textContent = venue;
+          document.getElementById("cancel-date").textContent = date;
+
+          const refundInfo = document.getElementById("cancel-refund-info");
+          const checkboxGrp = document.getElementById("cancel-checkbox-group");
+
+          let fee = 461;
+          let refundAmt = amountPaid - fee;
+          if (refundAmt < 0) refundAmt = 0;
+
+          document.getElementById("cancel-paid").textContent = `₱${amountPaid.toLocaleString()}`;
+          document.getElementById("cancel-refund-total").textContent = `₱${refundAmt.toLocaleString()}`;
+
+          refundInfo.style.display = "block";
+          checkboxGrp.style.display = "flex";
+
+          const confirmBtn = document.querySelector("#modal-cancel .btn-confirm-red");
+          if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
+
+          openModal("cancel");
       }
-
-      // NEW: Attach the Booking ID to the red Confirm button in the modal!
-      const confirmBtn = document.querySelector(
-        "#modal-cancel .btn-confirm-red",
-      );
-      if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
-
-      openModal("cancel");
     });
   });
 

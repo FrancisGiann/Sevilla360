@@ -3,6 +3,21 @@ $required_role = 'customer';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
 
+// =========================================================================
+// DATABASE HYGIENE: Auto-Cancel Expired Unpaid Bookings
+// Automatically cancels any 'Pending' booking that hasn't been paid within 30 minutes.
+// =========================================================================
+$cleanup_stmt = $conn->prepare("
+    UPDATE bookings 
+    SET booking_status = 'Cancelled', updated_at = NOW() 
+    WHERE booking_status = 'Pending' 
+    AND payment_status = 'Unpaid'
+    AND created_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+");
+$cleanup_stmt->execute();
+$cleanup_stmt->close();
+// =========================================================================
+
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
 $stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone FROM customers WHERE user_id = ?");
