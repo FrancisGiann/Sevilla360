@@ -207,16 +207,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const refundModal = document.getElementById("refundModal");
   document.querySelectorAll('.open-refund').forEach(btn => {
     btn.addEventListener('click', function() {
+      // 1. Grab data from the button
       const bookingId = this.getAttribute('data-id');
       const customerName = this.getAttribute('data-customer') || "Unknown";
       const venueName = this.getAttribute('data-venue') || "Unknown";
       const bookDate = this.getAttribute('data-date') || "--";
       const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
+      const reason = this.getAttribute('data-reason') || "No reason provided by customer."; // NEW!
 
       const fee = 461;
       let refundAmt = totalPaid - fee;
       if (refundAmt < 0) refundAmt = 0; 
 
+      // 2. Inject into Modal
       const titleEl = document.querySelector('#refundModal .modal-main-title');
       if(titleEl) titleEl.innerText = `Process Refund - Booking #${bookingId}`;
 
@@ -228,6 +231,10 @@ document.addEventListener("DOMContentLoaded", () => {
           spans[3].innerText = `₱${totalPaid.toLocaleString()}`;
           spans[4].innerText = `₱${fee.toLocaleString()}`;
       }
+      
+      // NEW: Inject the actual reason!
+      const reasonEl = document.getElementById('modal-ref-reason');
+      if (reasonEl) reasonEl.innerText = reason;
 
       const refundTotalEl = document.querySelector('#refundModal .refund-total .amount');
       if (refundTotalEl) refundTotalEl.innerText = `₱${refundAmt.toLocaleString()}`;

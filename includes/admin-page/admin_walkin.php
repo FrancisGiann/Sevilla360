@@ -71,9 +71,9 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
         </div>
 
         <!-- TABS-->
-        <?php include 'includes/partials/admin-page/admin_tab_event.php'; ?>
-        <?php include 'includes/partials/admin-page/admin_tab_hotel.php'; ?>
-        <?php include 'includes/partials/admin-page/admin_tab_villa.php'; ?>
+        <?php include 'includes/partials/admin/admin_tab_event.php'; ?>
+        <?php include 'includes/partials/admin/admin_tab_hotel.php'; ?>
+        <?php include 'includes/partials/admin/admin_tab_villa.php'; ?>
 
 
     </section>

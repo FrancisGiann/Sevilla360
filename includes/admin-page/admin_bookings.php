@@ -199,8 +199,7 @@ if ($result && $result->num_rows > 0) {
                 <span class="label">Total Paid by Guest:</span> <span class="value">₱0.00</span>
                 <span class="label">PayMongo Fee:</span> <span class="value">₱0.00</span>
                 <span class="label">Reason:</span>
-                <span class="value" style="font-size: 0.9rem; color: #666;">Guest requested cancellation. System will
-                    free up these dates.</span>
+                <span class="value" id="modal-ref-reason" style="font-size: 0.9rem; color: #666;">--</span>
             </div>
             <div class="refund-total">
                 <span class="label">Refund Amount:</span>
