@@ -47,26 +47,37 @@ $actual_fee = ($amount_paid > 0) ? $fee : 0;
 try {
     $conn->begin_transaction();
 
-    // 3. Insert into the cancellations table
-    $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status) VALUES (?, ?, ?, ?, 'Pending')");
-    $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $actual_fee);
-    $stmt_cx->execute();
+    if ($amount_paid > 0) {
+        // SCENARIO A: They paid money. We must queue a Refund Request for the Admin.
+        $fee = 461.00;
+        $refund_amount = $amount_paid - $fee;
+        if ($refund_amount < 0) $refund_amount = 0;
 
-    // 4. Update the bookings table status so Admin knows it's pending cancellation
-    // Note: We don't mark it "Cancelled" yet. The Admin has to approve it and send the money!
-    $stmt_up = $conn->prepare("UPDATE bookings SET booking_status = 'Pending' WHERE id = ?"); // Or keep it Confirmed, up to your business logic
-    // Actually, keeping it as is and relying on the `cancellations` table is best. 
+        $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status) VALUES (?, ?, ?, ?, 'Pending')");
+        $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee);
+        $stmt_cx->execute();
+
+        $message = "Cancellation request submitted successfully. Our team will process your refund shortly.";
+
+    } else {
+        // SCENARIO B: They haven't paid anything yet! Instantly cancel it.
+        $stmt_cancel = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', updated_at = NOW() WHERE id = ?");
+        $stmt_cancel->bind_param("i", $booking_id);
+        $stmt_cancel->execute();
+
+        $message = "Booking cancelled successfully. No refund necessary.";
+    }
     
     $conn->commit();
-    echo json_encode(['success' => true, 'message' => 'Cancellation request submitted successfully.']);
+    echo json_encode(['success' => true, 'message' => $message]);
 
 } catch (Exception $e) {
     $conn->rollback();
-    // Check for duplicate entry (already requested)
     if ($conn->errno == 1062) {
         echo json_encode(['success' => false, 'message' => 'A cancellation request is already pending for this booking.']);
     } else {
         echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
     }
 }
+$conn->close();
 ?>
