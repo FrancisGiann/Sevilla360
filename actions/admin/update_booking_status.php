@@ -89,7 +89,7 @@ try {
             WHERE venue_id = ? 
             AND booking_status IN ('Pending', 'Confirmed')
             AND id != ? 
-            AND (start_date <= ? AND end_date >= ?)
+            AND (start_date < ? AND end_date > ?)
         ");
         // We pass: venue_id, booking_id (to ignore itself), new_end, new_start
         $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);

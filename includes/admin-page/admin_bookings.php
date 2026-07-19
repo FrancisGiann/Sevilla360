@@ -1,7 +1,7 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch Bookings
+// 1. Fetch Bookings (FIXED DUPLICATES)
 $query = "
     SELECT 
         b.id, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
@@ -13,9 +13,10 @@ $query = "
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
     JOIN venues v ON b.venue_id = v.id
-    LEFT JOIN cancellations cx ON b.id = cx.booking_id
+    LEFT JOIN cancellations cx ON b.id = cx.booking_id AND cx.status = 'Pending'
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
-    LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id
+    LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
+    GROUP BY b.id
     ORDER BY b.id DESC
 ";
 $result = $conn->query($query);
@@ -120,14 +121,15 @@ if ($result && $result->num_rows > 0) {
                 $badge_class = 'status-pending-refund';
                 $status_text = 'Cancel Req.';
             } elseif ($b['resched_status'] === 'Pending') {
-                $badge_class = 'status-reschedule'; // We will add this CSS class later
+                $badge_class = 'status-reschedule'; 
                 $status_text = 'Resched Req.';
             }
 
             // NEW: Check for conflicts on pending reschedules automatically!
             $has_conflict = 'false';
             if ($b['resched_status'] === 'Pending') {
-                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date <= ? AND end_date >= ?)");
+                // FIXED HOTEL TURNOVER BUG: Removed the '=' signs
+                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)");
                 $chk_overlap->bind_param("iiss", $b['venue_id'], $b['id'], $b['new_end_date'], $b['new_start_date']);
                 $chk_overlap->execute();
                 if ($chk_overlap->get_result()->num_rows > 0) {
