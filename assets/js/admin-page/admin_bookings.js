@@ -108,16 +108,53 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // --- 2. Filter Pills Logic ---
-  const filters = document.querySelectorAll(".tab-btn");
-  filters.forEach((filter) => {
-    filter.addEventListener("click", () => {
-      filters.forEach((f) => f.classList.remove("active"));
-      filter.classList.add("active");
-      // Add table filtering logic here if needed
+  // --- 2. TABLE FILTERING ---
+  const searchInput = document.getElementById("table-search");
+  const venueFilter = document.getElementById("table-venue-filter");
+  const tabFilters = document.querySelectorAll("#bookingFilters .tab-btn");
+  const tableRows = document.querySelectorAll("#admin-bookings-tbody tr");
+
+  function executeTableFilters() {
+      if (!searchInput || !venueFilter || !tableRows) return;
+
+      const searchTerm = searchInput.value.toLowerCase();
+      const selectedVenue = venueFilter.value;
+      const activeTabBtn = document.querySelector("#bookingFilters .tab-btn.active");
+      const activeStatus = activeTabBtn ? activeTabBtn.getAttribute("data-filter") : "all";
+
+      tableRows.forEach(row => {
+          // Skip the "No bookings found" row
+          if (row.querySelector("td[colspan]")) return;
+
+          const rowSearchText = row.getAttribute("data-search") || "";
+          const rowVenue = row.getAttribute("data-venue") || "";
+          const rowStatus = row.getAttribute("data-status") || "";
+
+          // Check all 3 conditions
+          const matchesSearch = rowSearchText.includes(searchTerm);
+          const matchesVenue = (selectedVenue === "All") || (rowVenue === selectedVenue);
+          const matchesStatus = (activeStatus === "all") || rowStatus.includes(activeStatus);
+
+          // If it matches ALL filters, show it. Otherwise, hide it.
+          if (matchesSearch && matchesVenue && matchesStatus) {
+              row.style.display = "";
+          } else {
+              row.style.display = "none";
+          }
+      });
+  }
+
+  // Bind the events so the table updates instantly as you type/click!
+  if (searchInput) searchInput.addEventListener("input", executeTableFilters);
+  if (venueFilter) venueFilter.addEventListener("change", executeTableFilters);
+
+  tabFilters.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabFilters.forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+      executeTableFilters();
     });
   });
-
   // --- 3. Shared AJAX Function ---
   const processBookingAction = (bookingId, action, buttonElement, extraData = {}) => {
     const originalText = buttonElement.innerText;
@@ -379,7 +416,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }, 'paymentModal');
       });
   }
-  
+
   // --- 8.5 REVIEW RESCHEDULE REQUEST MODAL ---
   const reviewReschedModal = document.getElementById("reviewReschedModal");
 

@@ -1,7 +1,7 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch Bookings (FIXED DUPLICATES)
+// 1. Fetch Bookings (FIXED SORTING: Pending Requests go to the top!)
 $query = "
     SELECT 
         b.id, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
@@ -17,7 +17,13 @@ $query = "
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
     GROUP BY b.id
-    ORDER BY b.id DESC
+    ORDER BY 
+        CASE 
+            WHEN cx.status = 'Pending' THEN 1 
+            WHEN rr.status = 'Pending' THEN 1 
+            ELSE 0 
+        END DESC, 
+        b.id DESC
 ";
 $result = $conn->query($query);
 $bookings = [];
@@ -36,18 +42,13 @@ if ($result && $result->num_rows > 0) {
         <div class="top-controls">
             <div class="search-bar">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" placeholder="Search by name, id, or venue">
+                <input type="text" id="table-search" placeholder="Search by name, id, or venue">
             </div>
-            <select class="control-select">
-                <option>All Venues</option>
-                <option>Event Hall</option>
-                <option>Hotel Room</option>
-                <option>Resort Villa</option>
-            </select>
-            <select class="control-select">
-                <option>This Month</option>
-                <option>Last Month</option>
-                <option>This Year</option>
+            <select class="control-select" id="table-venue-filter">
+                <option value="All">All Venues</option>
+                <option value="Event Hall">Event Hall</option>
+                <option value="Hotel Room">Hotel Room</option>
+                <option value="Resort Villa">Resort Villa</option>
             </select>
         </div>
     </div>
@@ -58,6 +59,8 @@ if ($result && $result->num_rows > 0) {
 
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
+            <button class="tab-btn" data-filter="action_req" style="color: #e06666; font-weight: 600;">Action
+                Required</button>
             <button class="tab-btn" data-filter="pending">Pending</button>
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
@@ -76,68 +79,75 @@ if ($result && $result->num_rows > 0) {
                         <th>ACTIONS</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="admin-bookings-tbody">
                     <?php if (empty($bookings)): ?>
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 30px;">No bookings found.</td>
                     </tr>
                     <?php else: ?>
                     <?php foreach ($bookings as $b): 
-            
-            // Date Formatting
-            $start = new DateTime($b['start_date']);
-            $end = new DateTime($b['end_date']);
-            $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
+                            
+                            $start = new DateTime($b['start_date']);
+                            $end = new DateTime($b['end_date']);
+                            $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
 
-            $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
-            $venue_name = htmlspecialchars($b['venue_name']);
-            
-            // SMART FIX: Get exact room type (Deluxe Room) instead of generic "Hotel Room"
-            $actual_room_type = ($b['venue_category'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_category'];
-            
-            $total_amt = floatval($b['total_amount']);
-            $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
-            $balance_due = $total_amt - $amount_paid;
+                            $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
+                            $venue_name = htmlspecialchars($b['venue_name']);
+                            $actual_room_type = ($b['venue_category'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_category'];
+                            $total_amt = floatval($b['total_amount']);
+                            $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
+                            $balance_due = $total_amt - $amount_paid;
 
-            // Badge Styling Logic
-            $badge_class = 'status-pending'; 
-            $status_text = 'Pending';
+                            // Badge Styling Logic
+                            $badge_class = 'status-pending'; 
+                            $status_text = 'Pending';
+                            $filter_status = strtolower($b['booking_status']); // For JS filtering
 
-            if ($b['booking_status'] === 'Confirmed') {
-                if ($b['payment_status'] === 'Partial') {
-                    $badge_class = 'status-partial';
-                    $status_text = 'Partially Paid';
-                } else {
-                    $badge_class = 'status-paid';
-                    $status_text = 'Fully Paid';
-                }
-            } elseif ($b['booking_status'] === 'Cancelled') {
-                $badge_class = 'status-refunded';
-                $status_text = 'Cancelled';
-            }
+                            if ($b['booking_status'] === 'Confirmed') {
+                                if ($b['payment_status'] === 'Partial') {
+                                    $badge_class = 'status-partial';
+                                    $status_text = 'Partially Paid';
+                                } else {
+                                    $badge_class = 'status-paid';
+                                    $status_text = 'Fully Paid';
+                                }
+                            } elseif ($b['booking_status'] === 'Cancelled') {
+                                $badge_class = 'status-refunded';
+                                $status_text = 'Cancelled';
+                            }
 
-            // NEW: Override badge if there is a pending request!
-            if ($b['cancel_status'] === 'Pending') {
-                $badge_class = 'status-pending-refund';
-                $status_text = 'Cancel Req.';
-            } elseif ($b['resched_status'] === 'Pending') {
-                $badge_class = 'status-reschedule'; 
-                $status_text = 'Resched Req.';
-            }
+                            // Override badge for pending requests
+                            if ($b['cancel_status'] === 'Pending') {
+                                $badge_class = 'status-pending-refund';
+                                $status_text = 'Cancel Req.';
+                                $filter_status .= ' action_req'; // Add to JS filter
+                            } elseif ($b['resched_status'] === 'Pending') {
+                                $badge_class = 'status-reschedule'; 
+                                $status_text = 'Resched Req.';
+                                $filter_status .= ' action_req'; // Add to JS filter
+                            }
 
-            // NEW: Check for conflicts on pending reschedules automatically!
-            $has_conflict = 'false';
-            if ($b['resched_status'] === 'Pending') {
-                // FIXED HOTEL TURNOVER BUG: Removed the '=' signs
-                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)");
-                $chk_overlap->bind_param("iiss", $b['venue_id'], $b['id'], $b['new_end_date'], $b['new_start_date']);
-                $chk_overlap->execute();
-                if ($chk_overlap->get_result()->num_rows > 0) {
-                    $has_conflict = 'true';
-                }
-            }
-        ?>
-                    <tr class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-row' : ''; ?>">
+                            $has_conflict = 'false';
+                            if ($b['resched_status'] === 'Pending') {
+                                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)");
+                                $chk_overlap->bind_param("iiss", $b['venue_id'], $b['id'], $b['new_end_date'], $b['new_start_date']);
+                                $chk_overlap->execute();
+                                if ($chk_overlap->get_result()->num_rows > 0) {
+                                    $has_conflict = 'true';
+                                }
+                            }
+
+                            // Create a searchable string for JavaScript
+                            $search_string = strtolower($b['id'] . ' ' . $customer_name . ' ' . $venue_name);
+                        ?>
+
+                    <!-- INJECTED data-* ATTRIBUTES FOR JAVASCRIPT FILTERING -->
+                    <tr class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-row' : ''; ?>"
+                        data-search="<?php echo $search_string; ?>"
+                        data-venue="<?php echo htmlspecialchars($b['venue_category']); ?>"
+                        data-status="<?php echo $filter_status; ?>">
+
+                        <!-- COLUMNS -->
                         <td>#<?php echo $b['id']; ?></td>
                         <td><?php echo $venue_name; ?></td>
                         <td><?php echo $customer_name; ?></td>
@@ -148,8 +158,8 @@ if ($result && $result->num_rows > 0) {
                         <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>
                         </td>
 
+                        <!-- ACTION BUTTONS -->
                         <td class="action-cells">
-
                             <!-- 1. PENDING BOOKINGS -->
                             <?php if ($b['booking_status'] === 'Pending'): ?>
                             <button class="btn-action btn-confirm open-approve"
