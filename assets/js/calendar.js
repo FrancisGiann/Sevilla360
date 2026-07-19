@@ -113,10 +113,12 @@ class SevillaCalendar {
         }
 
         cell.addEventListener("click", () => {
-          if (window.isDatesLocked) {
+          // Check if dates are locked AND the override function exists
+          if (window.isDatesLocked && typeof window.showOverrideModal === "function") {
             window.showOverrideModal(cellDate, this);
             return;
           }
+          
           if (this.startDate && this.endDate) {
             this.startDate = cellDate;
             this.endDate = null;
@@ -136,11 +138,11 @@ class SevillaCalendar {
               } else {
                 this.endDate = cellDate;
                 this.render();
-                window.requestDateConfirmation(
-                  this.startDate,
-                  this.endDate,
-                  this,
-                );
+                
+                // CRITICAL FIX: Only call confirmation modal if the function exists!
+                if (typeof window.requestDateConfirmation === "function") {
+                    window.requestDateConfirmation(this.startDate, this.endDate, this);
+                }
               }
             }
           }
@@ -181,7 +183,9 @@ class SevillaCalendar {
     userDateDisplays.forEach(el => el.innerText = displayStr);
     
     // Tell the page to recalculate the money based on the new totalNights!
-    if (typeof calculateSummary === "function") calculateSummary();
+    if (typeof window.calculateSummary === "function") {
+        window.calculateSummary();
+    }
   }
 
   clearSelection() {

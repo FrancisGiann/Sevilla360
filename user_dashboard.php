@@ -419,7 +419,7 @@ while ($row = $bookings_result->fetch_assoc()) {
 
     <!-- Reschedule Modal -->
     <div class="modal-overlay" id="modal-reschedule">
-        <div class="modal-box" style="max-width: 550px;">
+        <div class="modal-box" style="max-width: 550px; max-height: 85vh; overflow-y: auto;">
             <h2 class="modal-title">Reschedule Request</h2>
 
             <div class="modal-summary">
@@ -503,7 +503,7 @@ while ($row = $bookings_result->fetch_assoc()) {
             </div>
         </div>
     </div>
-    <script src="assets/js/calendar.js"></script>
+    <script src="assets/js/calendar.js?v=1.0"></script>
     <script src="assets/js/user_dashboard.js?v=1.5"></script>
 </body>
 
