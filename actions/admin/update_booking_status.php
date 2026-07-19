@@ -77,14 +77,49 @@ try {
         $new_start = $data['new_start_date'];
         $new_end = $data['new_end_date'];
         
-        // Update the booking dates
+        // 1. Get the Venue ID for this booking
+        $stmt_venue = $conn->prepare("SELECT venue_id FROM bookings WHERE id = ?");
+        $stmt_venue->bind_param("i", $booking_id);
+        $stmt_venue->execute();
+        $venue_id = $stmt_venue->get_result()->fetch_assoc()['venue_id'];
+
+        // 2. THE COLLISION CHECK: Are these new dates already taken by someone else?
+        $check_overlap = $conn->prepare("
+            SELECT id FROM bookings 
+            WHERE venue_id = ? 
+            AND booking_status IN ('Pending', 'Confirmed')
+            AND id != ? 
+            AND (start_date <= ? AND end_date >= ?)
+        ");
+        // We pass: venue_id, booking_id (to ignore itself), new_end, new_start
+        $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
+        $check_overlap->execute();
+        
+        if ($check_overlap->get_result()->num_rows > 0) {
+            throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
+        }
+
+        // 3. If safe, update the booking dates!
         $stmt = $conn->prepare("UPDATE bookings SET start_date = ?, end_date = ? WHERE id = ?");
         $stmt->bind_param("ssi", $new_start, $new_end, $booking_id);
         $stmt->execute();
+
+        // 4. If this came from a customer request, mark the request as Approved
+        $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Approved' WHERE booking_id = ? AND status = 'Pending'");
+        $stmt_req->bind_param("i", $booking_id);
+        $stmt_req->execute();
         
-        $message = "Booking #$booking_id rescheduled to $new_start!";
+        $message = "Booking #$booking_id successfully rescheduled to $new_start!";
         
-    } 
+    }
+    elseif ($action === 'reject_reschedule') {
+        // Mark the request as Rejected. The original booking dates remain untouched.
+        $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected' WHERE booking_id = ? AND status = 'Pending'");
+        $stmt_req->bind_param("i", $booking_id);
+        $stmt_req->execute();
+        
+        $message = "Reschedule request rejected. Original dates kept.";
+    }
     elseif ($action === 'refund') {
         // Mark Booking as Cancelled and Refunded
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");

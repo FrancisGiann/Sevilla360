@@ -379,6 +379,69 @@ document.addEventListener("DOMContentLoaded", () => {
           }, 'paymentModal');
       });
   }
+  // --- 8.5 REVIEW RESCHEDULE REQUEST MODAL ---
+  const reviewReschedModal = document.getElementById("reviewReschedModal");
+
+  document.querySelectorAll('.open-review-resched').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          const customerName = this.getAttribute('data-customer');
+          const venueName = this.getAttribute('data-venue');
+          const oldDates = this.getAttribute('data-old');
+          const newStart = this.getAttribute('data-newstart');
+          const newEnd = this.getAttribute('data-newend');
+          const reason = this.getAttribute('data-reason') || "No reason provided.";
+
+          // Format the requested dates beautifully
+          const opts = { month: "short", day: "numeric", year: "numeric" };
+          const d1 = new Date(newStart).toLocaleDateString("en-US", opts);
+          const d2 = new Date(newEnd).toLocaleDateString("en-US", opts);
+          const newDatesStr = (d1 === d2) ? d1 : `${d1} — ${d2}`;
+
+          // Inject into DOM
+          document.getElementById('rr-customer').innerText = customerName;
+          document.getElementById('rr-venue').innerText = venueName;
+          document.getElementById('rr-old-dates').innerText = oldDates;
+          document.getElementById('rr-new-dates').innerText = newDatesStr;
+          document.getElementById('rr-reason').innerText = reason;
+
+          // Attach data to action buttons
+          const approveBtn = document.getElementById('btn-approve-resched');
+          const rejectBtn = document.getElementById('btn-reject-resched');
+          
+          approveBtn.setAttribute('data-id', bookingId);
+          approveBtn.setAttribute('data-newstart', newStart);
+          approveBtn.setAttribute('data-newend', newEnd);
+          
+          rejectBtn.setAttribute('data-id', bookingId);
+
+          modalOverlay.classList.add('active');
+          reviewReschedModal.classList.add('active');
+      });
+  });
+
+  // Execute Approve Request
+  document.getElementById('btn-approve-resched')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      const newStart = this.getAttribute('data-newstart');
+      const newEnd = this.getAttribute('data-newend');
+
+      showConfirmModal("Approve this request? The dates will be permanently moved.", () => {
+          processBookingAction(bookingId, 'reschedule', this, {
+              new_start_date: newStart,
+              new_end_date: newEnd
+          });
+      }, 'reviewReschedModal');
+  });
+
+  // Execute Reject Request
+  document.getElementById('btn-reject-resched')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+
+      showConfirmModal("Reject this request? The booking will remain on its original dates.", () => {
+          processBookingAction(bookingId, 'reject_reschedule', this);
+      }, 'reviewReschedModal');
+  });
 
   // --- 9. VIEW DETAILS MODAL LOGIC ---
   const viewDetailsModal = document.getElementById("viewDetailsModal");

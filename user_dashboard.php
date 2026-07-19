@@ -31,16 +31,18 @@ if ($customer_res->num_rows === 0) {
 $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
 
-// 2. Fetch all bookings for THIS customer PLUS their transaction ID
+// 2. Fetch all bookings for THIS customer PLUS exact hotel room types
 $stmt_bookings = $conn->prepare("
     SELECT 
         b.*, 
         v.name AS venue_name, 
         v.category AS venue_type,
+        hr.room_type AS hotel_room_type,
         cx.status AS cancel_status,
         p.transaction_id
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
     LEFT JOIN payments p ON b.id = p.booking_id
     WHERE b.customer_id = ?
@@ -207,6 +209,8 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         // Money
                                         $total_amt = floatval($b['total_amount']);
                                         $amount_paid = floatval($b['amount_paid']);
+                                        // get room type
+                                        $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
 
                                         // Badge & Filtering Logic
                                         $badge_class = 'badge-pending'; 
@@ -257,7 +261,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             <button class="btn-action btn-blue btn-reschedule"
                                                 data-id="<?php echo $b['id']; ?>"
                                                 data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                data-type="<?php echo htmlspecialchars($b['venue_type']); ?>"
+                                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
                                                 data-date="<?php echo $date_str; ?>">
                                                 Reschedule
                                             </button>

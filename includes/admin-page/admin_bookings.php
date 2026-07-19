@@ -1,30 +1,24 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch Bookings + Cancel Status + Hotel Room Types
+// 1. Fetch Bookings
 $query = "
     SELECT 
-        b.id, 
-        b.start_date, 
-        b.end_date, 
-        b.total_amount, 
-        b.amount_paid,
-        b.booking_status, 
-        b.payment_status,
-        c.first_name, 
-        c.last_name, 
-        v.name AS venue_name, 
-        v.category AS venue_category,
+        b.id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
+        c.first_name, c.last_name, 
+        v.name AS venue_name, v.category AS venue_category,
         hr.room_type AS hotel_room_type,
-        cx.status AS cancel_status,
-        cx.reason AS cancel_reason
+        cx.status AS cancel_status, cx.reason AS cancel_reason,
+        rr.status AS resched_status, rr.new_start_date, rr.new_end_date, rr.reason AS resched_reason
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id
     ORDER BY b.id DESC
 ";
+
 $result = $conn->query($query);
 $bookings = [];
 if ($result && $result->num_rows > 0) {
@@ -150,26 +144,27 @@ if ($result && $result->num_rows > 0) {
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
 
                             <?php if ($b['cancel_status'] === 'Pending'): ?>
-                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>"
-                                data-reason="<?php echo htmlspecialchars($b['cancel_reason']); ?>">
-                                Refund Req
+                            <!-- Refund Request Button (Already built) -->
+                            <button class="btn-action btn-refund open-refund" ...>Refund Req</button>
+
+                            <?php elseif ($b['resched_status'] === 'Pending'): ?>
+                            <!-- NEW: Review Reschedule Request Button -->
+                            <button class="btn-action btn-reschedule open-review-resched"
+                                data-id="<?php echo $b['id']; ?>" data-customer="<?php echo $customer_name; ?>"
+                                data-venue="<?php echo $venue_name; ?>" data-old="<?php echo $date_str; ?>"
+                                data-newstart="<?php echo $b['new_start_date']; ?>"
+                                data-newend="<?php echo $b['new_end_date']; ?>"
+                                data-reason="<?php echo htmlspecialchars($b['resched_reason']); ?>">
+                                Review Resched
                             </button>
+
                             <?php else: ?>
+                            <!-- Normal Operations (No requests pending) -->
                             <?php if ($b['payment_status'] === 'Partial' && $balance_due > 0): ?>
                             <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
-                                data-due="<?php echo $balance_due; ?>">
-                                Collect Pay
-                            </button>
+                                data-due="<?php echo $balance_due; ?>">Collect Pay</button>
                             <?php endif; ?>
-
-                            <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
-                                data-date="<?php echo $date_str; ?>">
-                                Reschedule
-                            </button>
+                            <button class="btn-action btn-reschedule open-reschedule" ...>Reschedule</button>
                             <?php endif; ?>
 
                             <?php endif; ?>
@@ -403,6 +398,30 @@ if ($result && $result->num_rows > 0) {
             </div>
             <div class="modal-actions-center">
                 <button class="btn btn-primary" id="ua-btn-ok" style="width: 100%;">OK</button>
+            </div>
+        </div>
+
+        <!-- Review Reschedule Request Modal -->
+        <div class="admin-modal" id="reviewReschedModal">
+            <h3 class="modal-main-title">Review Reschedule Request</h3>
+            <h4 class="modal-subtitle">Customer Request Details</h4>
+
+            <div class="summary-grid">
+                <span class="label">Customer Name:</span> <span class="value" id="rr-customer">--</span>
+                <span class="label">Venue:</span> <span class="value" id="rr-venue">--</span>
+                <span class="label">Current Dates:</span> <span class="value" id="rr-old-dates"
+                    style="text-decoration: line-through; color: #888;">--</span>
+                <span class="label">Requested Dates:</span> <span class="value" id="rr-new-dates"
+                    style="color: var(--color-gold); font-weight: 600; font-size: 1.1rem;">--</span>
+                <span class="label">Reason:</span> <span class="value" id="rr-reason"
+                    style="font-size: 0.9rem; color: #666;">--</span>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 30px;">
+                <button class="btn-modal btn-modal-cancel close-modal">Close</button>
+                <button class="btn-modal btn-modal-danger" id="btn-reject-resched">Reject Request</button>
+                <button class="btn-modal btn-modal-primary" id="btn-approve-resched"
+                    style="background-color: #4ade80; color: var(--color-dark);">Approve & Move</button>
             </div>
         </div>
     </div>
