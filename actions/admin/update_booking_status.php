@@ -113,12 +113,14 @@ try {
         
     }
     elseif ($action === 'reject_reschedule') {
-        // Mark the request as Rejected. The original booking dates remain untouched.
-        $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected' WHERE booking_id = ? AND status = 'Pending'");
-        $stmt_req->bind_param("i", $booking_id);
+        $admin_reply = isset($data['admin_reply']) ? trim($data['admin_reply']) : "No reason provided.";
+
+        // Mark the request as Rejected and save the reason!
+        $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = ? WHERE booking_id = ? AND status = 'Pending'");
+        $stmt_req->bind_param("si", $admin_reply, $booking_id);
         $stmt_req->execute();
         
-        $message = "Reschedule request rejected. Original dates kept.";
+        $message = "Reschedule request rejected successfully.";
     }
     elseif ($action === 'refund') {
         // Mark Booking as Cancelled and Refunded

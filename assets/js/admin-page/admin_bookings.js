@@ -379,41 +379,52 @@ document.addEventListener("DOMContentLoaded", () => {
           }, 'paymentModal');
       });
   }
+  
   // --- 8.5 REVIEW RESCHEDULE REQUEST MODAL ---
   const reviewReschedModal = document.getElementById("reviewReschedModal");
 
   document.querySelectorAll('.open-review-resched').forEach(btn => {
       btn.addEventListener('click', function() {
           const bookingId = this.getAttribute('data-id');
-          const customerName = this.getAttribute('data-customer');
-          const venueName = this.getAttribute('data-venue');
-          const oldDates = this.getAttribute('data-old');
-          const newStart = this.getAttribute('data-newstart');
-          const newEnd = this.getAttribute('data-newend');
-          const reason = this.getAttribute('data-reason') || "No reason provided.";
-
-          // Format the requested dates beautifully
-          const opts = { month: "short", day: "numeric", year: "numeric" };
-          const d1 = new Date(newStart).toLocaleDateString("en-US", opts);
-          const d2 = new Date(newEnd).toLocaleDateString("en-US", opts);
-          const newDatesStr = (d1 === d2) ? d1 : `${d1} — ${d2}`;
+          const hasConflict = this.getAttribute('data-conflict') === 'true';
 
           // Inject into DOM
-          document.getElementById('rr-customer').innerText = customerName;
-          document.getElementById('rr-venue').innerText = venueName;
-          document.getElementById('rr-old-dates').innerText = oldDates;
-          document.getElementById('rr-new-dates').innerText = newDatesStr;
-          document.getElementById('rr-reason').innerText = reason;
+          document.getElementById('rr-customer').innerText = this.getAttribute('data-customer');
+          document.getElementById('rr-venue').innerText = this.getAttribute('data-venue');
+          document.getElementById('rr-old-dates').innerText = this.getAttribute('data-old');
+          document.getElementById('rr-reason').innerText = this.getAttribute('data-reason') || "No reason provided.";
+          
+          const opts = { month: "short", day: "numeric", year: "numeric" };
+          const d1 = new Date(this.getAttribute('data-newstart')).toLocaleDateString("en-US", opts);
+          const d2 = new Date(this.getAttribute('data-newend')).toLocaleDateString("en-US", opts);
+          document.getElementById('rr-new-dates').innerText = (d1 === d2) ? d1 : `${d1} — ${d2}`;
 
-          // Attach data to action buttons
+          // Handle Conflict Warning & Disable Approve Button
+          const warningBox = document.getElementById('rr-conflict-warning');
           const approveBtn = document.getElementById('btn-approve-resched');
-          const rejectBtn = document.getElementById('btn-reject-resched');
           
+          if (hasConflict) {
+              warningBox.style.display = 'block';
+              approveBtn.disabled = true;
+              approveBtn.style.opacity = '0.5';
+              approveBtn.style.cursor = 'not-allowed';
+          } else {
+              warningBox.style.display = 'none';
+              approveBtn.disabled = false;
+              approveBtn.style.opacity = '1';
+              approveBtn.style.cursor = 'pointer';
+          }
+
+          // Reset Reject Box
+          document.getElementById('rr-reject-box').style.display = 'none';
+          document.getElementById('rr-reject-reason').value = "";
+          document.getElementById('btn-reject-resched').innerText = "Reject Request";
+
+          // Attach data
           approveBtn.setAttribute('data-id', bookingId);
-          approveBtn.setAttribute('data-newstart', newStart);
-          approveBtn.setAttribute('data-newend', newEnd);
-          
-          rejectBtn.setAttribute('data-id', bookingId);
+          approveBtn.setAttribute('data-newstart', this.getAttribute('data-newstart'));
+          approveBtn.setAttribute('data-newend', this.getAttribute('data-newend'));
+          document.getElementById('btn-reject-resched').setAttribute('data-id', bookingId);
 
           modalOverlay.classList.add('active');
           reviewReschedModal.classList.add('active');
@@ -422,25 +433,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Execute Approve Request
   document.getElementById('btn-approve-resched')?.addEventListener('click', function() {
+      if (this.disabled) return;
       const bookingId = this.getAttribute('data-id');
-      const newStart = this.getAttribute('data-newstart');
-      const newEnd = this.getAttribute('data-newend');
-
       showConfirmModal("Approve this request? The dates will be permanently moved.", () => {
           processBookingAction(bookingId, 'reschedule', this, {
-              new_start_date: newStart,
-              new_end_date: newEnd
+              new_start_date: this.getAttribute('data-newstart'),
+              new_end_date: this.getAttribute('data-newend')
           });
       }, 'reviewReschedModal');
   });
 
-  // Execute Reject Request
+  // Execute Reject Request (Two-Step Process)
   document.getElementById('btn-reject-resched')?.addEventListener('click', function() {
-      const bookingId = this.getAttribute('data-id');
+      const rejectBox = document.getElementById('rr-reject-box');
+      
+      // Step 1: Reveal the text box
+      if (rejectBox.style.display === 'none') {
+          rejectBox.style.display = 'block';
+          this.innerText = "Confirm Rejection";
+      } 
+      // Step 2: Actually submit
+      else {
+          const reason = document.getElementById('rr-reject-reason').value.trim();
+          if (reason === "") {
+              showAlertModal("Error", "Please provide a reason for rejecting this request.", "error", "reviewReschedModal");
+              return;
+          }
 
-      showConfirmModal("Reject this request? The booking will remain on its original dates.", () => {
-          processBookingAction(bookingId, 'reject_reschedule', this);
-      }, 'reviewReschedModal');
+          const bookingId = this.getAttribute('data-id');
+          showConfirmModal("Reject this request? The booking will remain on its original dates.", () => {
+              processBookingAction(bookingId, 'reject_reschedule', this, { admin_reply: reason });
+          }, 'reviewReschedModal');
+      }
   });
 
   // --- 9. VIEW DETAILS MODAL LOGIC ---

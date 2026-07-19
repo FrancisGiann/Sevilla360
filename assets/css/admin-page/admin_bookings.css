@@ -216,6 +216,7 @@
 .status-partial { background-color: #dbeafe; color: #1e40af; }
 .status-refunded { background-color: #e5e7eb; color: var(--color-dark); }
 .status-pending-refund { background-color: #ef4444; color: white; }
+.status-reschedule { background-color: #e0f2fe; color: #1e40af; }
 
 /* --- Action Buttons --- */
 .action-cells {

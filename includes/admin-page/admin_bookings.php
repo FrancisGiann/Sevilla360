@@ -99,7 +99,7 @@ if ($result && $result->num_rows > 0) {
             $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
             $balance_due = $total_amt - $amount_paid;
 
-            // Strict Status Logic
+            // Badge Styling Logic
             $badge_class = 'status-pending'; 
             $status_text = 'Pending';
 
@@ -114,6 +114,26 @@ if ($result && $result->num_rows > 0) {
             } elseif ($b['booking_status'] === 'Cancelled') {
                 $badge_class = 'status-refunded';
                 $status_text = 'Cancelled';
+            }
+
+            // NEW: Override badge if there is a pending request!
+            if ($b['cancel_status'] === 'Pending') {
+                $badge_class = 'status-pending-refund';
+                $status_text = 'Cancel Req.';
+            } elseif ($b['resched_status'] === 'Pending') {
+                $badge_class = 'status-reschedule'; // We will add this CSS class later
+                $status_text = 'Resched Req.';
+            }
+
+            // NEW: Check for conflicts on pending reschedules automatically!
+            $has_conflict = 'false';
+            if ($b['resched_status'] === 'Pending') {
+                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date <= ? AND end_date >= ?)");
+                $chk_overlap->bind_param("iiss", $b['venue_id'], $b['id'], $b['new_end_date'], $b['new_start_date']);
+                $chk_overlap->execute();
+                if ($chk_overlap->get_result()->num_rows > 0) {
+                    $has_conflict = 'true';
+                }
             }
         ?>
                     <tr class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-row' : ''; ?>">
@@ -154,7 +174,9 @@ if ($result && $result->num_rows > 0) {
                                 data-venue="<?php echo $venue_name; ?>" data-old="<?php echo $date_str; ?>"
                                 data-newstart="<?php echo $b['new_start_date']; ?>"
                                 data-newend="<?php echo $b['new_end_date']; ?>"
-                                data-reason="<?php echo htmlspecialchars($b['resched_reason']); ?>">
+                                data-reason="<?php echo htmlspecialchars($b['resched_reason']); ?>"
+                                data-conflict="<?php echo $has_conflict; ?>">
+                                <!-- ADDED THIS! -->
                                 Review Resched
                             </button>
 
@@ -404,7 +426,6 @@ if ($result && $result->num_rows > 0) {
         <!-- Review Reschedule Request Modal -->
         <div class="admin-modal" id="reviewReschedModal">
             <h3 class="modal-main-title">Review Reschedule Request</h3>
-            <h4 class="modal-subtitle">Customer Request Details</h4>
 
             <div class="summary-grid">
                 <span class="label">Customer Name:</span> <span class="value" id="rr-customer">--</span>
@@ -415,6 +436,21 @@ if ($result && $result->num_rows > 0) {
                     style="color: var(--color-gold); font-weight: 600; font-size: 1.1rem;">--</span>
                 <span class="label">Reason:</span> <span class="value" id="rr-reason"
                     style="font-size: 0.9rem; color: #666;">--</span>
+            </div>
+
+            <!-- NEW: Conflict Warning -->
+            <div id="rr-conflict-warning"
+                style="display: none; background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 4px; margin-top: 15px; font-weight: 500; text-align: center;">
+                <i class="fa-solid fa-triangle-exclamation"></i> Warning: These requested dates are already booked by
+                another customer!
+            </div>
+
+            <!-- NEW: Reject Reason Box -->
+            <div id="rr-reject-box" style="display: none; margin-top: 15px;">
+                <label style="font-weight: 600; display: block; margin-bottom: 5px;">Reason for Rejection:</label>
+                <textarea id="rr-reject-reason"
+                    style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc;" rows="2"
+                    placeholder="e.g. Sorry, those dates are unavailable."></textarea>
             </div>
 
             <div class="modal-actions" style="margin-top: 30px;">
