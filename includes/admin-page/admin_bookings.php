@@ -4,7 +4,7 @@ require_once 'config/db_connect.php';
 // 1. Fetch Bookings
 $query = "
     SELECT 
-        b.id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
+        b.id, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
         c.first_name, c.last_name, 
         v.name AS venue_name, v.category AS venue_category,
         hr.room_type AS hotel_room_type,
@@ -18,7 +18,6 @@ $query = "
     LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id
     ORDER BY b.id DESC
 ";
-
 $result = $conn->query($query);
 $bookings = [];
 if ($result && $result->num_rows > 0) {
@@ -154,9 +153,7 @@ if ($result && $result->num_rows > 0) {
                             <button class="btn-action btn-confirm open-approve"
                                 data-id="<?php echo $b['id']; ?>">Approve</button>
                             <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
-                                data-due="<?php echo $balance_due; ?>">
-                                Collect Pay
-                            </button>
+                                data-due="<?php echo $balance_due; ?>">Collect Pay</button>
                             <button class="btn-action btn-cancel open-decline"
                                 data-id="<?php echo $b['id']; ?>">Decline</button>
 
@@ -164,11 +161,16 @@ if ($result && $result->num_rows > 0) {
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
 
                             <?php if ($b['cancel_status'] === 'Pending'): ?>
-                            <!-- Refund Request Button (Already built) -->
-                            <button class="btn-action btn-refund open-refund" ...>Refund Req</button>
+                            <!-- Refund Request Button -->
+                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
+                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
+                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>"
+                                data-reason="<?php echo htmlspecialchars($b['cancel_reason']); ?>">
+                                Refund Req
+                            </button>
 
                             <?php elseif ($b['resched_status'] === 'Pending'): ?>
-                            <!-- NEW: Review Reschedule Request Button -->
+                            <!-- Review Reschedule Request Button -->
                             <button class="btn-action btn-reschedule open-review-resched"
                                 data-id="<?php echo $b['id']; ?>" data-customer="<?php echo $customer_name; ?>"
                                 data-venue="<?php echo $venue_name; ?>" data-old="<?php echo $date_str; ?>"
@@ -176,7 +178,6 @@ if ($result && $result->num_rows > 0) {
                                 data-newend="<?php echo $b['new_end_date']; ?>"
                                 data-reason="<?php echo htmlspecialchars($b['resched_reason']); ?>"
                                 data-conflict="<?php echo $has_conflict; ?>">
-                                <!-- ADDED THIS! -->
                                 Review Resched
                             </button>
 
@@ -184,15 +185,25 @@ if ($result && $result->num_rows > 0) {
                             <!-- Normal Operations (No requests pending) -->
                             <?php if ($b['payment_status'] === 'Partial' && $balance_due > 0): ?>
                             <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
-                                data-due="<?php echo $balance_due; ?>">Collect Pay</button>
+                                data-due="<?php echo $balance_due; ?>">
+                                Collect Pay
+                            </button>
                             <?php endif; ?>
-                            <button class="btn-action btn-reschedule open-reschedule" ...>Reschedule</button>
+
+                            <!-- Standard Reschedule Button -->
+                            <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
+                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
+                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
+                                data-date="<?php echo $date_str; ?>">
+                                Reschedule
+                            </button>
                             <?php endif; ?>
 
                             <?php endif; ?>
 
                             <!-- View Details is ALWAYS available -->
                             <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View Details</button>
+
                         </td>
                     </tr>
                     <?php endforeach; ?>
