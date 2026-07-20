@@ -504,6 +504,47 @@ document.addEventListener("DOMContentLoaded", () => {
       }
   });
 
+  // --- 8.6 ADMIN FORCE CANCEL MODAL ---
+  const forceCancelModal = document.getElementById("forceCancelModal");
+
+  document.querySelectorAll('.open-force-cancel').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          const customerName = this.getAttribute('data-customer');
+          const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
+
+          document.getElementById('fc-customer').innerText = customerName;
+          document.getElementById('fc-refund-amt').innerText = totalPaid.toLocaleString();
+          document.getElementById('fc-reason').value = ""; // Clear old text
+
+          const executeBtn = document.getElementById('btn-execute-force-cancel');
+          executeBtn.setAttribute('data-id', bookingId);
+          executeBtn.setAttribute('data-paid', totalPaid);
+
+          modalOverlay.classList.add('active');
+          forceCancelModal.classList.add('active');
+      });
+  });
+
+  // Execute Force Cancel
+  document.getElementById('btn-execute-force-cancel')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      const refundAmt = this.getAttribute('data-paid');
+      const reason = document.getElementById('fc-reason').value.trim();
+
+      if (reason === "") {
+          showAlertModal("Missing Data", "You must provide a reason (e.g. Typhoon) for the audit log.", "error", "forceCancelModal");
+          return;
+      }
+
+      showConfirmModal("Are you absolutely sure? This will instantly cancel the booking and process a full refund.", () => {
+          processBookingAction(bookingId, 'admin_force_cancel', this, { 
+              reason: reason,
+              refund_amount: refundAmt
+          });
+      }, 'forceCancelModal');
+  });
+
   // --- 9. VIEW DETAILS MODAL LOGIC ---
   const viewDetailsModal = document.getElementById("viewDetailsModal");
 

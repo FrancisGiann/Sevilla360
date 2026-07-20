@@ -211,6 +211,12 @@ if ($result && $result->num_rows > 0) {
                                 data-date="<?php echo $date_str; ?>">
                                 Reschedule
                             </button>
+
+                            <!-- Admin Force Cancel Button -->
+                            <button class="btn-action btn-cancel open-force-cancel" data-id="<?php echo $b['id']; ?>"
+                                data-customer="<?php echo $customer_name; ?>" data-paid="<?php echo $amount_paid; ?>">
+                                Force Cancel
+                            </button>
                             <?php endif; ?>
 
                             <?php endif; ?>
@@ -483,6 +489,31 @@ if ($result && $result->num_rows > 0) {
                 <button class="btn-modal btn-modal-danger" id="btn-reject-resched">Reject Request</button>
                 <button class="btn-modal btn-modal-primary" id="btn-approve-resched"
                     style="background-color: #4ade80; color: var(--color-dark);">Approve & Move</button>
+            </div>
+        </div>
+
+        <!-- Admin Force Cancel Modal -->
+        <div class="admin-modal modal-sm" id="forceCancelModal">
+            <i class="fa-solid fa-cloud-bolt modal-icon-warning" style="color: #e06666;"></i>
+            <h3 class="modal-title">Admin Override Cancel</h3>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; font-size: 0.95rem;">You are forcing a cancellation for <strong
+                        id="fc-customer">--</strong>.</p>
+                <div
+                    style="background: #fee2e2; color: #dc2626; padding: 10px; border-radius: 4px; font-size: 0.85rem; margin-bottom: 15px;">
+                    <i class="fa-solid fa-circle-info"></i> Because the resort is initiating this, the customer will
+                    receive a <strong>100% Full Refund</strong> (₱<span id="fc-refund-amt">0</span>). The resort absorbs
+                    all processing fees.
+                </div>
+
+                <label style="font-weight: 600; display: block; margin-bottom: 5px;">Reason for Cancellation:</label>
+                <textarea id="fc-reason" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc;"
+                    rows="2" placeholder="e.g. Typhoon, Maintenance Issue, Overbooked..."></textarea>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel close-modal">Go Back</button>
+                <button class="btn btn-primary btn-modal-danger" id="btn-execute-force-cancel">Confirm
+                    Cancellation</button>
             </div>
         </div>
     </div>

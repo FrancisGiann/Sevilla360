@@ -136,6 +136,25 @@ try {
         $message = "Refund processed and booking cancelled!";
         
     } 
+    elseif ($action === 'admin_force_cancel') {
+        if (!isset($data['reason'])) throw new Exception("Reason is required.");
+        
+        $reason = trim($data['reason']);
+        $refund_amount = floatval($data['refund_amount']);
+        $fee = 0.00; // Resort shoulders the fee
+
+        // 1. Insert into cancellations as 'Processed' (since Admin is forcing it)
+        $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status, admin_reply) VALUES (?, ?, ?, ?, 'Processed', 'Admin Initiated (Force Majeure)')");
+        $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee);
+        $stmt_cx->execute();
+
+        // 2. Mark Booking as Cancelled & Refunded
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
+        $stmt->bind_param("i", $booking_id);
+        $stmt->execute();
+        
+        $message = "Booking #$booking_id forcefully cancelled. 100% refund recorded.";
+    }
     else {
         throw new Exception('Invalid action provided.');
     }
