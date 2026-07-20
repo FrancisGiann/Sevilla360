@@ -62,6 +62,7 @@ if ($result && $result->num_rows > 0) {
             <button class="tab-btn" data-filter="action_req" style="color: #e06666; font-weight: 600;">Action
                 Required</button>
             <button class="tab-btn" data-filter="pending">Pending</button>
+            <button class="tab-btn" data-filter="partial">Balances Due</button>
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
         </div>
@@ -107,6 +108,7 @@ if ($result && $result->num_rows > 0) {
                                 if ($b['payment_status'] === 'Partial') {
                                     $badge_class = 'status-partial';
                                     $status_text = 'Partially Paid';
+                                    $filter_status .= ' partial'; 
                                 } else {
                                     $badge_class = 'status-paid';
                                     $status_text = 'Fully Paid';
