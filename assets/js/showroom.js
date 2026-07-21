@@ -1,4 +1,20 @@
 document.addEventListener("DOMContentLoaded", () => {
+
+  // 1. Target the big box you built in your HTML
+const container = document.getElementById('pano-container');
+
+// 2. Initialize the Panolens Viewer
+const viewer = new PANOLENS.Viewer({ 
+    container: container,
+    controlBar: false // We set this to false because you built your own custom UI buttons!
+});
+
+// 3. Load the Photosphere JPG (We will fetch this path from your database later)
+const eventHallPano = new PANOLENS.ImagePanorama('assets/uploads/your_photosphere_image.jpg');
+
+// 4. Add it to the viewer
+viewer.add(eventHallPano);
+
   // Room Data matching your Figma table
   const roomData = {
     infinity: {
