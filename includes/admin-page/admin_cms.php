@@ -1,28 +1,52 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch all real venues from your database!
-$venues_query = $conn->query("SELECT id, name, category FROM venues");
+// 1. Fetch DISTINCT venues by grouping by BOTH Building Name AND Room Type
+$venues_query = $conn->query("
+    SELECT 
+        v.category,
+        v.name AS venue_name,
+        hr.room_type 
+    FROM venues v
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    WHERE v.status != 'Inactive'
+    GROUP BY 
+        v.category, 
+        v.name,
+        hr.room_type
+");
 
 // 2. Build dynamic website slots
 $website_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'System', 'type' => 'standard']
 ];
 
-// Automatically create a picture slot for every physical venue in the resort
+// Automatically create ONE picture slot per unique building/room combination
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
-        $clean_name = htmlspecialchars($v['name']);
+        
+        // Combine Building Name AND Room Type (e.g., "Abelardo - Family Superior")
+        if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
+            $display_name = $v['venue_name'] . ' - ' . $v['room_type'];
+        } else {
+            $display_name = $v['venue_name']; // Event Halls and Villas just use their name
+        }
+        
+        $clean_name = htmlspecialchars($display_name);
+        
+        // Create a super safe ID by replacing spaces and special characters with underscores
+        $safe_id = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name));
+        $safe_id = trim($safe_id, '_');
         
         // Slot for standard picture
-        $website_slots['venue_' . $v['id'] . '_std'] = [
+        $website_slots['venue_' . $safe_id . '_std'] = [
             'title' => $clean_name . ' (Standard Photo)',
             'badge' => $v['category'],
             'type' => 'standard'
         ];
         
         // Slot for 360 panorama
-        $website_slots['venue_' . $v['id'] . '_360'] = [
+        $website_slots['venue_' . $safe_id . '_360'] = [
             'title' => $clean_name . ' (360 View)',
             'badge' => '360 Panorama',
             'type' => '360'
