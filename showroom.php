@@ -105,6 +105,11 @@ include 'includes/header.php';
     </div>
 </section>
 
+<!-- 1. Load Three.js (The 3D Engine) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- 2. Load Panolens.js (The 360 Viewer) -->
+<script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 <?php 
 include 'includes/footer.php'; 
 ?>

@@ -97,5 +97,48 @@ document.addEventListener('DOMContentLoaded', () => {
       dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${fileName}</span>`;
     }
   }
+// --- 4. Handle File Upload Submission ---
+  const uploadForm = document.getElementById("cms-upload-form");
+  const fileInputEl = document.getElementById("fileInput");
 
+  if (uploadForm) {
+      uploadForm.addEventListener("submit", function(e) {
+          e.preventDefault();
+
+          if (!fileInputEl.files || fileInputEl.files.length === 0) {
+              alert("Please select a file to upload.");
+              return;
+          }
+
+          const formData = new FormData(this);
+          formData.append("fileInput", fileInputEl.files[0]);
+
+          const submitBtn = this.querySelector('button[type="submit"]');
+          const originalText = submitBtn.innerText;
+          submitBtn.innerText = "Uploading...";
+          submitBtn.disabled = true;
+
+          fetch("actions/admin/upload_media.php", {
+              method: "POST",
+              body: formData
+          })
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  alert(data.message);
+                  window.location.reload();
+              } else {
+                  alert("Error: " + data.message);
+                  submitBtn.innerText = originalText;
+                  submitBtn.disabled = false;
+              }
+          })
+          .catch(error => {
+              console.error("Upload error:", error);
+              alert("A network error occurred during upload.");
+              submitBtn.innerText = originalText;
+              submitBtn.disabled = false;
+          });
+      });
+  }
 });

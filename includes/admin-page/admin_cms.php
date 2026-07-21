@@ -190,7 +190,7 @@
     <div class="cms-modal-content">
         <h3 class="cms-modal-title">Upload Website Media</h3>
 
-        <form class="cms-form">
+        <form class="cms-form" id="cms-upload-form">
 
             <!-- Drag & Drop Area -->
             <div class="cms-drag-drop" id="dragDropArea">
@@ -204,7 +204,7 @@
             <!-- Dropdown 1: Media Type -->
             <div class="cms-form-group">
                 <label>Media Type</label>
-                <select required>
+                <select name="media_type" required>
                     <option value="" disabled selected>Select media type...</option>
                     <option value="standard">Standard Photo</option>
                     <option value="360">360 Panorama</option>
