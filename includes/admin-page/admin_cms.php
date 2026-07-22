@@ -1,7 +1,7 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch DISTINCT venues
+// 1. Fetch DISTINCT venues by grouping by BOTH Building Name AND Room Type
 $venues_query = $conn->query("
     SELECT 
         v.category,
@@ -16,24 +16,37 @@ $venues_query = $conn->query("
         hr.room_type
 ");
 
-// 2. Setup Base Arrays
-$system_slots = [
-    'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'System', 'type' => 'standard']
+// 2. Setup Base Arrays (Added the missing Homepage preview slots here!)
+$website_slots = [
+    'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-eventhall' => ['title' => 'Homepage - Event Hall Preview', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-villa' => ['title' => 'Homepage - Villa Preview', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-hotel' => ['title' => 'Homepage - Hotel Preview', 'badge' => 'Homepage', 'type' => 'standard']
 ];
 
 $venue_360_slots = []; // Strictly 1 slot per venue
 $venue_categories = []; // Dropdown options
 
+// Automatically create ONE picture slot per unique building/room combination
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
-        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
+        
+        // Combine Building Name AND Room Type (e.g., "Abelardo - Family Superior")
+        if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
+            $display_name = $v['venue_name'] . ' - ' . $v['room_type'];
+        } else {
+            $display_name = $v['venue_name']; // Event Halls and Villas just use their name
+        }
+        
         $clean_name = htmlspecialchars($display_name);
         
+        // Create a super safe ID by replacing spaces and special characters with underscores
         $safe_id = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name));
         $safe_id = trim($safe_id, '_');
         
         $venue_categories['venue_' . $safe_id] = $clean_name; // Save for the dropdown modal
         
+        // Slot for 360 panorama
         $venue_360_slots['venue_' . $safe_id . '_360'] = [
             'title' => $clean_name . ' (360 View)',
             'badge' => '360 Panorama',
@@ -47,9 +60,9 @@ if ($venues_query) {
 $query = "SELECT * FROM media_cms";
 $result = $conn->query($query);
 
-$uploaded_media = []; // For 1-to-1 slots (Hero, 360s)
+$uploaded_media = []; // For 1-to-1 slots (Hero, Homepage Previews, 360s)
 $gallery_items = [];  // General gallery
-$standard_venue_photos = []; // For grouped venue galleries
+$standard_venue_photos = []; // For grouped venue galleries (Allows multiple)
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
@@ -57,8 +70,8 @@ if ($result && $result->num_rows > 0) {
         
         if ($slot === 'gallery') {
             $gallery_items[] = $row;
-        } elseif (strpos($slot, '_360') !== false || $slot === 'home-hero') {
-            // Strictly 1-to-1 slots
+        } elseif (strpos($slot, '_360') !== false || strpos($slot, 'home-') === 0) {
+            // Strictly 1-to-1 slots (360s and Homepage Previews)
             $uploaded_media[$slot] = $row;
         } else {
             // It's a standard venue photo (allows multiples!)
@@ -83,8 +96,8 @@ if ($result && $result->num_rows > 0) {
     <!-- Media Grid -->
     <div class="cms-grid" id="cms-grid-container">
 
-        <!-- 1. SYSTEM SLOTS (Hero Banner) -->
-        <?php foreach($system_slots as $slot_key => $slot_info): 
+        <!-- 1. SYSTEM SLOTS (Hero Banner & Homepage Previews) -->
+        <?php foreach($website_slots as $slot_key => $slot_info): 
             $has_img = isset($uploaded_media[$slot_key]);
             $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
         ?>
@@ -142,7 +155,9 @@ if ($result && $result->num_rows > 0) {
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
-                    <h4 class="cms-title"><?php echo $venue_categories[$slot_key]; ?></h4>
+                    <h4 class="cms-title">
+                        <?php echo isset($venue_categories[$slot_key]) ? $venue_categories[$slot_key] : 'Unknown Venue'; ?>
+                    </h4>
                     <span class="badge badge-gray">Standard Photo Gallery</span>
                 </div>
                 <p class="cms-size">File: <?php echo htmlspecialchars($photo['file_name']); ?></p>
@@ -205,7 +220,14 @@ if ($result && $result->num_rows > 0) {
                     <option value="" disabled selected>Select where this image goes...</option>
 
                     <optgroup label="System Slots">
+                        <!-- Updated to include the Homepage Slots! -->
                         <option value="home-hero" data-type="standard" style="display:none;">Landing Page - Hero Banner
+                        </option>
+                        <option value="home-eventhall" data-type="standard" style="display:none;">Homepage - Event Hall
+                            Preview</option>
+                        <option value="home-villa" data-type="standard" style="display:none;">Homepage - Villa Preview
+                        </option>
+                        <option value="home-hotel" data-type="standard" style="display:none;">Homepage - Hotel Preview
                         </option>
                         <option value="gallery" data-type="standard" style="display:none;">General Gallery</option>
                     </optgroup>
