@@ -187,7 +187,7 @@ if ($result && $result->num_rows > 0) {
                 <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
                 <p class="drop-text"><strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to
                         browse</span></p>
-                <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp" hidden>
+                <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp" multiple hidden>
             </div>
 
             <div class="cms-form-group">

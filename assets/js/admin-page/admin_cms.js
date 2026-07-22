@@ -102,19 +102,23 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (e.dataTransfer.files.length > 0) {
         fileInputEl.files = e.dataTransfer.files;
-        updateDropText(e.dataTransfer.files[0].name);
+        updateDropText(e.dataTransfer.files);
       }
     });
 
     fileInputEl.addEventListener('change', function() {
       if (this.files.length > 0) {
-        updateDropText(this.files[0].name);
+        updateDropText(this.files);
       }
     });
 
-    function updateDropText(fileName) {
+    function updateDropText(files) {
       const dropText = dragDropArea.querySelector('.drop-text');
-      dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${fileName}</span>`;
+      if (files.length === 1) {
+          dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${files[0].name}</span>`;
+      } else {
+          dropText.innerHTML = `<strong>Selected Files:</strong><br><span class="highlight">${files.length} files selected</span>`;
+      }
     }
   }
 
@@ -129,8 +133,21 @@ document.addEventListener('DOMContentLoaded', () => {
               return;
           }
 
+          const slotDropdown = document.getElementById('modal-website-slot');
+          const isStrictSlot = slotDropdown.value === 'home-hero' || slotDropdown.value.includes('_360');
+
+          // Guard: Prevent user from uploading 5 images to a 360 panorama slot!
+          if (isStrictSlot && fileInputEl.files.length > 1) {
+              alert("You can only upload ONE image at a time for Hero Banners and 360 Panoramas.");
+              return;
+          }
+
+          // Use fileInput[] array syntax so PHP can read multiple files
           const formData = new FormData(this);
-          formData.append("fileInput", fileInputEl.files[0]);
+          formData.delete("fileInput"); // Remove default binding
+          for (let i = 0; i < fileInputEl.files.length; i++) {
+              formData.append("fileInput[]", fileInputEl.files[i]);
+          }
 
           const submitBtn = this.querySelector('button[type="submit"]');
           const originalText = submitBtn.innerText;

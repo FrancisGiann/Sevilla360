@@ -228,7 +228,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_usermanagement.js"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin-page/admin_cms.js?v=1.2"></script>
+    <script src="assets/js/admin-page/admin_cms.js?v=1.3"></script>
     <?php endif; ?>
 
 </body>
