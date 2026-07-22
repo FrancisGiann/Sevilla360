@@ -332,6 +332,7 @@ section {
   justify-content: center;
   text-align: center;
   position: relative;
+  background-color: var(--color-dark);
 }
 
 .hero::after {
@@ -481,8 +482,10 @@ section {
 .booking-img-wrapper img {
   width: 100%;
   height: 400px;
-  object-fit: cover;
+  object-fit: cover; 
+  object-position: center; 
   transition: var(--transition-smooth);
+  background-color: var(--color-beige); 
 }
 
 .booking-row:hover .booking-img-wrapper img {
