@@ -3,11 +3,31 @@ $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
 $extra_css = 'assets/css/style.css'; 
 $active_page = 'home';
 
+require_once 'config/db_connect.php';
+
+// 1. FETCH CMS IMAGES
+$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
+$cms_images = [];
+if ($cms_query) {
+    while($row = $cms_query->fetch_assoc()) {
+        $cms_images[$row['slot_assignment']] = $row['file_path'];
+    }
+}
+
+// 2. FALLBACK HELPER FUNCTION
+// This function checks if the Admin uploaded an image for a specific slot. 
+// If they didn't, it uses the default Unsplash image so the website never looks broken.
+function get_cms_image($slot_name, $default_url, $cms_images) {
+    return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+}
+
 include 'includes/header.php';
 ?>
 
 <!-- Hero Section -->
-<header class="hero">
+<!-- NOTICE: We moved the background image from style.css to an inline style so PHP can change it! -->
+<header class="hero"
+    style="background: url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>') center/cover no-repeat;">
     <div class="hero-content reveal">
         <h1>Where Every Event Becomes A Memory</h1>
         <div class="hero-buttons">
@@ -88,7 +108,8 @@ include 'includes/header.php';
 
         <div class="booking-row reveal">
             <div class="booking-img-wrapper">
-                <img src="https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                <!-- DYNAMIC EVENT HALL IMAGE -->
+                <img src="<?php echo get_cms_image('home-eventhall', 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
                     alt="The Grand Event Hall">
             </div>
             <div class="booking-info">
@@ -96,14 +117,15 @@ include 'includes/header.php';
                 <p>A masterpiece of architectural design, our Event Hall offers expansive capacities,
                     state-of-the-art acoustics, and a neutral palette ready to be transformed by your unique vision.
                     Ideal for galas, grand debuts, and luxurious weddings.</p>
-                <a href="book.php?type=hall" class="btn btn-primary">Check Availability</a>
+                <a href="booking.php" class="btn btn-primary">Check Availability</a>
                 <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>
 
         <div class="booking-row reveal">
             <div class="booking-img-wrapper">
-                <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                <!-- DYNAMIC VILLA IMAGE -->
+                <img src="<?php echo get_cms_image('home-villa', 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
                     alt="Private Resort Villa">
             </div>
             <div class="booking-info">
@@ -111,21 +133,22 @@ include 'includes/header.php';
                 <p>Experience exclusivity in our Private Villas. Featuring a private pool, sunlit lounging areas,
                     and minimalist Scandinavian interiors, it is the ultimate retreat for families and VIP guests
                     seeking privacy and bespoke service.</p>
-                <a href="book.php?type=villa" class="btn btn-primary">Check Availability</a>
+                <a href="booking.php" class="btn btn-primary">Check Availability</a>
                 <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>
 
         <div class="booking-row reveal">
             <div class="booking-img-wrapper">
-                <img src="https://images.unsplash.com/photo-1618773928121-c32242e63f39?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                <!-- DYNAMIC HOTEL ROOM IMAGE -->
+                <img src="<?php echo get_cms_image('home-hotel', 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
                     alt="Premium Hotel Rooms">
             </div>
             <div class="booking-info">
                 <h3>Premium Hotel Rooms</h3>
                 <p>Rest in absolute comfort. Our premium rooms blend warm beige tones with plush, tactile fabrics,
                     creating a calming oasis to unwind after a day of celebration or intensive meetings.</p>
-                <a href="book.php?type=room" class="btn btn-primary">Check Availability</a>
+                <a href="booking.php" class="btn btn-primary">Check Availability</a>
                 <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>

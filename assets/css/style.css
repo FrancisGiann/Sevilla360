@@ -332,8 +332,6 @@ section {
   justify-content: center;
   text-align: center;
   position: relative;
-  background: url("https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80")
-    center/cover no-repeat;
 }
 
 .hero::after {
