@@ -1,7 +1,7 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch DISTINCT venues by grouping by BOTH Building Name AND Room Type
+// 1. Fetch DISTINCT venues
 $venues_query = $conn->query("
     SELECT 
         v.category,
@@ -16,56 +16,53 @@ $venues_query = $conn->query("
         hr.room_type
 ");
 
-// 2. Build dynamic website slots
-$website_slots = [
+// 2. Setup Base Arrays
+$system_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'System', 'type' => 'standard']
 ];
 
-// Automatically create ONE picture slot per unique building/room combination
+$venue_360_slots = []; // Strictly 1 slot per venue
+$venue_categories = []; // Dropdown options
+
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
-        
-        // Combine Building Name AND Room Type (e.g., "Abelardo - Family Superior")
-        if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
-            $display_name = $v['venue_name'] . ' - ' . $v['room_type'];
-        } else {
-            $display_name = $v['venue_name']; // Event Halls and Villas just use their name
-        }
-        
+        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
         $clean_name = htmlspecialchars($display_name);
         
-        // Create a super safe ID by replacing spaces and special characters with underscores
         $safe_id = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name));
         $safe_id = trim($safe_id, '_');
         
-        // Slot for standard picture
-        $website_slots['venue_' . $safe_id . '_std'] = [
-            'title' => $clean_name . ' (Standard Photo)',
-            'badge' => $v['category'],
-            'type' => 'standard'
-        ];
+        $venue_categories['venue_' . $safe_id] = $clean_name; // Save for the dropdown modal
         
-        // Slot for 360 panorama
-        $website_slots['venue_' . $safe_id . '_360'] = [
+        $venue_360_slots['venue_' . $safe_id . '_360'] = [
             'title' => $clean_name . ' (360 View)',
             'badge' => '360 Panorama',
-            'type' => '360'
+            'type' => '360',
+            'category_badge' => $v['category']
         ];
     }
 }
 
-// 3. Fetch all uploaded media
+// 3. Fetch all uploaded media and group them
 $query = "SELECT * FROM media_cms";
 $result = $conn->query($query);
-$uploaded_media = [];
-$gallery_items = [];
+
+$uploaded_media = []; // For 1-to-1 slots (Hero, 360s)
+$gallery_items = [];  // General gallery
+$standard_venue_photos = []; // For grouped venue galleries
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
-        if ($row['slot_assignment'] === 'gallery') {
+        $slot = $row['slot_assignment'];
+        
+        if ($slot === 'gallery') {
             $gallery_items[] = $row;
+        } elseif (strpos($slot, '_360') !== false || $slot === 'home-hero') {
+            // Strictly 1-to-1 slots
+            $uploaded_media[$slot] = $row;
         } else {
-            $uploaded_media[$row['slot_assignment']] = $row;
+            // It's a standard venue photo (allows multiples!)
+            $standard_venue_photos[$slot][] = $row;
         }
     }
 }
@@ -86,31 +83,24 @@ if ($result && $result->num_rows > 0) {
     <!-- Media Grid -->
     <div class="cms-grid" id="cms-grid-container">
 
-        <!-- DYNAMIC SYSTEM & VENUE SLOTS -->
-        <?php foreach($website_slots as $slot_key => $slot_info): 
+        <!-- 1. SYSTEM SLOTS (Hero Banner) -->
+        <?php foreach($system_slots as $slot_key => $slot_info): 
             $has_img = isset($uploaded_media[$slot_key]);
             $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
-            $file_name = $has_img ? $uploaded_media[$slot_key]['file_name'] : 'No file uploaded yet.';
-            $badge_class = ($slot_info['type'] === '360') ? 'badge-gold' : 'badge-gray';
         ?>
-        <div class="cms-card" data-type="<?php echo $slot_info['type']; ?>">
+        <div class="cms-card" data-type="standard">
             <div class="cms-img-wrapper"
-                style="background: #e0e0e0; display:flex; align-items:center; justify-content:center;">
-                <?php if ($has_img): ?>
-                <img src="<?php echo htmlspecialchars($img_path); ?>" alt="<?php echo $slot_info['title']; ?>">
-                <?php else: ?>
-                <span style="color: #888; font-weight: 500;">Empty Slot</span>
-                <?php endif; ?>
+                style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
+                <?php if ($has_img): ?> <img src="<?php echo htmlspecialchars($img_path); ?>"> <?php else: ?> <span
+                    style="color:#888;">Empty Slot</span> <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
                     <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
-                    <span class="badge <?php echo $badge_class; ?>"><?php echo $slot_info['badge']; ?></span>
+                    <span class="badge badge-gray"><?php echo $slot_info['badge']; ?></span>
                 </div>
-                <p class="cms-size">File: <?php echo htmlspecialchars($file_name); ?></p>
                 <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>"
-                        data-type="<?php echo $slot_info['type']; ?>">
+                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard">
                         <?php echo $has_img ? 'Replace' : 'Upload'; ?>
                     </button>
                 </div>
@@ -118,21 +108,67 @@ if ($result && $result->num_rows > 0) {
         </div>
         <?php endforeach; ?>
 
-        <!-- GENERAL GALLERY ITEMS -->
-        <?php foreach($gallery_items as $item): ?>
-        <div class="cms-card" data-type="<?php echo $item['media_type']; ?>">
-            <div class="cms-img-wrapper">
-                <img src="<?php echo htmlspecialchars($item['file_path']); ?>" alt="Gallery Image">
+        <!-- 2. 360 PANORAMA SLOTS (1 per venue) -->
+        <?php foreach($venue_360_slots as $slot_key => $slot_info): 
+            $has_img = isset($uploaded_media[$slot_key]);
+            $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
+        ?>
+        <div class="cms-card" data-type="360">
+            <div class="cms-img-wrapper"
+                style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
+                <?php if ($has_img): ?> <img src="<?php echo htmlspecialchars($img_path); ?>"> <?php else: ?> <span
+                    style="color:#888;">Empty Slot</span> <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
-                    <h4 class="cms-title">Gallery Image</h4>
-                    <span class="badge badge-gray">General Gallery</span>
+                    <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
+                    <span class="badge badge-gold"><?php echo $slot_info['category_badge']; ?></span>
+                </div>
+                <div class="cms-actions">
+                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360">
+                        <?php echo $has_img ? 'Replace' : 'Upload'; ?>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <!-- 3. STANDARD VENUE PHOTOS (Multiple Allowed!) -->
+        <?php foreach($standard_venue_photos as $slot_key => $photos_array): ?>
+        <?php foreach($photos_array as $photo): ?>
+        <div class="cms-card" data-type="standard">
+            <div class="cms-img-wrapper">
+                <img src="<?php echo htmlspecialchars($photo['file_path']); ?>">
+            </div>
+            <div class="cms-card-content">
+                <div class="cms-card-header">
+                    <h4 class="cms-title"><?php echo $venue_categories[$slot_key]; ?></h4>
+                    <span class="badge badge-gray">Standard Photo Gallery</span>
+                </div>
+                <p class="cms-size">File: <?php echo htmlspecialchars($photo['file_name']); ?></p>
+                <div class="cms-actions">
+                    <!-- Standard photos can be deleted because we can have multiples! -->
+                    <button class="btn-delete btn-delete-media" data-id="<?php echo $photo['id']; ?>">Delete
+                        Photo</button>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+        <?php endforeach; ?>
+
+        <!-- 4. GENERAL GALLERY ITEMS -->
+        <?php foreach($gallery_items as $item): ?>
+        <div class="cms-card" data-type="<?php echo $item['media_type']; ?>">
+            <div class="cms-img-wrapper">
+                <img src="<?php echo htmlspecialchars($item['file_path']); ?>">
+            </div>
+            <div class="cms-card-content">
+                <div class="cms-card-header">
+                    <h4 class="cms-title">General Gallery</h4>
+                    <span class="badge badge-gray">Unassigned</span>
                 </div>
                 <p class="cms-size">File: <?php echo htmlspecialchars($item['file_name']); ?></p>
                 <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="gallery"
-                        data-type="<?php echo $item['media_type']; ?>">Replace</button>
                     <button class="btn-delete btn-delete-media" data-id="<?php echo $item['id']; ?>">Delete</button>
                 </div>
             </div>
@@ -158,8 +194,8 @@ if ($result && $result->num_rows > 0) {
                 <label>Media Type</label>
                 <select name="media_type" id="modal-media-type" required>
                     <option value="" disabled selected>Select media type...</option>
-                    <option value="standard">Standard Photo</option>
-                    <option value="360">360 Panorama</option>
+                    <option value="standard">Standard Photo (Multiple Allowed)</option>
+                    <option value="360">360 Panorama (1 Per Venue)</option>
                 </select>
             </div>
 
@@ -168,19 +204,25 @@ if ($result && $result->num_rows > 0) {
                 <select name="website_slot" id="modal-website-slot" required>
                     <option value="" disabled selected>Select where this image goes...</option>
 
-                    <!-- Dynamic Options -->
-                    <option value="home-hero" data-type="standard" style="display:none;">Landing Page - Hero Banner
-                    </option>
-                    <option value="gallery" data-type="standard" style="display:none;">General Gallery (Standard Photo)
-                    </option>
-                    <option value="gallery" data-type="360" style="display:none;">General Gallery (360 Panorama)
-                    </option>
+                    <optgroup label="System Slots">
+                        <option value="home-hero" data-type="standard" style="display:none;">Landing Page - Hero Banner
+                        </option>
+                        <option value="gallery" data-type="standard" style="display:none;">General Gallery</option>
+                    </optgroup>
 
-                    <?php foreach($website_slots as $key => $slot): ?>
-                    <option value="<?php echo $key; ?>" data-type="<?php echo $slot['type']; ?>" style="display:none;">
-                        <?php echo $slot['title']; ?>
-                    </option>
-                    <?php endforeach; ?>
+                    <!-- Dynamic Venue Options -->
+                    <optgroup label="Resort Venues">
+                        <?php foreach($venue_categories as $key => $name): ?>
+                        <!-- The Standard Photo option uses the base key (allows multiples) -->
+                        <option value="<?php echo $key; ?>" data-type="standard" style="display:none;">
+                            <?php echo $name; ?> (Standard Photo)
+                        </option>
+                        <!-- The 360 option appends '_360' to the key -->
+                        <option value="<?php echo $key . '_360'; ?>" data-type="360" style="display:none;">
+                            <?php echo $name; ?> (360 Panorama)
+                        </option>
+                        <?php endforeach; ?>
+                    </optgroup>
                 </select>
             </div>
 
