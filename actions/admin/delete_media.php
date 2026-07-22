@@ -29,8 +29,8 @@ try {
     $media = $res->fetch_assoc();
 
     // Prevent deletion of core system slots
-    if ($media['slot_assignment'] !== 'gallery') {
-        throw new Exception("Core website slots cannot be deleted, they can only be replaced.");
+    if ($media['slot_assignment'] === 'home-hero' || strpos($media['slot_assignment'], '_360') !== false) {
+        throw new Exception("Core website slots and 360 Panoramas cannot be deleted, they can only be replaced.");
     }
 
     // Delete physically from folder
