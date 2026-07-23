@@ -23,17 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // A. Open Modal (Main Upload Button)
   if (btnOpenUpload) {
     btnOpenUpload.addEventListener('click', () => {
-      // Reset the form
       uploadForm.reset();
-      
-      // Hide all specific slot options until a type is selected
       slotOptions.forEach(opt => opt.style.display = 'none');
       
-      // Reset drag-and-drop text
       const dropText = document.querySelector('.drop-text');
-      if (dropText) {
-          dropText.innerHTML = `<strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to browse</span>`;
-      }
+      if (dropText) dropText.innerHTML = `<strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to browse</span>`;
 
       uploadModal.classList.add('active');
     });
@@ -42,14 +36,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // B. Open Modal (Replace Buttons on Cards)
   replaceBtns.forEach(btn => {
     btn.addEventListener('click', function() {
-      // Pre-select the media type and trigger the cascade event
-      if (typeDropdown) {
-          typeDropdown.value = this.getAttribute('data-type');
-          typeDropdown.dispatchEvent(new Event('change')); 
-      }
-      // Pre-select the specific slot
-      if (slotDropdown) {
-          slotDropdown.value = this.getAttribute('data-slot');
+      const mediaType = this.getAttribute('data-type');
+      const targetSlot = this.getAttribute('data-slot');
+
+      if (typeDropdown && slotDropdown) {
+          // 1. Set the first dropdown
+          typeDropdown.value = mediaType;
+          
+          // 2. Hide/Show the correct options manually (bypassing the change event)
+          slotOptions.forEach(opt => {
+              if (opt.getAttribute('data-type') === mediaType || opt.value === 'gallery') {
+                  opt.style.display = 'block'; 
+              } else {
+                  opt.style.display = 'none';  
+              }
+          });
+
+          // 3. Safely set the second dropdown!
+          slotDropdown.value = targetSlot;
       }
       uploadModal.classList.add('active');
     });
@@ -64,15 +68,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
-  // --- 3. Cascading Dropdown Logic ---
+  // --- 3. Cascading Dropdown Logic (For Human Clicks Only) ---
   if (typeDropdown && slotDropdown) {
-      typeDropdown.addEventListener('change', function() {
+      typeDropdown.addEventListener('change', function(e) {
           const selectedType = this.value; 
           
-          slotDropdown.value = ""; // Reset selection
+          // ONLY reset the second dropdown if a real human clicked it!
+          if (e.isTrusted) {
+              slotDropdown.value = ""; 
+          }
           
           slotOptions.forEach(opt => {
-              if (opt.getAttribute('data-type') === selectedType) {
+              if (opt.getAttribute('data-type') === selectedType || opt.value === 'gallery') {
                   opt.style.display = 'block'; 
               } else {
                   opt.style.display = 'none';  

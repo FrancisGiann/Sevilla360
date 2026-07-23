@@ -16,7 +16,7 @@ $venues_query = $conn->query("
         hr.room_type
 ");
 
-// 2. Setup Base Arrays (Added the missing Homepage preview slots here!)
+// 2. Setup Base Arrays
 $website_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'Homepage', 'type' => 'standard'],
     'home-eventhall' => ['title' => 'Homepage - Event Hall Preview', 'badge' => 'Homepage', 'type' => 'standard'],
@@ -27,24 +27,29 @@ $website_slots = [
 $venue_360_slots = []; // Strictly 1 slot per venue
 $venue_categories = []; // Dropdown options
 
-// Automatically create ONE picture slot per unique building/room combination
+// Automatically create picture slots per unique building/room combination
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
         
-        // Combine Building Name AND Room Type (e.g., "Abelardo - Family Superior")
         if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
             $display_name = $v['venue_name'] . ' - ' . $v['room_type'];
         } else {
-            $display_name = $v['venue_name']; // Event Halls and Villas just use their name
+            $display_name = $v['venue_name']; 
         }
         
         $clean_name = htmlspecialchars($display_name);
         
-        // Create a super safe ID by replacing spaces and special characters with underscores
         $safe_id = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name));
         $safe_id = trim($safe_id, '_');
         
-        $venue_categories['venue_' . $safe_id] = $clean_name; // Save for the dropdown modal
+        $venue_categories['venue_' . $safe_id] = $clean_name; 
+        
+        // MISSING BLOCK RESTORED: Slot for standard picture!
+        $website_slots['venue_' . $safe_id] = [
+            'title' => $clean_name . ' (Standard Photo)',
+            'badge' => $v['category'],
+            'type' => 'standard'
+        ];
         
         // Slot for 360 panorama
         $venue_360_slots['venue_' . $safe_id . '_360'] = [
@@ -60,9 +65,9 @@ if ($venues_query) {
 $query = "SELECT * FROM media_cms";
 $result = $conn->query($query);
 
-$uploaded_media = []; // For 1-to-1 slots (Hero, Homepage Previews, 360s)
-$gallery_items = [];  // General gallery
-$standard_venue_photos = []; // For grouped venue galleries (Allows multiple)
+$uploaded_media = []; 
+$gallery_items = [];  
+$standard_venue_photos = []; 
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
@@ -71,10 +76,8 @@ if ($result && $result->num_rows > 0) {
         if ($slot === 'gallery') {
             $gallery_items[] = $row;
         } elseif (strpos($slot, '_360') !== false || strpos($slot, 'home-') === 0) {
-            // Strictly 1-to-1 slots (360s and Homepage Previews)
             $uploaded_media[$slot] = $row;
         } else {
-            // It's a standard venue photo (allows multiples!)
             $standard_venue_photos[$slot][] = $row;
         }
     }

@@ -9,16 +9,16 @@ require_once 'config/db_connect.php';
 $cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
 $cms_images = [];
 if ($cms_query) {
-    while($row = $cms_query->fetch_assoc()) {
-        $cms_images[$row['slot_assignment']] = $row['file_path'];
-    }
+while($row = $cms_query->fetch_assoc()) {
+$cms_images[$row['slot_assignment']] = $row['file_path'];
+}
 }
 
 // 2. FALLBACK HELPER FUNCTION
-// This function checks if the Admin uploaded an image for a specific slot. 
+// This function checks if the Admin uploaded an image for a specific slot.
 // If they didn't, it uses the default Unsplash image so the website never looks broken.
 function get_cms_image($slot_name, $default_url, $cms_images) {
-    return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
 }
 
 include 'includes/header.php';

@@ -1,6 +1,21 @@
 <?php
 session_start();
 header('Content-Type: application/json');
+
+// --- TEMPORARY DEBUG BLOCK START ---
+$post_max = ini_get('post_max_size');
+$up_max = ini_get('upload_max_filesize');
+$content_len_bytes = $_SERVER['CONTENT_LENGTH'] ?? 0;
+$content_len_mb = round($content_len_bytes / 1048576, 2);
+
+if (empty($_POST) && empty($_FILES) && $content_len_bytes > 0) {
+    echo json_encode([
+        'success' => false, 
+        'message' => "DEBUG FAIL | PostMax: $post_max | UpMax: $up_max | Uploaded Size: {$content_len_mb}MB"
+    ]);
+    exit;
+}
+// --- TEMPORARY DEBUG BLOCK END ---
 require_once '../../config/db_connect.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
@@ -9,6 +24,13 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // NEW BLOCK: Detect if post_max_size was exceeded by checking Content-Length
+    if (empty($_POST) && empty($_FILES) && isset($_SERVER['CONTENT_LENGTH']) && $_SERVER['CONTENT_LENGTH'] > 0) {
+        echo json_encode(['success' => false, 'message' => 'Upload failed. The image file size exceeds the server limits.']);
+        exit;
+    }
+
     $media_type = $_POST['media_type'] ?? '';
     $website_slot = $_POST['website_slot'] ?? '';
     
