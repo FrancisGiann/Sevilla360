@@ -1,6 +1,6 @@
 <?php
 $page_title = 'Virtual Showroom | SEVILLA360';
-$extra_css = 'assets/css/showroom.css';
+$extra_css = 'assets/css/showroom.css?v=1.5';
 $extra_js = 'assets/js/showroom.js';
 $active_page = 'showroom';
 
@@ -78,8 +78,17 @@ include 'includes/header.php';
 window.showroomData = <?php echo json_encode($showroom_data); ?>;
 </script>
 
-<!-- Panolens & Three.js Libraries -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- EXACT Three.js version required by Panolens -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/105/three.min.js"></script>
+
+<!-- Polyfill for Panolens Node.js bug -->
+<script>
+window.process = {
+    env: {
+        NODE_ENV: 'production'
+    }
+};
+</script>
 <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
 <!-- Showroom Container -->
