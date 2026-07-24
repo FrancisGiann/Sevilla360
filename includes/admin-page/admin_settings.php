@@ -1,38 +1,62 @@
 <?php
 require_once 'config/db_connect.php';
 
-// fetch the current settings from the database
+// 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
 $current_settings = [];
-
 if ($settings_query) {
     while($row = $settings_query->fetch_assoc()) {
         $current_settings[$row['setting_key']] = $row['setting_value'];
     }
 }
 
-// check if the settings exist, if not, set defaults
 $maintenance_checked = (isset($current_settings['maintenance_mode']) && $current_settings['maintenance_mode'] === 'true') ? 'checked' : '';
 $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
+
+// 2. Fetch all Venues and their specific child-table data
+$venues_query = $conn->query("
+    SELECT 
+        v.*, 
+        hr.room_type, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
+        eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate,
+        vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra
+    FROM venues v
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    LEFT JOIN event_halls eh ON v.id = eh.venue_id
+    LEFT JOIN villas vi ON v.id = vi.venue_id
+    ORDER BY v.category, v.name
+");
+
+$all_venues = [];
+if ($venues_query && $venues_query->num_rows > 0) {
+    while($row = $venues_query->fetch_assoc()) {
+        $all_venues[] = $row;
+    }
+}
 ?>
+
+<!-- Pass venue data to JS for the Edit Modal -->
+<script>
+window.allVenuesData = <?php echo json_encode($all_venues); ?>;
+</script>
+
 <div class="admin-settings-container">
     <div class="settings-header">
         <p class="settings-subtitle">Manage your account and system preferences.</p>
     </div>
 
     <div class="settings-layout">
-        <!-- LEFT COLUMN: Navigation Tabs (25%) -->
+        <!-- LEFT COLUMN: Navigation Tabs -->
         <div class="settings-sidebar">
             <button class="tab-link active" data-target="panel-profile">Profile & Security</button>
 
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-            <button class="tab-link" data-target="panel-pricing">Resort Pricing</button>
-            <button class="tab-link" data-target="panel-discounts">Discounts & Promos</button>
+            <button class="tab-link" data-target="panel-venues">Manage Venues</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
             <?php endif; ?>
         </div>
 
-        <!-- RIGHT COLUMN: Content Panels (75%) -->
+        <!-- RIGHT COLUMN: Content Panels -->
         <div class="settings-content">
 
             <!-- PANEL 1: Profile & Security (Visible to all) -->
@@ -80,99 +104,66 @@ $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settin
 
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
 
-            <!-- PANEL 2: Resort Pricing (Super Admin Only) -->
-            <div class="settings-panel" id="panel-pricing">
-                <h2 class="panel-heading">Resort Pricing</h2>
-                <form class="settings-form" onsubmit="return false;">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Event Hall Base Price ($)</label>
-                            <input type="number" class="form-control" placeholder="1500.00" value="1500">
-                        </div>
-                        <div class="form-group">
-                            <label>Standard Room Rate ($ / night)</label>
-                            <input type="number" class="form-control" placeholder="150.00" value="150">
-                        </div>
-                        <div class="form-group">
-                            <label>Deluxe Room Rate ($ / night)</label>
-                            <input type="number" class="form-control" placeholder="280.00" value="280">
-                        </div>
-                        <div class="form-group">
-                            <label>Extra Pax Fee ($ / person)</label>
-                            <input type="number" class="form-control" placeholder="50.00" value="50">
-                        </div>
-                    </div>
+            <!-- PANEL 2: Manage Venues (Super Admin Only) -->
+            <div class="settings-panel" id="panel-venues">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 1px solid rgba(214, 168, 112, 0.2); padding-bottom: 15px;">
+                    <h2 class="panel-heading" style="border: none; padding: 0; margin: 0;">Manage Venues</h2>
+                    <button class="btn btn-primary" id="btn-add-venue" style="padding: 10px 20px;">+ Add New
+                        Venue</button>
+                </div>
 
-                    <div class="panel-footer">
-                        <button type="button" class="btn btn-primary save-btn">Save Changes</button>
-                    </div>
-                </form>
+                <div class="table-responsive" style="border: 1px solid rgba(42, 37, 34, 0.1); border-radius: 8px;">
+                    <table class="bookings-table" style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead style="background-color: #faf9f7; border-bottom: 2px solid rgba(214, 168, 112, 0.4);">
+                            <tr>
+                                <th style="padding: 15px;">Venue Name</th>
+                                <th style="padding: 15px;">Category</th>
+                                <th style="padding: 15px;">Status</th>
+                                <th style="padding: 15px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach($all_venues as $v): ?>
+                            <tr style="border-bottom: 1px solid rgba(42, 37, 34, 0.1);">
+
+                                <!-- THE FIX: Appends the Room Type and ID so the Admin knows which is which! -->
+                                <?php 
+                                    $display_name = htmlspecialchars($v['name']);
+                                    if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
+                                        $display_name .= ' (' . htmlspecialchars($v['room_type']) . ')';
+                                    }
+                                ?>
+                                <td style="padding: 15px; font-weight: 500; color: var(--color-dark);">
+                                    <?php echo $display_name; ?>
+                                    <span style="display:block; font-size: 0.8rem; color: #888; font-weight: 400;">ID:
+                                        #<?php echo $v['id']; ?></span>
+                                </td>
+
+                                <td style="padding: 15px; color: var(--color-dark-light);"><?php echo $v['category']; ?>
+                                </td>
+                                <td style="padding: 15px;">
+                                    <span class="badge"
+                                        style="padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; background: <?php echo ($v['status'] === 'Available') ? '#dcfce7; color: #166534;' : (($v['status'] === 'Maintenance') ? '#fef08a; color: #9a3412;' : '#f3f4f6; color: #374151;'); ?>">
+                                        <?php echo $v['status']; ?>
+                                    </span>
+                                </td>
+                                <td style="padding: 15px;">
+                                    <button class="btn-action btn-edit-venue" data-id="<?php echo $v['id']; ?>"
+                                        style="background: transparent; color: var(--color-gold); border: 1px solid var(--color-gold); cursor: pointer; padding: 6px 12px; border-radius: 4px;">Edit</button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <!-- PANEL 3: Discounts & Promotions -->
-            <div class="settings-panel" id="panel-discounts">
-                <h2 class="panel-heading">Discounts & Promotions</h2>
-                <form class="settings-form" onsubmit="return false;">
-
-                    <!-- Promo Code Toggle -->
-                    <div class="preference-item">
-                        <div class="preference-info">
-                            <h4>Enable Promo Codes</h4>
-                            <p>Allow guests to enter promotional discount codes at checkout.</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <hr class="panel-divider">
-                    <h3 class="panel-subheading">Automated Discounts</h3>
-
-                    <div class="form-grid">
-                        <!-- Global Off-Season Discount -->
-                        <div class="form-group">
-                            <label>Global / Seasonal Discount (%)</label>
-                            <input type="number" class="form-control" value="0" min="0" max="100">
-                        </div>
-
-                        <!-- Space filler to keep the grid balanced -->
-                        <div class="form-group"></div>
-
-                        <!-- Early Bird Settings -->
-                        <div class="form-group">
-                            <label>Early Bird Discount (%)</label>
-                            <input type="number" class="form-control" value="10" min="0" max="100">
-                        </div>
-                        <div class="form-group">
-                            <label>Early Bird Advance (Days)</label>
-                            <input type="number" class="form-control" value="30" min="1">
-                        </div>
-
-                        <!-- Long Stay Settings -->
-                        <div class="form-group">
-                            <label>Long Stay Discount (%)</label>
-                            <input type="number" class="form-control" value="15" min="0" max="100">
-                        </div>
-                        <div class="form-group">
-                            <label>Long Stay Minimum (Nights)</label>
-                            <input type="number" class="form-control" value="7" min="2">
-                        </div>
-                    </div>
-
-                    <div class="panel-footer">
-                        <button type="button" class="btn btn-primary save-btn">Save Changes</button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- PANEL 4: System Preferences -->
+            <!-- PANEL 3: System Preferences -->
             <div class="settings-panel" id="panel-prefs">
                 <h2 class="panel-heading">System Preferences</h2>
 
-                <!-- Added id="form-prefs" -->
                 <form id="form-prefs" class="settings-form" onsubmit="return false;">
-
                     <div class="preference-item">
                         <div class="preference-info">
                             <h4>Maintenance Mode</h4>
@@ -200,13 +191,11 @@ $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settin
                     </div>
 
                     <div class="panel-footer">
-                        <!-- Added id="btn-save-prefs" -->
                         <button type="button" id="btn-save-prefs" class="btn btn-primary save-btn">Save Changes</button>
                     </div>
                 </form>
             </div>
 
-            <!-- Super Admin Check Ends Here -->
             <?php endif; ?>
 
         </div>
@@ -222,6 +211,7 @@ $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settin
     </svg>
     <span>Settings Saved Successfully</span>
 </div>
+
 <!-- UNSAVED CHANGES MODAL -->
 <div class="modal-overlay" id="unsaved-modal">
     <div class="modal-content unsaved-modal-content">
@@ -234,5 +224,109 @@ $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settin
             <button class="btn btn-primary btn-unsaved-stay" id="btn-stay-save">Stay</button>
             <button class="btn btn-outline btn-unsaved-discard" id="btn-discard-leave">Discard & Leave</button>
         </div>
+    </div>
+</div>
+
+<!-- ADD/EDIT VENUE MODAL -->
+<div class="modal-overlay" id="venueModal">
+    <div class="modal-content" style="max-width: 600px; max-height: 85vh; overflow-y: auto;">
+        <h3 class="modal-title" id="vm-title">Add New Venue</h3>
+
+        <form id="form-venue" onsubmit="return false;">
+            <input type="hidden" id="vm-id" name="venue_id">
+
+            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Venue Name</label>
+                    <input type="text" id="vm-name" name="name" class="form-control" placeholder="e.g. Infinity Hall"
+                        required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Category</label>
+                    <select id="vm-category" name="category" class="form-control" required>
+                        <option value="" disabled selected>Select...</option>
+                        <option value="Event Hall">Event Hall</option>
+                        <option value="Hotel Room">Hotel Room</option>
+                        <option value="Resort Villa">Resort Villa</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Status</label>
+                <select id="vm-status" name="status" class="form-control" required>
+                    <option value="Available">Available</option>
+                    <option value="Maintenance">Maintenance</option>
+                    <option value="Inactive">Inactive (Hidden from users)</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Description (Used in Showroom)</label>
+                <textarea id="vm-desc" name="description" class="form-control" rows="3"
+                    placeholder="Experience ultimate luxury..."></textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label>Amenities (Comma-separated)</label>
+                <input type="text" id="vm-amenities" name="amenities" class="form-control"
+                    placeholder="Free Wi-Fi, Pool, Smart TV">
+            </div>
+
+            <!-- DYNAMIC SECTIONS: These hide/show based on category -->
+            <div style="padding: 15px; background: #faf9f7; border-radius: 8px; border: 1px solid #eee;">
+                <h4 style="font-size: 1rem; margin-bottom: 15px; color: var(--color-dark);">Pricing & Capacities</h4>
+
+                <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Base Capacity (Pax)</label>
+                        <input type="number" id="vm-base-cap" name="base_capacity" class="form-control" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Max Capacity (Pax)</label>
+                        <input type="number" id="vm-max-cap" name="max_capacity" class="form-control" required>
+                    </div>
+
+                    <!-- Event Hall Specific -->
+                    <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
+                        <label>Base Rate (₱/Day)</label>
+                        <input type="number" id="vm-eh-rate" name="base_rate" class="form-control" step="0.01">
+                    </div>
+
+                    <!-- Hotel Room Specific -->
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Room Type</label>
+                        <input type="text" id="vm-hr-type" name="room_type" class="form-control"
+                            placeholder="e.g. Deluxe Room">
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Nightly Rate (₱)</label>
+                        <input type="number" id="vm-hr-rate" name="nightly_rate" class="form-control" step="0.01">
+                    </div>
+
+                    <!-- Villa Specific -->
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Day Rate (₱)</label>
+                        <input type="number" id="vm-vi-day" name="day_rate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Overnight Rate (₱)</label>
+                        <input type="number" id="vm-vi-night" name="overnight_rate" class="form-control" step="0.01">
+                    </div>
+
+                    <!-- Shared Hotel/Villa -->
+                    <div class="form-group vm-dynamic vm-hotel vm-villa"
+                        style="display:none; margin-bottom: 0; grid-column: span 2;">
+                        <label>Extra Pax Rate (₱/head)</label>
+                        <input type="number" id="vm-extra-pax" name="extra_pax_rate" class="form-control" step="0.01">
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions-center" style="margin-top: 25px;">
+                <button type="button" class="btn btn-outline btn-modal-cancel" id="btn-close-vmodal">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="btn-save-venue">Save Venue</button>
+            </div>
+        </form>
     </div>
 </div>
