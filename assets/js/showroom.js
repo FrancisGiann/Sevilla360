@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentGallery = [];
     let currentImageIndex = 0;
     let panoCache = {};
+    let currentZoom = 1;
 
     // --- 1. Init Panolens 360 Viewer ---
     const panoContainer = document.getElementById('pano-container');
@@ -152,17 +153,92 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.classList.remove("no-scroll");
     });
 
-    // --- 6. Gallery Slider Logic ---
-    document.getElementById("slide-next")?.addEventListener("click", () => {
+    // --- 6. Gallery Slider & Filmstrip Logic ---
+    const thumbnailStrip = document.getElementById("thumbnail-strip");
+    const currentSlideImg = document.getElementById("current-slide-img");
+
+    // Master function to change photos AND highlight the correct thumbnail
+    function updateGalleryUI(index) {
         if (currentGallery.length === 0) return;
-        currentImageIndex = (currentImageIndex + 1) % currentGallery.length;
-        document.getElementById("current-slide-img").src = currentGallery[currentImageIndex];
+        currentImageIndex = index;
+        
+        // --- Reset zoom when changing photos ---
+        currentZoom = 1;
+        currentSlideImg.style.transform = `scale(1)`;
+
+        // 1. Change big image
+        currentSlideImg.src = currentGallery[currentImageIndex];
+        
+        // 2. Update thumbnail active states
+        const thumbs = thumbnailStrip.querySelectorAll('.thumb-img');
+        thumbs.forEach((t, i) => {
+            if (i === currentImageIndex) {
+                t.classList.add('active');
+                // Auto-scroll the filmstrip so the active thumb is always visible
+                t.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            } else {
+                t.classList.remove('active');
+            }
+        });
+    }
+
+    // Function to generate the HTML for the thumbnails
+    function generateThumbnails() {
+        thumbnailStrip.innerHTML = ''; // Clear old ones
+        currentGallery.forEach((imgUrl, i) => {
+            const thumb = document.createElement('img');
+            thumb.src = imgUrl;
+            thumb.className = i === 0 ? 'thumb-img active' : 'thumb-img';
+            
+            // If they click a thumbnail, jump straight to that photo!
+            thumb.addEventListener('click', () => updateGalleryUI(i));
+            
+            thumbnailStrip.appendChild(thumb);
+        });
+    }
+
+    // Left Arrow
+    document.getElementById("slide-prev")?.addEventListener("click", () => {
+        let newIndex = (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
+        updateGalleryUI(newIndex);
     });
 
-    document.getElementById("slide-prev")?.addEventListener("click", () => {
-        if (currentGallery.length === 0) return;
-        currentImageIndex = (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
-        document.getElementById("current-slide-img").src = currentGallery[currentImageIndex];
+    // Right Arrow
+    document.getElementById("slide-next")?.addEventListener("click", () => {
+        let newIndex = (currentImageIndex + 1) % currentGallery.length;
+        updateGalleryUI(newIndex);
     });
+
+    // When the user clicks "VIEW PHOTOS", generate the thumbnails!
+    btnViewPhotos.addEventListener("click", () => {
+        generateThumbnails(); // Build the filmstrip
+        updateGalleryUI(0);   // Start at photo 0
+        window.scrollTo({ top: 0, behavior: "instant" });
+        wrapper.classList.add("mode-photos");
+        document.body.classList.add("no-scroll");
+    });
+
+    // --- 7. SCROLL TO ZOOM LOGIC ---
+    const imageContainer = document.querySelector(".slider-image-container");
+    
+    imageContainer.addEventListener("wheel", (e) => {
+        // Only allow zoom if we are currently in Photo Mode
+        if (!wrapper.classList.contains("mode-photos")) return;
+        
+        e.preventDefault(); // Stops the whole webpage from scrolling
+
+        // If scrolling UP, zoom in. If scrolling DOWN, zoom out.
+        if (e.deltaY < 0) {
+            currentZoom += 0.15; // Zoom speed
+        } else {
+            currentZoom -= 0.15;
+        }
+
+        // Clamp the zoom: Min 1x (Normal), Max 4x (Super Zoomed)
+        currentZoom = Math.min(Math.max(currentZoom, 1), 4);
+
+        // Apply the zoom effect to the image
+        currentSlideImg.style.transform = `scale(${currentZoom})`;
+    }, { passive: false }); // 'passive: false' allows us to stop the page scroll
 
 });

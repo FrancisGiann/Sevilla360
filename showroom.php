@@ -1,73 +1,77 @@
 <?php
 $page_title = 'Virtual Showroom | SEVILLA360';
-$extra_css = 'assets/css/showroom.css?v=1.6';
-$extra_js = 'assets/js/showroom.js?v=1.8';
+$extra_css = 'assets/css/showroom.css?v=' . time();
+$extra_js = 'assets/js/showroom.js?v= ' . time();
 $active_page = 'showroom';
 
 require_once 'config/db_connect.php';
 
 // 1. Fetch all venues and group them exactly like we did in the CMS
 $venues_query = $conn->query("
-    SELECT 
-        v.id, v.category, v.name AS venue_name, v.status,
-        hr.room_type, hr.base_capacity, hr.max_capacity, hr.nightly_rate,
-        eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
-        vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
-    FROM venues v
-    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
-    LEFT JOIN event_halls eh ON v.id = eh.venue_id
-    LEFT JOIN villas vi ON v.id = vi.venue_id
-    WHERE v.status != 'Inactive'
-    GROUP BY v.name, hr.room_type
+SELECT
+v.id, v.category, v.name AS venue_name, v.status,
+hr.room_type, hr.base_capacity, hr.max_capacity, hr.nightly_rate,
+eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
+vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
+FROM venues v
+LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+LEFT JOIN event_halls eh ON v.id = eh.venue_id
+LEFT JOIN villas vi ON v.id = vi.venue_id
+WHERE v.status != 'Inactive'
+GROUP BY v.name, hr.room_type
 ");
 
 $showroom_data = [];
 
 if ($venues_query) {
-    while($v = $venues_query->fetch_assoc()) {
-        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
-        $safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
-        
-        // Determine capacity and rate based on category
-        $cap = 'N/A'; $rate = 'N/A';
-        if ($v['category'] === 'Hotel Room') { $cap = $v['max_capacity'] . ' pax'; $rate = '₱' . number_format($v['nightly_rate']) . ' /night'; }
-        if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . ' /day'; }
-        if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . ' /day'; }
+while($v = $venues_query->fetch_assoc()) {
+$display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' .
+$v['room_type'] : $v['venue_name'];
+$safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
 
-        $showroom_data[$safe_id] = [
-            'id' => $safe_id,
-            'title' => strtoupper($display_name),
-            'category' => $v['category'],
-            'capacity' => $cap,
-            'rate' => $rate,
-            'status' => $v['status'],
-            'pano_url' => '', // Will fill from media_cms
-            'gallery' => []   // Will fill from media_cms
-        ];
-    }
+// Determine capacity and rate based on category
+$cap = 'N/A'; $rate = 'N/A';
+if ($v['category'] === 'Hotel Room') { $cap = $v['max_capacity'] . ' pax'; $rate = '₱' .
+number_format($v['nightly_rate']) . ' /night'; }
+if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . '
+/day'; }
+if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . '
+/day'; }
+
+$showroom_data[$safe_id] = [
+'id' => $safe_id,
+'title' => strtoupper($display_name),
+'category' => $v['category'],
+'capacity' => $cap,
+'rate' => $rate,
+'status' => $v['status'],
+'pano_url' => '', // Will fill from media_cms
+'gallery' => [] // Will fill from media_cms
+];
+}
 }
 
 // 2. Fetch Media from CMS and attach to the correct showroom venue
 $media_query = $conn->query("SELECT slot_assignment, file_path, media_type FROM media_cms");
 if ($media_query) {
-    while($m = $media_query->fetch_assoc()) {
-        $slot = $m['slot_assignment'];
-        
-        // If it's a 360 image (e.g., venue_deluxe_room_360)
-        if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
-            $base_id = str_replace(['venue_', '_360'], '', $slot);
-            if (isset($showroom_data[$base_id])) {
-                $showroom_data[$base_id]['pano_url'] = $m['file_path'];
-            }
-        } 
-        // If it's a standard gallery image (e.g., venue_deluxe_room)
-        elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
-            $base_id = str_replace('venue_', '', $slot);
-            if (isset($showroom_data[$base_id])) {
-                $showroom_data[$base_id]['gallery'][] = $m['file_path'];
-            }
-        }
-    }
+while($m = $media_query->fetch_assoc()) {
+$slot = $m['slot_assignment'];
+
+// If it's a 360 image (e.g., venue_deluxe_room_360)
+if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
+$base_id = str_replace(['venue_', '_360'], '', $slot);
+if (isset($showroom_data[$base_id])) {
+$showroom_data[$base_id]['pano_url'] = $m['file_path'];
+}
+}
+// If it's a standard gallery image (e.g., venue_deluxe_room)
+elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
+$base_id = str_replace('venue_', '', $slot);
+if (isset($showroom_data[$base_id])) {
+$showroom_data[$base_id]['gallery'][] = $m['file_path'];
+}
+}
+}
 }
 
 include 'includes/header.php';
@@ -124,6 +128,9 @@ window.process = {
             <div class="slider-image-container ui-photos">
                 <img src="assets/img/placeholder.jpg" alt="Room Photo" id="current-slide-img">
             </div>
+
+            <!-- NEW: The Thumbnail Filmstrip -->
+            <div class="thumbnail-strip ui-photos" id="thumbnail-strip"></div>
 
             <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
 

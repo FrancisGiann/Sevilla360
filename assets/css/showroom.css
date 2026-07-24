@@ -2,6 +2,13 @@
    Virtual Showroom Layout (Full Screen & Wide)
    ========================================================================== */
 
+:root {
+  --bg-viewer: #fbe4cd;
+  --bg-details: #deb47e;
+  --btn-brown: #a07748;
+  --border-dark: #2a2522;
+}
+
 .showroom-wrapper {
   height: 100vh; /* Forces the section to be exactly screen-height */
   padding-top: 110px; /* Pushes it down to clear the fixed navbar */
@@ -29,11 +36,11 @@
 /* --- 1. The Big Viewer Box --- */
 .big-viewer-box {
   background-color: var(--bg-viewer);
-  flex: 7; /* CHANGED: Takes up 70% of the screen width */
+  flex: 7; /* Takes up 70% of the screen width */
   min-height: 0;
   position: relative;
   border-top-left-radius: 8px;
-  border-bottom-left-radius: 8px; /* CHANGED: Round only the left side */
+  border-bottom-left-radius: 8px;
   overflow: hidden;
   transition: all 0.4s ease;
 }
@@ -42,12 +49,11 @@
   position: absolute;
   top: 25px;
   left: 30px;
-  font-family: var(--font-body);
+  font-family: var(--font-body), sans-serif;
   font-weight: 500;
   font-size: 0.85rem;
   letter-spacing: 1px;
   z-index: 10;
-  /* CHANGED: Made it a premium dark pill */
   background: rgba(0, 0, 0, 0.6);
   color: white;
   padding: 6px 16px;
@@ -55,10 +61,10 @@
   backdrop-filter: blur(4px);
 }
 
-/* Map Controls (Moved to Bottom Right) */
+/* Map Controls */
 .viewer-controls {
   position: absolute;
-  bottom: 25px; /* CHANGED: Moved to bottom */
+  bottom: 25px;
   right: 25px;
   display: flex;
   flex-direction: column;
@@ -69,7 +75,7 @@
 .viewer-controls button {
   width: 40px;
   height: 40px;
-  background: rgba(0, 0, 0, 0.6); /* Premium dark look */
+  background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
   font-size: 1.2rem;
@@ -84,7 +90,7 @@
   transform: scale(1.05);
 }
 
-/* Pills (Bottom Left) */
+/* Room Pills */
 .room-pills {
   position: absolute;
   bottom: 25px;
@@ -99,9 +105,9 @@
   padding: 10px 22px;
   border-radius: 30px;
   border: none;
-  background: rgba(255, 255, 255, 0.9); /* Glassy white */
+  background: rgba(255, 255, 255, 0.9);
   color: var(--border-dark);
-  font-family: var(--font-body);
+  font-family: var(--font-body), sans-serif;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -112,10 +118,6 @@
 .pill span {
   display: none;
 }
-.mode-photos .pill span {
-  display: inline-block;
-}
-
 .pill.active,
 .pill:hover {
   background: var(--btn-brown);
@@ -125,13 +127,13 @@
 /* --- 2. The Details Box (Side Panel) --- */
 .details-box {
   display: flex;
-  flex-direction: column; /* CHANGED: Stack details vertically on the right */
-  flex: 3; /* CHANGED: Takes up 30% of the screen width */
+  flex-direction: column;
+  flex: 3; /* Takes up 30% of the screen width */
   background-color: var(--bg-details);
   color: var(--border-dark);
   border-top-right-radius: 8px;
   border-bottom-right-radius: 8px;
-  overflow-y: auto; /* Enables scrolling if text is long */
+  overflow-y: auto;
 }
 
 .details-left,
@@ -140,11 +142,11 @@
 }
 
 .details-left {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1); /* Divider between blocks */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .details-title {
-  font-family: var(--font-body);
+  font-family: var(--font-body), sans-serif;
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 20px;
@@ -156,8 +158,8 @@
   display: flex;
   justify-content: space-between;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1); /* Softer borders */
-  font-family: var(--font-body);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  font-family: var(--font-body), sans-serif;
   font-size: 0.9rem;
 }
 
@@ -172,7 +174,7 @@
 
 /* Action Buttons */
 .action-buttons {
-  margin-top: auto; /* Pushes the buttons to the very bottom of the panel */
+  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -189,13 +191,9 @@
   letter-spacing: 1px;
   cursor: pointer;
   transition: all 0.3s ease;
-
-  /* Hardcoded colors to prevent them from disappearing! */
   background-color: #a07748 !important;
   color: #ffffff !important;
   box-shadow: 0 4px 15px rgba(160, 119, 72, 0.35);
-
-  /* Centers the text perfectly */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -203,13 +201,21 @@
 }
 
 .details-box .btn-mock:hover {
-  background-color: #2a2522 !important; /* Turns dark on hover */
+  background-color: #2a2522 !important;
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(42, 37, 34, 0.4);
 }
 
+.details-box .btn-mock:disabled {
+  background-color: #eaeaea !important;
+  color: #a0a0a0 !important;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* ==========================================================================
-   UI Toggle States (360 Mode vs Photo Mode)
+   UI Toggle States: PHOTO MODE (TRUE FULLSCREEN)
    ========================================================================== */
 
 /* By default, hide Photo UI */
@@ -217,133 +223,172 @@
   display: none !important;
 }
 
-/* 
-   When 'mode-photos' class is active:
-*/
-.mode-photos .ui-360 {
-  display: none !important;
+/* 1. THE DARK BACKGROUND OVERLAY */
+.showroom-wrapper.mode-photos::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 12, 10, 0.98);
+  z-index: 999900;
 }
-.mode-photos .details-box {
+
+/* Hide the 360 elements so they don't bleed through */
+.showroom-wrapper.mode-photos .ui-360,
+.showroom-wrapper.mode-photos .details-box,
+.showroom-wrapper.mode-photos .room-pills {
   display: none !important;
 }
 
-/* Show the Photo UI */
-.mode-photos .ui-photos {
+/* Show Photo elements */
+.showroom-wrapper.mode-photos .ui-photos {
   display: block !important;
 }
-
-/* Ensure the big arrows keep their flexbox centering when revealed */
-.mode-photos button.slider-arrow {
+.showroom-wrapper.mode-photos button.slider-arrow {
   display: flex !important;
 }
 
-.mode-photos .showroom-wrapper {
-  padding-top: 80px;
-  padding-bottom: 0;
+/* 2. THE MAIN IMAGE (Locked to center of monitor) */
+.showroom-wrapper.mode-photos .slider-image-container {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 999910 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding-bottom: 80px !important; /* Leaves room for thumbnails */
+  background: transparent !important;
 }
 
-.mode-photos .showroom-container {
-  width: 100%;
-  max-width: 100%;
+.showroom-wrapper.mode-photos .slider-image-container img {
+  max-width: 95vw !important; /* Lets it stretch almost edge-to-edge horizontally */
+  max-height: 88vh !important; /* Lets it stretch much closer to the top and bottom */
+  object-fit: contain !important;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.8);
+  border-radius: 6px;
+
+  /* NEW: Smooth Zooming */
+  transition: transform 0.15s ease-out !important; 
+  transform-origin: center center !important; 
+
 }
 
-.mode-photos .big-viewer-box {
-  border-radius: 0;
-}
+/* 3. THE FILMSTRIP (Locked to bottom center) */
+.showroom-wrapper.mode-photos .thumbnail-strip {
+  position: fixed !important;
+  bottom: 25px !important;
+  left: 0 !important;
+  width: 100vw !important;
+  z-index: 999920 !important;
 
-/* Helper Class to lock body scrolling */
-body.no-scroll {
-  overflow: hidden;
-}
+  display: flex !important;
+  flex-direction: row !important; /* Forces horizontal */
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 12px !important;
 
-/* Hide the footer when in full-screen Photo Mode */
-body.no-scroll .footer {
+  overflow-x: auto;
+  padding: 10px 0;
+  scrollbar-width: none;
+}
+.thumbnail-strip::-webkit-scrollbar {
   display: none;
 }
 
-/* --- Styling for the Photo Gallery Elements --- */
-.photo-room-title {
-  position: absolute;
-  top: 30px;
-  left: 40px;
-  font-family: var(--font-body);
-  font-size: 1.1rem;
-  color: var(--border-dark);
-  z-index: 10;
-}
-
-.slider-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  color: var(--border-dark);
+.thumb-img {
+  width: 80px !important;
+  height: 55px !important;
+  min-width: 80px !important; /* Stops flexbox from squishing them */
+  object-fit: cover;
+  border-radius: 4px;
   cursor: pointer;
-  z-index: 10;
-  transition: 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
 }
-.slider-arrow:hover {
-  transform: translateY(-50%) scale(1.1);
+.thumb-img:hover {
+  opacity: 0.8;
 }
-.slider-arrow.left {
-  left: 40px;
-}
-.slider-arrow.right {
-  right: 40px;
+.thumb-img.active {
+  opacity: 1;
+  border-color: #a07748;
+  transform: scale(1.1);
 }
 
-.btn-back {
-  position: absolute;
-  bottom: 30px;
-  right: 40px;
-  background-color: var(--bg-details);
-  color: var(--border-dark);
-  border: none;
-  padding: 10px 40px;
+/* 4. TITLE & BUTTONS (Locked to screen edges) */
+.showroom-wrapper.mode-photos .photo-room-title {
+  position: fixed !important;
+  top: 30px !important;
+  left: 40px !important;
+  z-index: 999930 !important;
+  font-family: var(--font-body), sans-serif;
+  font-size: 1.2rem;
+  color: white !important;
+  letter-spacing: 1px;
+}
+
+.showroom-wrapper.mode-photos .btn-back {
+  position: fixed !important;
+  top: 30px !important;
+  right: 40px !important;
+  z-index: 999930 !important;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 10px 30px;
   border-radius: 50px;
-  font-family: var(--font-body);
-  font-size: 1rem;
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
-  z-index: 10;
   transition: 0.3s;
 }
-
-.btn-back:hover {
-  background-color: var(--btn-brown);
-  color: var(--color-white);
-}
-/* Disabled state for buttons (e.g., NO PHOTOS) */
-.details-box .btn-mock:disabled {
-  background-color: #eaeaea !important;
-  color: #a0a0a0 !important;
-  box-shadow: none;
-  cursor: not-allowed;
-  transform: none; /* Prevents the hover jump */
+.showroom-wrapper.mode-photos .btn-back:hover {
+  background-color: white;
+  color: black;
 }
 
-.slider-image-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* 5. ARROWS (Locked to middle edges) */
+.showroom-wrapper.mode-photos .slider-arrow {
+  position: fixed !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 999930 !important;
+  background: transparent;
+  border: none;
+  color: white !important;
+  cursor: pointer;
+  transition: 0.3s ease;
+  opacity: 0.6;
 }
-.slider-image-container img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.showroom-wrapper.mode-photos .slider-arrow:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.2) !important;
+}
+.showroom-wrapper.mode-photos .slider-arrow.left {
+  left: 40px !important;
+}
+.showroom-wrapper.mode-photos .slider-arrow.right {
+  right: 40px !important;
+}
+
+/* Lock Body Scrolling */
+body.no-scroll {
+  overflow: hidden !important;
+}
+body.no-scroll .footer {
+  display: none !important;
 }
 
 /* ==========================================================================
    Responsive Constraints (Mobile & Tablet Adjustments)
    ========================================================================== */
 @media (max-width: 992px) {
-  /* --- Normal 360 View Adjustments --- */
   .showroom-wrapper {
     height: auto;
     min-height: 100vh;
@@ -353,7 +398,7 @@ body.no-scroll .footer {
   }
 
   .showroom-container {
-    flex-direction: column; /* FORCES MOBILE BACK TO STACKED */
+    flex-direction: column; /* Stacks layout on mobile */
     height: auto;
   }
 
@@ -370,11 +415,11 @@ body.no-scroll .footer {
   .details-left {
     border-bottom: 2px solid rgba(0, 0, 0, 0.1);
   }
+
   .action-buttons {
     margin-top: 20px;
   }
 
-  /* --- SWIPEABLE PILL BUTTONS --- */
   .room-pills {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -386,7 +431,6 @@ body.no-scroll .footer {
     padding-bottom: 5px;
     scrollbar-width: none;
   }
-
   .room-pills::-webkit-scrollbar {
     display: none;
   }
@@ -395,59 +439,28 @@ body.no-scroll .footer {
     flex: 0 0 auto;
     padding: 8px 16px;
     font-size: 0.8rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(5px);
   }
-
   .pill.active {
     background: var(--bg-details);
   }
 
-  /* --- TRUE FULL-SCREEN PHOTO MODE --- */
-  .mode-photos .showroom-wrapper {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    padding: 0;
-    z-index: 9999;
-    background-color: var(--color-dark);
-  }
-
-  .mode-photos .showroom-container {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-  }
-
-  .mode-photos .big-viewer-box {
-    height: 100%;
-    min-height: 100%;
-    border-radius: 0;
-  }
-
+  /* Mobile Photo Mode Tweaks */
   .btn-back {
-    bottom: auto;
-    top: 40px;
+    top: 20px;
     right: 15px;
-    padding: 8px 24px;
-    font-size: 0.9rem;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    padding: 8px 20px;
+    font-size: 0.85rem;
   }
 
   .photo-room-title {
-    top: 45px;
+    top: 25px;
     left: 15px;
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
-    text-shadow: 0 2px 6px rgba(255, 255, 255, 0.9);
   }
 
-  .slider-arrow {
-    margin-top: 15px;
-  }
   .slider-arrow.left {
     left: 5px;
   }
