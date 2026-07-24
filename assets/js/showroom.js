@@ -37,9 +37,22 @@ document.addEventListener("DOMContentLoaded", () => {
       viewer.camera.updateProjectionMatrix(); // CRITICAL FIX: Forces the screen to redraw!
   });
   
+  // Fix: Force Panolens to resize when entering/exiting fullscreen
   document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
-      if (!document.fullscreenElement) panoContainer.requestFullscreen();
-      else document.exitFullscreen();
+      if (!document.fullscreenElement) {
+          panoContainer.requestFullscreen().then(() => {
+              setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to redraw to fill screen
+          });
+      } else {
+          document.exitFullscreen().then(() => {
+              setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to shrink back down
+          });
+      }
+  });
+
+  // Backup listener in case they use the phone's native "Back" button to exit fullscreen
+  document.addEventListener('fullscreenchange', () => {
+      setTimeout(() => viewer.onWindowResize(), 100);
   });
 
   // --- 2. UI Elements ---
@@ -252,15 +265,22 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("gallery-counter").innerText =
       `• ${currentImageIndex + 1} / ${currentGallery.length}`;
 
-    // ---4.  Fade Effect ---
-    currentSlideImg.classList.add("fade-out"); // Dim the image
+    // --- 4. Slide Animation Effect ---
+    // Remove old animation classes
+    currentSlideImg.classList.remove("slide-in-left", "slide-in-right");
+    
+    // Force browser reflow to reset the animation
+    void currentSlideImg.offsetWidth; 
+    
+    // Determine which direction they clicked/swiped
+    if (window.lastGalleryDirection === "prev") {
+        currentSlideImg.classList.add("slide-in-left");
+    } else {
+        currentSlideImg.classList.add("slide-in-right"); // Default to right
+    }
 
-    setTimeout(() => {
-      currentSlideImg.src = currentGallery[currentImageIndex]; // Swap source
-      document.getElementById("gallery-counter").innerText =
-        `• ${currentImageIndex + 1} / ${currentGallery.length}`;
-      currentSlideImg.classList.remove("fade-out"); // Bring it back
-    }, 150); // Swap happens in the middle of the fade!
+    // Change image source instantly
+    currentSlideImg.src = currentGallery[currentImageIndex];
   }
 
   // Function to generate the HTML for the thumbnails
@@ -280,13 +300,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Left Arrow
   document.getElementById("slide-prev")?.addEventListener("click", () => {
-    let newIndex =
-      (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
+    window.lastGalleryDirection = "prev"; // Tell animation to slide left
+    let newIndex = (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
     updateGalleryUI(newIndex);
   });
 
   // Right Arrow
   document.getElementById("slide-next")?.addEventListener("click", () => {
+    window.lastGalleryDirection = "next"; // Tell animation to slide right
     let newIndex = (currentImageIndex + 1) % currentGallery.length;
     updateGalleryUI(newIndex);
   });
@@ -367,4 +388,45 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentZoom > 1) currentSlideImg.style.cursor = "grab";
     }
   });
+
+  // --- 8. MOBILE SWIPE LOGIC FOR GALLERY ---
+  let touchStartX = 0;
+  let touchEndX = 0;
+
+  // Listen for the start of the touch
+  currentSlideImg.addEventListener('touchstart', (e) => {
+      if (!wrapper.classList.contains("mode-photos")) return;
+      touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+
+  // CRITICAL FIX: Actively block the browser's "Swipe to go back" feature
+  currentSlideImg.addEventListener('touchmove', (e) => {
+      if (!wrapper.classList.contains("mode-photos")) return;
+      
+      const touchCurrentX = e.changedTouches[0].screenX;
+      const diffX = touchStartX - touchCurrentX;
+
+      // If they move their finger horizontally by more than 10 pixels, stop the browser from doing anything!
+      if (Math.abs(diffX) > 10) {
+          e.preventDefault();
+      }
+  }, { passive: false }); // passive MUST be false for preventDefault() to work on touch events
+
+  // Listen for the end of the touch
+  currentSlideImg.addEventListener('touchend', (e) => {
+      if (!wrapper.classList.contains("mode-photos")) return;
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipe();
+  }, { passive: true });
+
+  function handleSwipe() {
+      const swipeDistance = touchEndX - touchStartX;
+      
+      // Require a minimum distance of 50 pixels to count as a swipe
+      if (swipeDistance < -50) {
+          document.getElementById("slide-next")?.click(); // Swiped Left
+      } else if (swipeDistance > 50) {
+          document.getElementById("slide-prev")?.click(); // Swiped Right
+      }
+  }
 });

@@ -32,34 +32,133 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
   border-radius: 8px;
 }
+
+/* ==========================================================================
+   Details Box (Side Panel)
+   ========================================================================== */
+.details-box {
+  display: flex;
+  flex-direction: column;
+  flex: 3; /* Takes up 30% of the screen width */
+  background-color: var(--bg-details);
+  color: var(--border-dark);
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  overflow-y: auto;
+}
+
+.details-left,
+.details-right {
+  padding: 35px 30px;
+}
+
+.details-left {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.details-title {
+  font-family: var(--font-body), sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+  color: rgba(0, 0, 0, 0.7);
+}
+
 .venue-description {
-    font-family: var(--font-body), sans-serif;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: rgba(0,0,0,0.7);
-    margin-bottom: 20px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(0,0,0,0.7);
+  margin-bottom: 20px;
 }
 
 .amenities-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 25px;
-    padding-bottom: 25px;
-    border-bottom: 1px solid rgba(0,0,0,0.1);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 25px;
+  padding-bottom: 25px;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
 }
 
 .amenity {
-    font-size: 0.85rem;
-    color: var(--border-dark);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--border-dark);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
 }
-.amenity i { color: #A07748; /* Gold Icons */ }
 
-/* --- 1. The Big Viewer Box --- */
+.amenity i { 
+  color: #A07748; /* Gold Icons */ 
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.9rem;
+}
+
+.d-label {
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.d-value {
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Action Buttons */
+.action-buttons {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.details-box .btn-mock {
+  width: 100%;
+  padding: 16px 0;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #a07748 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 15px rgba(160, 119, 72, 0.35);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+}
+
+.details-box .btn-mock:hover {
+  background-color: #2a2522 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(42, 37, 34, 0.4);
+}
+
+.details-box .btn-mock:disabled {
+  background-color: #eaeaea !important;
+  color: #a0a0a0 !important;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ==========================================================================
+   The Big Viewer Box (360 Engine)
+   ========================================================================== */
 .big-viewer-box {
   background-color: var(--bg-viewer);
   flex: 7; /* Takes up 70% of the screen width */
@@ -150,96 +249,6 @@
   color: white;
 }
 
-/* --- 2. The Details Box (Side Panel) --- */
-.details-box {
-  display: flex;
-  flex-direction: column;
-  flex: 3; /* Takes up 30% of the screen width */
-  background-color: var(--bg-details);
-  color: var(--border-dark);
-  border-top-right-radius: 8px;
-  border-bottom-right-radius: 8px;
-  overflow-y: auto;
-}
-
-.details-left,
-.details-right {
-  padding: 35px 30px;
-}
-
-.details-left {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.details-title {
-  font-family: var(--font-body), sans-serif;
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 20px;
-  letter-spacing: 1px;
-  color: rgba(0, 0, 0, 0.7);
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  font-family: var(--font-body), sans-serif;
-  font-size: 0.9rem;
-}
-
-.d-label {
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-.d-value {
-  font-weight: 600;
-  text-align: right;
-}
-
-/* Action Buttons */
-.action-buttons {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.details-box .btn-mock {
-  width: 100%;
-  padding: 16px 0;
-  border: none;
-  border-radius: 6px;
-  font-family: var(--font-body), sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background-color: #a07748 !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 15px rgba(160, 119, 72, 0.35);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-decoration: none;
-}
-
-.details-box .btn-mock:hover {
-  background-color: #2a2522 !important;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(42, 37, 34, 0.4);
-}
-
-.details-box .btn-mock:disabled {
-  background-color: #eaeaea !important;
-  color: #a0a0a0 !important;
-  box-shadow: none;
-  cursor: not-allowed;
-  transform: none;
-}
-
 /* ==========================================================================
    UI Toggle States: PHOTO MODE (TRUE FULLSCREEN)
    ========================================================================== */
@@ -297,11 +306,10 @@
   object-fit: contain !important;
   box-shadow: 0 10px 50px rgba(0, 0, 0, 0.8);
   border-radius: 6px;
+  transition: transform 0.05s linear, opacity 0.2s ease-in-out !important; 
 
-  /* NEW: Smooth Zooming */
-   transition: transform 0.05s linear !important; 
-   transition: transform 0.05s linear, opacity 0.2s ease-in-out !important; 
-
+  /* Fixes a bug where the image would not respond to touch swipes on mobile devices */
+  touch-action: pan-y !important; 
 }
 
 .fade-out { opacity: 0.4 !important; }
@@ -357,16 +365,26 @@
   z-index: 999930 !important;
   display: flex !important;
   justify-content: space-between !important;
-  align-items: center !important;
+  align-items: flex-start !important; /* Aligns to top so counter drops below title */
   padding: 20px 40px !important;
   background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
 }
 
 .showroom-wrapper.mode-photos .photo-room-title {
+  display: block;
   font-family: var(--font-body), sans-serif;
   font-size: 1.2rem;
   color: white !important;
   letter-spacing: 1px;
+}
+
+.showroom-wrapper.mode-photos .photo-counter {
+  display: block; /* Forces counter to sit under the title instead of next to it */
+  font-family: var(--font-body), sans-serif;
+  font-size: 1rem;
+  color: var(--color-gold) !important;
+  margin-top: 5px;
+  font-weight: 600;
 }
 
 .showroom-wrapper.mode-photos .btn-back {
@@ -391,25 +409,59 @@
 /* 5. ARROWS (Locked to middle edges) */
 .showroom-wrapper.mode-photos .slider-arrow {
   position: fixed !important;
-  top: 50% !important;
+  top: 45% !important; /* Lifts arrows up slightly to center on the image, not the screen! */
   transform: translateY(-50%) !important;
   z-index: 999930 !important;
-  background: transparent;
-  border: none;
+  background: rgba(0,0,0,0.5) !important; /* Dark circular background */
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  border-radius: 50% !important;
+  width: 50px !important;  /* Strictly force it to be a perfect circle */
+  height: 50px !important; /* Strictly force it to be a perfect circle */
   color: white !important;
   cursor: pointer;
   transition: 0.3s ease;
-  opacity: 0.6;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
 }
+
+.showroom-wrapper.mode-photos .slider-arrow svg {
+  width: 24px !important;
+  height: 24px !important;
+  margin: 0 !important; /* Prevents off-center SVG bugs */
+}
+
 .showroom-wrapper.mode-photos .slider-arrow:hover {
-  opacity: 1;
-  transform: translateY(-50%) scale(1.2) !important;
+  background: var(--btn-brown) !important;
+  border-color: var(--btn-brown) !important;
+  transform: translateY(-50%) scale(1.1) !important;
 }
+
 .showroom-wrapper.mode-photos .slider-arrow.left {
-  left: 40px !important;
+  left: 30px !important;
 }
+
 .showroom-wrapper.mode-photos .slider-arrow.right {
-  right: 40px !important;
+  right: 30px !important;
+}
+/* --- GALLERY SLIDE ANIMATIONS --- */
+.slide-in-right {
+  animation: slideRight 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.slide-in-left {
+  animation: slideLeft 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes slideRight {
+  0% { transform: translateX(50px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideLeft {
+  0% { transform: translateX(-50px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
 }
 
 /* Lock Body Scrolling */
@@ -444,25 +496,19 @@ body.no-scroll .footer {
     border-radius: 8px 8px 0 0;
   }
 
-  .details-box {
-    border-radius: 0 0 8px 8px;
-  }
-
-  .details-left {
-    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
-  }
-
-  .action-buttons {
-    margin-top: 20px;
+  /* Fix unclickable buttons: Move controls up and room pills down slightly */
+  .viewer-controls {
+    bottom: 80px !important; /* Lifts the + - buttons up away from the pills */
+    right: 15px !important;
   }
 
   .room-pills {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    left: 15px;
-    right: 15px;
-    bottom: 15px;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 15px !important;
     gap: 10px;
     padding-bottom: 5px;
     scrollbar-width: none;
@@ -482,37 +528,53 @@ body.no-scroll .footer {
     background: var(--bg-details);
   }
 
-  /* Mobile Photo Mode Tweaks */
-  .btn-back {
-    top: 20px;
-    right: 15px;
-    padding: 8px 20px;
-    font-size: 0.85rem;
+  .details-box {
+    border-radius: 0 0 8px 8px;
   }
 
-  .photo-room-title {
-    top: 25px;
-    left: 15px;
-    font-size: 1rem;
-    font-weight: 600;
+  .details-left {
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
   }
 
-  .slider-arrow.left {
-    left: 5px;
+  .action-buttons {
+    margin-top: 20px;
   }
-  .slider-arrow.right {
-    right: 5px;
-  }
+
+  /* --- Mobile Photo Mode Tweaks --- */
   .showroom-wrapper.mode-photos .gallery-header {
-    padding: 15px !important; /* Tighter padding so it fits on small phones */
+    padding: 15px 20px !important; /* Tighter padding so it fits on small phones */
+    align-items: center !important;
   }
 
   .showroom-wrapper.mode-photos .photo-room-title {
-    font-size: 1rem !important; /* Shrink title slightly */
+    font-size: 0.95rem !important; /* Shrink title slightly */
+  }
+
+  .showroom-wrapper.mode-photos .photo-counter {
+    font-size: 0.85rem !important;
+    margin-top: 2px !important;
   }
 
   .showroom-wrapper.mode-photos .btn-back {
-    padding: 8px 15px !important;
-    font-size: 0.85rem !important;
+    padding: 8px 16px !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Fix squished arrows: Move them inward and make them smaller on phones */
+  .showroom-wrapper.mode-photos .slider-arrow {
+      width: 40px !important;
+      height: 40px !important;
+  }
+  .showroom-wrapper.mode-photos .slider-arrow.left {
+    left: 10px !important;
+  }
+  .showroom-wrapper.mode-photos .slider-arrow.right {
+    right: 10px !important;
+  }
+  
+  /* Make arrows slightly smaller on mobile to not block the photo */
+  .showroom-wrapper.mode-photos .slider-arrow svg {
+      width: 30px !important;
+      height: 30px !important;
   }
 }
