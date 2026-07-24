@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dataMap = window.showroomData || {};
     let currentGallery = [];
     let currentImageIndex = 0;
+    let panoCache = {};
 
     // --- 1. Init Panolens 360 Viewer ---
     const panoContainer = document.getElementById('pano-container');
@@ -30,6 +31,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const galleryTitle = document.getElementById("gallery-title");
     const btnViewPhotos = document.getElementById("btn-view-photos");
 
+    // --- Create a "No 360" Image Overlay ---
+    const no360Wrapper = document.createElement('div');
+    no360Wrapper.className = 'ui-360'; // Hides automatically in Photo Mode
+    no360Wrapper.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5; background-size: cover; background-position: center;';
+    
+    // The HTML inside the overlay (A subtle dark tint + text)
+    no360Wrapper.innerHTML = `
+        <div style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4);"></div>
+        <div style="position:relative; z-index:2; text-align:center; color:white;">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:10px; opacity:0.9;">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <h2 style="font-family: sans-serif; font-weight:500; font-size: 1.3rem; margin-bottom:5px; letter-spacing: 1px;">STANDARD VIEW</h2>
+            <p style="font-family: sans-serif; opacity:0.9; font-size: 0.9rem;">No 360° tour available for this venue.</p>
+        </div>
+    `;
+    document.querySelector('.big-viewer-box').appendChild(no360Wrapper);
+
+
     // --- 3. Load Room Logic ---
     function loadRoom(roomId) {
         const room = dataMap[roomId];
@@ -43,26 +65,59 @@ document.addEventListener("DOMContentLoaded", () => {
         valRate.textContent = room.rate;
         galleryTitle.textContent = room.title + " Gallery";
 
-        // Load 360 Panorama
-        if (room.pano_url) {
-            const panorama = new PANOLENS.ImagePanorama(room.pano_url);
-            viewer.add(panorama);
-            viewer.setPanorama(panorama);
-        }
-
-        // Setup Photo Gallery
+        // Fetch Gallery first so we can use it as a fallback
         currentGallery = room.gallery || [];
         currentImageIndex = 0;
+
+        // --- Handle 360 Panorama ---
+        if (room.pano_url) {
+            // Hide the image overlay, show the 3D canvas
+            no360Wrapper.style.display = 'none';
+            panoContainer.style.visibility = 'visible';
+
+            // Check if we ALREADY loaded this 3D room before
+            if (!panoCache[roomId]) {
+                const originalTitle = room.title;
+                valTitle.textContent = "Loading 360... Please wait";
+
+                const panorama = new PANOLENS.ImagePanorama(room.pano_url);
+                panorama.addEventListener('load', function() {
+                    valTitle.textContent = originalTitle;
+                });
+
+                viewer.add(panorama);
+                panoCache[roomId] = panorama; // Save it to memory!
+            }
+            
+            // Instantly switch to the room in memory
+            viewer.setPanorama(panoCache[roomId]);
+            
+        } else {
+            // NO 360: Set the background image (Use room photo, fallback to placeholder)
+            const bgImg = currentGallery.length > 0 ? currentGallery[0] : 'assets/img/placeholder.jpg';
+            no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
+            
+            // Show the image overlay, hide the 3D canvas
+            no360Wrapper.style.display = 'flex';
+            panoContainer.style.visibility = 'hidden';
+            valTitle.textContent = room.title;
+        }
         
-        // Disable "View Photos" button if they haven't uploaded any standard photos yet
+        // --- Handle Photo Button & Gallery State ---
         if (currentGallery.length === 0) {
             btnViewPhotos.disabled = true;
-            btnViewPhotos.style.opacity = '0.5';
             btnViewPhotos.innerText = "NO PHOTOS";
+            // CRITICAL FIX: Erase the previous room's photo!
+            document.getElementById("current-slide-img").src = 'assets/img/placeholder.jpg'; 
+            
+            // If they click a room with no photos WHILE in photo mode, kick them back to the 360 view
+            if (document.getElementById("showroom-wrapper").classList.contains("mode-photos")) {
+                document.getElementById("btn-back-to-360").click();
+            }
         } else {
             btnViewPhotos.disabled = false;
-            btnViewPhotos.style.opacity = '1';
             btnViewPhotos.innerText = "VIEW PHOTOS";
+            // Show the new room's first photo
             document.getElementById("current-slide-img").src = currentGallery[0];
         }
     }
