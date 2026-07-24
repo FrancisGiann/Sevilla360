@@ -204,6 +204,19 @@ document.addEventListener("DOMContentLoaded", () => {
         t.classList.remove("active");
       }
     });
+    // 3. Update the counter
+    document.getElementById("gallery-counter").innerText =
+      `• ${currentImageIndex + 1} / ${currentGallery.length}`;
+
+    // ---4.  Fade Effect ---
+    currentSlideImg.classList.add("fade-out"); // Dim the image
+
+    setTimeout(() => {
+      currentSlideImg.src = currentGallery[currentImageIndex]; // Swap source
+      document.getElementById("gallery-counter").innerText =
+        `• ${currentImageIndex + 1} / ${currentGallery.length}`;
+      currentSlideImg.classList.remove("fade-out"); // Bring it back
+    }, 150); // Swap happens in the middle of the fade!
   }
 
   // Function to generate the HTML for the thumbnails
@@ -244,66 +257,70 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- 7. TRUE ZOOM TO CURSOR & DRAG TO PAN ---
-    
-    // A. Scroll to Zoom (Attached strictly to the IMAGE, not the background)
-    currentSlideImg.addEventListener("wheel", (e) => {
-        if (!wrapper.classList.contains("mode-photos")) return;
-        e.preventDefault(); 
 
-        const oldZoom = currentZoom;
-        
-        // Zoom speed
-        if (e.deltaY < 0) currentZoom += 0.2;
-        else currentZoom -= 0.2;
-        
-        // Limit zoom between 1x and 5x
-        currentZoom = Math.min(Math.max(currentZoom, 1), 5);
+  // A. Scroll to Zoom (Attached strictly to the IMAGE, not the background)
+  currentSlideImg.addEventListener(
+    "wheel",
+    (e) => {
+      if (!wrapper.classList.contains("mode-photos")) return;
+      e.preventDefault();
 
-        if (currentZoom === 1) {
-            // Snap back to center if fully zoomed out
-            panX = 0;
-            panY = 0;
-            currentSlideImg.style.cursor = "default"; // Normal mouse pointer
-        } else {
-            // Get mouse position relative to the CENTER of the screen
-            const mouseX = e.clientX - (window.innerWidth / 2);
-            const mouseY = e.clientY - (window.innerHeight / 2);
+      const oldZoom = currentZoom;
 
-            // Google Maps Math: Adjust pan to keep pixel locked under the cursor
-            const scaleRatio = currentZoom / oldZoom;
-            panX = mouseX - (mouseX - panX) * scaleRatio;
-            panY = mouseY - (mouseY - panY) * scaleRatio;
-            
-            currentSlideImg.style.cursor = "grab"; // Show the open hand!
-        }
+      // Zoom speed
+      if (e.deltaY < 0) currentZoom += 0.2;
+      else currentZoom -= 0.2;
 
-        currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
-    }, { passive: false });
+      // Limit zoom between 1x and 5x
+      currentZoom = Math.min(Math.max(currentZoom, 1), 5);
 
+      if (currentZoom === 1) {
+        // Snap back to center if fully zoomed out
+        panX = 0;
+        panY = 0;
+        currentSlideImg.style.cursor = "default"; // Normal mouse pointer
+      } else {
+        // Get mouse position relative to the CENTER of the screen
+        const mouseX = e.clientX - window.innerWidth / 2;
+        const mouseY = e.clientY - window.innerHeight / 2;
 
-    // B. Click and Drag to Pan
-    currentSlideImg.addEventListener("mousedown", (e) => {
-        if (currentZoom > 1) { // Only allow dragging if zoomed in
-            e.preventDefault();
-            isDragging = true;
-            currentSlideImg.style.cursor = "grabbing"; // Show the closed fist!
-            startX = e.clientX - panX;
-            startY = e.clientY - panY;
-        }
-    });
+        // Google Maps Math: Adjust pan to keep pixel locked under the cursor
+        const scaleRatio = currentZoom / oldZoom;
+        panX = mouseX - (mouseX - panX) * scaleRatio;
+        panY = mouseY - (mouseY - panY) * scaleRatio;
 
-    window.addEventListener("mousemove", (e) => {
-        if (!isDragging) return;
-        panX = e.clientX - startX;
-        panY = e.clientY - startY;
-        currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
-    });
+        currentSlideImg.style.cursor = "grab"; // Show the open hand!
+      }
 
-    window.addEventListener("mouseup", () => {
-        if (isDragging) {
-            isDragging = false;
-            // Go back to the open hand when they let go of the mouse click
-            if (currentZoom > 1) currentSlideImg.style.cursor = "grab"; 
-        }
-    });
+      currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+    },
+    { passive: false },
+  );
+
+  // B. Click and Drag to Pan
+  currentSlideImg.addEventListener("mousedown", (e) => {
+    if (currentZoom > 1) {
+      // Only allow dragging if zoomed in
+      e.preventDefault();
+      isDragging = true;
+      currentSlideImg.style.cursor = "grabbing"; // Show the closed fist!
+      startX = e.clientX - panX;
+      startY = e.clientY - panY;
+    }
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    panX = e.clientX - startX;
+    panY = e.clientY - startY;
+    currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (isDragging) {
+      isDragging = false;
+      // Go back to the open hand when they let go of the mouse click
+      if (currentZoom > 1) currentSlideImg.style.cursor = "grab";
+    }
+  });
 });

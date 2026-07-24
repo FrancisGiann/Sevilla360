@@ -112,7 +112,11 @@ window.process = {
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
 
             <!-- === Photo Gallery UI Elements === -->
-            <div class="photo-room-title ui-photos" id="gallery-title">--</div>
+            <div class="photo-room-title ui-photos">
+                <span id="gallery-title">--</span>
+                <span id="gallery-counter"
+                    style="opacity:0.6; margin-left:10px; font-weight:400; font-size:0.9rem;"></span>
+            </div>
 
             <button class="slider-arrow left ui-photos" id="slide-prev">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

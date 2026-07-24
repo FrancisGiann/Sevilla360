@@ -32,6 +32,32 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
   border-radius: 8px;
 }
+.venue-description {
+    font-family: var(--font-body), sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: rgba(0,0,0,0.7);
+    margin-bottom: 20px;
+}
+
+.amenities-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 25px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.amenity {
+    font-size: 0.85rem;
+    color: var(--border-dark);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+}
+.amenity i { color: #A07748; /* Gold Icons */ }
 
 /* --- 1. The Big Viewer Box --- */
 .big-viewer-box {
@@ -274,8 +300,11 @@
 
   /* NEW: Smooth Zooming */
    transition: transform 0.05s linear !important; 
+   transition: transform 0.05s linear, opacity 0.2s ease-in-out !important; 
 
 }
+
+.fade-out { opacity: 0.4 !important; }
 
 /* 3. THE FILMSTRIP (Locked to bottom center) */
 .showroom-wrapper.mode-photos .thumbnail-strip {
