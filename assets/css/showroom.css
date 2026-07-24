@@ -348,12 +348,21 @@
   transform: scale(1.1);
 }
 
-/* 4. TITLE & BUTTONS (Locked to screen edges) */
-.showroom-wrapper.mode-photos .photo-room-title {
+/* 4. GALLERY FLEXBOX HEADER (Prevents Overlapping) */
+.showroom-wrapper.mode-photos .gallery-header {
   position: fixed !important;
-  top: 30px !important;
-  left: 40px !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
   z-index: 999930 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 20px 40px !important;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+}
+
+.showroom-wrapper.mode-photos .photo-room-title {
   font-family: var(--font-body), sans-serif;
   font-size: 1.2rem;
   color: white !important;
@@ -361,10 +370,6 @@
 }
 
 .showroom-wrapper.mode-photos .btn-back {
-  position: fixed !important;
-  top: 30px !important;
-  right: 40px !important;
-  z-index: 999930 !important;
   background-color: rgba(255, 255, 255, 0.1);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -375,7 +380,9 @@
   font-weight: 500;
   cursor: pointer;
   transition: 0.3s;
+  white-space: nowrap; /* Prevents text from breaking into two lines */
 }
+
 .showroom-wrapper.mode-photos .btn-back:hover {
   background-color: white;
   color: black;
@@ -431,7 +438,8 @@ body.no-scroll .footer {
   }
 
   .big-viewer-box {
-    min-height: 60vh;
+    height: 50vh; /* CRITICAL FIX: Explicit height prevents the 360 screen from going black */
+    min-height: 400px;
     flex: none;
     border-radius: 8px 8px 0 0;
   }
@@ -494,5 +502,17 @@ body.no-scroll .footer {
   }
   .slider-arrow.right {
     right: 5px;
+  }
+  .showroom-wrapper.mode-photos .gallery-header {
+    padding: 15px !important; /* Tighter padding so it fits on small phones */
+  }
+
+  .showroom-wrapper.mode-photos .photo-room-title {
+    font-size: 1rem !important; /* Shrink title slightly */
+  }
+
+  .showroom-wrapper.mode-photos .btn-back {
+    padding: 8px 15px !important;
+    font-size: 0.85rem !important;
   }
 }

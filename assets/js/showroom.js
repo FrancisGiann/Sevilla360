@@ -26,16 +26,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // Force high-resolution rendering for modern monitors
   viewer.renderer.setPixelRatio(window.devicePixelRatio);
 
-  // Custom 360 Controls
-  document
-    .getElementById("btn-zoom-in")
-    ?.addEventListener("click", () => (viewer.camera.fov -= 10));
-  document
-    .getElementById("btn-zoom-out")
-    ?.addEventListener("click", () => (viewer.camera.fov += 10));
+ // Custom 360 Controls
+  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+      viewer.camera.fov = Math.max(30, viewer.camera.fov - 10); // Prevent zooming in too far
+      viewer.camera.updateProjectionMatrix(); // CRITICAL FIX: Forces the screen to redraw!
+  });
+  
+  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+      viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); // Prevent zooming out too far
+      viewer.camera.updateProjectionMatrix(); // CRITICAL FIX: Forces the screen to redraw!
+  });
+  
   document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
-    if (!document.fullscreenElement) panoContainer.requestFullscreen();
-    else document.exitFullscreen();
+      if (!document.fullscreenElement) panoContainer.requestFullscreen();
+      else document.exitFullscreen();
   });
 
   // --- 2. UI Elements ---

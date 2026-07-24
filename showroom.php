@@ -113,10 +113,15 @@ window.process = {
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
 
             <!-- === Photo Gallery UI Elements === -->
-            <div class="photo-room-title ui-photos">
-                <span id="gallery-title">--</span>
-                <span id="gallery-counter"
-                    style="opacity:0.6; margin-left:10px; font-weight:400; font-size:0.9rem;"></span>
+
+            <!-- NEW: Flexbox Header for Gallery Mode -->
+            <div class="gallery-header ui-photos">
+                <div>
+                    <span class="photo-room-title" id="gallery-title">--</span>
+                    <span id="gallery-counter"
+                        style="color: var(--color-gold); margin-left: 10px; font-weight: bold;"></span>
+                </div>
+                <button class="btn-back" id="btn-back-to-360">Back to 360</button>
             </div>
 
             <button class="slider-arrow left ui-photos" id="slide-prev">
