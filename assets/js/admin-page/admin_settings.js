@@ -1,79 +1,63 @@
+/**
+ * SEVILLA360 - Admin Settings Controller
+ */
 document.addEventListener("DOMContentLoaded", () => {
-  // 1. Tab Switching Logic
+    
+  // =========================================================
+  // 1. TAB SWITCHING LOGIC
+  // =========================================================
   const tabLinks = document.querySelectorAll(".tab-link");
   const settingsPanels = document.querySelectorAll(".settings-panel");
 
   tabLinks.forEach((link) => {
     link.addEventListener("click", () => {
-      // Remove active classes from all tabs and panels
       tabLinks.forEach((t) => t.classList.remove("active"));
       settingsPanels.forEach((p) => p.classList.remove("active"));
 
-      // Add active class to clicked tab
       link.classList.add("active");
-
-      // Find target panel and activate it
-      const targetId = link.getAttribute("data-target");
-      const targetPanel = document.getElementById(targetId);
-
-      if (targetPanel) {
-        targetPanel.classList.add("active");
-      }
+      const targetPanel = document.getElementById(link.getAttribute("data-target"));
+      if (targetPanel) targetPanel.classList.add("active");
     });
   });
 
-  // 2. Save Buttons & Toast Notification Logic
-  const saveButtons = document.querySelectorAll(".save-btn");
+  // =========================================================
+  // 2. TOAST NOTIFICATION UTILITY
+  // =========================================================
   const toast = document.getElementById("settings-toast");
   let toastTimeout;
 
-  saveButtons.forEach((button) => {
+  function showToast() {
+    clearTimeout(toastTimeout);
+    toast.classList.add("show");
+    toastTimeout = setTimeout(() => toast.classList.remove("show"), 3000);
+  }
+
+  // Visual simulation for static profile save button
+  document.querySelectorAll("#panel-profile .save-btn").forEach((button) => {
     button.addEventListener("click", () => {
-      // Add loading effect to button (Optional aesthetic)
       const originalText = button.innerHTML;
       button.innerHTML = "Saving...";
       button.style.opacity = "0.8";
       button.style.pointerEvents = "none";
 
-      // Simulate a brief API call delay
       setTimeout(() => {
-        // Restore button
         button.innerHTML = originalText;
         button.style.opacity = "1";
         button.style.pointerEvents = "auto";
-
-        // Show Toast Notification
         showToast();
       }, 600);
     });
   });
 
-  function showToast() {
-    // Clear any existing timeouts to prevent overlapping fades
-    clearTimeout(toastTimeout);
-
-    // Add 'show' class to trigger CSS transition
-    toast.classList.add("show");
-
-    // Hide after 3 seconds
-    toastTimeout = setTimeout(() => {
-      toast.classList.remove("show");
-    }, 3000);
-  }
   // =========================================================
-  //                  Save System Preferences
+  // 3. SYSTEM PREFERENCES (AJAX SAVE)
   // =========================================================
   const btnSavePrefs = document.getElementById("btn-save-prefs");
   const formPrefs = document.getElementById("form-prefs");
-
-  // check if the form has unsaved changes
   let isFormDirty = false;
 
   if (btnSavePrefs && formPrefs) {
-    // listen for changes in the form to set the dirty flag
-    formPrefs.addEventListener("change", () => {
-      isFormDirty = true;
-    });
+    formPrefs.addEventListener("change", () => isFormDirty = true);
 
     btnSavePrefs.addEventListener("click", () => {
       const originalText = btnSavePrefs.innerHTML;
@@ -83,89 +67,68 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const formData = new FormData(formPrefs);
 
-      fetch("/sevilla360/actions/admin/save_preferences.php", {
+      fetch("actions/admin/save_preferences.php", {
         method: "POST",
         body: formData,
       })
-        .then((response) => response.text())
-        .then((data) => {
+      .then(res => res.text())
+      .then(data => {
           btnSavePrefs.innerHTML = originalText;
           btnSavePrefs.style.opacity = "1";
           btnSavePrefs.style.pointerEvents = "auto";
 
           if (data.trim() === "Success") {
             showToast();
-
-            // reset the dirty flag since changes have been saved
             isFormDirty = false;
           } else {
             alert(data);
           }
-        })
-        .catch((error) => {
+      })
+      .catch(error => {
           alert("System error. Could not save settings.");
           console.error(error);
-        });
+      });
     });
   }
 
-  // warning before leaving the page if there are unsaved changes
-  window.addEventListener("beforeunload", function (e) {
-    if (isFormDirty) {
-      const confirmationMessage =
-        "You have unsaved changes. Are you sure you want to leave?";
-      e.returnValue = confirmationMessage;
-      return confirmationMessage;
-    }
-  });
-
   // =========================================================
-  // CUSTOM UNSAVED MODAL LOGIC
+  // 4. UNSAVED CHANGES MODAL PROTECTION
   // =========================================================
   const unsavedModal = document.getElementById("unsaved-modal");
-  const btnStaySave = document.getElementById("btn-stay-save");
-  const btnDiscardLeave = document.getElementById("btn-discard-leave");
   let pendingUrl = "";
+
+  window.addEventListener("beforeunload", function (e) {
+    if (isFormDirty) {
+      const msg = "You have unsaved changes. Are you sure you want to leave?";
+      e.returnValue = msg;
+      return msg;
+    }
+  });
 
   document.querySelectorAll("a").forEach((link) => {
     link.addEventListener("click", function (e) {
       const href = this.getAttribute("href");
-
-      // Ignore links that just change tabs (href="#") or javascript links
-      if (href && href !== "#" && !href.startsWith("javascript")) {
-        if (isFormDirty) {
+      if (href && href !== "#" && !href.startsWith("javascript") && isFormDirty) {
           e.preventDefault();
           pendingUrl = href;
-
           unsavedModal.classList.add("active");
-        }
       }
     });
   });
 
-  // stay -> Close modal and let them continue editing
-  if (btnStaySave) {
-    btnStaySave.addEventListener("click", () => {
-      unsavedModal.classList.remove("active");
-    });
-  }
-
-  // discard and leave -> Close modal, go to the pending URL
-  if (btnDiscardLeave) {
-    btnDiscardLeave.addEventListener("click", () => {
-      isFormDirty = false; // Turn off the dirtiness so the browser bouncer doesn't trigger
-      window.location.href = pendingUrl; // Send them to the page they clicked earlier!
-    });
-  }
+  document.getElementById("btn-stay-save")?.addEventListener("click", () => unsavedModal.classList.remove("active"));
+  document.getElementById("btn-discard-leave")?.addEventListener("click", () => {
+      isFormDirty = false; 
+      window.location.href = pendingUrl;
+  });
 
   // =========================================================
-  // MANAGE VENUES MODAL LOGIC
+  // 5. MANAGE VENUES MODAL & AJAX
   // =========================================================
   const venueModal = document.getElementById("venueModal");
   const formVenue = document.getElementById("form-venue");
   const catSelect = document.getElementById("vm-category");
 
-  // Helper to hide/show specific fields based on category
   function toggleDynamicFields(category) {
     document.querySelectorAll(".vm-dynamic").forEach((el) => {
       el.style.display = "none";
@@ -183,7 +146,6 @@ document.addEventListener("DOMContentLoaded", () => {
         el.querySelector("input").setAttribute("required", "true");
       });
 
-      // Extra pax applies to both hotel and villa
       if (category !== "Event Hall") {
         const extraPax = document.getElementById("vm-extra-pax");
         extraPax.parentElement.style.display = "block";
@@ -192,30 +154,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Listen to Category dropdown changes
   if (catSelect) {
-    catSelect.addEventListener("change", function () {
-      toggleDynamicFields(this.value);
-    });
+    catSelect.addEventListener("change", function () { toggleDynamicFields(this.value); });
   }
 
-  // Open "Add New Venue" Modal
   document.getElementById("btn-add-venue")?.addEventListener("click", () => {
     formVenue.reset();
     document.getElementById("vm-id").value = "";
     document.getElementById("vm-title").innerText = "Add New Venue";
     catSelect.disabled = false; 
     toggleDynamicFields("");
-
-    venueModal.classList.add("active"); // FIX: Use standard active class
+    venueModal.classList.add("active");
   });
 
-  // Open "Edit Venue" Modal
   document.querySelectorAll(".btn-edit-venue").forEach((btn) => {
     btn.addEventListener("click", function () {
-      const venueId = this.getAttribute("data-id");
-      const venueData = window.allVenuesData.find((v) => v.id === venueId);
-
+      const venueData = window.allVenuesData.find((v) => v.id === this.getAttribute("data-id"));
       if (!venueData) return alert("Error loading venue data.");
 
       document.getElementById("vm-title").innerText = "Edit Venue";
@@ -226,10 +180,9 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("vm-amenities").value = venueData.amenities || "";
 
       catSelect.value = venueData.category;
-      catSelect.disabled = true;
+      catSelect.disabled = true; // Protects DB relational integrity
       toggleDynamicFields(venueData.category);
 
-      // Populate specific data
       if (venueData.category === "Event Hall") {
         document.getElementById("vm-base-cap").value = venueData.eh_base;
         document.getElementById("vm-max-cap").value = venueData.eh_max;
@@ -248,40 +201,27 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-extra-pax").value = venueData.vi_extra;
       }
 
-      venueModal.classList.add("active"); // FIX: Use standard active class
+      venueModal.classList.add("active");
     });
   });
 
-  // Close Modal
-  document.getElementById("btn-close-vmodal")?.addEventListener("click", () => {
-    venueModal.classList.remove("active"); // FIX: Use standard active class
-  });
-  
-  // Close on background click
-  window.addEventListener('click', (e) => {
-    if (e.target === venueModal) venueModal.classList.remove('active');
-  });
+  document.getElementById("btn-close-vmodal")?.addEventListener("click", () => venueModal.classList.remove("active"));
+  window.addEventListener('click', (e) => { if (e.target === venueModal) venueModal.classList.remove('active'); });
 
-  // Handle Save Submission
   if (formVenue) {
     formVenue.addEventListener("submit", function (e) {
       e.preventDefault();
-
       const submitBtn = document.getElementById("btn-save-venue");
       const originalText = submitBtn.innerText;
       submitBtn.innerText = "Saving...";
       submitBtn.disabled = true;
 
       const formData = new FormData(this);
-      // Because catSelect is disabled on edit, FormData skips it. We must manually append it.
-      formData.append("category", catSelect.value);
+      formData.append("category", catSelect.value); // Re-append because disabled selects aren't sent
 
-      fetch("actions/admin/save_venue.php", {
-        method: "POST",
-        body: formData,
-      })
-        .then((res) => res.json())
-        .then((data) => {
+      fetch("actions/admin/save_venue.php", { method: "POST", body: formData })
+      .then(res => res.json())
+      .then(data => {
           if (data.success) {
             alert(data.message);
             window.location.reload();
@@ -290,13 +230,38 @@ document.addEventListener("DOMContentLoaded", () => {
             submitBtn.innerText = originalText;
             submitBtn.disabled = false;
           }
-        })
-        .catch((err) => {
+      })
+      .catch(err => {
           console.error(err);
           alert("Network error.");
           submitBtn.innerText = originalText;
           submitBtn.disabled = false;
-        });
+      });
     });
+  }
+
+  // =========================================================
+  // 6. VENUE TABLE FILTERING LOGIC
+  // =========================================================
+  const venueFilters = document.querySelectorAll('#venueFilters .venue-filter-btn');
+  const venueRows = document.querySelectorAll('.venue-row');
+
+  if (venueFilters.length > 0) {
+      venueFilters.forEach(btn => {
+          btn.addEventListener('click', () => {
+              venueFilters.forEach(f => f.classList.remove('active'));
+              btn.classList.add('active');
+              
+              const filter = btn.getAttribute('data-filter');
+              
+              venueRows.forEach(row => {
+                  if (filter === 'all' || row.getAttribute('data-category') === filter) {
+                      row.style.display = ''; 
+                  } else {
+                      row.style.display = 'none'; 
+                  }
+              });
+          });
+      });
   }
 });

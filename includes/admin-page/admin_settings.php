@@ -105,52 +105,63 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
 
             <!-- PANEL 2: Manage Venues (Super Admin Only) -->
+            <!-- PANEL 2: Manage Venues (Super Admin Only) -->
             <div class="settings-panel" id="panel-venues">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 35px; border-bottom: 1px solid rgba(214, 168, 112, 0.2); padding-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 class="panel-heading" style="border: none; padding: 0; margin: 0;">Manage Venues</h2>
-                    <button class="btn btn-primary" id="btn-add-venue" style="padding: 10px 20px;">+ Add New
-                        Venue</button>
+                    <button class="btn btn-primary" id="btn-add-venue">+ Add New Venue</button>
                 </div>
 
-                <div class="table-responsive" style="border: 1px solid rgba(42, 37, 34, 0.1); border-radius: 8px;">
-                    <table class="bookings-table" style="width: 100%; text-align: left; border-collapse: collapse;">
-                        <thead style="background-color: #faf9f7; border-bottom: 2px solid rgba(214, 168, 112, 0.4);">
+                <!-- CATEGORY FILTER TABS -->
+                <div class="venue-filters" id="venueFilters">
+                    <button class="venue-filter-btn active" data-filter="all">All</button>
+                    <button class="venue-filter-btn" data-filter="Event Hall">Event Halls</button>
+                    <button class="venue-filter-btn" data-filter="Hotel Room">Hotel Rooms</button>
+                    <button class="venue-filter-btn" data-filter="Resort Villa">Resort Villas</button>
+                </div>
+
+                <div class="venues-table-wrapper">
+                    <table class="venues-table">
+                        <thead>
                             <tr>
-                                <th style="padding: 15px;">Venue Name</th>
-                                <th style="padding: 15px;">Category</th>
-                                <th style="padding: 15px;">Status</th>
-                                <th style="padding: 15px;">Actions</th>
+                                <th>Venue Name</th>
+                                <th>Category</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach($all_venues as $v): ?>
-                            <tr style="border-bottom: 1px solid rgba(42, 37, 34, 0.1);">
 
-                                <!-- THE FIX: Appends the Room Type and ID so the Admin knows which is which! -->
+                            <tr class="venue-row" data-category="<?php echo $v['category']; ?>">
+
                                 <?php 
                                     $display_name = htmlspecialchars($v['name']);
                                     if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
                                         $display_name .= ' (' . htmlspecialchars($v['room_type']) . ')';
                                     }
+                                    
+                                    // Determine Badge Class
+                                    $badge_class = 'v-badge-inactive';
+                                    if ($v['status'] === 'Available') $badge_class = 'v-badge-available';
+                                    if ($v['status'] === 'Maintenance') $badge_class = 'v-badge-maintenance';
                                 ?>
-                                <td style="padding: 15px; font-weight: 500; color: var(--color-dark);">
+
+                                <td style="font-weight: 500;">
                                     <?php echo $display_name; ?>
-                                    <span style="display:block; font-size: 0.8rem; color: #888; font-weight: 400;">ID:
-                                        #<?php echo $v['id']; ?></span>
+                                    <span class="venue-id-text">ID: #<?php echo $v['id']; ?></span>
                                 </td>
 
-                                <td style="padding: 15px; color: var(--color-dark-light);"><?php echo $v['category']; ?>
-                                </td>
-                                <td style="padding: 15px;">
-                                    <span class="badge"
-                                        style="padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; background: <?php echo ($v['status'] === 'Available') ? '#dcfce7; color: #166534;' : (($v['status'] === 'Maintenance') ? '#fef08a; color: #9a3412;' : '#f3f4f6; color: #374151;'); ?>">
+                                <td style="color: var(--color-dark-light);"><?php echo $v['category']; ?></td>
+
+                                <td>
+                                    <span class="v-badge <?php echo $badge_class; ?>">
                                         <?php echo $v['status']; ?>
                                     </span>
                                 </td>
-                                <td style="padding: 15px;">
-                                    <button class="btn-action btn-edit-venue" data-id="<?php echo $v['id']; ?>"
-                                        style="background: transparent; color: var(--color-gold); border: 1px solid var(--color-gold); cursor: pointer; padding: 6px 12px; border-radius: 4px;">Edit</button>
+
+                                <td>
+                                    <button class="btn-edit-venue" data-id="<?php echo $v['id']; ?>">Edit</button>
                                 </td>
                             </tr>
                             <?php endforeach; ?>

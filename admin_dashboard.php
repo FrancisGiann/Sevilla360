@@ -33,7 +33,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'maintenance'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=1.1">
     <?php elseif ($page === 'settings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=1.1">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= time() ?>">
 
     <!-- SUPER ADMIN CSS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
@@ -41,7 +41,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
     <?php endif; ?>
 
 </head>
@@ -228,7 +228,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_usermanagement.js"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin-page/admin_cms.js?v=1.7"></script>
+    <script src="assets/js/admin-page/admin_cms.js?v=1.9"></script>
     <?php endif; ?>
 
 </body>

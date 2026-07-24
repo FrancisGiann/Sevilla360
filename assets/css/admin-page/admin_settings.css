@@ -1,8 +1,8 @@
 /* ==========================================================================
-   SEVILLA360 - Admin Settings Styles (Matched to Maintenance)
+   SEVILLA360 - Admin Settings Styles
    ========================================================================== */
 
-/* Container & Header */
+/* --- Container & Header --- */
 .admin-settings-container {
   width: 95%;
   max-width: 1200px; 
@@ -17,7 +17,6 @@
   margin-bottom: 0; 
 }
 
-
 .settings-subtitle {
   font-family: var(--font-body);
   font-size: 0.9rem; 
@@ -28,12 +27,12 @@
   margin-bottom: 15px; 
 }
 
+/* --- Layout & Sidebar Tabs --- */
 .settings-layout {
   display: block;
   width: 100%;
 }
 
-/* Horizontal Tabs  */
 .settings-sidebar {
   display: flex;
   flex-direction: row;
@@ -44,7 +43,6 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Hide scrollbar for a clean look */
 .settings-sidebar::-webkit-scrollbar {
   display: none;
 }
@@ -63,10 +61,8 @@
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
   white-space: nowrap;
-  box-shadow: none !important;
 }
 
-/* The Gold Underline */
 .tab-link::after {
   content: "";
   position: absolute;
@@ -78,24 +74,12 @@
   transition: all 0.4s ease;
 }
 
-.tab-link:hover,
-.tab-link:focus {
-  color: var(--color-gold);
-}
+.tab-link:hover, .tab-link:focus { color: var(--color-gold); }
+.tab-link.active { color: var(--color-dark); font-weight: 600; }
+.tab-link.active::after { width: 100%; }
 
-.tab-link.active {
-  color: var(--color-dark);
-  font-weight: 600;
-}
-
-.tab-link.active::after {
-  width: 100%;
-}
-
-/* Content Area */
-.settings-content {
-  width: 100%;
-}
+/* --- Content Panels --- */
+.settings-content { width: 100%; }
 
 .settings-panel {
   display: none;
@@ -103,24 +87,16 @@
   border-radius: 8px;
   padding: 50px;
   width: 100%;
-  box-shadow: 0 10px 30px rgba(42, 37, 34, 0.05); /* Matched to maintenance card shadow */
+  box-shadow: 0 10px 30px rgba(42, 37, 34, 0.05);
   animation: fadeIn 0.4s ease forwards;
   box-sizing: border-box;
 }
 
-.settings-panel.active {
-  display: block;
-}
+.settings-panel.active { display: block; }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .panel-heading {
@@ -130,7 +106,6 @@
   color: var(--color-gold);
   border-bottom: 1px solid rgba(214, 168, 112, 0.2);
   padding-bottom: 15px;
-  text-align: left;
 }
 
 .panel-subheading {
@@ -146,7 +121,7 @@
   margin: 30px 0;
 }
 
-/* Forms & Inputs */
+/* --- Forms & Inputs --- */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -185,11 +160,29 @@
   box-shadow: 0 0 0 3px rgba(214, 168, 112, 0.1);
 }
 
-.form-control::placeholder {
-  color: #a09c99;
+.panel-footer {
+  margin-top: 40px;
+  text-align: right;
 }
 
-/* System Preferences Toggles */
+.save-btn {
+  padding: 16px 32px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 4px;
+  background-color: var(--color-gold);
+  color: var(--color-white);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.save-btn:hover {
+  background-color: #c4965e;
+  transform: translateY(-2px);
+}
+
+/* --- System Preferences Toggles --- */
 .preference-item {
   display: flex;
   justify-content: space-between;
@@ -218,19 +211,12 @@
   flex-shrink: 0;
 }
 
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
 
 .toggle-slider {
   position: absolute;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background-color: #d1cfcd;
   transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   border-radius: 34px;
@@ -239,48 +225,124 @@
 .toggle-slider:before {
   position: absolute;
   content: "";
-  height: 20px;
-  width: 20px;
-  left: 4px;
-  bottom: 4px;
+  height: 20px; width: 20px;
+  left: 4px; bottom: 4px;
   background-color: var(--color-white);
   transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
   border-radius: 50%;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
-input:checked + .toggle-slider {
-  background-color: var(--color-gold);
+input:checked + .toggle-slider { background-color: var(--color-gold); }
+input:checked + .toggle-slider:before { transform: translateX(26px); }
+
+/* --- Manage Venues: Table & Filters --- */
+.venue-filters {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 25px;
+  border-bottom: 2px solid rgba(42, 37, 34, 0.05);
 }
 
-input:checked + .toggle-slider:before {
-  transform: translateX(26px);
-}
-
-/* Panel Footer & Buttons */
-.panel-footer {
-  margin-top: 40px;
-  text-align: right;
-}
-
-.save-btn {
-  padding: 16px 32px;
-  font-size: 1.05rem;
-  font-weight: 600;
-  border-radius: 4px;
-  background-color: var(--color-gold);
-  color: var(--color-white);
+.venue-filter-btn {
+  background: transparent;
   border: none;
+  padding: 10px 15px 12px;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  color: var(--color-dark-light);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.venue-filter-btn::after {
+  content: "";
+  position: absolute;
+  bottom: -2px; left: 0; width: 0%; height: 2px;
+  background-color: var(--color-gold);
+  transition: all 0.3s ease;
+}
+
+.venue-filter-btn:hover { color: var(--color-gold); }
+.venue-filter-btn.active { color: var(--color-dark); font-weight: 600; }
+.venue-filter-btn.active::after { width: 100%; }
+
+.venues-table-wrapper {
+  border: 1px solid rgba(42, 37, 34, 0.1);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.venues-table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  min-width: 600px;
+}
+
+.venues-table th {
+  background-color: #faf9f7;
+  border-bottom: 2px solid rgba(214, 168, 112, 0.4);
+  padding: 16px 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-dark-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.venues-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.08);
+  font-size: 0.95rem;
+  color: var(--color-dark);
+  vertical-align: middle;
+}
+
+.venues-table tr:hover td { background-color: rgba(253, 242, 226, 0.3); }
+.venues-table tr:last-child td { border-bottom: none; }
+
+.venue-id-text {
+  display: block;
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+/* Status Badges */
+.v-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-block;
+}
+.v-badge-available { background-color: #dcfce7; color: #166534; }
+.v-badge-maintenance { background-color: #fef08a; color: #9a3412; }
+.v-badge-inactive { background-color: #f3f4f6; color: #374151; }
+
+.btn-edit-venue {
+  background: transparent;
+  color: var(--color-gold);
+  border: 1px solid var(--color-gold);
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
-.save-btn:hover {
-  background-color: #c4965e;
+.btn-edit-venue:hover {
+  background: var(--color-gold);
+  color: var(--color-white);
   transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.2);
 }
 
-/* Toast Notification */
+/* --- Toast Notification --- */
 .toast-notification {
   position: fixed;
   bottom: -100px;
@@ -300,158 +362,37 @@ input:checked + .toggle-slider:before {
   transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.toast-notification.show {
-  bottom: 40px;
-}
+.toast-notification.show { bottom: 40px; }
+.toast-notification svg { color: var(--color-gold); }
 
-.toast-notification svg {
-  color: var(--color-gold);
-}
-/* =========================================================
-   UNSAVED CHANGES MODAL
-   ========================================================= */
-
-/* 1. The Dark Screen Overlay */
-#unsaved-modal {
-    display: none; /* Hidden by default */
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6); /* Dark semi-transparent background */
-    z-index: 9999; /* Ensure it stays on top of the header/sidebar */
-    align-items: center;
-    justify-content: center;
-}
-
-/* Show the modal when JS adds the 'active' class */
-#unsaved-modal.active {
-    display: flex; 
-}
-
-/* 2. The White Card Container */
-.unsaved-modal-content {
-    background-color: #ffffff; /* Make the card white */
-    border-radius: 12px;       /* Soft rounded edges */
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); /* Pop-out shadow */
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-    padding: 40px 30px;
-}
-
-/* 3. Icons and Text */
+/* --- Unsaved Changes Modal Specifics --- */
 .unsaved-icon {
-    font-size: 3.5rem;
-    color: #e06666; /* Warning Red */
-    margin-bottom: 15px;
+  font-size: 3.5rem;
+  color: #e06666;
+  margin-bottom: 15px;
 }
-
-.unsaved-modal-content .modal-title {
-    margin-bottom: 10px;
-    font-family: var(--font-heading); /* Use your beautiful serif font */
-    font-size: 1.8rem;
-}
-
 .unsaved-text {
-    color: var(--color-dark);
-    margin-bottom: 25px;
-    line-height: 1.5;
-    font-size: 0.95rem;
+  color: var(--color-dark);
+  margin-bottom: 25px;
+  line-height: 1.5;
+  font-size: 0.95rem;
 }
 
-/* 4. Buttons */
-.unsaved-actions {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-}
-
-.btn-unsaved-stay {
-    flex: 1;
-}
-
-.btn-unsaved-discard {
-    flex: 1;
-    color: #e06666;
-    border-color: #e06666;
-    background: transparent;
-}
-
-.btn-unsaved-discard:hover {
-    background-color: #e06666;
-    color: #ffffff;
-}
-
-/* ==========================================================================
-   Responsive Adjustments (Tablet & Mobile)
-   ========================================================================== */
-
+/* --- Responsive Adjustments --- */
 @media (max-width: 992px) {
-  .admin-settings-container {
-    width: 100%;
-    padding: 20px 20px 80px;
-    margin-top: 20px;
-  }
-
-  .settings-sidebar {
-    gap: 1.5rem;
-    margin-right: -20px; /* Lets the tabs bleed to the edge of the screen */
-    padding-right: 20px;
-  }
-
-  .tab-link {
-    font-size: 1.15rem;
-    padding: 10px 0 12px 0;
-  }
-
-  .settings-panel {
-    padding: 40px 30px;
-  }
+  .admin-settings-container { width: 100%; padding: 20px 20px 80px; margin-top: 20px; }
+  .settings-sidebar { gap: 1.5rem; margin-right: -20px; padding-right: 20px; }
+  .tab-link { font-size: 1.15rem; padding: 10px 0 12px 0; }
+  .settings-panel { padding: 40px 30px; }
 }
 
 @media (max-width: 768px) {
-  .admin-settings-container {
-    padding: 15px 15px 80px;
-    margin-top: 10px;
-  }
-
-  .settings-title {
-    font-size: 2.2rem;
-  }
-
-  .settings-panel {
-    padding: 30px 20px;
-  }
-
-  .panel-heading {
-    font-size: 1.6rem;
-  }
-
-  .form-grid {
-    gap: 20px;
-  }
-
-  .preference-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-
-  .panel-footer {
-    text-align: center;
-  }
-
-  .panel-footer .save-btn {
-    width: 100%;
-    display: block;
-    padding: 20px;
-  }
-
-  .toast-notification {
-    width: 90%;
-    justify-content: center;
-    padding: 14px 20px;
-  }
+  .admin-settings-container { padding: 15px 15px 80px; margin-top: 10px; }
+  .settings-panel { padding: 30px 20px; }
+  .panel-heading { font-size: 1.6rem; }
+  .form-grid { gap: 20px; }
+  .preference-item { flex-direction: column; align-items: flex-start; gap: 15px; }
+  .panel-footer { text-align: center; }
+  .panel-footer .save-btn { width: 100%; display: block; padding: 20px; }
+  .toast-notification { width: 90%; justify-content: center; padding: 14px 20px; }
 }
