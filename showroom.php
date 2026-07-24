@@ -6,49 +6,50 @@ $active_page = 'showroom';
 
 require_once 'config/db_connect.php';
 
-// 1. Fetch all venues and group them exactly like we did in the CMS
+// 1. Fetch all venues
 $venues_query = $conn->query("
-SELECT
-v.id, v.category, v.name AS venue_name, v.status,
-hr.room_type, hr.base_capacity, hr.max_capacity, hr.nightly_rate,
-eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
-vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
-FROM venues v
-LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
-LEFT JOIN event_halls eh ON v.id = eh.venue_id
-LEFT JOIN villas vi ON v.id = vi.venue_id
-WHERE v.status != 'Inactive'
-GROUP BY v.name, hr.room_type
+    SELECT 
+        v.id, v.category, v.name AS venue_name, v.status, v.description, v.amenities,
+        hr.room_type, hr.base_capacity, hr.max_capacity, hr.nightly_rate,
+        eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
+        vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
+    FROM venues v
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    LEFT JOIN event_halls eh ON v.id = eh.venue_id
+    LEFT JOIN villas vi ON v.id = vi.venue_id
+    WHERE v.status != 'Inactive'
+    GROUP BY v.name, hr.room_type
 ");
 
 $showroom_data = [];
 
 if ($venues_query) {
-while($v = $venues_query->fetch_assoc()) {
-$display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' .
-$v['room_type'] : $v['venue_name'];
-$safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
+    while($v = $venues_query->fetch_assoc()) {
+        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
+        $safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
+        
+        $cap = 'N/A'; $rate = 'N/A';
+        if ($v['category'] === 'Hotel Room') { $cap = $v['max_capacity'] . ' pax'; $rate = '₱' . number_format($v['nightly_rate']) . ' /night'; }
+        if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . ' /day'; }
+        if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . ' /day'; }
 
-// Determine capacity and rate based on category
-$cap = 'N/A'; $rate = 'N/A';
-if ($v['category'] === 'Hotel Room') { $cap = $v['max_capacity'] . ' pax'; $rate = '₱' .
-number_format($v['nightly_rate']) . ' /night'; }
-if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . '
-/day'; }
-if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . '
-/day'; }
+        // Fallback text 
+        $desc = !empty($v['description']) ? $v['description'] : "Experience ultimate luxury and comfort at $display_name.";
+        $amenities = !empty($v['amenities']) ? explode(',', $v['amenities']) : ['Free Wi-Fi', 'Fully Air-Conditioned'];
 
-$showroom_data[$safe_id] = [
-'id' => $safe_id,
-'title' => strtoupper($display_name),
-'category' => $v['category'],
-'capacity' => $cap,
-'rate' => $rate,
-'status' => $v['status'],
-'pano_url' => '', // Will fill from media_cms
-'gallery' => [] // Will fill from media_cms
-];
-}
+        $showroom_data[$safe_id] = [
+            'id' => $safe_id,
+            'title' => strtoupper($display_name),
+            'category' => $v['category'],
+            'capacity' => $cap,
+            'rate' => $rate,
+            'status' => $v['status'],
+            'description' => $desc,
+            'amenities' => $amenities,
+            'pano_url' => '', 
+            'gallery' => []   
+        ];
+    }
 }
 
 // 2. Fetch Media from CMS and attach to the correct showroom venue

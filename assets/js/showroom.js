@@ -19,7 +19,12 @@ document.addEventListener("DOMContentLoaded", () => {
     controlBar: false, // We built custom buttons
     autoRotate: true,
     autoRotateSpeed: 0.5,
+    antialias: true, // Fix for blurriness
+    cameraFov: 85    // Fix for blurriness
   });
+  
+  // Force high-resolution rendering for modern monitors
+  viewer.renderer.setPixelRatio(window.devicePixelRatio);
 
   // Custom 360 Controls
   document
@@ -41,6 +46,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const valRate = document.getElementById("val-rate");
   const galleryTitle = document.getElementById("gallery-title");
   const btnViewPhotos = document.getElementById("btn-view-photos");
+
+  // NEW: Target your description and amenities container
+  const valDesc = document.getElementById("val-desc");
+  const amenitiesGrid = document.querySelector(".amenities-grid");
 
   // --- Create a "No 360" Image Overlay ---
   const no360Wrapper = document.createElement("div");
@@ -75,6 +84,37 @@ document.addEventListener("DOMContentLoaded", () => {
     valStatus.textContent = room.status;
     valRate.textContent = room.rate;
     galleryTitle.textContent = room.title + " Gallery";
+
+    // NEW: Update Description
+    if (valDesc) valDesc.textContent = room.description;
+
+    // NEW: Update Amenities Grid
+    if (amenitiesGrid && room.amenities) {
+        amenitiesGrid.innerHTML = ""; // Clear old icons
+        
+        // Map common amenities to FontAwesome icons dynamically
+        const iconMap = {
+            "free wi-fi": "fa-wifi",
+            "fully air-conditioned": "fa-snowflake",
+            "ample parking": "fa-square-parking",
+            "wheelchair accessible": "fa-wheelchair",
+            "private pool": "fa-water-ladder",
+            "smart tv": "fa-tv",
+            "mini-fridge": "fa-temperature-arrow-down"
+        };
+
+        room.amenities.forEach(item => {
+            const cleanItem = item.trim();
+            if (cleanItem === "") return; // Skip empty strings
+            
+            const iconClass = iconMap[cleanItem.toLowerCase()] || "fa-check"; // Default to checkmark if icon not mapped
+            
+            const div = document.createElement("div");
+            div.className = "amenity";
+            div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
+            amenitiesGrid.appendChild(div);
+        });
+    }
 
     // Fetch Gallery first so we can use it as a fallback
     currentGallery = room.gallery || [];
