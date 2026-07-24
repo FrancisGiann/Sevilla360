@@ -83,6 +83,10 @@ if ($result && $result->num_rows > 0) {
     }
 }
 ?>
+<script>
+// Pass the grouped photos to JavaScript so the modal can read them!
+window.galleryData = <?php echo json_encode($standard_venue_photos); ?>;
+</script>
 
 <div class="cms-container">
     <div class="cms-toolbar">
@@ -149,29 +153,31 @@ if ($result && $result->num_rows > 0) {
         </div>
         <?php endforeach; ?>
 
-        <!-- 3. STANDARD VENUE PHOTOS (Multiple Allowed!) -->
-        <?php foreach($standard_venue_photos as $slot_key => $photos_array): ?>
-        <?php foreach($photos_array as $photo): ?>
+        <!-- 3. STANDARD VENUE PHOTOS (Grouped into Single Cards!) -->
+        <?php foreach($standard_venue_photos as $slot_key => $photos_array): 
+            $photo_count = count($photos_array);
+            $first_photo = $photos_array[0]['file_path']; // Show the first photo as the thumbnail
+        ?>
         <div class="cms-card" data-type="standard">
             <div class="cms-img-wrapper">
-                <img src="<?php echo htmlspecialchars($photo['file_path']); ?>">
+                <img src="<?php echo htmlspecialchars($first_photo); ?>">
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
                     <h4 class="cms-title">
                         <?php echo isset($venue_categories[$slot_key]) ? $venue_categories[$slot_key] : 'Unknown Venue'; ?>
                     </h4>
-                    <span class="badge badge-gray">Standard Photo Gallery</span>
+                    <span class="badge badge-gray"><?php echo $photo_count; ?> Photos</span>
                 </div>
-                <p class="cms-size">File: <?php echo htmlspecialchars($photo['file_name']); ?></p>
+                <p class="cms-size">Standard Photo Gallery</p>
                 <div class="cms-actions">
-                    <!-- Standard photos can be deleted because we can have multiples! -->
-                    <button class="btn-delete btn-delete-media" data-id="<?php echo $photo['id']; ?>">Delete
-                        Photo</button>
+                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>"
+                        data-type="standard">Add More</button>
+                    <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
+                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
                 </div>
             </div>
         </div>
-        <?php endforeach; ?>
         <?php endforeach; ?>
 
         <!-- 4. GENERAL GALLERY ITEMS -->
@@ -256,5 +262,22 @@ if ($result && $result->num_rows > 0) {
                 <button type="submit" class="btn btn-primary">Upload</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- MANAGE GALLERY MODAL -->
+<div class="cms-modal-overlay" id="manageGalleryModal">
+    <div class="cms-modal-content" style="max-width: 800px;">
+        <h3 class="cms-modal-title" id="mg-title">Manage Gallery</h3>
+
+        <!-- CSS Grid for the photos -->
+        <div id="mg-grid"
+            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 50vh; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
+            <!-- JavaScript will inject photos here -->
+        </div>
+
+        <div class="cms-modal-actions">
+            <button type="button" class="btn cms-btn-outline" id="btnCloseGalleryModal">Close</button>
+        </div>
     </div>
 </div>

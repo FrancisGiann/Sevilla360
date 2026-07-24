@@ -186,36 +186,82 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 
-  // --- 6. Delete Media Buttons ---
-  document.querySelectorAll('.btn-delete-media').forEach(btn => {
+  // --- 6. Manage Gallery & Delete Logic ---
+  const manageGalleryModal = document.getElementById('manageGalleryModal');
+  const mgGrid = document.getElementById('mg-grid');
+
+  // Open the Manage Gallery Modal
+  document.querySelectorAll('.btn-manage-gallery').forEach(btn => {
       btn.addEventListener('click', function() {
-          if (!confirm("Are you sure you want to permanently delete this image?")) return;
+          const slotKey = this.getAttribute('data-slot');
+          const photos = window.galleryData[slotKey] || [];
+          
+          // Set the title
+          document.getElementById('mg-title').innerText = `Manage Photos`;
 
-          const mediaId = this.getAttribute('data-id');
-          const originalText = this.innerText;
-          this.innerText = "Deleting...";
-
-          fetch("actions/admin/delete_media.php", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: mediaId })
-          })
-          .then(res => res.json())
-          .then(data => {
-              if (data.success) {
-                  this.closest('.cms-card').remove(); 
-              } else {
-                  alert("Error: " + data.message);
-                  this.innerText = originalText;
-              }
-          })
-          .catch(err => {
-              console.error(err);
-              alert("Network error.");
-              this.innerText = originalText;
+          // Inject the photos into the grid
+          mgGrid.innerHTML = '';
+          photos.forEach(photo => {
+              mgGrid.innerHTML += `
+                  <div style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                      <img src="${photo.file_path}" style="width: 100%; height: 150px; object-fit: cover; display: block;">
+                      <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
+                          <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">${photo.file_name}</span>
+                          <button class="btn-delete-media" data-id="${photo.id}" style="background: none; border: none; color: #c75c5c; cursor: pointer; padding: 5px;"><i class="fa-solid fa-trash"></i></button>
+                      </div>
+                  </div>
+              `;
           });
+
+          manageGalleryModal.classList.add('active');
       });
   });
+
+  // Close the Manage Gallery Modal
+  document.getElementById('btnCloseGalleryModal')?.addEventListener('click', () => {
+      manageGalleryModal.classList.remove('active');
+  });
+
+  // Event Delegation for Delete Buttons (Because they are injected dynamically!)
+  if (mgGrid) {
+      mgGrid.addEventListener('click', function(e) {
+          const deleteBtn = e.target.closest('.btn-delete-media');
+          
+          if (deleteBtn) {
+              if (!confirm("Are you sure you want to permanently delete this image?")) return;
+
+              const mediaId = deleteBtn.getAttribute('data-id');
+              const card = deleteBtn.closest('div').parentElement; // The specific image card
+              
+              deleteBtn.innerHTML = "...";
+              deleteBtn.disabled = true;
+
+              fetch("actions/admin/delete_media.php", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: mediaId })
+              })
+              .then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      card.remove(); // Remove from grid visually
+                      // Reload page to reflect changes in the main CMS grid count
+                      setTimeout(() => window.location.reload(), 500); 
+                  } else {
+                      alert("Error: " + data.message);
+                      deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                      deleteBtn.disabled = false;
+                  }
+              })
+              .catch(err => {
+                  console.error(err);
+                  alert("Network error.");
+                  deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                  deleteBtn.disabled = false;
+              });
+          }
+      });
+  }
 
 
   // --- 7. Filter Pills ---
