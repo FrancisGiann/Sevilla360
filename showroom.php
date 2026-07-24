@@ -157,7 +157,20 @@ window.process = {
         <div class="details-box">
             <div class="details-left">
                 <h3 class="details-title">VENUE DETAILS</h3>
-                <div class="detail-row">
+                <!-- NEW: The Description -->
+                <p class="venue-description" id="val-desc">
+                    Experience ultimate luxury and comfort. This venue features stunning architecture, natural lighting,
+                    and everything you need to make your event unforgettable.
+                </p>
+
+                <!-- NEW: Amenities Grid -->
+                <div class="amenities-grid">
+                    <div class="amenity"><i class="fa-solid fa-wifi"></i> Free Wi-Fi</div>
+                    <div class="amenity"><i class="fa-solid fa-snowflake"></i> Fully Air-Conditioned</div>
+                    <div class="amenity"><i class="fa-solid fa-square-parking"></i> Ample Parking</div>
+                    <div class="amenity"><i class="fa-solid fa-wheelchair"></i> Wheelchair Accessible</div>
+                </div>
+                <div class="detail-row" style="margin-top: 20px;">
                     <span class="d-label">CURRENTLY VIEWING</span>
                     <span class="d-value" id="val-title">--</span>
                 </div>
