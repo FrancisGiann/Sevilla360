@@ -168,6 +168,9 @@
   border-bottom-left-radius: 8px;
   overflow: hidden;
   transition: all 0.4s ease;
+
+  /* CRITICAL FIX: Stops Chrome Intervention warnings for Panolens */
+  touch-action: none; 
 }
 
 .viewer-label {

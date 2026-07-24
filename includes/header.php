@@ -15,6 +15,16 @@ $active_page = isset($active_page) ? $active_page : '';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $page_title; ?></title>
 
+    <!-- Google Fonts (Playfair Display, Inter, Great Vibes) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Great+Vibes&display=swap"
+        rel="stylesheet">
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <!-- Master Stylesheet -->
     <link rel="stylesheet" href="assets/css/style.css?v=<?php echo time(); ?>">
 
@@ -62,12 +72,13 @@ $active_page = isset($active_page) ? $active_page : '';
                                 $firstName = !empty($_SESSION['first_name']) ? $_SESSION['first_name'] : 'Account';
                                 
                                 // Set the icon based on role
-                                $icon = ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') ? '⚙ ' : '👤 ';
+                                $icon = ($_SESSION['role'] === 'admin' || $_SESSION['role'] === 'superadmin') ? '<i class="fa-solid fa-gear"></i> ' : '<i class="fa-regular fa-user"></i> ';
                                 
                                 // Display icon + name securely
                                 echo $icon . htmlspecialchars($firstName);
                             ?>
-                        <span class="dropdown-arrow">▼</span>
+                        <i class="fa-solid fa-chevron-down dropdown-arrow"
+                            style="font-size: 0.7rem; margin-left: 5px;"></i>
                     </button>
 
                     <div class="nav-dropdown-menu">

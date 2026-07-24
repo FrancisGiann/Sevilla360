@@ -105,12 +105,32 @@ window.process = {
 
             <!-- === 360 UI Elements === -->
             <div class="viewer-label ui-360">Showroom</div>
-            <div class="viewer-controls ui-360">
-                <button id="btn-zoom-in">+</button>
-                <button id="btn-zoom-out">-</button>
-                <button id="btn-fullscreen">⛶</button>
+
+            <div class="viewer-controls ui-360" id="viewer-controls">
+                <button id="btn-reload-pano" title="Reload 360">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+                <button id="btn-zoom-in" title="Zoom In">
+                    <i class="fa-solid fa-magnifying-glass-plus"></i>
+                </button>
+                <button id="btn-zoom-out" title="Zoom Out">
+                    <i class="fa-solid fa-magnifying-glass-minus"></i>
+                </button>
+                <button id="btn-fullscreen" title="Fullscreen">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
             </div>
+
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
+
+            <!-- NEW: The Loading Placeholder that covers the black screen -->
+            <div id="pano-loading-overlay"
+                style="position: absolute; top:0; left:0; width:100%; height:100%; z-index: 4; background: url('assets/img/placeholder.jpg') center/cover no-repeat; display: none; align-items: center; justify-content: center;">
+                <div
+                    style="background: rgba(0,0,0,0.6); color: white; padding: 10px 25px; border-radius: 30px; font-family: var(--font-body); font-weight: 500; letter-spacing: 1px; backdrop-filter: blur(4px);">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px;"></i> Loading 360° View...
+                </div>
+            </div>
 
             <!-- === Photo Gallery UI Elements === -->
 

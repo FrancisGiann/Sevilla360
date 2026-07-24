@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentGallery = [];
   let currentImageIndex = 0;
   let panoCache = {};
+  let currentRoomId = null;
 
   // Variables for Zooming & Dragging
   let currentZoom = 1;
@@ -20,39 +21,82 @@ document.addEventListener("DOMContentLoaded", () => {
     autoRotate: true,
     autoRotateSpeed: 0.5,
     antialias: true, // Fix for blurriness
-    cameraFov: 85    // Fix for blurriness
+    cameraFov: 85, // Fix for blurriness
   });
-  
+
   // Force high-resolution rendering for modern monitors
   viewer.renderer.setPixelRatio(window.devicePixelRatio);
 
- // Custom 360 Controls
-  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
-      viewer.camera.fov = Math.max(30, viewer.camera.fov - 10); // Prevent zooming in too far
-      viewer.camera.updateProjectionMatrix(); // CRITICAL FIX: Forces the screen to redraw!
-  });
-  
-  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
-      viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); // Prevent zooming out too far
-      viewer.camera.updateProjectionMatrix(); // CRITICAL FIX: Forces the screen to redraw!
-  });
-  
-  // Fix: Force Panolens to resize when entering/exiting fullscreen
-  document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
-      if (!document.fullscreenElement) {
-          panoContainer.requestFullscreen().then(() => {
-              setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to redraw to fill screen
-          });
-      } else {
-          document.exitFullscreen().then(() => {
-              setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to shrink back down
-          });
+  // CRITICAL FIX FOR RESIZING BUG: 
+  // Tell the 3D camera to recalculate the screen dimensions whenever the window resizes!
+  window.addEventListener('resize', () => {
+      if (viewer && panoContainer.style.visibility === "visible") {
+          viewer.onWindowResize();
       }
   });
 
+  // Custom 360 Controls
+  // HARD RELOAD: Safely stops downloads, dumps memory, and re-downloads
+  document.getElementById("btn-reload-pano")?.addEventListener("click", () => {
+      if (!currentRoomId) return;
+      const room = dataMap[currentRoomId];
+      if (!room || !room.pano_url) return;
+
+      const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
+      if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
+
+      // Safely destroy the old panorama
+      if (panoCache[currentRoomId]) {
+          const oldPano = panoCache[currentRoomId];
+          
+          // 1. Remove it from the viewer first
+          viewer.remove(oldPano);
+          
+          // 2. Dispose of materials and geometry safely to free memory
+          if (oldPano.material) {
+              if (oldPano.material.map) oldPano.material.map.dispose();
+              oldPano.material.dispose();
+          }
+          if (oldPano.geometry) oldPano.geometry.dispose();
+
+          delete panoCache[currentRoomId];
+      }
+
+      // 3. Cache Busting: Force download a fresh copy
+      let cleanUrl = room.pano_url.split('?')[0]; 
+      room.pano_url = cleanUrl + '?t=' + new Date().getTime(); 
+
+      // 4. Reload the room
+      loadRoom(currentRoomId);
+  });
+
+  // Zoom In/Out Buttons
+  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+    viewer.camera.fov = Math.max(30, viewer.camera.fov - 10);
+    viewer.camera.updateProjectionMatrix(); 
+  });
+
+  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+    viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); 
+    viewer.camera.updateProjectionMatrix(); 
+  });
+
+  // Fullscreen Button
+  document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
+    if (!document.fullscreenElement) {
+      panoContainer.requestFullscreen().then(() => {
+        setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to redraw to fill screen
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to shrink back down
+      });
+    }
+  });
+
   // Backup listener in case they use the phone's native "Back" button to exit fullscreen
-  document.addEventListener('fullscreenchange', () => {
-      setTimeout(() => viewer.onWindowResize(), 100);
+  document.addEventListener("fullscreenchange", () => {
+    setTimeout(() => viewer.onWindowResize(), 100);
   });
 
   // --- 2. UI Elements ---
@@ -63,6 +107,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const valRate = document.getElementById("val-rate");
   const galleryTitle = document.getElementById("gallery-title");
   const btnViewPhotos = document.getElementById("btn-view-photos");
+  const viewerControls = document.getElementById("viewer-controls");
+  const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
 
   // NEW: Target your description and amenities container
   const valDesc = document.getElementById("val-desc");
@@ -91,6 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 3. Load Room Logic ---
   function loadRoom(roomId) {
+    currentRoomId = roomId;
     const room = dataMap[roomId];
     if (!room) return;
 
@@ -107,30 +154,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // NEW: Update Amenities Grid
     if (amenitiesGrid && room.amenities) {
-        amenitiesGrid.innerHTML = ""; // Clear old icons
-        
-        // Map common amenities to FontAwesome icons dynamically
-        const iconMap = {
-            "free wi-fi": "fa-wifi",
-            "fully air-conditioned": "fa-snowflake",
-            "ample parking": "fa-square-parking",
-            "wheelchair accessible": "fa-wheelchair",
-            "private pool": "fa-water-ladder",
-            "smart tv": "fa-tv",
-            "mini-fridge": "fa-temperature-arrow-down"
-        };
+      amenitiesGrid.innerHTML = ""; // Clear old icons
 
-        room.amenities.forEach(item => {
-            const cleanItem = item.trim();
-            if (cleanItem === "") return; // Skip empty strings
-            
-            const iconClass = iconMap[cleanItem.toLowerCase()] || "fa-check"; // Default to checkmark if icon not mapped
-            
-            const div = document.createElement("div");
-            div.className = "amenity";
-            div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
-            amenitiesGrid.appendChild(div);
-        });
+      // Map common amenities to FontAwesome icons dynamically
+      const iconMap = {
+        "free wi-fi": "fa-wifi",
+        "fully air-conditioned": "fa-snowflake",
+        "ample parking": "fa-square-parking",
+        "wheelchair accessible": "fa-wheelchair",
+        "private pool": "fa-water-ladder",
+        "smart tv": "fa-tv",
+        "mini-fridge": "fa-temperature-arrow-down",
+      };
+
+      room.amenities.forEach((item) => {
+        const cleanItem = item.trim();
+        if (cleanItem === "") return; // Skip empty strings
+
+        const iconClass = iconMap[cleanItem.toLowerCase()] || "fa-check"; // Default to checkmark if icon not mapped
+
+        const div = document.createElement("div");
+        div.className = "amenity";
+        div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
+        amenitiesGrid.appendChild(div);
+      });
     }
 
     // Fetch Gallery first so we can use it as a fallback
@@ -139,22 +186,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- Handle 360 Panorama ---
     if (room.pano_url) {
-      // Hide the image overlay, show the 3D canvas
+      // 1. Show the 3D canvas and the UI controls
       no360Wrapper.style.display = "none";
       panoContainer.style.visibility = "visible";
+      if (viewerControls) viewerControls.style.display = "flex"; // SHOW buttons
 
       // Check if we ALREADY loaded this 3D room before
       if (!panoCache[roomId]) {
         const originalTitle = room.title;
         valTitle.textContent = "Loading 360... Please wait";
 
+        // 2. Show the placeholder loading screen while downloading
+        if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
+
         const panorama = new PANOLENS.ImagePanorama(room.pano_url);
         panorama.addEventListener("load", function () {
           valTitle.textContent = originalTitle;
+          // 3. Hide the placeholder loading screen once downloaded
+          if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
         });
 
         viewer.add(panorama);
         panoCache[roomId] = panorama; // Save it to memory!
+      } else {
+        // If it's already in memory, make sure the loading screen is hidden!
+        if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
       }
 
       // Instantly switch to the room in memory
@@ -167,9 +223,10 @@ document.addEventListener("DOMContentLoaded", () => {
           : "assets/img/placeholder.jpg";
       no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
 
-      // Show the image overlay, hide the 3D canvas
+      // Show the image overlay, hide the 3D canvas AND hide the controls
       no360Wrapper.style.display = "flex";
       panoContainer.style.visibility = "hidden";
+      if (viewerControls) viewerControls.style.display = "none"; // HIDE buttons
       valTitle.textContent = room.title;
     }
 
@@ -268,15 +325,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- 4. Slide Animation Effect ---
     // Remove old animation classes
     currentSlideImg.classList.remove("slide-in-left", "slide-in-right");
-    
+
     // Force browser reflow to reset the animation
-    void currentSlideImg.offsetWidth; 
-    
+    void currentSlideImg.offsetWidth;
+
     // Determine which direction they clicked/swiped
     if (window.lastGalleryDirection === "prev") {
-        currentSlideImg.classList.add("slide-in-left");
+      currentSlideImg.classList.add("slide-in-left");
     } else {
-        currentSlideImg.classList.add("slide-in-right"); // Default to right
+      currentSlideImg.classList.add("slide-in-right"); // Default to right
     }
 
     // Change image source instantly
@@ -301,7 +358,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Left Arrow
   document.getElementById("slide-prev")?.addEventListener("click", () => {
     window.lastGalleryDirection = "prev"; // Tell animation to slide left
-    let newIndex = (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
+    let newIndex =
+      (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
     updateGalleryUI(newIndex);
   });
 
@@ -394,39 +452,51 @@ document.addEventListener("DOMContentLoaded", () => {
   let touchEndX = 0;
 
   // Listen for the start of the touch
-  currentSlideImg.addEventListener('touchstart', (e) => {
+  currentSlideImg.addEventListener(
+    "touchstart",
+    (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
       touchStartX = e.changedTouches[0].screenX;
-  }, { passive: true });
+    },
+    { passive: true },
+  );
 
   // CRITICAL FIX: Actively block the browser's "Swipe to go back" feature
-  currentSlideImg.addEventListener('touchmove', (e) => {
+  currentSlideImg.addEventListener(
+    "touchmove",
+    (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
-      
+
       const touchCurrentX = e.changedTouches[0].screenX;
       const diffX = touchStartX - touchCurrentX;
 
       // If they move their finger horizontally by more than 10 pixels, stop the browser from doing anything!
       if (Math.abs(diffX) > 10) {
-          e.preventDefault();
+        e.preventDefault();
       }
-  }, { passive: false }); // passive MUST be false for preventDefault() to work on touch events
+    },
+    { passive: false },
+  ); // passive MUST be false for preventDefault() to work on touch events
 
   // Listen for the end of the touch
-  currentSlideImg.addEventListener('touchend', (e) => {
+  currentSlideImg.addEventListener(
+    "touchend",
+    (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
       touchEndX = e.changedTouches[0].screenX;
       handleSwipe();
-  }, { passive: true });
+    },
+    { passive: true },
+  );
 
   function handleSwipe() {
-      const swipeDistance = touchEndX - touchStartX;
-      
-      // Require a minimum distance of 50 pixels to count as a swipe
-      if (swipeDistance < -50) {
-          document.getElementById("slide-next")?.click(); // Swiped Left
-      } else if (swipeDistance > 50) {
-          document.getElementById("slide-prev")?.click(); // Swiped Right
-      }
+    const swipeDistance = touchEndX - touchStartX;
+
+    // Require a minimum distance of 50 pixels to count as a swipe
+    if (swipeDistance < -50) {
+      document.getElementById("slide-next")?.click(); // Swiped Left
+    } else if (swipeDistance > 50) {
+      document.getElementById("slide-prev")?.click(); // Swiped Right
+    }
   }
 });
