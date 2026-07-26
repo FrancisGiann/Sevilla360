@@ -41,8 +41,7 @@ include 'includes/header.php';
 <section id="about" class="bg-white">
     <div class="container split-layout reveal">
         <div class="split-image">
-            <img src="https://images.unsplash.com/photo-1542314831-c6a4d27ce6a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
-                alt="M.I. Sevilla Resort Welcome">
+            <img src="assets/img/Logo.png" alt=" M.I. Sevilla Resort Welcome">
         </div>
         <div class="split-text">
             <div class="script-heading">Welcome</div>
