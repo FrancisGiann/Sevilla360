@@ -28,9 +28,9 @@ try {
     if ($res->num_rows === 0) throw new Exception("Media not found.");
     $media = $res->fetch_assoc();
 
-    // Prevent deletion of core system slots
-    if ($media['slot_assignment'] === 'home-hero' || strpos($media['slot_assignment'], '_360') !== false) {
-        throw new Exception("Core website slots and 360 Panoramas cannot be deleted, they can only be replaced.");
+    // Prevent deletion of the ONE core system slot that breaks the website layout if missing
+    if ($media['slot_assignment'] === 'home-hero') {
+        throw new Exception("The Homepage Hero Banner cannot be deleted, it can only be replaced.");
     }
 
     // Delete physically from folder

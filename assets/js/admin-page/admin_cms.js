@@ -4,7 +4,61 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- 1. DOM Elements ---
+  // =========================================================
+  // 1. UNIVERSAL MODAL UTILITIES
+  // =========================================================
+  const uniConfirmModal = document.getElementById("uniConfirmModal");
+  const uniAlertModal = document.getElementById("uniAlertModal");
+  let pendingCallback = null;
+
+  function showConfirmModal(message, callback) {
+      document.getElementById("uc-message").innerText = message;
+      pendingCallback = callback;
+      uniConfirmModal.classList.add("active");
+  }
+
+  document.getElementById("uc-btn-no")?.addEventListener("click", () => {
+      uniConfirmModal.classList.remove("active");
+      pendingCallback = null; 
+  });
+
+  document.getElementById("uc-btn-yes")?.addEventListener("click", () => {
+      uniConfirmModal.classList.remove("active");
+      if (pendingCallback) {
+          pendingCallback(); 
+          pendingCallback = null; 
+      }
+  });
+
+  function showAlertModal(title, message, type = "info", reloadOnClose = false) {
+      document.getElementById("ua-title").innerText = title;
+      document.getElementById("ua-message").innerText = message;
+      
+      const icon = document.getElementById("ua-icon");
+      if (type === "success") {
+          icon.className = "fa-solid fa-circle-check"; icon.style.color = "#4ade80"; 
+      } else if (type === "error") {
+          icon.className = "fa-solid fa-triangle-exclamation"; icon.style.color = "#e06666"; 
+      } else {
+          icon.className = "fa-solid fa-circle-info"; icon.style.color = "var(--color-gold)"; 
+      }
+
+      uniAlertModal.classList.add("active");
+
+      const okBtn = document.getElementById("ua-btn-ok");
+      const newOkBtn = okBtn.cloneNode(true); 
+      okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+      newOkBtn.addEventListener("click", () => {
+          if (reloadOnClose) window.location.reload();
+          else uniAlertModal.classList.remove("active");
+      });
+  }
+
+
+  // =========================================================
+  // 2. DOM Elements
+  // =========================================================
   const uploadModal = document.getElementById('uploadModal');
   const btnOpenUpload = document.getElementById('btnOpenUpload');
   const btnCloseModal = document.getElementById('btnCloseModal');
@@ -18,140 +72,107 @@ document.addEventListener('DOMContentLoaded', () => {
   const fileInputEl = document.getElementById('fileInput');
   const uploadForm = document.getElementById("cms-upload-form");
 
-  // --- 2. Modal Open/Close Logic ---
-  
-  // A. Open Modal (Main Upload Button)
+  // Progress Bar Elements
+  const progContainer = document.getElementById('upload-progress-container');
+  const progBar = document.getElementById('upload-progress-bar');
+  const progText = document.getElementById('upload-progress-text');
+
+
+  // =========================================================
+  // 3. Modal Open/Close Logic
+  // =========================================================
   if (btnOpenUpload) {
     btnOpenUpload.addEventListener('click', () => {
       uploadForm.reset();
       slotOptions.forEach(opt => opt.style.display = 'none');
-      
       const dropText = document.querySelector('.drop-text');
       if (dropText) dropText.innerHTML = `<strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to browse</span>`;
-
+      if (progContainer) progContainer.style.display = 'none';
       uploadModal.classList.add('active');
     });
   }
 
-  // B. Open Modal (Replace Buttons on Cards)
   replaceBtns.forEach(btn => {
     btn.addEventListener('click', function() {
       const mediaType = this.getAttribute('data-type');
       const targetSlot = this.getAttribute('data-slot');
 
       if (typeDropdown && slotDropdown) {
-          // 1. Set the first dropdown
           typeDropdown.value = mediaType;
-          
-          // 2. Hide/Show the correct options manually (bypassing the change event)
           slotOptions.forEach(opt => {
-              if (opt.getAttribute('data-type') === mediaType || opt.value === 'gallery') {
-                  opt.style.display = 'block'; 
-              } else {
-                  opt.style.display = 'none';  
-              }
+              if (opt.getAttribute('data-type') === mediaType || opt.value === 'gallery') opt.style.display = 'block'; 
+              else opt.style.display = 'none';  
           });
-
-          // 3. Safely set the second dropdown!
           slotDropdown.value = targetSlot;
       }
+      if (progContainer) progContainer.style.display = 'none';
       uploadModal.classList.add('active');
     });
   });
 
-  // C. Close Modal Logic
-  if (btnCloseModal) {
-    btnCloseModal.addEventListener('click', () => uploadModal.classList.remove('active'));
-  }
-  window.addEventListener('click', (e) => {
-    if (e.target === uploadModal) uploadModal.classList.remove('active');
-  });
+  if (btnCloseModal) btnCloseModal.addEventListener('click', () => uploadModal.classList.remove('active'));
+  window.addEventListener('click', (e) => { if (e.target === uploadModal) uploadModal.classList.remove('active'); });
 
-
-  // --- 3. Cascading Dropdown Logic (For Human Clicks Only) ---
+  // Cascading Dropdown
   if (typeDropdown && slotDropdown) {
       typeDropdown.addEventListener('change', function(e) {
           const selectedType = this.value; 
-          
-          // ONLY reset the second dropdown if a real human clicked it!
-          if (e.isTrusted) {
-              slotDropdown.value = ""; 
-          }
-          
+          if (e.isTrusted) slotDropdown.value = ""; 
           slotOptions.forEach(opt => {
-              if (opt.getAttribute('data-type') === selectedType || opt.value === 'gallery') {
-                  opt.style.display = 'block'; 
-              } else {
-                  opt.style.display = 'none';  
-              }
+              if (opt.getAttribute('data-type') === selectedType || opt.value === 'gallery') opt.style.display = 'block'; 
+              else opt.style.display = 'none';  
           });
       });
   }
 
 
-  // --- 4. Drag & Drop Visuals ---
+  // =========================================================
+  // 4. Drag & Drop Visuals
+  // =========================================================
   if (dragDropArea && fileInputEl) {
     dragDropArea.addEventListener('click', () => fileInputEl.click());
-
-    dragDropArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dragDropArea.classList.add('dragover');
-    });
-
-    dragDropArea.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      dragDropArea.classList.remove('dragover');
-    });
-
+    dragDropArea.addEventListener('dragover', (e) => { e.preventDefault(); dragDropArea.classList.add('dragover'); });
+    dragDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); dragDropArea.classList.remove('dragover'); });
     dragDropArea.addEventListener('drop', (e) => {
       e.preventDefault();
       dragDropArea.classList.remove('dragover');
-      
       if (e.dataTransfer.files.length > 0) {
         fileInputEl.files = e.dataTransfer.files;
         updateDropText(e.dataTransfer.files);
       }
     });
-
-    fileInputEl.addEventListener('change', function() {
-      if (this.files.length > 0) {
-        updateDropText(this.files);
-      }
-    });
+    fileInputEl.addEventListener('change', function() { if (this.files.length > 0) updateDropText(this.files); });
 
     function updateDropText(files) {
       const dropText = dragDropArea.querySelector('.drop-text');
-      if (files.length === 1) {
-          dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${files[0].name}</span>`;
-      } else {
-          dropText.innerHTML = `<strong>Selected Files:</strong><br><span class="highlight">${files.length} files selected</span>`;
-      }
+      if (files.length === 1) dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${files[0].name}</span>`;
+      else dropText.innerHTML = `<strong>Selected Files:</strong><br><span class="highlight">${files.length} files selected</span>`;
     }
   }
 
 
-  // --- 5. Handle File Upload Submission ---
+  // =========================================================
+  // 5. Handle File Upload Submission (WITH PROGRESS BAR)
+  // =========================================================
   if (uploadForm) {
       uploadForm.addEventListener("submit", function(e) {
           e.preventDefault();
 
           if (!fileInputEl.files || fileInputEl.files.length === 0) {
-              alert("Please select a file to upload.");
+              showAlertModal("Error", "Please select a file to upload.", "error", false);
               return;
           }
 
           const slotDropdown = document.getElementById('modal-website-slot');
           const isStrictSlot = slotDropdown.value.startsWith('home-');
 
-          // Guard: Prevent user from uploading 5 images to a 360 panorama slot!
           if (isStrictSlot && fileInputEl.files.length > 1) {
-              alert("You can only upload ONE image at a time for Hero Banners and 360 Panoramas.");
+              showAlertModal("Error", "You can only upload ONE image at a time for Homepage Previews.", "error", false);
               return;
           }
 
-          // Use fileInput[] array syntax so PHP can read multiple files
           const formData = new FormData(this);
-          formData.delete("fileInput"); // Remove default binding
+          formData.delete("fileInput"); 
           for (let i = 0; i < fileInputEl.files.length; i++) {
               formData.append("fileInput[]", fileInputEl.files[i]);
           }
@@ -161,50 +182,87 @@ document.addEventListener('DOMContentLoaded', () => {
           submitBtn.innerText = "Uploading...";
           submitBtn.disabled = true;
 
-          fetch("actions/admin/upload_media.php", {
-              method: "POST",
-              body: formData
-          })
-          .then(response => response.json())
-          .then(data => {
-              if (data.success) {
-                  alert(data.message);
-                  window.location.reload();
+          // Show Progress Bar
+          if (progContainer) {
+              progContainer.style.display = 'block';
+              progBar.style.width = '0%';
+              progText.innerText = '0%';
+          }
+
+          // Use XMLHttpRequest for actual progress tracking!
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "actions/admin/upload_media.php", true);
+
+          // Track Upload Progress
+          xhr.upload.addEventListener("progress", (event) => {
+              if (event.lengthComputable) {
+                  let percentComplete = Math.round((event.loaded / event.total) * 100);
+                  progBar.style.width = percentComplete + '%';
+                  progText.innerText = percentComplete + '%';
+              }
+          });
+
+          // Handle Completion
+          xhr.onload = function() {
+              if (xhr.status === 200) {
+                  try {
+                      const data = JSON.parse(xhr.responseText);
+                      if (data.success) {
+                          uploadModal.classList.remove('active');
+                          showAlertModal("Success", data.message, "success", true);
+                      } else {
+                          showAlertModal("Error", data.message, "error", false);
+                          submitBtn.innerText = originalText;
+                          submitBtn.disabled = false;
+                      }
+                  } catch(e) {
+                      showAlertModal("Error", "Server returned an invalid response.", "error", false);
+                      submitBtn.innerText = originalText;
+                      submitBtn.disabled = false;
+                  }
               } else {
-                  alert("Error: " + data.message);
+                  showAlertModal("Error", "Server Error: " + xhr.status, "error", false);
                   submitBtn.innerText = originalText;
                   submitBtn.disabled = false;
               }
-          })
-          .catch(error => {
-              console.error("Upload error:", error);
-              alert("A network error occurred during upload.");
+          };
+
+          xhr.onerror = function() {
+              showAlertModal("Network Error", "A network error occurred during upload.", "error", false);
               submitBtn.innerText = originalText;
               submitBtn.disabled = false;
-          });
+          };
+
+          xhr.send(formData);
       });
   }
 
 
-  // --- 6. Manage Gallery & Delete Logic ---
+  // =========================================================
+  // 6. Manage Gallery, Lightbox & Delete Logic
+  // =========================================================
   const manageGalleryModal = document.getElementById('manageGalleryModal');
   const mgGrid = document.getElementById('mg-grid');
+  const btnMgAdd = document.getElementById('btn-mg-add');
+  let currentManageSlot = null;
+  let currentManageType = null;
 
-  // Open the Manage Gallery Modal
+  // Lightbox Elements
+  const lightbox = document.getElementById('cms-lightbox');
+  const lightboxImg = document.getElementById('cms-lightbox-img');
+
   document.querySelectorAll('.btn-manage-gallery').forEach(btn => {
       btn.addEventListener('click', function() {
-          const slotKey = this.getAttribute('data-slot');
-          const photos = window.galleryData[slotKey] || [];
+          currentManageSlot = this.getAttribute('data-slot');
+          currentManageType = this.closest('.cms-card').getAttribute('data-type');
+          const photos = window.galleryData[currentManageSlot] || [];
           
-          // Set the title
           document.getElementById('mg-title').innerText = `Manage Photos`;
-
-          // Inject the photos into the grid
           mgGrid.innerHTML = '';
           photos.forEach(photo => {
               mgGrid.innerHTML += `
                   <div style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                      <img src="${photo.file_path}" style="width: 100%; height: 150px; object-fit: cover; display: block;">
+                      <img src="${photo.file_path}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">${photo.file_name}</span>
                           <button class="btn-delete-media" data-id="${photo.id}" style="background: none; border: none; color: #c75c5c; cursor: pointer; padding: 5px;"><i class="fa-solid fa-trash"></i></button>
@@ -212,77 +270,117 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
               `;
           });
-
           manageGalleryModal.classList.add('active');
       });
   });
 
-  // Close the Manage Gallery Modal
   document.getElementById('btnCloseGalleryModal')?.addEventListener('click', () => {
       manageGalleryModal.classList.remove('active');
   });
 
-  // Event Delegation for Delete Buttons (Because they are injected dynamically!)
+  // NEW: Add Photos Button inside Manage Gallery
+  if (btnMgAdd) {
+      btnMgAdd.addEventListener('click', () => {
+          manageGalleryModal.classList.remove('active');
+          
+          // Pre-fill the upload modal automatically!
+          if (typeDropdown && slotDropdown) {
+              typeDropdown.value = currentManageType;
+              slotOptions.forEach(opt => {
+                  if (opt.getAttribute('data-type') === currentManageType || opt.value === 'gallery') opt.style.display = 'block'; 
+                  else opt.style.display = 'none';  
+              });
+              slotDropdown.value = currentManageSlot;
+          }
+          uploadModal.classList.add('active');
+      });
+  }
+
+  // Event Delegation for Delete & Lightbox
   if (mgGrid) {
       mgGrid.addEventListener('click', function(e) {
+          // LIGHTBOX CLICK
+          if (e.target.classList.contains('mg-thumb')) {
+              lightboxImg.src = e.target.src;
+              lightbox.style.display = 'flex';
+              return;
+          }
+
+          // DELETE CLICK
           const deleteBtn = e.target.closest('.btn-delete-media');
-          
           if (deleteBtn) {
-              if (!confirm("Are you sure you want to permanently delete this image?")) return;
+              showConfirmModal("Are you sure you want to permanently delete this image?", () => {
+                  const mediaId = deleteBtn.getAttribute('data-id');
+                  const card = deleteBtn.closest('div').parentElement; 
+                  
+                  deleteBtn.innerHTML = "...";
+                  deleteBtn.disabled = true;
 
-              const mediaId = deleteBtn.getAttribute('data-id');
-              const card = deleteBtn.closest('div').parentElement; // The specific image card
-              
-              deleteBtn.innerHTML = "...";
-              deleteBtn.disabled = true;
-
-              fetch("actions/admin/delete_media.php", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: mediaId })
-              })
-              .then(res => res.json())
-              .then(data => {
-                  if (data.success) {
-                      card.remove(); // Remove from grid visually
-                      // Reload page to reflect changes in the main CMS grid count
-                      setTimeout(() => window.location.reload(), 500); 
-                  } else {
-                      alert("Error: " + data.message);
+                  fetch("actions/admin/delete_media.php", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: mediaId })
+                  })
+                  .then(res => res.json())
+                  .then(data => {
+                      if (data.success) {
+                          card.remove(); 
+                          sessionStorage.setItem('activeCMSFilter', document.querySelector('.cms-pill.active').getAttribute('data-filter')); // Save tab state
+                          setTimeout(() => window.location.reload(), 500); 
+                      } else {
+                          showAlertModal("Error", data.message, "error", false);
+                          deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                          deleteBtn.disabled = false;
+                      }
+                  })
+                  .catch(err => {
+                      console.error(err);
+                      showAlertModal("Error", "Network error.", "error", false);
                       deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
                       deleteBtn.disabled = false;
-                  }
-              })
-              .catch(err => {
-                  console.error(err);
-                  alert("Network error.");
-                  deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-                  deleteBtn.disabled = false;
+                  });
               });
           }
       });
   }
 
+  // Close Lightbox
+  if (lightbox) {
+      lightbox.addEventListener('click', () => lightbox.style.display = 'none');
+  }
 
-  // --- 7. Filter Pills ---
+
+  // =========================================================
+  // 7. Filter Pills (WITH SESSION STORAGE)
+  // =========================================================
   const filterPills = document.querySelectorAll('.cms-pill');
   const cmsCards = document.querySelectorAll('.cms-card');
 
-  filterPills.forEach(pill => {
-    pill.addEventListener('click', function() {
-      filterPills.forEach(p => p.classList.remove('active'));
-      this.classList.add('active');
-      
-      const filter = this.getAttribute('data-filter');
+  function applyFilter(filterValue) {
+      filterPills.forEach(p => {
+          if (p.getAttribute('data-filter') === filterValue) p.classList.add('active');
+          else p.classList.remove('active');
+      });
       
       cmsCards.forEach(card => {
-          if (filter === 'all' || card.getAttribute('data-type') === filter) {
-              card.style.display = 'flex';
-          } else {
-              card.style.display = 'none';
-          }
+          if (filterValue === 'all' || card.getAttribute('data-type') === filterValue) card.style.display = 'flex';
+          else card.style.display = 'none';
       });
+  }
+
+  // Click listener
+  filterPills.forEach(pill => {
+    pill.addEventListener('click', function() {
+      const filter = this.getAttribute('data-filter');
+      sessionStorage.setItem('activeCMSFilter', filter); // Save state
+      applyFilter(filter);
     });
   });
+
+  // On Load, check if we saved a tab previously!
+  const savedFilter = sessionStorage.getItem('activeCMSFilter');
+  if (savedFilter) {
+      applyFilter(savedFilter);
+  }
 
 });
