@@ -4,10 +4,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentImageIndex = 0;
   let panoCache = {};
   let currentRoomId = null;
-  let currentPanoIndex = 0; 
+
+  // Tracking multiple 360s
+  let currentPanoIndex = 0;
   let activePanoramas = [];
 
-  // Variables for Zooming & Dragging
+  // Variables for Zooming & Dragging Gallery
   let currentZoom = 1;
   let panX = 0;
   let panY = 0;
@@ -17,142 +19,137 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 1. Init Panolens 360 Viewer ---
   const panoContainer = document.getElementById("pano-container");
+  const viewerControls = document.getElementById("viewer-controls");
+  const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
+  const no360Wrapper = document.querySelector(
+    ".ui-360:not(.viewer-controls):not(.viewer-label):not(#pano-container)",
+  ); // Grabs the dynamic no-360 div we inject
+
   const viewer = new PANOLENS.Viewer({
     container: panoContainer,
-    controlBar: false, // We built custom buttons
+    controlBar: false,
     autoRotate: true,
     autoRotateSpeed: 0.5,
-    antialias: true, // Fix for blurriness
-    cameraFov: 85, // Fix for blurriness
+    antialias: true,
+    cameraFov: 85,
   });
 
-  // Force high-resolution rendering for modern monitors
   viewer.renderer.setPixelRatio(window.devicePixelRatio);
 
-  // CRITICAL FIX FOR RESIZING BUG: 
-  // Tell the 3D camera to recalculate the screen dimensions whenever the window resizes!
-  window.addEventListener('resize', () => {
-      if (viewer && panoContainer.style.visibility === "visible") {
-          viewer.onWindowResize();
-      }
-  });
-
-  // Custom 360 Controls
-  // HARD RELOAD: Safely stops downloads, dumps memory, and re-downloads
-  document.getElementById("btn-reload-pano")?.addEventListener("click", () => {
-      if (!currentRoomId) return;
-      const room = dataMap[currentRoomId];
-      if (!room || !room.pano_url) return;
-
-      const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
-      if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
-
-      // Safely destroy the old panorama
-      if (panoCache[currentRoomId]) {
-          const oldPano = panoCache[currentRoomId];
-          
-          // 1. Remove it from the viewer first
-          viewer.remove(oldPano);
-          
-          // 2. Dispose of materials and geometry safely to free memory
-          if (oldPano.material) {
-              if (oldPano.material.map) oldPano.material.map.dispose();
-              oldPano.material.dispose();
-          }
-          if (oldPano.geometry) oldPano.geometry.dispose();
-
-          delete panoCache[currentRoomId];
-      }
-
-      // 3. Cache Busting: Force download a fresh copy
-      let cleanUrl = room.pano_url.split('?')[0]; 
-      room.pano_url = cleanUrl + '?t=' + new Date().getTime(); 
-
-      // 4. Reload the room
-      loadRoom(currentRoomId);
-  });
-
-  // Zoom In/Out Buttons
-  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
-    viewer.camera.fov = Math.max(30, viewer.camera.fov - 10);
-    viewer.camera.updateProjectionMatrix(); 
-  });
-
-  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
-    viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); 
-    viewer.camera.updateProjectionMatrix(); 
-  });
-
-  // Fullscreen Button
-  document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
-    if (!document.fullscreenElement) {
-      panoContainer.requestFullscreen().then(() => {
-        setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to redraw to fill screen
-      });
-    } else {
-      document.exitFullscreen().then(() => {
-        setTimeout(() => viewer.onWindowResize(), 100); // Tell 3D engine to shrink back down
-      });
+  window.addEventListener("resize", () => {
+    if (viewer && panoContainer.style.visibility === "visible") {
+      viewer.onWindowResize();
     }
   });
 
-  // Backup listener in case they use the phone's native "Back" button to exit fullscreen
-  document.addEventListener("fullscreenchange", () => {
-    setTimeout(() => viewer.onWindowResize(), 100);
-  });
-  
-// Switch Panorama Button
-  document.getElementById("btn-switch-pano")?.addEventListener("click", () => {
-      if (activePanoramas.length > 1) {
-          // Move to next image, or loop back to 0
-          currentPanoIndex = (currentPanoIndex + 1) % activePanoramas.length;
-          viewer.setPanorama(activePanoramas[currentPanoIndex]);
-      }
+  // --- 2. Custom 360 Controls ---
+  document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+    viewer.camera.fov = Math.max(30, viewer.camera.fov - 10);
+    viewer.camera.updateProjectionMatrix();
   });
 
-  // --- 2. UI Elements ---
+  document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+    viewer.camera.fov = Math.min(100, viewer.camera.fov + 10);
+    viewer.camera.updateProjectionMatrix();
+  });
+
+  document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
+    if (!document.fullscreenElement) {
+      panoContainer.requestFullscreen().then(() => {
+        setTimeout(() => viewer.onWindowResize(), 100);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setTimeout(() => viewer.onWindowResize(), 100);
+      });
+    }
+  });
+  document.addEventListener("fullscreenchange", () =>
+    setTimeout(() => viewer.onWindowResize(), 100),
+  );
+
+  // NEW FIX: Switch between multiple panoramas
+  document.getElementById("btn-switch-pano")?.addEventListener("click", () => {
+    if (activePanoramas.length > 1) {
+      currentPanoIndex = (currentPanoIndex + 1) % activePanoramas.length;
+      viewer.setPanorama(activePanoramas[currentPanoIndex]);
+    }
+  });
+
+  // NEW FIX: Hard Reload for arrays!
+  document.getElementById("btn-reload-pano")?.addEventListener("click", () => {
+    if (!currentRoomId) return;
+    const room = dataMap[currentRoomId];
+    // Fixed: Checks for pano_urls array instead of single url
+    if (!room || !room.pano_urls || room.pano_urls.length === 0) return;
+
+    if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
+
+    // Safely destroy ALL old panoramas for this room
+    if (panoCache[currentRoomId]) {
+      panoCache[currentRoomId].forEach((oldPano) => {
+        viewer.remove(oldPano);
+        if (oldPano.material) {
+          if (oldPano.material.map) oldPano.material.map.dispose();
+          oldPano.material.dispose();
+        }
+        if (oldPano.geometry) oldPano.geometry.dispose();
+      });
+      delete panoCache[currentRoomId];
+    }
+
+    // Cache Busting: Force download fresh copies for the array
+    room.pano_urls = room.pano_urls.map((url) => {
+      let cleanUrl = url.split("?")[0];
+      return cleanUrl + "?t=" + new Date().getTime();
+    });
+
+    loadRoom(currentRoomId);
+  });
+
+  // --- 3. Info Modal Logic ---
+  const infoModal = document.getElementById("info-modal");
+  document.getElementById("btn-info")?.addEventListener("click", () => {
+    if (!currentRoomId) return;
+    const room = dataMap[currentRoomId];
+    if (!room) return;
+
+    document.getElementById("info-modal-title").innerText = room.title;
+    document.getElementById("info-modal-desc").innerText = room.description;
+    document.getElementById("info-modal-cap").innerText = room.capacity;
+    document.getElementById("info-modal-rate").innerText = room.rate;
+
+    const modalAmenities = document.getElementById("info-modal-amenities");
+    const amenitiesGrid = document.querySelector(".amenities-grid");
+    if (modalAmenities && amenitiesGrid) {
+      modalAmenities.innerHTML = amenitiesGrid.innerHTML;
+    }
+    infoModal.classList.add("active");
+  });
+
+  document
+    .getElementById("btn-close-info")
+    ?.addEventListener("click", () => infoModal.classList.remove("active"));
+  window.addEventListener("click", (e) => {
+    if (e.target === infoModal) infoModal.classList.remove("active");
+  });
+
+  // --- 4. Load Room Logic ---
   const valTitle = document.getElementById("val-title");
   const valCategory = document.getElementById("val-category");
   const valCapacity = document.getElementById("val-capacity");
   const valStatus = document.getElementById("val-status");
   const valRate = document.getElementById("val-rate");
-  const galleryTitle = document.getElementById("gallery-title");
-  const btnViewPhotos = document.getElementById("btn-view-photos");
-  const viewerControls = document.getElementById("viewer-controls");
-  const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
-
-  // NEW: Target your description and amenities container
   const valDesc = document.getElementById("val-desc");
   const amenitiesGrid = document.querySelector(".amenities-grid");
+  const galleryTitle = document.getElementById("gallery-title");
+  const btnViewPhotos = document.getElementById("btn-view-photos");
 
-  // --- Create a "No 360" Image Overlay ---
-  const no360Wrapper = document.createElement("div");
-  no360Wrapper.className = "ui-360"; // Hides automatically in Photo Mode
-  no360Wrapper.style.cssText =
-    "position:absolute; top:0; left:0; width:100%; height:100%; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5; background-size: cover; background-position: center;";
-
-  // The HTML inside the overlay (A subtle dark tint + text)
-  no360Wrapper.innerHTML = `
-        <div style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4);"></div>
-        <div style="position:relative; z-index:2; text-align:center; color:white;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:10px; opacity:0.9;">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                <polyline points="21 15 16 10 5 21"></polyline>
-            </svg>
-            <h2 style="font-family: sans-serif; font-weight:500; font-size: 1.3rem; margin-bottom:5px; letter-spacing: 1px;">STANDARD VIEW</h2>
-            <p style="font-family: sans-serif; opacity:0.9; font-size: 0.9rem;">No 360° tour available for this venue.</p>
-        </div>
-    `;
-  document.querySelector(".big-viewer-box").appendChild(no360Wrapper);
-
-  // --- 3. Load Room Logic ---
   function loadRoom(roomId) {
     currentRoomId = roomId;
     const room = dataMap[roomId];
     if (!room) return;
 
-    // Update Text Details
     valTitle.textContent = room.title;
     valCategory.textContent = room.category;
     valCapacity.textContent = room.capacity;
@@ -160,56 +157,69 @@ document.addEventListener("DOMContentLoaded", () => {
     valRate.textContent = room.rate;
     galleryTitle.textContent = room.title + " Gallery";
 
-    // NEW: Update Description
     if (valDesc) valDesc.textContent = room.description;
 
-    // NEW: Update Amenities Grid
-    // NEW: Update Amenities Grid (With Fuzzy Keyword Matching)
     if (amenitiesGrid && room.amenities) {
-        amenitiesGrid.innerHTML = ""; // Clear old icons
-        
-        room.amenities.forEach(item => {
-            const cleanItem = item.trim();
-            if (cleanItem === "") return; // Skip empty strings
-            
-            const lowerText = cleanItem.toLowerCase();
-            let iconClass = "fa-check"; // Default icon if no keywords match
-            
-            // Smart Keyword Matching!
-            if (lowerText.includes("wifi") || lowerText.includes("wi-fi")) iconClass = "fa-wifi";
-            else if (lowerText.includes("air") || lowerText.includes("ac ")) iconClass = "fa-snowflake";
-            else if (lowerText.includes("park")) iconClass = "fa-square-parking";
-            else if (lowerText.includes("wheelchair") || lowerText.includes("pwd")) iconClass = "fa-wheelchair";
-            else if (lowerText.includes("pool") || lowerText.includes("swim")) iconClass = "fa-water-ladder";
-            else if (lowerText.includes("tv") || lowerText.includes("television")) iconClass = "fa-tv";
-            else if (lowerText.includes("fridge") || lowerText.includes("refrigerator")) iconClass = "fa-temperature-arrow-down";
-            else if (lowerText.includes("breakfast") || lowerText.includes("meal") || lowerText.includes("food")) iconClass = "fa-utensils";
-            else if (lowerText.includes("gym") || lowerText.includes("fitness")) iconClass = "fa-dumbbell";
-            else if (lowerText.includes("bed")) iconClass = "fa-bed";
-            else if (lowerText.includes("bath") || lowerText.includes("shower")) iconClass = "fa-bath";
-            
-            const div = document.createElement("div");
-            div.className = "amenity";
-            div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
-            amenitiesGrid.appendChild(div);
-        });
+      amenitiesGrid.innerHTML = "";
+      const iconMap = {
+        "free wi-fi": "fa-wifi",
+        wifi: "fa-wifi",
+        "fully air-conditioned": "fa-snowflake",
+        "ac ": "fa-snowflake",
+        "air ": "fa-snowflake",
+        "ample parking": "fa-square-parking",
+        park: "fa-square-parking",
+        "wheelchair accessible": "fa-wheelchair",
+        pwd: "fa-wheelchair",
+        "private pool": "fa-water-ladder",
+        pool: "fa-water-ladder",
+        swim: "fa-water-ladder",
+        "smart tv": "fa-tv",
+        tv: "fa-tv",
+        "mini-fridge": "fa-temperature-arrow-down",
+        fridge: "fa-temperature-arrow-down",
+        breakfast: "fa-utensils",
+        food: "fa-utensils",
+        gym: "fa-dumbbell",
+        fitness: "fa-dumbbell",
+        bed: "fa-bed",
+        bath: "fa-bath",
+        shower: "fa-bath",
+      };
+
+      room.amenities.forEach((item) => {
+        const cleanItem = item.trim();
+        if (cleanItem === "") return;
+
+        const lowerText = cleanItem.toLowerCase();
+        let iconClass = "fa-check";
+        for (const [key, val] of Object.entries(iconMap)) {
+          if (lowerText.includes(key)) {
+            iconClass = val;
+            break;
+          }
+        }
+
+        const div = document.createElement("div");
+        div.className = "amenity";
+        div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
+        amenitiesGrid.appendChild(div);
+      });
     }
 
-    // Fetch Gallery first so we can use it as a fallback
     currentGallery = room.gallery || [];
     currentImageIndex = 0;
 
-    // --- Handle 360 Panorama ---
+    // Handle 360 Panoramas
     const panoUrls = room.pano_urls || [];
     const btnSwitch = document.getElementById("btn-switch-pano");
 
     if (panoUrls.length > 0) {
-      no360Wrapper.style.display = "none";
+      if (no360Wrapper) no360Wrapper.style.display = "none";
       panoContainer.style.visibility = "visible";
-      if (viewerControls) viewerControls.style.display = "flex"; 
-
-      // Show the Gold Button only if there are 2 or more panoramas!
-      if (btnSwitch) btnSwitch.style.display = (panoUrls.length > 1) ? "block" : "none";
+      if (viewerControls) viewerControls.style.display = "flex";
+      if (btnSwitch)
+        btnSwitch.style.display = panoUrls.length > 1 ? "block" : "none";
 
       if (!panoCache[roomId]) {
         valTitle.textContent = "Loading 360...";
@@ -219,20 +229,18 @@ document.addEventListener("DOMContentLoaded", () => {
         let loadedCount = 0;
 
         panoUrls.forEach((url, index) => {
-            const pano = new PANOLENS.ImagePanorama(url);
-            pano.addEventListener("load", function () {
-                loadedCount++;
-                // Hide loading screen when the FIRST one is ready
-                if (index === 0 && panoLoadingOverlay) {
-                    valTitle.textContent = room.title;
-                    panoLoadingOverlay.style.display = "none";
-                }
-            });
-            viewer.add(pano);
-            panoramas.push(pano);
+          const pano = new PANOLENS.ImagePanorama(url);
+          pano.addEventListener("load", function () {
+            loadedCount++;
+            if (index === 0 && panoLoadingOverlay) {
+              valTitle.textContent = room.title;
+              panoLoadingOverlay.style.display = "none";
+            }
+          });
+          viewer.add(pano);
+          panoramas.push(pano);
         });
-
-        panoCache[roomId] = panoramas; 
+        panoCache[roomId] = panoramas;
       } else {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
       }
@@ -240,27 +248,26 @@ document.addEventListener("DOMContentLoaded", () => {
       activePanoramas = panoCache[roomId];
       currentPanoIndex = 0;
       viewer.setPanorama(activePanoramas[currentPanoIndex]);
-
     } else {
-      // NO 360 Logic
-      const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
-      no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
-      no360Wrapper.style.display = "flex";
+      const bgImg =
+        currentGallery.length > 0
+          ? currentGallery[0]
+          : "assets/img/placeholder.jpg";
+      if (no360Wrapper) {
+        no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
+        no360Wrapper.style.display = "flex";
+      }
       panoContainer.style.visibility = "hidden";
       if (viewerControls) viewerControls.style.display = "none";
       if (btnSwitch) btnSwitch.style.display = "none";
       valTitle.textContent = room.title;
     }
 
-    // --- Handle Photo Button & Gallery State ---
     if (currentGallery.length === 0) {
       btnViewPhotos.disabled = true;
       btnViewPhotos.innerText = "NO PHOTOS";
-      // CRITICAL FIX: Erase the previous room's photo!
       document.getElementById("current-slide-img").src =
         "assets/img/placeholder.jpg";
-
-      // If they click a room with no photos WHILE in photo mode, kick them back to the 360 view
       if (
         document
           .getElementById("showroom-wrapper")
@@ -271,12 +278,11 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       btnViewPhotos.disabled = false;
       btnViewPhotos.innerText = "VIEW PHOTOS";
-      // Show the new room's first photo
       document.getElementById("current-slide-img").src = currentGallery[0];
     }
   }
 
-  // --- 4. Pill Click Listeners ---
+  // --- 5. Pill Click Listeners & Initialization ---
   const pills = document.querySelectorAll(".pill");
   pills.forEach((pill) => {
     pill.addEventListener("click", function () {
@@ -286,12 +292,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Initialize first room on load
   if (pills.length > 0) {
-    loadRoom(pills[0].getAttribute("data-room"));
+    let targetRoomId = pills[0].getAttribute("data-room");
+    const hash = window.location.hash.replace("#", "");
+    if (hash && document.querySelector(`.pill[data-room="${hash}"]`)) {
+      targetRoomId = hash;
+    }
+    const targetPill = document.querySelector(
+      `.pill[data-room="${targetRoomId}"]`,
+    );
+    if (targetPill) targetPill.click();
   }
 
-  // --- 5. Gallery Mode Swap Logic ---
+  // --- 6. Gallery Mode Swap Logic ---
   const btnBackTo360 = document.getElementById("btn-back-to-360");
   const wrapper = document.getElementById("showroom-wrapper");
 
@@ -306,149 +319,74 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.classList.remove("no-scroll");
   });
 
-  // --- 6. Gallery Slider & Filmstrip Logic ---
-  const thumbnailStrip = document.getElementById("thumbnail-strip");
+  // --- 7. Gallery Slider Logic ---
   const currentSlideImg = document.getElementById("current-slide-img");
 
-  // Master function to change photos AND highlight the correct thumbnail
   function updateGalleryUI(index) {
     if (currentGallery.length === 0) return;
     currentImageIndex = index;
-
-    // --- RESET ZOOM & PAN ---
     currentZoom = 1;
     panX = 0;
     panY = 0;
     currentSlideImg.style.transform = `translate(0px, 0px) scale(1)`;
     currentSlideImg.style.cursor = "default";
 
-    // 1. Change big image
-    currentSlideImg.src = currentGallery[currentImageIndex];
-
-    // 2. Update thumbnail active states
-    const thumbs = thumbnailStrip.querySelectorAll(".thumb-img");
-    thumbs.forEach((t, i) => {
-      if (i === currentImageIndex) {
-        t.classList.add("active");
-        // Auto-scroll the filmstrip so the active thumb is always visible
-        t.scrollIntoView({
-          behavior: "smooth",
-          inline: "center",
-          block: "nearest",
-        });
-      } else {
-        t.classList.remove("active");
-      }
-    });
-    // 3. Update the counter
-    document.getElementById("gallery-counter").innerText =
-      `• ${currentImageIndex + 1} / ${currentGallery.length}`;
-
-    // --- 4. Slide Animation Effect ---
-    // Remove old animation classes
     currentSlideImg.classList.remove("slide-in-left", "slide-in-right");
-
-    // Force browser reflow to reset the animation
     void currentSlideImg.offsetWidth;
 
-    // Determine which direction they clicked/swiped
-    if (window.lastGalleryDirection === "prev") {
+    if (window.lastGalleryDirection === "prev")
       currentSlideImg.classList.add("slide-in-left");
-    } else {
-      currentSlideImg.classList.add("slide-in-right"); // Default to right
-    }
+    else currentSlideImg.classList.add("slide-in-right");
 
-    // Change image source instantly
     currentSlideImg.src = currentGallery[currentImageIndex];
+    document.getElementById("gallery-counter").innerText =
+      `• ${currentImageIndex + 1} / ${currentGallery.length}`;
   }
 
-  // Function to generate the HTML for the thumbnails
-  function generateThumbnails() {
-    thumbnailStrip.innerHTML = ""; // Clear old ones
-    currentGallery.forEach((imgUrl, i) => {
-      const thumb = document.createElement("img");
-      thumb.src = imgUrl;
-      thumb.className = i === 0 ? "thumb-img active" : "thumb-img";
-
-      // If they click a thumbnail, jump straight to that photo!
-      thumb.addEventListener("click", () => updateGalleryUI(i));
-
-      thumbnailStrip.appendChild(thumb);
-    });
-  }
-
-  // Left Arrow
   document.getElementById("slide-prev")?.addEventListener("click", () => {
-    window.lastGalleryDirection = "prev"; // Tell animation to slide left
-    let newIndex =
-      (currentImageIndex - 1 + currentGallery.length) % currentGallery.length;
-    updateGalleryUI(newIndex);
+    window.lastGalleryDirection = "prev";
+    updateGalleryUI(
+      (currentImageIndex - 1 + currentGallery.length) % currentGallery.length,
+    );
   });
 
-  // Right Arrow
   document.getElementById("slide-next")?.addEventListener("click", () => {
-    window.lastGalleryDirection = "next"; // Tell animation to slide right
-    let newIndex = (currentImageIndex + 1) % currentGallery.length;
-    updateGalleryUI(newIndex);
+    window.lastGalleryDirection = "next";
+    updateGalleryUI((currentImageIndex + 1) % currentGallery.length);
   });
 
-  // When the user clicks "VIEW PHOTOS", generate the thumbnails!
-  btnViewPhotos.addEventListener("click", () => {
-    generateThumbnails(); // Build the filmstrip
-    updateGalleryUI(0); // Start at photo 0
-    window.scrollTo({ top: 0, behavior: "instant" });
-    wrapper.classList.add("mode-photos");
-    document.body.classList.add("no-scroll");
-  });
-
-  // --- 7. TRUE ZOOM TO CURSOR & DRAG TO PAN ---
-
-  // A. Scroll to Zoom (Attached strictly to the IMAGE, not the background)
+  // --- 8. Zoom & Pan Logic for Photos ---
   currentSlideImg.addEventListener(
     "wheel",
     (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
       e.preventDefault();
-
       const oldZoom = currentZoom;
-
-      // Zoom speed
-      if (e.deltaY < 0) currentZoom += 0.2;
-      else currentZoom -= 0.2;
-
-      // Limit zoom between 1x and 5x
+      currentZoom += e.deltaY < 0 ? 0.2 : -0.2;
       currentZoom = Math.min(Math.max(currentZoom, 1), 5);
 
       if (currentZoom === 1) {
-        // Snap back to center if fully zoomed out
         panX = 0;
         panY = 0;
-        currentSlideImg.style.cursor = "default"; // Normal mouse pointer
+        currentSlideImg.style.cursor = "default";
       } else {
-        // Get mouse position relative to the CENTER of the screen
         const mouseX = e.clientX - window.innerWidth / 2;
         const mouseY = e.clientY - window.innerHeight / 2;
-
-        // Google Maps Math: Adjust pan to keep pixel locked under the cursor
         const scaleRatio = currentZoom / oldZoom;
         panX = mouseX - (mouseX - panX) * scaleRatio;
         panY = mouseY - (mouseY - panY) * scaleRatio;
-
-        currentSlideImg.style.cursor = "grab"; // Show the open hand!
+        currentSlideImg.style.cursor = "grab";
       }
-
       currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
     },
     { passive: false },
   );
 
-  // B. Click and Drag to Pan
   currentSlideImg.addEventListener("mousedown", (e) => {
     if (currentZoom > 1) {
-      // Only allow dragging if zoomed in
       e.preventDefault();
       isDragging = true;
-      currentSlideImg.style.cursor = "grabbing"; // Show the closed fist!
+      currentSlideImg.style.cursor = "grabbing";
       startX = e.clientX - panX;
       startY = e.clientY - panY;
     }
@@ -464,16 +402,14 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("mouseup", () => {
     if (isDragging) {
       isDragging = false;
-      // Go back to the open hand when they let go of the mouse click
       if (currentZoom > 1) currentSlideImg.style.cursor = "grab";
     }
   });
 
-  // --- 8. MOBILE SWIPE LOGIC FOR GALLERY ---
+  // --- 9. MOBILE SWIPE LOGIC FOR GALLERY ---
   let touchStartX = 0;
   let touchEndX = 0;
 
-  // Listen for the start of the touch
   currentSlideImg.addEventListener(
     "touchstart",
     (e) => {
@@ -483,42 +419,25 @@ document.addEventListener("DOMContentLoaded", () => {
     { passive: true },
   );
 
-  // CRITICAL FIX: Actively block the browser's "Swipe to go back" feature
   currentSlideImg.addEventListener(
     "touchmove",
     (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
-
       const touchCurrentX = e.changedTouches[0].screenX;
-      const diffX = touchStartX - touchCurrentX;
-
-      // If they move their finger horizontally by more than 10 pixels, stop the browser from doing anything!
-      if (Math.abs(diffX) > 10) {
-        e.preventDefault();
-      }
+      if (Math.abs(touchStartX - touchCurrentX) > 10) e.preventDefault();
     },
     { passive: false },
-  ); // passive MUST be false for preventDefault() to work on touch events
+  );
 
-  // Listen for the end of the touch
   currentSlideImg.addEventListener(
     "touchend",
     (e) => {
       if (!wrapper.classList.contains("mode-photos")) return;
       touchEndX = e.changedTouches[0].screenX;
-      handleSwipe();
+      const diff = touchEndX - touchStartX;
+      if (diff < -50) document.getElementById("slide-next")?.click();
+      else if (diff > 50) document.getElementById("slide-prev")?.click();
     },
     { passive: true },
   );
-
-  function handleSwipe() {
-    const swipeDistance = touchEndX - touchStartX;
-
-    // Require a minimum distance of 50 pixels to count as a swipe
-    if (swipeDistance < -50) {
-      document.getElementById("slide-next")?.click(); // Swiped Left
-    } else if (swipeDistance > 50) {
-      document.getElementById("slide-prev")?.click(); // Swiped Right
-    }
-  }
 });

@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           const slotDropdown = document.getElementById('modal-website-slot');
-          const isStrictSlot = slotDropdown.value === 'home-hero' || slotDropdown.value.includes('_360');
+          const isStrictSlot = slotDropdown.value.startsWith('home-');
 
           // Guard: Prevent user from uploading 5 images to a 360 panorama slot!
           if (isStrictSlot && fileInputEl.files.length > 1) {

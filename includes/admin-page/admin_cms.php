@@ -65,9 +65,10 @@ if ($venues_query) {
 $query = "SELECT * FROM media_cms";
 $result = $conn->query($query);
 
-$uploaded_media = []; 
-$gallery_items = [];  
-$standard_venue_photos = []; 
+$uploaded_media = []; // For 1-to-1 slots (Homepage Previews)
+$gallery_items = [];  // General gallery
+$standard_venue_photos = []; // Grouped standard photos
+$pano_venue_photos = [];     // NEW: Grouped 360 panoramas!
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
@@ -75,17 +76,20 @@ if ($result && $result->num_rows > 0) {
         
         if ($slot === 'gallery') {
             $gallery_items[] = $row;
-        } elseif (strpos($slot, '_360') !== false || strpos($slot, 'home-') === 0) {
+        } elseif (strpos($slot, 'home-') === 0) {
             $uploaded_media[$slot] = $row;
+        } elseif (strpos($slot, '_360') !== false) {
+            $pano_venue_photos[$slot][] = $row; // Stack 360 photos here!
         } else {
             $standard_venue_photos[$slot][] = $row;
         }
     }
 }
 ?>
+
+<!-- Pass ALL grouped photos to JavaScript so the modal can read them! -->
 <script>
-// Pass the grouped photos to JavaScript so the modal can read them!
-window.galleryData = <?php echo json_encode($standard_venue_photos); ?>;
+window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, $pano_venue_photos)); ?>;
 </script>
 
 <div class="cms-container">
@@ -128,26 +132,43 @@ window.galleryData = <?php echo json_encode($standard_venue_photos); ?>;
         </div>
         <?php endforeach; ?>
 
-        <!-- 2. 360 PANORAMA SLOTS (1 per venue) -->
+        <!-- 2. 360 PANORAMA SLOTS (Multiple Allowed!) -->
         <?php foreach($venue_360_slots as $slot_key => $slot_info): 
-            $has_img = isset($uploaded_media[$slot_key]);
-            $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
+            $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
+            $photo_count = count($photos_array);
+            $has_img = $photo_count > 0;
+            $first_photo = $has_img ? $photos_array[0]['file_path'] : '';
         ?>
         <div class="cms-card" data-type="360">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
-                <?php if ($has_img): ?> <img src="<?php echo htmlspecialchars($img_path); ?>"> <?php else: ?> <span
-                    style="color:#888;">Empty Slot</span> <?php endif; ?>
+                <?php if ($has_img): ?>
+                <img src="<?php echo htmlspecialchars($first_photo); ?>">
+                <?php else: ?>
+                <span style="color:#888;">Empty Slot</span>
+                <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
                     <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
-                    <span class="badge badge-gold"><?php echo $slot_info['category_badge']; ?></span>
+                    <span class="badge badge-gold">
+                        <?php echo $has_img ? $photo_count . ' Panoramas' : $slot_info['category_badge']; ?>
+                    </span>
                 </div>
+                <?php if (!$has_img): ?>
+                <p class="cms-size">No 360 view uploaded yet.</p>
+                <?php else: ?>
+                <p class="cms-size">360 Virtual Tour Active</p>
+                <?php endif; ?>
+
                 <div class="cms-actions">
                     <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360">
-                        <?php echo $has_img ? 'Replace' : 'Upload'; ?>
+                        <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
+                    <?php if ($has_img): ?>
+                    <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
+                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -218,8 +239,8 @@ window.galleryData = <?php echo json_encode($standard_venue_photos); ?>;
                 <label>Media Type</label>
                 <select name="media_type" id="modal-media-type" required>
                     <option value="" disabled selected>Select media type...</option>
-                    <option value="standard">Standard Photo (Multiple Allowed)</option>
-                    <option value="360">360 Panorama (1 Per Venue)</option>
+                    <option value="standard">Standard Photo</option>
+                    <option value="360">360 Panorama</option>
                 </select>
             </div>
 
