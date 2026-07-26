@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentImageIndex = 0;
   let panoCache = {};
   let currentRoomId = null;
+  let currentPanoIndex = 0; 
+  let activePanoramas = [];
 
   // Variables for Zooming & Dragging
   let currentZoom = 1;
@@ -98,6 +100,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("fullscreenchange", () => {
     setTimeout(() => viewer.onWindowResize(), 100);
   });
+  
+// Switch Panorama Button
+  document.getElementById("btn-switch-pano")?.addEventListener("click", () => {
+      if (activePanoramas.length > 1) {
+          // Move to next image, or loop back to 0
+          currentPanoIndex = (currentPanoIndex + 1) % activePanoramas.length;
+          viewer.setPanorama(activePanoramas[currentPanoIndex]);
+      }
+  });
 
   // --- 2. UI Elements ---
   const valTitle = document.getElementById("val-title");
@@ -189,48 +200,55 @@ document.addEventListener("DOMContentLoaded", () => {
     currentImageIndex = 0;
 
     // --- Handle 360 Panorama ---
-    if (room.pano_url) {
-      // 1. Show the 3D canvas and the UI controls
+    const panoUrls = room.pano_urls || [];
+    const btnSwitch = document.getElementById("btn-switch-pano");
+
+    if (panoUrls.length > 0) {
       no360Wrapper.style.display = "none";
       panoContainer.style.visibility = "visible";
-      if (viewerControls) viewerControls.style.display = "flex"; // SHOW buttons
+      if (viewerControls) viewerControls.style.display = "flex"; 
 
-      // Check if we ALREADY loaded this 3D room before
+      // Show the Gold Button only if there are 2 or more panoramas!
+      if (btnSwitch) btnSwitch.style.display = (panoUrls.length > 1) ? "block" : "none";
+
       if (!panoCache[roomId]) {
-        const originalTitle = room.title;
-        valTitle.textContent = "Loading 360... Please wait";
-
-        // 2. Show the placeholder loading screen while downloading
+        valTitle.textContent = "Loading 360...";
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
 
-        const panorama = new PANOLENS.ImagePanorama(room.pano_url);
-        panorama.addEventListener("load", function () {
-          valTitle.textContent = originalTitle;
-          // 3. Hide the placeholder loading screen once downloaded
-          if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
+        const panoramas = [];
+        let loadedCount = 0;
+
+        panoUrls.forEach((url, index) => {
+            const pano = new PANOLENS.ImagePanorama(url);
+            pano.addEventListener("load", function () {
+                loadedCount++;
+                // Hide loading screen when the FIRST one is ready
+                if (index === 0 && panoLoadingOverlay) {
+                    valTitle.textContent = room.title;
+                    panoLoadingOverlay.style.display = "none";
+                }
+            });
+            viewer.add(pano);
+            panoramas.push(pano);
         });
 
-        viewer.add(panorama);
-        panoCache[roomId] = panorama; // Save it to memory!
+        panoCache[roomId] = panoramas; 
       } else {
-        // If it's already in memory, make sure the loading screen is hidden!
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
       }
 
-      // Instantly switch to the room in memory
-      viewer.setPanorama(panoCache[roomId]);
-    } else {
-      // NO 360: Set the background image (Use room photo, fallback to placeholder)
-      const bgImg =
-        currentGallery.length > 0
-          ? currentGallery[0]
-          : "assets/img/placeholder.jpg";
-      no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
+      activePanoramas = panoCache[roomId];
+      currentPanoIndex = 0;
+      viewer.setPanorama(activePanoramas[currentPanoIndex]);
 
-      // Show the image overlay, hide the 3D canvas AND hide the controls
+    } else {
+      // NO 360 Logic
+      const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
+      no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
       no360Wrapper.style.display = "flex";
       panoContainer.style.visibility = "hidden";
-      if (viewerControls) viewerControls.style.display = "none"; // HIDE buttons
+      if (viewerControls) viewerControls.style.display = "none";
+      if (btnSwitch) btnSwitch.style.display = "none";
       valTitle.textContent = room.title;
     }
 

@@ -59,20 +59,23 @@ while($m = $media_query->fetch_assoc()) {
 $slot = $m['slot_assignment'];
 
 // If it's a 360 image (e.g., venue_deluxe_room_360)
-if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
-$base_id = str_replace(['venue_', '_360'], '', $slot);
-if (isset($showroom_data[$base_id])) {
-$showroom_data[$base_id]['pano_url'] = $m['file_path'];
-}
-}
+        if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
+            $base_id = str_replace(['venue_', '_360'], '', $slot);
+            if (isset($showroom_data[$base_id])) {
+                if (!isset($showroom_data[$base_id]['pano_urls'])) {
+                    $showroom_data[$base_id]['pano_urls'] = [];
+                }
+                $showroom_data[$base_id]['pano_urls'][] = $m['file_path'];
+            }
+        }
 // If it's a standard gallery image (e.g., venue_deluxe_room)
-elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
-$base_id = str_replace('venue_', '', $slot);
-if (isset($showroom_data[$base_id])) {
-$showroom_data[$base_id]['gallery'][] = $m['file_path'];
-}
-}
-}
+        elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
+            $base_id = str_replace('venue_', '', $slot);
+        if (isset($showroom_data[$base_id])) {
+            $showroom_data[$base_id]['gallery'][] = $m['file_path'];
+            }
+        }
+    }
 }
 
 include 'includes/header.php';
@@ -107,18 +110,21 @@ window.process = {
             <div class="viewer-label ui-360">Showroom</div>
 
             <div class="viewer-controls ui-360" id="viewer-controls">
-                <button id="btn-reload-pano" title="Reload 360">
-                    <i class="fa-solid fa-rotate-right"></i>
-                </button>
-                <button id="btn-zoom-in" title="Zoom In">
-                    <i class="fa-solid fa-magnifying-glass-plus"></i>
-                </button>
-                <button id="btn-zoom-out" title="Zoom Out">
-                    <i class="fa-solid fa-magnifying-glass-minus"></i>
-                </button>
-                <button id="btn-fullscreen" title="Fullscreen">
-                    <i class="fa-solid fa-expand"></i>
-                </button>
+
+                <button id="btn-switch-pano" title="Switch 360 View"
+                    style="display:none; background: var(--color-gold); color: white;">
+                    <button id="btn-reload-pano" title="Reload 360">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    <button id="btn-zoom-in" title="Zoom In">
+                        <i class="fa-solid fa-magnifying-glass-plus"></i>
+                    </button>
+                    <button id="btn-zoom-out" title="Zoom Out">
+                        <i class="fa-solid fa-magnifying-glass-minus"></i>
+                    </button>
+                    <button id="btn-fullscreen" title="Fullscreen">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
             </div>
 
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
