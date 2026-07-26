@@ -169,8 +169,11 @@ window.process = {
                 <?php 
                 $first = true;
                 foreach($showroom_data as $id => $data): 
-                    // Only show pills for venues that actually have at least 1 image uploaded!
-                    if (!empty($data['pano_url']) || !empty($data['gallery'])):
+                    // CRITICAL FIX: Check the new pano_urls array!
+                    $has_360 = !empty($data['pano_urls']);
+                    $has_gallery = !empty($data['gallery']);
+                    
+                    if ($has_360 || $has_gallery):
                 ?>
                 <button class="pill <?php echo $first ? 'active' : ''; ?>" data-room="<?php echo $id; ?>">
                     <?php echo ucwords(strtolower($data['title'])); ?>
