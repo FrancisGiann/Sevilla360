@@ -109,6 +109,10 @@ window.process = {
             <!-- === 360 UI Elements === -->
             <div class="viewer-label ui-360">Showroom</div>
 
+            <button id="btn-info" class="ui-360 top-right-btn" title="Venue Information">
+                <i class="fa-solid fa-circle-info"></i>
+            </button>
+
             <div class="viewer-controls ui-360" id="viewer-controls">
 
                 <button id="btn-switch-pano" title="Switch 360 View"
@@ -238,6 +242,40 @@ window.process = {
         </div>
 
     </div>
+
+    <!-- Mobile Info Modal -->
+    <div class="modal-overlay" id="info-modal" style="z-index: 999999;">
+        <!-- Extremely high z-index to sit over fullscreen! -->
+        <div class="modal-content modal-sm"
+            style="background: rgba(42, 37, 34, 0.95); color: white; border: 1px solid var(--color-gold); backdrop-filter: blur(10px);">
+            <h3 class="modal-title" id="info-modal-title"
+                style="color: var(--color-gold); border-bottom: 1px solid rgba(214, 168, 112, 0.3); padding-bottom: 15px;">
+                Venue Name</h3>
+
+            <div class="modal-body" style="color: #e0e0e0;">
+                <p id="info-modal-desc" style="font-size: 0.95rem; line-height: 1.6; margin-bottom: 20px;">Venue
+                    description goes here.</p>
+
+                <div
+                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-bottom: 20px;">
+                    <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">CAPACITY</span>
+                        <span id="info-modal-cap">--</span>
+                    </div>
+                    <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">RATE</span> <span
+                            id="info-modal-rate">--</span></div>
+                </div>
+
+                <!-- We will copy the amenities grid into here dynamically! -->
+                <div id="info-modal-amenities" class="amenities-grid"
+                    style="border-bottom: none; padding-bottom: 0; color: white;"></div>
+            </div>
+
+            <div class="modal-actions-center">
+                <button class="btn btn-primary" id="btn-close-info" style="width: 100%;">Close</button>
+            </div>
+        </div>
+    </div>
+
 </section>
 
 <?php include 'includes/footer.php'; ?>

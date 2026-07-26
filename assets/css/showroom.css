@@ -475,10 +475,41 @@ body.no-scroll .footer {
   display: none !important;
 }
 
+/* Top Right Info Button */
+.top-right-btn {
+  position: absolute;
+  top: 25px;
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  transition: 0.3s ease;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.top-right-btn:hover {
+  background: var(--btn-brown);
+  transform: scale(1.05);
+}
+
 /* ==========================================================================
    Responsive Constraints (Mobile & Tablet Adjustments)
    ========================================================================== */
 @media (max-width: 992px) {
+
+  .top-right-btn {
+    top: 15px !important;
+    right: 15px !important;
+  }
   .showroom-wrapper {
     height: auto;
     min-height: 100vh;

@@ -219,7 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
       panoContainer.style.visibility = "visible";
       if (viewerControls) viewerControls.style.display = "flex"; 
       if (btnSwitch) btnSwitch.style.display = (panoUrls.length > 1) ? "block" : "none";
-      if (btnInfo) btnInfo.style.display = "block"; 
+      if (btnInfo) btnInfo.style.display = "flex";
 
       if (!panoCache[roomId]) {
         valTitle.textContent = "Loading 360...";
