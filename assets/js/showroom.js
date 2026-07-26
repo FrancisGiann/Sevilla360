@@ -153,31 +153,35 @@ document.addEventListener("DOMContentLoaded", () => {
     if (valDesc) valDesc.textContent = room.description;
 
     // NEW: Update Amenities Grid
+    // NEW: Update Amenities Grid (With Fuzzy Keyword Matching)
     if (amenitiesGrid && room.amenities) {
-      amenitiesGrid.innerHTML = ""; // Clear old icons
-
-      // Map common amenities to FontAwesome icons dynamically
-      const iconMap = {
-        "free wi-fi": "fa-wifi",
-        "fully air-conditioned": "fa-snowflake",
-        "ample parking": "fa-square-parking",
-        "wheelchair accessible": "fa-wheelchair",
-        "private pool": "fa-water-ladder",
-        "smart tv": "fa-tv",
-        "mini-fridge": "fa-temperature-arrow-down",
-      };
-
-      room.amenities.forEach((item) => {
-        const cleanItem = item.trim();
-        if (cleanItem === "") return; // Skip empty strings
-
-        const iconClass = iconMap[cleanItem.toLowerCase()] || "fa-check"; // Default to checkmark if icon not mapped
-
-        const div = document.createElement("div");
-        div.className = "amenity";
-        div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
-        amenitiesGrid.appendChild(div);
-      });
+        amenitiesGrid.innerHTML = ""; // Clear old icons
+        
+        room.amenities.forEach(item => {
+            const cleanItem = item.trim();
+            if (cleanItem === "") return; // Skip empty strings
+            
+            const lowerText = cleanItem.toLowerCase();
+            let iconClass = "fa-check"; // Default icon if no keywords match
+            
+            // Smart Keyword Matching!
+            if (lowerText.includes("wifi") || lowerText.includes("wi-fi")) iconClass = "fa-wifi";
+            else if (lowerText.includes("air") || lowerText.includes("ac ")) iconClass = "fa-snowflake";
+            else if (lowerText.includes("park")) iconClass = "fa-square-parking";
+            else if (lowerText.includes("wheelchair") || lowerText.includes("pwd")) iconClass = "fa-wheelchair";
+            else if (lowerText.includes("pool") || lowerText.includes("swim")) iconClass = "fa-water-ladder";
+            else if (lowerText.includes("tv") || lowerText.includes("television")) iconClass = "fa-tv";
+            else if (lowerText.includes("fridge") || lowerText.includes("refrigerator")) iconClass = "fa-temperature-arrow-down";
+            else if (lowerText.includes("breakfast") || lowerText.includes("meal") || lowerText.includes("food")) iconClass = "fa-utensils";
+            else if (lowerText.includes("gym") || lowerText.includes("fitness")) iconClass = "fa-dumbbell";
+            else if (lowerText.includes("bed")) iconClass = "fa-bed";
+            else if (lowerText.includes("bath") || lowerText.includes("shower")) iconClass = "fa-bath";
+            
+            const div = document.createElement("div");
+            div.className = "amenity";
+            div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
+            amenitiesGrid.appendChild(div);
+        });
     }
 
     // Fetch Gallery first so we can use it as a fallback
