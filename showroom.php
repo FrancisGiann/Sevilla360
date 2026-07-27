@@ -168,28 +168,52 @@ window.process = {
 
             <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
 
-            <!-- === Dynamic Room Dropdown (Replaces Pills) === -->
+            <!-- === Two-Tier Room Navigation === -->
             <?php 
-                // Group the venues by category for the dropdown
-                $grouped_showroom = [];
+                // Group the venues by category
+                $grouped_showroom = [
+                    'Event Hall' => [],
+                    'Hotel Room' => [],
+                    'Resort Villa' => []
+                ];
+                $first_available_category = '';
+
                 foreach($showroom_data as $id => $data) {
                     if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
                         $grouped_showroom[$data['category']][$id] = $data;
+                        if (empty($first_available_category)) $first_available_category = $data['category'];
                     }
                 }
             ?>
-            <div class="room-dropdown-wrapper ui-360">
-                <select id="room-selector" class="room-dropdown" title="Select Venue">
+
+            <div class="room-navigation-wrapper ui-360">
+
+                <!-- Tier 1: Master Categories -->
+                <div class="master-category-pills">
                     <?php foreach($grouped_showroom as $category => $venues): ?>
-                    <optgroup label="<?php echo strtoupper($category); ?>S">
-                        <?php foreach($venues as $id => $data): ?>
-                        <option value="<?php echo $id; ?>">
-                            <?php echo ucwords(strtolower($data['title'])); ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </optgroup>
+                    <?php if (!empty($venues)): ?>
+                    <button class="master-pill <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
+                        data-category="<?php echo htmlspecialchars($category); ?>">
+                        <?php echo htmlspecialchars($category); ?>s
+                    </button>
+                    <?php endif; ?>
                     <?php endforeach; ?>
-                </select>
+                </div>
+
+                <!-- Tier 2: Specific Rooms -->
+                <div class="specific-room-pills">
+                    <?php foreach($grouped_showroom as $category => $venues): ?>
+                    <div class="room-group-container" id="group-<?php echo str_replace(' ', '-', $category); ?>"
+                        style="display: <?php echo ($category === $first_available_category) ? 'flex' : 'none'; ?>;">
+                        <?php foreach($venues as $id => $data): ?>
+                        <button class="pill" data-room="<?php echo $id; ?>">
+                            <?php echo ucwords(strtolower($data['title'])); ?>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+
             </div>
         </div>
 

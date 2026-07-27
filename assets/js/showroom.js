@@ -275,28 +275,70 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- 8. Dropdown Navigation Initialization ---
-  const roomSelect = document.getElementById("room-selector");
-  
-  if (roomSelect) {
-      roomSelect.addEventListener("change", function () {
-          loadRoom(this.value);
+  // --- 8. Two-Tier Navigation Initialization ---
+  const masterPills = document.querySelectorAll(".master-pill");
+  const roomGroups = document.querySelectorAll(".room-group-container");
+  const childPills = document.querySelectorAll(".pill");
+
+  // 1. Master Category Click Logic
+  masterPills.forEach(master => {
+      master.addEventListener("click", function() {
+          // Change active tab
+          masterPills.forEach(p => p.classList.remove("active"));
+          this.classList.add("active");
+
+          // Hide all room groups, show the selected one
+          const category = this.getAttribute("data-category").replace(/ /g, '-');
+          roomGroups.forEach(group => group.style.display = "none");
+          
+          const targetGroup = document.getElementById(`group-${category}`);
+          if (targetGroup) {
+              targetGroup.style.display = "flex";
+              
+              // Automatically click the first room in this new category!
+              const firstChild = targetGroup.querySelector(".pill");
+              if (firstChild) firstChild.click();
+          }
       });
+  });
 
-      // Handle direct URL links (e.g. showroom.php#villa)
-      let targetRoomId = null;
-      const hash = window.location.hash.replace('#', '');
+  // 2. Specific Room Click Logic
+  childPills.forEach(pill => {
+      pill.addEventListener("click", function() {
+          childPills.forEach(p => p.classList.remove("active"));
+          this.classList.add("active");
+          loadRoom(this.getAttribute("data-room"));
+      });
+  });
+
+  // 3. Handle direct URL links (e.g. showroom.php#villa) or default initialization
+  if (childPills.length > 0) {
+      let targetPill = childPills[0]; // Default to first pill
       
-      if (hash && document.querySelector(`#room-selector option[value="${hash}"]`)) {
-          targetRoomId = hash;
-      } else if (roomSelect.options.length > 0) {
-          targetRoomId = roomSelect.options[0].value; // Default to first option
+      const hash = window.location.hash.replace('#', '');
+      if (hash) {
+          const hashPill = document.querySelector(`.pill[data-room="${hash}"]`);
+          if (hashPill) targetPill = hashPill;
+      }
+      
+      // Ensure the correct Master Category is active for the target room
+      const parentGroup = targetPill.closest(".room-group-container");
+      if (parentGroup) {
+          const categoryName = parentGroup.id.replace('group-', '').replace(/-/g, ' ');
+          
+          masterPills.forEach(m => {
+              if (m.getAttribute("data-category") === categoryName) {
+                  m.classList.add("active");
+              } else {
+                  m.classList.remove("active");
+              }
+          });
+          
+          roomGroups.forEach(group => group.style.display = "none");
+          parentGroup.style.display = "flex";
       }
 
-      if (targetRoomId) {
-          roomSelect.value = targetRoomId; // Update dropdown UI
-          loadRoom(targetRoomId);          // Load the room
-      }
+      targetPill.click();
   }
 
   // --- 9. Photo Gallery Swap Mode ---
