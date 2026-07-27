@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let isDragging = false;
   let startX = 0;
   let startY = 0;
+  let hasSeenHint = false;
 
   // --- 2. DOM Elements ---
   const panoContainer = document.getElementById("pano-container");
@@ -40,6 +41,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentSlideImg = document.getElementById("current-slide-img");
   const wrapper = document.getElementById("showroom-wrapper");
   const topRoomLabel = document.getElementById("top-room-label");
+  const interactionHint = document.getElementById("interaction-hint");
+  let hintTimeout;
+
+  // Hide hint instantly on user interaction
+  const disableHintForever = () => {
+      if (interactionHint) interactionHint.classList.remove("hint-visible");
+      hasSeenHint = true; 
+  };
+  panoContainer.addEventListener("mousedown", disableHintForever);
+  panoContainer.addEventListener("touchstart", disableHintForever, {passive: true});
 
   // --- 3. Create "No 360" Fallback Overlay ---
   const no360Wrapper = document.createElement("div");
@@ -213,7 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // 360 Engine Routing
     const panoUrls = room.pano_urls || [];
     const btnSwitch = document.getElementById("btn-switch-pano");
-    const btnInfo = document.getElementById("btn-info"); // We want to hide this if no 360 too
+    const btnInfo = document.getElementById("btn-info"); 
 
     if (panoUrls.length > 0) {
       // Show 3D Canvas
@@ -232,13 +243,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
         panoUrls.forEach((url, index) => {
             const pano = new PANOLENS.ImagePanorama(url);
+            
             pano.addEventListener("load", function () {
                 loadedCount++;
                 if (index === 0 && panoLoadingOverlay) {
                     valTitle.textContent = room.title;
                     panoLoadingOverlay.style.display = "none";
+                    
+                    // CRITICAL FIX: Only show the drag hint if they haven't seen it yet!
+                    if (interactionHint && !hasSeenHint) {
+                        interactionHint.classList.add("hint-visible");
+                        clearTimeout(hintTimeout);
+                        hintTimeout = setTimeout(() => {
+                            interactionHint.classList.remove("hint-visible");
+                        }, 4000); 
+                    }
                 }
             });
+            
             viewer.add(pano);
             panoramas.push(pano);
         });
@@ -281,10 +303,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const masterPills = document.querySelectorAll(".master-pill");
   const dropdownItems = document.querySelectorAll(".dropdown-item");
 
-  // 1. Master Category Click (Toggle Menus)
+  // A. Master Category Click (Toggle Menus)
   masterPills.forEach(master => {
+      // Listen for both Click and Touch to fix the Inspect Element mobile bug!
       master.addEventListener("click", function(e) {
-          e.stopPropagation(); // Stop click from hitting the window
+          e.stopPropagation(); 
           
           const wrapper = this.parentElement;
           const isOpen = wrapper.classList.contains("open");
@@ -301,15 +324,19 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
-  // Close menus if clicking anywhere else on the screen
-  window.addEventListener("click", () => {
+  // Close menus if clicking or touching anywhere else on the screen
+  const closeAllMenus = () => {
       document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => w.classList.remove("open"));
       masterPills.forEach(m => m.classList.remove("menu-open"));
-  });
+  };
+  window.addEventListener("click", closeAllMenus);
+  window.addEventListener("touchstart", closeAllMenus, {passive: true});
 
-  // 2. Specific Room Click Logic
+  // B. Specific Room Click Logic
   dropdownItems.forEach(item => {
-      item.addEventListener("click", function() {
+      item.addEventListener("click", function(e) {
+          e.stopPropagation(); // Stop mobile browsers from double-firing events
+
           // Remove active state from all items and master pills
           dropdownItems.forEach(i => i.classList.remove("active"));
           masterPills.forEach(m => m.classList.remove("active"));
@@ -323,15 +350,14 @@ document.addEventListener("DOMContentLoaded", () => {
           if (parentMaster) parentMaster.classList.add("active");
 
           // Close the menu
-          parentWrapper.classList.remove("open");
-          parentMaster.classList.remove("menu-open");
+          closeAllMenus();
 
           // Load the room!
           loadRoom(this.getAttribute("data-room"));
       });
   });
 
-  // 3. Initialization & URL Hash Logic
+  // C. Initialization & URL Hash Logic (FIXES THE MISMATCH BUG)
   if (dropdownItems.length > 0) {
       let targetItem = dropdownItems[0]; 
       
@@ -341,9 +367,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (hashItem) targetItem = hashItem;
       }
       
-      // We don't need to "click" it because PHP already set the classes to active on load!
-      // We just need to load the 360 engine for it.
-      loadRoom(targetItem.getAttribute("data-room"));
+      // CRITICAL FIX: Instead of just loading the room, we mathematically simulate a "Click"
+      // on the target item. This guarantees the correct Master Pill lights up Gold!
+      targetItem.click(); 
   }
 
   // --- 9. Photo Gallery Swap Mode ---

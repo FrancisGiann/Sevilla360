@@ -171,6 +171,17 @@
   touch-action: none; 
 }
 
+/* --- Google Maps Style Cursors for 360 Viewer --- */
+#pano-container,
+#pano-container canvas {
+  cursor: grab !important; /* Open hand by default */
+}
+
+#pano-container:active,
+#pano-container:active canvas {
+  cursor: grabbing !important; /* Closed fist when clicked/dragging */
+}
+
 .viewer-label {
   position: absolute;
   top: 25px;
@@ -571,6 +582,52 @@ body.no-scroll {
 }
 body.no-scroll .footer {
   display: none !important;
+}
+
+/* ==========================================================================
+   360 Interaction Hint Overlay
+   ========================================================================== */
+#interaction-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 15;
+  color: white;
+  text-align: center;
+  pointer-events: none; /* CRITICAL: Lets the user click THROUGH the overlay onto the 3D canvas! */
+  transition: opacity 0.5s ease;
+  opacity: 0; /* Hidden by default */
+}
+
+#interaction-hint .hint-icon {
+  font-size: 3.5rem;
+  margin-bottom: 15px;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));
+  animation: swipeHint 2s infinite ease-in-out;
+}
+
+#interaction-hint p {
+  font-family: var(--font-body), sans-serif;
+  font-weight: 500;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 25px;
+  border-radius: 30px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@keyframes swipeHint {
+  0% { transform: translateX(-30px) rotate(-10deg); }
+  50% { transform: translateX(30px) rotate(10deg); }
+  100% { transform: translateX(-30px) rotate(-10deg); }
+}
+
+.hint-visible {
+  opacity: 1 !important;
 }
 
 /* ==========================================================================

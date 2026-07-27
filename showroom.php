@@ -127,6 +127,14 @@ window.process = {
 
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
 
+            <!-- NEW: 360 Interaction Hint Overlay -->
+            <div id="interaction-hint" class="ui-360">
+                <div class="hint-icon">
+                    <i class="fa-solid fa-hand-pointer"></i>
+                </div>
+                <p>Drag to explore</p>
+            </div>
+
             <!-- NEW: The Loading Placeholder that covers the black screen -->
             <div id="pano-loading-overlay"
                 style="position: absolute; top:0; left:0; width:100%; height:100%; z-index: 4; background: url('assets/img/placeholder.jpg') center/cover no-repeat; display: none; align-items: center; justify-content: center;">
