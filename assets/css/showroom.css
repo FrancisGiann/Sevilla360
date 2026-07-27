@@ -242,36 +242,39 @@
   transform: scale(1.05);
 }
 
-/* --- Two-Tier Room Navigation --- */
+/* --- Sleek Dropdown Pill Navigation --- */
 .room-navigation-wrapper {
   position: absolute;
   bottom: 30px;
   left: 30px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 10px; /* Tighter gap between the two rows */
+  z-index: 50;
 }
 
-/* Tier 1: Master Categories */
 .master-category-pills {
   display: flex;
-  gap: 8px;
+  gap: 15px;
 }
 
+.pill-dropdown-wrapper {
+  position: relative;
+}
+
+/* The Master Button */
 .master-pill {
-  padding: 8px 20px;
-  border-radius: 30px; /* Matched to capsule shape */
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(0, 0, 0, 0.5); /* Lighter, cleaner glass effect */
+  padding: 12px 24px;
+  border-radius: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.7);
   color: white;
   font-family: var(--font-body), sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   backdrop-filter: blur(8px);
   transition: all 0.3s ease;
   letter-spacing: 1px;
+  display: flex;
+  align-items: center;
 }
 
 .master-pill:hover {
@@ -282,39 +285,67 @@
   background: var(--color-gold);
   border-color: var(--color-gold);
   font-weight: 600;
-  box-shadow: 0 4px 15px rgba(214, 168, 112, 0.4); /* Subtle gold glow */
+  box-shadow: 0 4px 15px rgba(214, 168, 112, 0.4);
 }
 
-/* Tier 2: Specific Rooms */
-.room-group-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  animation: fadeIn 0.3s ease;
+.master-pill.menu-open i {
+  transform: rotate(180deg);
 }
 
-.pill {
-  padding: 8px 20px;
-  border-radius: 30px; /* Matched to capsule shape */
-  border: 1px solid transparent;
+/* The Floating Menu */
+.pill-dropdown-menu {
+  position: absolute;
+  bottom: 110%; /* Floats ABOVE the button */
+  left: 0;
   background: rgba(255, 255, 255, 0.95);
-  color: var(--color-dark);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 200px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  
+  /* Hidden by default */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  pointer-events: none;
+}
+
+/* Show the menu when the button is clicked */
+.pill-dropdown-wrapper.open .pill-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* The individual room buttons inside the menu */
+.dropdown-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 10px 15px;
+  border-radius: 4px;
   font-family: var(--font-body), sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-dark);
   cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  transition: 0.2s ease;
 }
 
-.pill:hover {
-  background: #f0f0f0;
+.dropdown-item:hover {
+  background: rgba(0, 0, 0, 0.05);
 }
 
-.pill.active {
-  background: var(--color-dark); /* Crisp dark contrast for the specific selection */
+.dropdown-item.active {
+  background: var(--color-gold);
   color: white;
-  box-shadow: 0 4px 15px rgba(42, 37, 34, 0.4);
+  font-weight: 600;
 }
 
 
@@ -578,33 +609,18 @@ body.no-scroll .footer {
     right: 15px !important;
   }
 
-  /* --- Two-Tier Navigation Mobile Fix --- */
+  /* Mobile Pill Fixes */
   .room-navigation-wrapper {
-    left: 10px !important;
-    right: 10px !important;
+    left: 15px !important;
     bottom: 15px !important;
+    right: 15px !important;
   }
-  
-  .master-category-pills,
-  .room-group-container {
+  .master-category-pills {
     flex-wrap: nowrap !important;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 5px;
     scrollbar-width: none;
   }
-  
-  .master-category-pills::-webkit-scrollbar,
-  .room-group-container::-webkit-scrollbar {
-    display: none;
-  }
-
-  .master-pill, .pill {
-    flex: 0 0 auto; /* Stops them from shrinking */
-  }
-  
-  .master-pill { font-size: 0.75rem; padding: 6px 12px; }
-  .pill { font-size: 0.8rem; padding: 8px 16px; }
+  .master-pill { flex: 0 0 auto; padding: 10px 18px; font-size: 0.8rem; }
 
   /* --- Mobile Photo Mode Tweaks --- */
   .showroom-wrapper.mode-photos .gallery-header {

@@ -168,52 +168,55 @@ window.process = {
 
             <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
 
-            <!-- === Two-Tier Room Navigation === -->
+            <!-- === Sleek Dropdown Pill Navigation === -->
             <?php 
-                // Group the venues by category
-                $grouped_showroom = [
-                    'Event Hall' => [],
-                    'Hotel Room' => [],
-                    'Resort Villa' => []
-                ];
+                $grouped_showroom = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
                 $first_available_category = '';
+                $first_available_room = '';
 
                 foreach($showroom_data as $id => $data) {
                     if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
                         $grouped_showroom[$data['category']][$id] = $data;
-                        if (empty($first_available_category)) $first_available_category = $data['category'];
+                        if (empty($first_available_category)) {
+                            $first_available_category = $data['category'];
+                            $first_available_room = $id;
+                        }
                     }
                 }
             ?>
 
             <div class="room-navigation-wrapper ui-360">
-
-                <!-- Tier 1: Master Categories -->
                 <div class="master-category-pills">
+
                     <?php foreach($grouped_showroom as $category => $venues): ?>
                     <?php if (!empty($venues)): ?>
-                    <button class="master-pill <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
-                        data-category="<?php echo htmlspecialchars($category); ?>">
-                        <?php echo htmlspecialchars($category); ?>s
-                    </button>
+
+                    <!-- Master Pill Wrapper -->
+                    <div class="pill-dropdown-wrapper">
+                        <button
+                            class="master-pill <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
+                            data-category="<?php echo htmlspecialchars($category); ?>">
+                            <?php echo htmlspecialchars($category); ?>s
+                            <i class="fa-solid fa-chevron-up"
+                                style="margin-left: 8px; font-size: 0.75rem; transition: transform 0.3s;"></i>
+                        </button>
+
+                        <!-- Floating Dropdown Menu -->
+                        <div class="pill-dropdown-menu <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
+                            id="dropdown-<?php echo str_replace(' ', '-', $category); ?>">
+                            <?php foreach($venues as $id => $data): ?>
+                            <button class="dropdown-item <?php echo ($id === $first_available_room) ? 'active' : ''; ?>"
+                                data-room="<?php echo $id; ?>">
+                                <?php echo ucwords(strtolower($data['title'])); ?>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
                     <?php endif; ?>
                     <?php endforeach; ?>
-                </div>
 
-                <!-- Tier 2: Specific Rooms -->
-                <div class="specific-room-pills">
-                    <?php foreach($grouped_showroom as $category => $venues): ?>
-                    <div class="room-group-container" id="group-<?php echo str_replace(' ', '-', $category); ?>"
-                        style="display: <?php echo ($category === $first_available_category) ? 'flex' : 'none'; ?>;">
-                        <?php foreach($venues as $id => $data): ?>
-                        <button class="pill" data-room="<?php echo $id; ?>">
-                            <?php echo ucwords(strtolower($data['title'])); ?>
-                        </button>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endforeach; ?>
                 </div>
-
             </div>
         </div>
 

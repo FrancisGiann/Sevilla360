@@ -275,70 +275,73 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- 8. Two-Tier Navigation Initialization ---
+  // --- 8. Dropdown Pill Navigation Initialization ---
   const masterPills = document.querySelectorAll(".master-pill");
-  const roomGroups = document.querySelectorAll(".room-group-container");
-  const childPills = document.querySelectorAll(".pill");
+  const dropdownItems = document.querySelectorAll(".dropdown-item");
 
-  // 1. Master Category Click Logic
+  // 1. Master Category Click (Toggle Menus)
   masterPills.forEach(master => {
-      master.addEventListener("click", function() {
-          // Change active tab
-          masterPills.forEach(p => p.classList.remove("active"));
-          this.classList.add("active");
-
-          // Hide all room groups, show the selected one
-          const category = this.getAttribute("data-category").replace(/ /g, '-');
-          roomGroups.forEach(group => group.style.display = "none");
+      master.addEventListener("click", function(e) {
+          e.stopPropagation(); // Stop click from hitting the window
           
-          const targetGroup = document.getElementById(`group-${category}`);
-          if (targetGroup) {
-              targetGroup.style.display = "flex";
-              
-              // Automatically click the first room in this new category!
-              const firstChild = targetGroup.querySelector(".pill");
-              if (firstChild) firstChild.click();
+          const wrapper = this.parentElement;
+          const isOpen = wrapper.classList.contains("open");
+
+          // Close all menus and flip all arrows down
+          document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => w.classList.remove("open"));
+          masterPills.forEach(m => m.classList.remove("menu-open"));
+
+          // If it wasn't open, open it!
+          if (!isOpen) {
+              wrapper.classList.add("open");
+              this.classList.add("menu-open");
           }
       });
   });
 
+  // Close menus if clicking anywhere else on the screen
+  window.addEventListener("click", () => {
+      document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => w.classList.remove("open"));
+      masterPills.forEach(m => m.classList.remove("menu-open"));
+  });
+
   // 2. Specific Room Click Logic
-  childPills.forEach(pill => {
-      pill.addEventListener("click", function() {
-          childPills.forEach(p => p.classList.remove("active"));
+  dropdownItems.forEach(item => {
+      item.addEventListener("click", function() {
+          // Remove active state from all items and master pills
+          dropdownItems.forEach(i => i.classList.remove("active"));
+          masterPills.forEach(m => m.classList.remove("active"));
+
+          // Set this item to active
           this.classList.add("active");
+          
+          // Set its parent Master Pill to active
+          const parentWrapper = this.closest(".pill-dropdown-wrapper");
+          const parentMaster = parentWrapper.querySelector(".master-pill");
+          if (parentMaster) parentMaster.classList.add("active");
+
+          // Close the menu
+          parentWrapper.classList.remove("open");
+          parentMaster.classList.remove("menu-open");
+
+          // Load the room!
           loadRoom(this.getAttribute("data-room"));
       });
   });
 
-  // 3. Handle direct URL links (e.g. showroom.php#villa) or default initialization
-  if (childPills.length > 0) {
-      let targetPill = childPills[0]; // Default to first pill
+  // 3. Initialization & URL Hash Logic
+  if (dropdownItems.length > 0) {
+      let targetItem = dropdownItems[0]; 
       
       const hash = window.location.hash.replace('#', '');
       if (hash) {
-          const hashPill = document.querySelector(`.pill[data-room="${hash}"]`);
-          if (hashPill) targetPill = hashPill;
+          const hashItem = document.querySelector(`.dropdown-item[data-room="${hash}"]`);
+          if (hashItem) targetItem = hashItem;
       }
       
-      // Ensure the correct Master Category is active for the target room
-      const parentGroup = targetPill.closest(".room-group-container");
-      if (parentGroup) {
-          const categoryName = parentGroup.id.replace('group-', '').replace(/-/g, ' ');
-          
-          masterPills.forEach(m => {
-              if (m.getAttribute("data-category") === categoryName) {
-                  m.classList.add("active");
-              } else {
-                  m.classList.remove("active");
-              }
-          });
-          
-          roomGroups.forEach(group => group.style.display = "none");
-          parentGroup.style.display = "flex";
-      }
-
-      targetPill.click();
+      // We don't need to "click" it because PHP already set the classes to active on load!
+      // We just need to load the 360 engine for it.
+      loadRoom(targetItem.getAttribute("data-room"));
   }
 
   // --- 9. Photo Gallery Swap Mode ---
