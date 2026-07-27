@@ -275,24 +275,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- 8. Pill Nav Initialization ---
-  const pills = document.querySelectorAll(".pill");
-  pills.forEach((pill) => {
-    pill.addEventListener("click", function () {
-      pills.forEach((p) => p.classList.remove("active"));
-      this.classList.add("active");
-      loadRoom(this.getAttribute("data-room"));
-    });
-  });
+  // --- 8. Dropdown Navigation Initialization ---
+  const roomSelect = document.getElementById("room-selector");
+  
+  if (roomSelect) {
+      roomSelect.addEventListener("change", function () {
+          loadRoom(this.value);
+      });
 
-  if (pills.length > 0) {
-      let targetRoomId = pills[0].getAttribute("data-room"); 
+      // Handle direct URL links (e.g. showroom.php#villa)
+      let targetRoomId = null;
       const hash = window.location.hash.replace('#', '');
-      if (hash && document.querySelector(`.pill[data-room="${hash}"]`)) {
+      
+      if (hash && document.querySelector(`#room-selector option[value="${hash}"]`)) {
           targetRoomId = hash;
+      } else if (roomSelect.options.length > 0) {
+          targetRoomId = roomSelect.options[0].value; // Default to first option
       }
-      const targetPill = document.querySelector(`.pill[data-room="${targetRoomId}"]`);
-      if (targetPill) targetPill.click();
+
+      if (targetRoomId) {
+          roomSelect.value = targetRoomId; // Update dropdown UI
+          loadRoom(targetRoomId);          // Load the room
+      }
   }
 
   // --- 9. Photo Gallery Swap Mode ---

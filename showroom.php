@@ -168,25 +168,28 @@ window.process = {
 
             <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
 
-            <!-- === Shared Elements (Room Pills) === -->
-            <div class="room-pills" id="dynamic-room-pills">
-                <?php 
-                $first = true;
-                foreach($showroom_data as $id => $data): 
-                    // CRITICAL FIX: Check the new pano_urls array!
-                    $has_360 = !empty($data['pano_urls']);
-                    $has_gallery = !empty($data['gallery']);
-                    
-                    if ($has_360 || $has_gallery):
-                ?>
-                <button class="pill <?php echo $first ? 'active' : ''; ?>" data-room="<?php echo $id; ?>">
-                    <?php echo ucwords(strtolower($data['title'])); ?>
-                </button>
-                <?php 
-                    $first = false;
-                    endif; 
-                endforeach; 
-                ?>
+            <!-- === Dynamic Room Dropdown (Replaces Pills) === -->
+            <?php 
+                // Group the venues by category for the dropdown
+                $grouped_showroom = [];
+                foreach($showroom_data as $id => $data) {
+                    if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
+                        $grouped_showroom[$data['category']][$id] = $data;
+                    }
+                }
+            ?>
+            <div class="room-dropdown-wrapper ui-360">
+                <select id="room-selector" class="room-dropdown" title="Select Venue">
+                    <?php foreach($grouped_showroom as $category => $venues): ?>
+                    <optgroup label="<?php echo strtoupper($category); ?>S">
+                        <?php foreach($venues as $id => $data): ?>
+                        <option value="<?php echo $id; ?>">
+                            <?php echo ucwords(strtolower($data['title'])); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </optgroup>
+                    <?php endforeach; ?>
+                </select>
             </div>
         </div>
 

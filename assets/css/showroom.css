@@ -66,34 +66,32 @@
 }
 
 .venue-description {
-  font-family: var(--font-body), sans-serif;
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: rgba(0,0,0,0.7);
-  margin-bottom: 20px;
+    font-family: var(--font-body), sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: rgba(0,0,0,0.7);
+    margin-bottom: 20px;
 }
 
 .amenities-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 25px;
-  padding-bottom: 25px;
-  border-bottom: 1px solid rgba(0,0,0,0.1);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 25px;
+    padding-bottom: 25px;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
 }
 
 .amenity {
-  font-size: 0.85rem;
-  color: var(--border-dark);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
+    font-size: 0.85rem;
+    color: var(--border-dark);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
 }
 
-.amenity i { 
-  color: #A07748; /* Gold Icons */ 
-}
+.amenity i { color: #A07748; /* Gold Icons */ }
 
 .detail-row {
   display: flex;
@@ -189,6 +187,32 @@
   backdrop-filter: blur(4px);
 }
 
+/* Top Right Info Button */
+.top-right-btn {
+  position: absolute;
+  top: 25px;
+  right: 30px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  transition: 0.3s ease;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.top-right-btn:hover {
+  background: var(--btn-brown);
+  transform: scale(1.05);
+}
+
 /* Map Controls */
 .viewer-controls {
   position: absolute;
@@ -218,39 +242,55 @@
   transform: scale(1.05);
 }
 
-/* Room Pills */
-.room-pills {
+/* --- Dynamic Room Dropdown --- */
+.room-dropdown-wrapper {
   position: absolute;
   bottom: 25px;
   left: 30px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   z-index: 20;
 }
 
-.pill {
-  padding: 10px 22px;
-  border-radius: 30px;
-  border: none;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--border-dark);
+.room-dropdown {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
   font-family: var(--font-body), sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 30px;
+  backdrop-filter: blur(4px);
   cursor: pointer;
-  transition: 0.3s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  outline: none;
+  appearance: none; 
+  padding-right: 40px; 
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 15px top 50%;
+  background-size: 10px auto;
 }
 
-.pill span {
-  display: none;
+.room-dropdown:hover {
+  background-color: var(--btn-brown);
+  border-color: var(--btn-brown);
 }
-.pill.active,
-.pill:hover {
-  background: var(--btn-brown);
-  color: white;
+
+.room-dropdown optgroup {
+  background: var(--color-dark);
+  color: var(--color-gold);
+  font-weight: 600;
 }
+
+.room-dropdown option {
+  background: var(--color-white);
+  color: var(--color-dark);
+  font-weight: 500;
+  padding: 10px;
+}
+
 
 /* ==========================================================================
    UI Toggle States: PHOTO MODE (TRUE FULLSCREEN)
@@ -276,7 +316,7 @@
 /* Hide the 360 elements so they don't bleed through */
 .showroom-wrapper.mode-photos .ui-360,
 .showroom-wrapper.mode-photos .details-box,
-.showroom-wrapper.mode-photos .room-pills {
+.showroom-wrapper.mode-photos .room-dropdown-wrapper {
   display: none !important;
 }
 
@@ -304,8 +344,8 @@
 }
 
 .showroom-wrapper.mode-photos .slider-image-container img {
-  max-width: 95vw !important; /* Lets it stretch almost edge-to-edge horizontally */
-  max-height: 88vh !important; /* Lets it stretch much closer to the top and bottom */
+  max-width: 95vw !important; 
+  max-height: 88vh !important; 
   object-fit: contain !important;
   box-shadow: 0 10px 50px rgba(0, 0, 0, 0.8);
   border-radius: 6px;
@@ -412,14 +452,14 @@
 /* 5. ARROWS (Locked to middle edges) */
 .showroom-wrapper.mode-photos .slider-arrow {
   position: fixed !important;
-  top: 45% !important; /* Lifts arrows up slightly to center on the image, not the screen! */
+  top: 45% !important; 
   transform: translateY(-50%) !important;
   z-index: 999930 !important;
-  background: rgba(0,0,0,0.5) !important; /* Dark circular background */
+  background: rgba(0,0,0,0.5) !important; 
   border: 1px solid rgba(255,255,255,0.2) !important;
   border-radius: 50% !important;
-  width: 50px !important;  /* Strictly force it to be a perfect circle */
-  height: 50px !important; /* Strictly force it to be a perfect circle */
+  width: 50px !important;  
+  height: 50px !important; 
   color: white !important;
   cursor: pointer;
   transition: 0.3s ease;
@@ -448,6 +488,7 @@
 .showroom-wrapper.mode-photos .slider-arrow.right {
   right: 30px !important;
 }
+
 /* --- GALLERY SLIDE ANIMATIONS --- */
 .slide-in-right {
   animation: slideRight 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
@@ -475,32 +516,6 @@ body.no-scroll .footer {
   display: none !important;
 }
 
-/* Top Right Info Button */
-.top-right-btn {
-  position: absolute;
-  top: 25px;
-  right: 30px;
-  width: 40px;
-  height: 40px;
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  font-size: 1.2rem;
-  cursor: pointer;
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
-  transition: 0.3s ease;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.top-right-btn:hover {
-  background: var(--btn-brown);
-  transform: scale(1.05);
-}
-
 /* ==========================================================================
    Responsive Constraints (Mobile & Tablet Adjustments)
    ========================================================================== */
@@ -510,6 +525,7 @@ body.no-scroll .footer {
     top: 15px !important;
     right: 15px !important;
   }
+  
   .showroom-wrapper {
     height: auto;
     min-height: 100vh;
@@ -530,36 +546,22 @@ body.no-scroll .footer {
     border-radius: 8px 8px 0 0;
   }
 
-  /* Fix unclickable buttons: Move controls up and room pills down slightly */
+  /* Fix unclickable buttons: Move controls up */
   .viewer-controls {
-    bottom: 80px !important; /* Lifts the + - buttons up away from the pills */
+    bottom: 80px !important; /* Lifts the + - buttons up away from the dropdown */
     right: 15px !important;
   }
 
-  .room-pills {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    left: 10px !important;
-    right: 10px !important;
+  /* Mobile Dropdown Fix */
+  .room-dropdown-wrapper {
+    left: 15px !important;
     bottom: 15px !important;
-    gap: 10px;
-    padding-bottom: 5px;
-    scrollbar-width: none;
+    right: 15px !important;
   }
-  .room-pills::-webkit-scrollbar {
-    display: none;
-  }
-
-  .pill {
-    flex: 0 0 auto;
-    padding: 8px 16px;
-    font-size: 0.8rem;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(5px);
-  }
-  .pill.active {
-    background: var(--bg-details);
+  .room-dropdown {
+    width: 100%;
+    font-size: 0.9rem;
+    padding: 12px 20px;
   }
 
   .details-box {
