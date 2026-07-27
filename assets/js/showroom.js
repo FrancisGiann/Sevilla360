@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnViewPhotos = document.getElementById("btn-view-photos");
   const currentSlideImg = document.getElementById("current-slide-img");
   const wrapper = document.getElementById("showroom-wrapper");
+  const topRoomLabel = document.getElementById("top-room-label");
 
   // --- 3. Create "No 360" Fallback Overlay ---
   const no360Wrapper = document.createElement("div");
@@ -170,6 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     valRate.textContent = room.rate;
     galleryTitle.textContent = room.title + " Gallery";
     if (valDesc) valDesc.textContent = room.description;
+    if (topRoomLabel) topRoomLabel.textContent = room.title;
 
     // Dynamic Amenities Icons
     if (amenitiesGrid && room.amenities) {

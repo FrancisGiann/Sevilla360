@@ -107,7 +107,7 @@ window.process = {
         <div class="big-viewer-box">
 
             <!-- === 360 UI Elements === -->
-            <div class="viewer-label ui-360">Showroom</div>
+            <div class="viewer-label ui-360" id="top-room-label">Showroom</div>
 
             <button id="btn-info" class="ui-360 top-right-btn" title="Venue Information">
                 <i class="fa-solid fa-circle-info"></i>
