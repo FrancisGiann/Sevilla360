@@ -21,7 +21,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
     <!-- Base Stylesheets -->
     <link rel="stylesheet" href="assets/css/style.css?v=1.2">
-    <link rel="stylesheet" href="assets/css/admin-page/admin_dashboard.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_overview.css">
 
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
@@ -212,7 +212,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
-    <script src="assets/js/admin-page/admin_dashboard.js"></script>
+    <script src="assets/js/admin-page/admin_overview.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
     <script src="assets/js/admin-page/admin_bookings.js?v=2.6"></script>
     <?php elseif ($page === 'walkin'): ?>

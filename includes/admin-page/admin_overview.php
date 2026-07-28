@@ -5,19 +5,19 @@
     <div class="stats-grid">
         <div class="stat-card">
             <h4>Bookings Today</h4>
-            <span class="stat-number color-gold">12</span>
+            <span class="stat-number color-gold" id="stat-bookings-today">0</span>
         </div>
         <div class="stat-card">
             <h4>Monthly Revenue</h4>
-            <span class="stat-number color-green">$24,500</span>
+            <span class="stat-number color-green" id="stat-monthly-revenue">₱0.00</span>
         </div>
         <div class="stat-card">
             <h4>Pending Items</h4>
-            <span class="stat-number color-red">5</span>
+            <span class="stat-number color-red" id="stat-pending-items">0</span>
         </div>
         <div class="stat-card">
             <h4>Room Occupancy</h4>
-            <span class="stat-number color-dark">85%</span>
+            <span class="stat-number color-dark" id="stat-occupancy-rate">0%</span>
         </div>
     </div>
 
@@ -47,7 +47,7 @@
     <div class="table-card">
         <div class="table-header">
             <h3>Recent Bookings</h3>
-            <a href="#" class="view-all">View All</a>
+            <a href="admin_dashboard.php?page=bookings" class="view-all">View All</a>
         </div>
         <div class="table-responsive">
             <table class="admin-table">
@@ -60,34 +60,11 @@
                         <th>Status</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="recent-bookings-tbody">
+                    <!-- Data will be dynamically injected here by JS -->
                     <tr>
-                        <td>#SV-9021</td>
-                        <td>The Grand Hall</td>
-                        <td>Oct 24, 2024</td>
-                        <td>$3,200</td>
-                        <td><span class="badge badge-confirmed">Confirmed</span></td>
-                    </tr>
-                    <tr>
-                        <td>#SV-9022</td>
-                        <td>Garden Pavilion</td>
-                        <td>Oct 25, 2024</td>
-                        <td>$1,500</td>
-                        <td><span class="badge badge-pending">Pending</span></td>
-                    </tr>
-                    <tr>
-                        <td>#SV-9023</td>
-                        <td>Studio A</td>
-                        <td>Oct 26, 2024</td>
-                        <td>$800</td>
-                        <td><span class="badge badge-confirmed">Confirmed</span></td>
-                    </tr>
-                    <tr>
-                        <td>#SV-9024</td>
-                        <td>The Grand Hall</td>
-                        <td>Nov 02, 2024</td>
-                        <td>$3,200</td>
-                        <td><span class="badge badge-cancelled">Cancelled</span></td>
+                        <td colspan="5" style="text-align: center; color: var(--color-dark-light);">Loading recent
+                            bookings...</td>
                     </tr>
                 </tbody>
             </table>

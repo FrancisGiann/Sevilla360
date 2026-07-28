@@ -336,6 +336,14 @@
   background-color: rgba(194, 124, 124, 0.15);
   color: #a85454;
 }
+.badge-partial {
+  background-color: rgba(59, 130, 246, 0.15); /* Soft Blue */
+  color: #1d4ed8;
+}
+.badge-action {
+  background-color: #fee2e2; /* Red Warning */
+  color: #dc2626; 
+}
 
 /* ==========================================================================
    Responsive Admin Dashboard Styles
