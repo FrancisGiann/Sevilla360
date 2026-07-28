@@ -117,7 +117,7 @@ include 'includes/header.php';
                     state-of-the-art acoustics, and a neutral palette ready to be transformed by your unique vision.
                     Ideal for galas, grand debuts, and luxurious weddings.</p>
                 <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
+                <a href="showroom.php?cat=Event Hall" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>
 
@@ -133,7 +133,7 @@ include 'includes/header.php';
                     and minimalist Scandinavian interiors, it is the ultimate retreat for families and VIP guests
                     seeking privacy and bespoke service.</p>
                 <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
+                <a href="showroom.php?cat=Resort Villa" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>
 
@@ -148,7 +148,7 @@ include 'includes/header.php';
                 <p>Rest in absolute comfort. Our premium rooms blend warm beige tones with plush, tactile fabrics,
                     creating a calming oasis to unwind after a day of celebration or intensive meetings.</p>
                 <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php" class="btn btn-secondary">Explore 360°</a>
+                <a href="showroom.php?cat=Hotel Room" class="btn btn-secondary">Explore 360°</a>
             </div>
         </div>
 

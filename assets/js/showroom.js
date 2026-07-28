@@ -357,20 +357,38 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
-  // C. Initialization & URL Hash Logic (FIXES THE MISMATCH BUG)
+  // C. Initialization & URL Hash/Query Logic (Fixes Landing Page Routing!)
   if (dropdownItems.length > 0) {
-      let targetItem = dropdownItems[0]; 
+      let targetItem = dropdownItems[0]; // Default to first item (Event Hall)
       
-      const hash = window.location.hash.replace('#', '');
-      if (hash) {
-          const hashItem = document.querySelector(`.dropdown-item[data-room="${hash}"]`);
-          if (hashItem) targetItem = hashItem;
+      // 1. Check for URL Parameters (e.g. showroom.php?cat=Resort Villa)
+      const urlParams = new URLSearchParams(window.location.search);
+      const catParam = urlParams.get('cat');
+
+      if (catParam) {
+          // Find the Master Pill that matches this category
+          const targetMaster = Array.from(masterPills).find(m => m.getAttribute('data-category') === catParam);
+          if (targetMaster) {
+              // Find the first specific room inside that Master Category's dropdown
+              const wrapper = targetMaster.closest('.pill-dropdown-wrapper');
+              const firstRoom = wrapper.querySelector('.dropdown-item');
+              if (firstRoom) targetItem = firstRoom;
+          }
+      } 
+      // 2. Check for exact Room Hash (e.g. showroom.php#venue_villa)
+      else {
+          const hash = window.location.hash.replace('#', '');
+          if (hash) {
+              const hashItem = document.querySelector(`.dropdown-item[data-room="${hash}"]`);
+              if (hashItem) targetItem = hashItem;
+          }
       }
       
-      // CRITICAL FIX: Instead of just loading the room, we mathematically simulate a "Click"
-      // on the target item. This guarantees the correct Master Pill lights up Gold!
+      // Magically simulate a click on the correct room!
+      // This forces the UI to light up Gold and the 360 engine to load it.
       targetItem.click(); 
   }
+
 
   // --- 9. Photo Gallery Swap Mode ---
   const btnBackTo360 = document.getElementById("btn-back-to-360");
