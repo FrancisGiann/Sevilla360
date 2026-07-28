@@ -2,6 +2,14 @@
    SEVILLA360 - Main JavaScript
    ========================================================================== */
 
+// reset scroll position on page load to avoid browser remembering previous scroll position
+if (document.querySelector('.hero')) {
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
+    window.scrollTo(0, 0);
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   
   // --- 1. Organic Scroll Reveal Animation ---
