@@ -26,6 +26,10 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php elseif ($page === 'calendar'): ?>
+    <!-- FullCalendar CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_calendar.css?v=<?= time() ?>">
     <?php elseif ($page === 'bookings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
     <?php elseif ($page === 'walkin'): ?>
@@ -43,27 +47,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
     <?php endif; ?>
-
 </head>
 
 <body class="admin-body">
-
     <div class="admin-layout">
-
         <!-- Left Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
                 <a href="index.php" class="navbar-brand">SEVILLA360</a>
-
-                <!-- DYNAMIC ROLE BADGE -->
                 <span class="admin-badge">
-                    <?php 
-                if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                    echo 'SUPER ADMIN';
-                } else {
-                    echo 'ADMIN';
-                }
-            ?>
+                    <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') ? 'SUPER ADMIN' : 'ADMIN'; ?>
                 </span>
             </div>
 
@@ -73,6 +66,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         <a href="admin_dashboard.php?page=overview"
                             class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>">
                             <i class="fa-solid fa-chart-pie"></i> Overview
+                        </a>
+                    </li>
+                    <!-- NEW MASTER CALENDAR LINK -->
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=calendar"
+                            class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>">
+                            <i class="fa-solid fa-calendar-days"></i> Master Calendar
                         </a>
                     </li>
                     <li class="nav-item">
@@ -132,14 +132,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         </aside>
 
         <!-- Main Content Area -->
-        <main
-            class="main-content <?php echo ($page === 'walkin' || $page === 'maintenance' || $page === 'bookings' || $page === 'settings' || $page === 'auditlog' || $page === 'usermanagement' || $page === 'cms') ? 'booking-main-scroll' : ''; ?>">
-
+        <main class="main-content <?php echo ($page !== 'overview') ? 'booking-main-scroll' : ''; ?>">
             <!-- Top Header -->
             <header class="admin-header">
                 <h2 class="page-title">
                     <?php 
                         if ($page === 'overview') echo 'Dashboard Overview';
+                        elseif ($page === 'calendar') echo 'Master Calendar';
                         elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
@@ -151,68 +150,41 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                 </h2>
                 <div class="header-actions">
                     <a href="index.php" class="btn-back"><i class="fa-solid fa-house"></i> Back to Home</a>
-                    <div class="admin-profile">
-                        <i class="fa-solid fa-circle-user profile-icon"></i>
-                    </div>
+                    <div class="admin-profile"><i class="fa-solid fa-circle-user profile-icon"></i></div>
                 </div>
             </header>
 
             <!-- Dynamically Include Content Here -->
             <?php 
-                if ($page === 'walkin') {
-                    include 'includes/admin-page/admin_walkin.php';
-                } elseif ($page === 'maintenance') {
-                    include 'includes/admin-page/admin_maintenance.php';
-                } elseif ($page === 'bookings') {
-                    include 'includes/admin-page/admin_bookings.php';
-                } elseif ($page === 'settings') {
-                    include 'includes/admin-page/admin_settings.php'; 
-                } elseif ($page === 'auditlog') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                        include 'includes/admin-page/admin_auditlog.php';
-                    } else {
-                        echo '
-                        <div class="unauthorized-access">
-                            <i class="fa-solid fa-lock"></i>
-                            <h3>Unauthorized Access</h3>
-                            <p>You do not have permission to view the Audit Log.</p>
-                        </div>';
-                    }
+                if ($page === 'calendar') include 'includes/admin-page/admin_calendar.php';
+                elseif ($page === 'walkin') include 'includes/admin-page/admin_walkin.php';
+                elseif ($page === 'maintenance') include 'includes/admin-page/admin_maintenance.php';
+                elseif ($page === 'bookings') include 'includes/admin-page/admin_bookings.php';
+                elseif ($page === 'settings') include 'includes/admin-page/admin_settings.php'; 
+                elseif ($page === 'auditlog') {
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_auditlog.php';
+                    else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } elseif ($page === 'usermanagement') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                        include 'includes/admin-page/admin_usermanagement.php';
-                    } else {
-                        echo '
-                        <div class="unauthorized-access">
-                            <i class="fa-solid fa-lock"></i>
-                            <h3>Unauthorized Access</h3>
-                            <p>You do not have permission to view User Management.</p>
-                        </div>';
-                    }
-                }elseif ($page === 'cms') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') {
-                        include 'includes/admin-page/admin_cms.php';
-                    } else {
-                        echo '
-                        <div class="unauthorized-access">
-                            <i class="fa-solid fa-lock"></i>
-                            <h3>Unauthorized Access</h3>
-                            <p>You do not have permission to view CMS.</p>
-                        </div>';
-                    }
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_usermanagement.php';
+                    else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
+                } elseif ($page === 'cms') {
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_cms.php';
+                    else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } else {
                     include 'includes/admin-page/admin_overview.php';
                 }
             ?>
-
         </main>
     </div>
-    <!-- Calendar Engine -->
+
+    <!-- Shared Calendar Engine -->
     <script src="assets/js/calendar.js?v=1"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
     <script src="assets/js/admin-page/admin_overview.js?v=<?= time() ?>"></script>
+    <?php elseif ($page === 'calendar'): ?>
+    <script src="assets/js/admin-page/admin_calendar.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
     <script src="assets/js/admin-page/admin_bookings.js?v=2.6"></script>
     <?php elseif ($page === 'walkin'): ?>
@@ -221,8 +193,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin-page/admin_maintenance.js?v=1.1"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin-page/admin_settings.js?v=1.3"></script>
-
-    <!-- SUPER ADMIN JS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_auditlog.js"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
@@ -230,7 +200,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
     <?php endif; ?>
-
 </body>
 
 </html>

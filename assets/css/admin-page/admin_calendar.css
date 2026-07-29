@@ -1,0 +1,151 @@
+/* assets/css/admin-page/admin_calendar.css */
+.calendar-page-container {
+    padding: 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.calendar-header-card {
+    background: var(--color-white);
+    padding: 20px 30px;
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.legend-box {
+    display: flex;
+    gap: 20px;
+    background: rgba(42, 37, 34, 0.03);
+    padding: 12px 25px;
+    border-radius: 8px;
+    border: 1px solid rgba(42, 37, 34, 0.08);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-dark);
+}
+
+.color-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+}
+
+.calendar-wrapper-card {
+    background: var(--color-white);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: var(--shadow-soft);
+}
+
+/* =========================================================
+   FULLCALENDAR UI OVERRIDES (The Fixes)
+   ========================================================= */
+
+/* 1. Header Title (Use modern Sans-Serif, not cursive) */
+.fc .fc-toolbar-title {
+    font-family: var(--font-body) !important;
+    font-size: 1.6rem !important;
+    font-weight: 700 !important;
+    color: var(--color-dark) !important;
+    letter-spacing: 0.5px;
+}
+
+/* 2. Fix the Buttons (Clean, modern, matching theme) */
+.fc .fc-button-primary {
+    background-color: var(--color-white) !important;
+    color: var(--color-dark) !important;
+    border: 1px solid rgba(42, 37, 34, 0.2) !important;
+    font-family: var(--font-body) !important;
+    font-weight: 500 !important;
+    text-transform: capitalize !important;
+    box-shadow: none !important;
+    border-radius: 6px !important;
+    padding: 8px 16px !important;
+    transition: var(--transition-snappy) !important;
+}
+
+.fc .fc-button-group > .fc-button {
+    border-radius: 0 !important;
+}
+.fc .fc-button-group > .fc-button:first-child {
+    border-top-left-radius: 6px !important;
+    border-bottom-left-radius: 6px !important;
+}
+.fc .fc-button-group > .fc-button:last-child {
+    border-top-right-radius: 6px !important;
+    border-bottom-right-radius: 6px !important;
+}
+
+.fc .fc-button-primary:hover {
+    background-color: rgba(42, 37, 34, 0.05) !important;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active, 
+.fc .fc-button-primary:not(:disabled):active {
+    background-color: var(--color-gold) !important;
+    color: var(--color-white) !important;
+    border-color: var(--color-gold) !important;
+}
+
+/* 3. Grid Header (Days of the week) */
+.fc-theme-standard th {
+    padding: 12px 0;
+    background: #faf9f7;
+    color: var(--color-dark-light);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    border-color: rgba(42, 37, 34, 0.1) !important;
+}
+
+/* 4. Fix "Today" Highlight (Replace ugly yellow with soft gold) */
+.fc .fc-daygrid-day.fc-day-today {
+    background-color: rgba(214, 168, 112, 0.08) !important;
+}
+
+/* 5. Fix Event Pills (Add spacing, border-radius, font sizing) */
+.fc-daygrid-event {
+    border-radius: 4px !important;
+    padding: 4px 6px !important;
+    margin: 2px 4px !important; /* Spacing between pills */
+    border: none !important;
+    cursor: pointer !important;
+    transition: transform 0.2s !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.fc-daygrid-event:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    z-index: 5;
+}
+
+.fc-event-title {
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    font-family: var(--font-body) !important;
+}
+
+.fc-theme-standard td, .fc-theme-standard th {
+    border-color: rgba(42, 37, 34, 0.08) !important;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+    .calendar-page-container { padding: 15px; }
+    .fc .fc-toolbar { flex-direction: column; gap: 15px; }
+    .legend-box { flex-wrap: wrap; justify-content: center; }
+}
