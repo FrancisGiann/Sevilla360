@@ -40,7 +40,20 @@ document.addEventListener("DOMContentLoaded", () => {
         new Chart(document.getElementById("revenueChart").getContext("2d"), {
             type: "bar",
             data: { labels: chartsData.revenue.labels, datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: colors.grid } }, x: { grid: { display: false } } } }
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return currencyFormatter.format(context.raw);
+                            }
+                        }
+                    }
+                }
+            }
         });
   
         new Chart(document.getElementById("statusChart").getContext("2d"), {

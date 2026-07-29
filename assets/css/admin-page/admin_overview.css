@@ -458,6 +458,8 @@
   color: var(--color-dark);
 }
 
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.05); }
+
 
 /* ==========================================================================
    Responsive Admin Dashboard Styles

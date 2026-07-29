@@ -7,9 +7,13 @@
             <h4>Monthly Revenue</h4>
             <span class="stat-number color-green" id="stat-monthly-revenue">₱0.00</span>
         </div>
-        <div class="stat-card">
+        <div class="stat-card" style="cursor: pointer; transition: 0.2s;"
+            onclick="window.location.href='admin_dashboard.php?page=bookings';">
             <h4>Pending Approvals</h4>
-            <span class="stat-number color-red" id="stat-pending-items">0</span>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="stat-number color-red" id="stat-pending-items">0</span>
+                <i class="fa-solid fa-arrow-right color-red" style="opacity: 0.5;"></i>
+            </div>
         </div>
         <div class="stat-card">
             <h4>Arrivals Today</h4>
