@@ -27,7 +27,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=1.3">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
     <?php elseif ($page === 'walkin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=1.1">
     <?php elseif ($page === 'maintenance'): ?>

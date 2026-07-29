@@ -345,6 +345,22 @@
   color: #dc2626; 
 }
 
+
+/* New 2-Column Chart Grid */
+.charts-grid-2 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+
+/* Operations Side-by-Side Tables */
+.operations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
 /* ==========================================================================
    Responsive Admin Dashboard Styles
    ========================================================================== */
@@ -355,6 +371,10 @@
   .bar-card {
     grid-column: 1 / -1;
   }
+.charts-grid-2, .operations-grid {
+    grid-template-columns: 1fr;
+  }
+
 }
 
 @media (max-width: 992px) {

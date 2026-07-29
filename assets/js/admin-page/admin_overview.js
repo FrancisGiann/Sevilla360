@@ -1,197 +1,120 @@
-/**
- * SEVILLA360 - Admin Dashboard Charts
- * Fetches live data from get_dashboard_stats.php
- */
-
 document.addEventListener("DOMContentLoaded", () => {
-    // Theme Colors array referencing style.css
-    const colors = {
-      gold: "#d6a870",
-      beige: "#fdf2e2",
-      dark: "#2a2522",
-      green: "#88a096", 
-      red: "#c27c7c", 
-      softBlue: "#8ea4b5",
-      grid: "rgba(42, 37, 34, 0.05)",
-    };
-  
-    // Global Defaults for Typography
+    const colors = { gold: "#d6a870", beige: "#fdf2e2", dark: "#2a2522", green: "#88a096", red: "#c27c7c", grid: "rgba(42, 37, 34, 0.05)" };
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = "#4a4440";
   
-    // Currency Formatter
-    const currencyFormatter = new Intl.NumberFormat('en-PH', {
-        style: 'currency',
-        currency: 'PHP'
-    });
+    const currencyFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
-    // --- MISSING FUNCTION ADDED HERE ---
-    // HTML Escaper for Security (XSS Protection)
     function escapeHTML(str) {
         if (!str) return '';
-        return str.toString().replace(/[&<>'"]/g, 
-            tag => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                "'": '&#39;',
-                '"': '&quot;'
-            }[tag])
-        );
+        return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
     }
   
-    // Fetch Data from Backend
     async function loadDashboardData() {
         try {
-            // Adjust this URL to match your folder structure
             const response = await fetch('actions/admin/get_dashboard_stats.php');
             const data = await response.json();
             
-            if(data.error) {
-                console.error("Dashboard Error:", data.error);
-                return;
-            }
+            if(data.error) return console.error("Dashboard Error:", data.error);
 
-            updateTopStats(data);
+            // 1. Top Stats
+            document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
+            document.getElementById('stat-pending-items').textContent = data.pendingItems;
+            document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
+            document.getElementById('stat-upcoming-events').textContent = data.upcomingEventsCount;
+
+            // 2. Charts
             renderCharts(data.charts);
-            renderRecentBookings(data.recentBookings);
+            
+            // 3. Tables
+            renderTodaysOperations(data.todaysOperations);
+            renderUpcomingEvents(data.upcomingEvents);
 
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
         }
     }
   
-    function updateTopStats(data) {
-        document.getElementById('stat-bookings-today').textContent = data.bookingsToday;
-        document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
-        document.getElementById('stat-pending-items').textContent = data.pendingItems;
-        document.getElementById('stat-occupancy-rate').textContent = `${data.occupancyRate}%`;
-    }
-  
     function renderCharts(chartsData) {
-        /* 1. Revenue Bar Chart */
-        const ctxRevenue = document.getElementById("revenueChart").getContext("2d");
-        new Chart(ctxRevenue, {
+        new Chart(document.getElementById("revenueChart").getContext("2d"), {
             type: "bar",
             data: {
                 labels: chartsData.revenue.labels,
-                datasets: [{
-                    label: "Revenue",
-                    data: chartsData.revenue.data,
-                    backgroundColor: colors.gold,
-                    borderRadius: 4,
-                    barThickness: 30,
-                }],
+                datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { beginAtZero: true, grid: { color: colors.grid } },
-                    x: { grid: { display: false } },
-                },
-            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: colors.grid } }, x: { grid: { display: false } } } }
         });
   
-        /* 2. Booking Status Pie Chart */
-        const ctxStatus = document.getElementById("statusChart").getContext("2d");
-        new Chart(ctxStatus, {
+        new Chart(document.getElementById("statusChart").getContext("2d"), {
             type: "pie",
             data: {
-                labels: ["Confirmed", "Pending", "Cancelled"], // Matches order in PHP array
-                datasets: [{
-                    data: chartsData.status,
-                    backgroundColor: [colors.green, colors.gold, colors.red],
-                    borderWidth: 0,
-                    hoverOffset: 4,
-                }],
+                labels: ["Confirmed", "Pending", "Cancelled"], 
+                datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red], borderWidth: 0, hoverOffset: 4 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: "bottom", labels: { usePointStyle: true } },
-                },
-            },
-        });
-  
-        /* 3. Occupancy Donut Chart */
-        const ctxOccupancy = document.getElementById("occupancyChart").getContext("2d");
-        new Chart(ctxOccupancy, {
-            type: "doughnut",
-            data: {
-                labels: chartsData.occupancy.labels,
-                datasets: [{
-                    data: chartsData.occupancy.data,
-                    backgroundColor: [colors.dark, colors.gold, colors.softBlue, colors.green],
-                    borderWidth: 0,
-                    hoverOffset: 4,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: "70%",
-                plugins: {
-                    legend: { position: "bottom", labels: { usePointStyle: true } },
-                },
-            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } } }
         });
     }
 
-    function renderRecentBookings(bookings) {
-        const tbody = document.getElementById('recent-bookings-tbody');
+    function renderTodaysOperations(bookings) {
+        const tbody = document.getElementById('todays-operations-tbody');
         tbody.innerHTML = ''; 
 
         if (!bookings || bookings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No recent bookings found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">No active bookings today. Time to relax!</td></tr>';
             return;
         }
 
-        bookings.forEach(booking => {
-            // Replicate admin_bookings granular status logic
-            let badgeClass = 'badge-pending';
-            let statusText = 'Pending';
+        // Get local date string for exact "Today" comparison
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
 
-            if (booking.booking_status === 'Confirmed' || booking.booking_status === 'Completed') {
-                if (booking.payment_status === 'Partial') {
-                    badgeClass = 'badge-partial';
-                    statusText = 'Partially Paid';
-                } else {
-                    badgeClass = 'badge-confirmed';
-                    statusText = 'Fully Paid';
-                }
-            } else if (booking.booking_status === 'Cancelled') {
-                badgeClass = 'badge-cancelled';
-                statusText = 'Cancelled';
+        bookings.forEach(b => {
+            let statusBadge = '';
+            
+            // Logic to determine if they are checking in today or just staying over
+            if (b.start_date === todayStr) {
+                statusBadge = '<span class="badge" style="background: #dbeafe; color: #1e40af;">Arriving Today</span>';
+            } else if (b.end_date === todayStr) {
+                statusBadge = '<span class="badge" style="background: #fee2e2; color: #dc2626;">Checking Out</span>';
+            } else {
+                statusBadge = '<span class="badge" style="background: #dcfce7; color: #166534;">In-House</span>';
             }
 
-            // Override for Action Required (Requests)
-            if (booking.cancel_status === 'Pending') {
-                badgeClass = 'badge-action';
-                statusText = 'Cancel Req.';
-            } else if (booking.resched_status === 'Pending') {
-                badgeClass = 'badge-partial'; 
-                statusText = 'Resched Req.';
-            }
-
-            const dateObj = new Date(booking.start_date);
-            const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-            const safeVenueName = escapeHTML(booking.venue_name); // Now this works!
-
-            const row = `
-                <tr>
-                    <td>#${booking.reference_no}</td>
-                    <td>${safeVenueName}</td>
-                    <td>${dateStr}</td>
-                    <td>${currencyFormatter.format(booking.total_amount)}</td>
-                    <td><span class="badge ${badgeClass}">${statusText}</span></td>
-                </tr>
-            `;
+            const row = `<tr>
+                <td style="font-weight: 500;">${escapeHTML(b.first_name)} ${escapeHTML(b.last_name)}</td>
+                <td>${escapeHTML(b.venue_name)}</td>
+                <td>${statusBadge}</td>
+            </tr>`;
             tbody.insertAdjacentHTML('beforeend', row);
         });
     }
-    // Initialize
+
+    function renderUpcomingEvents(events) {
+        const tbody = document.getElementById('upcoming-events-tbody');
+        tbody.innerHTML = ''; 
+
+        if (!events || events.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">No major events in the next 30 days.</td></tr>';
+            return;
+        }
+
+        events.forEach(e => {
+            const dateObj = new Date(e.start_date);
+            const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+            
+            // Format Event Type (e.g. "Wedding (Banquet)" or just "Event for Smith")
+            let eventDesc = e.event_type ? `${e.event_type} <span style="color:#888; font-size: 0.8rem;">(${e.event_style})</span>` : `Event reservation`;
+            
+            const row = `<tr>
+                <td style="font-weight: 600; color: var(--color-gold);">${dateStr}</td>
+                <td>
+                    <div style="font-weight: 500;">${escapeHTML(eventDesc)}</div>
+                    <div style="font-size: 0.8rem; color: var(--color-dark-light);">Host: ${escapeHTML(e.last_name)}</div>
+                </td>
+                <td>${escapeHTML(e.venue_name)}</td>
+            </tr>`;
+            tbody.insertAdjacentHTML('beforeend', row);
+        });
+    }
+
     loadDashboardData();
 });
