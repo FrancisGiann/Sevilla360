@@ -17,19 +17,34 @@ document.addEventListener("DOMContentLoaded", () => {
             
             if(data.error) return console.error("Dashboard Error:", data.error);
 
-            // Stats
-            document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
-            document.getElementById('stat-pending-items').textContent = data.pendingItems;
-            document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
-            document.getElementById('stat-upcoming-events').textContent = data.upcomingEventsCount;
+            // 1. Maintenance Alerts
+            const alertsContainer = document.getElementById('maintenance-alerts-container');
+            alertsContainer.innerHTML = ''; // Clear old alerts
+            if (data.maintenanceAlerts && data.maintenanceAlerts.length > 0) {
+                data.maintenanceAlerts.forEach(alert => {
+                    alertsContainer.insertAdjacentHTML('beforeend', `
+                        <div class="maintenance-alert">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <div>
+                                <strong>Out of Order: ${escapeHTML(alert.name)}</strong>
+                                <p>${escapeHTML(alert.maintenance_type)} - ${escapeHTML(alert.notes || 'No extra notes provided.')}</p>
+                            </div>
+                        </div>
+                    `);
+                });
+            }
 
-            // Charts
+            // 2. Stats
+            document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
+            document.getElementById('stat-action-req').textContent = data.actionRequired; // Combined Cancels/Rescheds/Pending
+            document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
+            document.getElementById('stat-occupancy-rate').textContent = `${data.occupancyRate}%`;
+
+            // 3. Charts & Layout Components
             renderCharts(data.charts);
-            
-            // Layout Components
             renderTodaysOperations(data.todaysOperations);
             renderUpcomingEvents(data.upcomingEvents);
-            renderRecentBookings(data.recentBookings); // Restored!
+            renderRecentBookings(data.recentBookings);
 
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
