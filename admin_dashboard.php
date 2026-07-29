@@ -21,7 +21,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
     <!-- Base Stylesheets -->
     <link rel="stylesheet" href="assets/css/style.css?v=1.2">
-    <link rel="stylesheet" href="assets/css/admin-page/admin_overview.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_overview.css?v=<?= time() ?>">
 
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>

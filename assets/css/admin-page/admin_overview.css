@@ -61,6 +61,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 0;
+  margin: 0;
 }
 
 .nav-link {
@@ -73,6 +75,7 @@
   color: var(--color-dark-light);
   border-radius: 6px;
   transition: var(--transition-snappy);
+  text-decoration: none;
 }
 
 .nav-link i {
@@ -127,6 +130,7 @@
 .page-title {
   margin-bottom: 0;
   font-size: 1.6rem;
+  font-family: var(--font-heading);
 }
 
 .header-actions {
@@ -142,6 +146,8 @@
   border: 1px solid rgba(42, 37, 34, 0.2);
   padding: 8px 16px;
   border-radius: 4px;
+  text-decoration: none;
+  transition: var(--transition-snappy);
 }
 
 .btn-back:hover {
@@ -200,25 +206,17 @@
 }
 
 /* Colors for Numbers */
-.color-gold {
-  color: var(--color-gold);
-}
-.color-green {
-  color: #88a096;
-} 
-.color-red {
-  color: #c27c7c;
-} 
-.color-dark {
-  color: var(--color-dark);
-}
+.color-gold { color: var(--color-gold); }
+.color-green { color: #88a096; } 
+.color-red { color: #c27c7c; } 
+.color-dark { color: var(--color-dark); }
 
-/* Charts Grid */
-.charts-grid {
+/* --- 2-Column Charts Grid --- */
+.charts-grid-2 {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr;
   gap: 24px;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 
 .chart-card {
@@ -233,6 +231,7 @@
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 20px;
+  margin-top: 0;
 }
 
 .canvas-wrapper {
@@ -244,7 +243,78 @@
   align-items: center;
 }
 
-/* Bottom Table */
+/* --- Compact Operational Widgets --- */
+.operations-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.widget-card {
+  background: var(--color-white);
+  padding: 20px 25px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(42,37,34,0.05);
+  padding-bottom: 10px;
+}
+
+.widget-header h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.view-all-text {
+  font-size: 0.85rem;
+  color: var(--color-gold);
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 0;
+}
+.view-all-text:hover {
+  text-decoration: underline;
+}
+
+.widget-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px dashed rgba(42,37,34,0.1);
+}
+.widget-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.widget-info strong {
+  color: var(--color-dark);
+  font-weight: 600;
+}
+.widget-info span {
+  color: var(--color-dark-light);
+  font-size: 0.85rem;
+  display: block;
+  margin-top: 3px;
+}
+
+/* --- Bottom Table (Recent Bookings) --- */
 .table-card {
   background: var(--color-white);
   padding: 25px;
@@ -264,16 +334,6 @@
   font-size: 1.1rem;
   font-weight: 600;
   margin: 0;
-}
-
-.view-all {
-  font-size: 0.9rem;
-  color: var(--color-gold);
-  font-weight: 500;
-}
-
-.view-all:hover {
-  text-decoration: underline;
 }
 
 .table-responsive {
@@ -298,6 +358,7 @@
   letter-spacing: 1px;
   color: var(--color-dark-light);
   font-weight: 500;
+  background: #faf9f7;
 }
 
 .admin-table td {
@@ -313,68 +374,104 @@
   border-bottom: none;
 }
 
-/* Status Badges */
+/* --- Status Badges --- */
 .badge {
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 0.8rem;
   font-weight: 500;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
-.badge-confirmed {
-  background-color: rgba(136, 160, 150, 0.15);
-  color: #557567;
+.badge-confirmed { background-color: rgba(136, 160, 150, 0.15); color: #557567; }
+.badge-pending { background-color: rgba(214, 168, 112, 0.15); color: #b5884e; }
+.badge-cancelled { background-color: rgba(194, 124, 124, 0.15); color: #a85454; }
+.badge-partial { background-color: rgba(59, 130, 246, 0.15); color: #1d4ed8; }
+.badge-action { background-color: #fee2e2; color: #dc2626; }
+
+/* ==========================================================================
+   Overview Modals (View All Popups)
+   ========================================================================== */
+.overview-modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--transition-smooth);
 }
 
-.badge-pending {
-  background-color: rgba(214, 168, 112, 0.15);
-  color: #b5884e;
+.overview-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
 }
 
-.badge-cancelled {
-  background-color: rgba(194, 124, 124, 0.15);
-  color: #a85454;
-}
-.badge-partial {
-  background-color: rgba(59, 130, 246, 0.15); /* Soft Blue */
-  color: #1d4ed8;
-}
-.badge-action {
-  background-color: #fee2e2; /* Red Warning */
-  color: #dc2626; 
-}
-
-
-/* New 2-Column Chart Grid */
-.charts-grid-2 {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 24px;
-  margin-bottom: 30px;
+.overview-modal {
+  background: var(--color-white);
+  width: 90%;
+  max-width: 700px;
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  transform: translateY(20px);
+  transition: var(--transition-smooth);
+  display: none;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
-/* Operations Side-by-Side Tables */
-.operations-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
+.overview-modal.active {
+  display: block;
+  transform: translateY(0);
 }
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  font-size: 1.3rem;
+  margin: 0;
+  color: var(--color-dark);
+}
+
+.close-overview-modal {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #888;
+  transition: 0.2s;
+}
+
+.close-overview-modal:hover {
+  color: var(--color-dark);
+}
+
 
 /* ==========================================================================
    Responsive Admin Dashboard Styles
    ========================================================================== */
 @media (max-width: 1200px) {
-  .charts-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .bar-card {
-    grid-column: 1 / -1;
-  }
-.charts-grid-2, .operations-grid {
+  .charts-grid-2 {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 1100px) {
+  .operations-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 992px) {
@@ -424,8 +521,11 @@
 }
 
 @media (max-width: 768px) {
-  .stats-grid,
-  .charts-grid {
+  .dashboard-container {
+    padding: 20px;
+  }
+
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 
@@ -433,6 +533,7 @@
     flex-direction: column;
     padding-bottom: 65px;
   }
+  
   .sidebar {
     position: fixed;
     bottom: 0;
@@ -447,14 +548,17 @@
     flex-direction: row;
     z-index: 1000;
   }
+  
   .sidebar-header,
   .sidebar-footer {
     display: none;
   }
+  
   .sidebar-nav {
     padding: 0;
     width: 100%;
   }
+  
   .nav-list {
     flex-direction: row;
     justify-content: space-around;
@@ -464,12 +568,14 @@
     width: 100%;
     height: 100%;
   }
+  
   .nav-link {
     padding: 0;
     height: 100%;
     flex: 1;
     border-radius: 0;
   }
+  
   .nav-link i {
     font-size: 1.3rem;
   }
@@ -486,18 +592,27 @@
     padding: 20px;
     gap: 15px;
   }
+  
   .page-title {
     font-size: 1.5rem;
   }
+  
   .header-actions {
     width: 100%;
     justify-content: space-between;
   }
+  
   .btn-back {
     padding: 8px 12px;
     font-size: 0.85rem;
   }
+  
+  .overview-modal {
+    padding: 20px;
+    width: 95%;
+  }
 }
+
 /* ==========================================================================
    Unauthorized Access Error Card
    ========================================================================== */

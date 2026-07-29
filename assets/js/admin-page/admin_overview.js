@@ -17,18 +17,19 @@ document.addEventListener("DOMContentLoaded", () => {
             
             if(data.error) return console.error("Dashboard Error:", data.error);
 
-            // 1. Top Stats
+            // Stats
             document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
             document.getElementById('stat-pending-items').textContent = data.pendingItems;
             document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
             document.getElementById('stat-upcoming-events').textContent = data.upcomingEventsCount;
 
-            // 2. Charts
+            // Charts
             renderCharts(data.charts);
             
-            // 3. Tables
+            // Layout Components
             renderTodaysOperations(data.todaysOperations);
             renderUpcomingEvents(data.upcomingEvents);
+            renderRecentBookings(data.recentBookings); // Restored!
 
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
@@ -38,83 +39,154 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderCharts(chartsData) {
         new Chart(document.getElementById("revenueChart").getContext("2d"), {
             type: "bar",
-            data: {
-                labels: chartsData.revenue.labels,
-                datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }]
-            },
+            data: { labels: chartsData.revenue.labels, datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: colors.grid } }, x: { grid: { display: false } } } }
         });
   
         new Chart(document.getElementById("statusChart").getContext("2d"), {
             type: "pie",
-            data: {
-                labels: ["Confirmed", "Pending", "Cancelled"], 
-                datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red], borderWidth: 0, hoverOffset: 4 }]
-            },
+            data: { labels: ["Confirmed", "Pending", "Cancelled"], datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red], borderWidth: 0, hoverOffset: 4 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } } }
         });
     }
 
+    // --- 1. Today's Itinerary (Widget + Modal) ---
     function renderTodaysOperations(bookings) {
-        const tbody = document.getElementById('todays-operations-tbody');
+        const widgetList = document.getElementById('widget-today-list');
+        const modalBody = document.getElementById('modal-today-tbody');
+        widgetList.innerHTML = ''; modalBody.innerHTML = '';
+
+        if (!bookings || bookings.length === 0) {
+            widgetList.innerHTML = '<p style="text-align:center; padding: 10px; color:#888;">No active bookings today.</p>';
+            modalBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No active bookings today.</td></tr>';
+            return;
+        }
+
+        const todayStr = new Date().toLocaleDateString('en-CA');
+
+        bookings.forEach((b, index) => {
+            let badgeHtml = '';
+            if (b.start_date === todayStr) badgeHtml = '<span class="badge" style="background:#dbeafe; color:#1e40af;">Arriving</span>';
+            else if (b.end_date === todayStr) badgeHtml = '<span class="badge" style="background:#fee2e2; color:#dc2626;">Checkout</span>';
+            else badgeHtml = '<span class="badge" style="background:#dcfce7; color:#166534;">In-House</span>';
+
+            // Populate Modal (All items)
+            modalBody.insertAdjacentHTML('beforeend', `<tr>
+                <td><strong>${escapeHTML(b.first_name)} ${escapeHTML(b.last_name)}</strong></td>
+                <td>${escapeHTML(b.venue_name)}</td>
+                <td>${badgeHtml}</td>
+            </tr>`);
+
+            // Populate Compact Widget (Max 3 items)
+            if (index < 3) {
+                widgetList.insertAdjacentHTML('beforeend', `<div class="widget-item">
+                    <div class="widget-info">
+                        <strong>${escapeHTML(b.last_name)}</strong>
+                        <span>${escapeHTML(b.venue_name)}</span>
+                    </div>
+                    ${badgeHtml}
+                </div>`);
+            }
+        });
+    }
+
+    // --- 2. Upcoming Events (Widget + Modal) ---
+    function renderUpcomingEvents(events) {
+        const widgetList = document.getElementById('widget-events-list');
+        const modalBody = document.getElementById('modal-events-tbody');
+        widgetList.innerHTML = ''; modalBody.innerHTML = '';
+
+        if (!events || events.length === 0) {
+            widgetList.innerHTML = '<p style="text-align:center; padding: 10px; color:#888;">No upcoming events.</p>';
+            modalBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No upcoming events.</td></tr>';
+            return;
+        }
+
+        events.forEach((e, index) => {
+            const dateStr = new Date(e.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+            let eventDesc = e.event_type ? `${e.event_type} (${e.event_style})` : `Event`;
+
+            // Populate Modal (All items)
+            modalBody.insertAdjacentHTML('beforeend', `<tr>
+                <td style="font-weight:600; color:var(--color-gold);">${dateStr}</td>
+                <td><strong>${escapeHTML(eventDesc)}</strong><br><span style="font-size:0.8rem; color:#888;">Host: ${escapeHTML(e.last_name)}</span></td>
+                <td>${escapeHTML(e.venue_name)}</td>
+            </tr>`);
+
+            // Populate Compact Widget (Max 3 items)
+            if (index < 3) {
+                widgetList.insertAdjacentHTML('beforeend', `<div class="widget-item">
+                    <div class="widget-info">
+                        <strong style="color:var(--color-gold); margin-right: 5px;">${dateStr}</strong> 
+                        <strong>${escapeHTML(e.last_name)}</strong>
+                        <span>${escapeHTML(eventDesc)}</span>
+                    </div>
+                </div>`);
+            }
+        });
+    }
+
+    // --- 3. Recent Bookings (Restored Full Width Table) ---
+    function renderRecentBookings(bookings) {
+        const tbody = document.getElementById('recent-bookings-tbody');
         tbody.innerHTML = ''; 
 
         if (!bookings || bookings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">No active bookings today. Time to relax!</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No recent bookings found.</td></tr>';
             return;
         }
 
-        // Get local date string for exact "Today" comparison
-        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+        bookings.forEach(booking => {
+            let badgeClass = 'badge-pending'; let statusText = 'Pending';
+            if (booking.booking_status === 'Confirmed' || booking.booking_status === 'Completed') {
+                if (booking.payment_status === 'Partial') { badgeClass = 'badge-partial'; statusText = 'Partially Paid'; } 
+                else { badgeClass = 'badge-confirmed'; statusText = 'Fully Paid'; }
+            } else if (booking.booking_status === 'Cancelled') { badgeClass = 'badge-cancelled'; statusText = 'Cancelled'; }
 
-        bookings.forEach(b => {
-            let statusBadge = '';
-            
-            // Logic to determine if they are checking in today or just staying over
-            if (b.start_date === todayStr) {
-                statusBadge = '<span class="badge" style="background: #dbeafe; color: #1e40af;">Arriving Today</span>';
-            } else if (b.end_date === todayStr) {
-                statusBadge = '<span class="badge" style="background: #fee2e2; color: #dc2626;">Checking Out</span>';
-            } else {
-                statusBadge = '<span class="badge" style="background: #dcfce7; color: #166534;">In-House</span>';
-            }
+            if (booking.cancel_status === 'Pending') { badgeClass = 'badge-action'; statusText = 'Cancel Req.'; } 
+            else if (booking.resched_status === 'Pending') { badgeClass = 'badge-partial'; statusText = 'Resched Req.'; }
 
-            const row = `<tr>
-                <td style="font-weight: 500;">${escapeHTML(b.first_name)} ${escapeHTML(b.last_name)}</td>
-                <td>${escapeHTML(b.venue_name)}</td>
-                <td>${statusBadge}</td>
-            </tr>`;
-            tbody.insertAdjacentHTML('beforeend', row);
+            const dateStr = new Date(booking.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+
+            tbody.insertAdjacentHTML('beforeend', `<tr>
+                <td>#${booking.reference_no}</td>
+                <td>${escapeHTML(booking.venue_name)}</td>
+                <td>${dateStr}</td>
+                <td>${currencyFormatter.format(booking.total_amount)}</td>
+                <td><span class="badge ${badgeClass}">${statusText}</span></td>
+            </tr>`);
         });
     }
 
-    function renderUpcomingEvents(events) {
-        const tbody = document.getElementById('upcoming-events-tbody');
-        tbody.innerHTML = ''; 
+    // --- 4. Modal Open/Close Logic ---
+    const overlay = document.getElementById('overviewModalOverlay');
+    document.querySelectorAll('.btn-open-modal').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.overview-modal').forEach(m => m.classList.remove('active'));
+            document.getElementById(btn.getAttribute('data-target')).classList.add('active');
+            overlay.classList.add('active');
+        });
+    });
 
-        if (!events || events.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">No major events in the next 30 days.</td></tr>';
-            return;
+    document.querySelectorAll('.close-overview-modal').forEach(btn => {
+        btn.addEventListener('click', () => {
+            overlay.classList.remove('active');
+            document.querySelectorAll('.overview-modal').forEach(m => m.classList.remove('active'));
+        });
+    });
+    
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.classList.remove('active');
+            document.querySelectorAll('.overview-modal').forEach(m => m.classList.remove('active'));
         }
+    });
 
-        events.forEach(e => {
-            const dateObj = new Date(e.start_date);
-            const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-            
-            // Format Event Type (e.g. "Wedding (Banquet)" or just "Event for Smith")
-            let eventDesc = e.event_type ? `${e.event_type} <span style="color:#888; font-size: 0.8rem;">(${e.event_style})</span>` : `Event reservation`;
-            
-            const row = `<tr>
-                <td style="font-weight: 600; color: var(--color-gold);">${dateStr}</td>
-                <td>
-                    <div style="font-weight: 500;">${escapeHTML(eventDesc)}</div>
-                    <div style="font-size: 0.8rem; color: var(--color-dark-light);">Host: ${escapeHTML(e.last_name)}</div>
-                </td>
-                <td>${escapeHTML(e.venue_name)}</td>
-            </tr>`;
-            tbody.insertAdjacentHTML('beforeend', row);
-        });
-    }
-
+    // Initialize immediately on load
     loadDashboardData();
+
+    // The Flex: Auto-refresh the dashboard data every 60 seconds silently
+    setInterval(() => {
+        loadDashboardData();
+    }, 60000); 
 });

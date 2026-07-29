@@ -109,6 +109,7 @@ try {
     ");
     $response['upcomingEvents'] = $res->fetch_all(MYSQLI_ASSOC);
 
+
     // 6. RECENT BOOKINGS (Restored)
     $res = $conn->query("
         SELECT b.reference_no, v.name as venue_name, b.start_date, b.total_amount, 
