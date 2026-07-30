@@ -155,6 +155,16 @@ document.addEventListener("DOMContentLoaded", () => {
       executeTableFilters();
     });
   });
+  
+  // --- NEW FIX: Auto-Select Tab based on URL Parameter ---
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlFilter = urlParams.get('filter');
+  if (urlFilter) {
+      const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
+      if (targetTab) {
+          targetTab.click(); // Simulates the user clicking the tab!
+      }
+  }
   // --- 3. Shared AJAX Function ---
   const processBookingAction = (bookingId, action, buttonElement, extraData = {}) => {
     const originalText = buttonElement.innerText;

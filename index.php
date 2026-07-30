@@ -1,6 +1,6 @@
 <?php
 $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
-$extra_css = 'assets/css/style.css'; 
+$extra_css = 'assets/css/style.css?v=' . time(); 
 $active_page = 'home';
 
 require_once 'config/db_connect.php';

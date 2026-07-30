@@ -8,7 +8,9 @@
             <!-- This button is how you "Make a Major Event" manually -->
             <a href="admin_dashboard.php?page=walkin" class="btn-quick-action"><i class="fa-solid fa-plus"></i> Walk-in
                 / Event</a>
-            <a href="admin_dashboard.php?page=bookings" class="btn-quick-action outline"><i
+
+            <!-- FIX: Changed page=bookings to page=calendar -->
+            <a href="admin_dashboard.php?page=calendar" class="btn-quick-action outline"><i
                     class="fa-solid fa-calendar"></i> Master Calendar</a>
         </div>
     </div>
@@ -22,14 +24,17 @@
             <h4>Monthly Revenue</h4>
             <span class="stat-number color-green" id="stat-monthly-revenue">₱0.00</span>
         </div>
+
+        <!-- FIX: Added &filter=action_req to the URL -->
         <div class="stat-card" style="cursor: pointer;"
-            onclick="window.location.href='admin_dashboard.php?page=bookings';">
+            onclick="window.location.href='admin_dashboard.php?page=bookings&filter=action_req';">
             <h4>Action Required</h4>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span class="stat-number color-red" id="stat-action-req">0</span>
                 <i class="fa-solid fa-arrow-right color-red" style="opacity: 0.5;"></i>
             </div>
         </div>
+
         <div class="stat-card">
             <h4>Arrivals Today</h4>
             <span class="stat-number color-gold" id="stat-arrivals-today">0</span>

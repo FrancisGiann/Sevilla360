@@ -20,7 +20,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Base Stylesheets -->
-    <link rel="stylesheet" href="assets/css/style.css?v=1.2">
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/admin-page/admin_overview.css?v=<?= time() ?>">
 
     <!-- Load specific assets based on the active page -->
@@ -33,17 +33,17 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'bookings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
     <?php elseif ($page === 'walkin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=1.1">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=<?= time() ?>">
     <?php elseif ($page === 'maintenance'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=1.1">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=<?= time() ?>">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= time() ?>">
 
     <!-- SUPER ADMIN CSS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
     <?php endif; ?>
@@ -186,17 +186,17 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'calendar'): ?>
     <script src="assets/js/admin-page/admin_calendar.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <script src="assets/js/admin-page/admin_bookings.js?v=2.6"></script>
+    <script src="assets/js/admin-page/admin_bookings.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'walkin'): ?>
-    <script src="assets/js/admin-page/admin_walkin.js?v=1"></script>
+    <script src="assets/js/admin-page/admin_walkin.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'maintenance'): ?>
-    <script src="assets/js/admin-page/admin_maintenance.js?v=1.1"></script>
+    <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'settings'): ?>
-    <script src="assets/js/admin-page/admin_settings.js?v=1.3"></script>
+    <script src="assets/js/admin-page/admin_settings.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin-page/admin_auditlog.js"></script>
+    <script src="assets/js/admin-page/admin_auditlog.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
-    <script src="assets/js/admin-page/admin_usermanagement.js"></script>
+    <script src="assets/js/admin-page/admin_usermanagement.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
     <?php endif; ?>
