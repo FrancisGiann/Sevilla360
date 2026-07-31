@@ -1,7 +1,7 @@
 <?php
 $page_title = 'Book Your Stay - SEVILLA360';
-$extra_css = 'assets/css/booking.css?v=1.9'; 
-$extra_js = 'assets/js/booking.js?v=1.9';    
+$extra_css = 'assets/css/booking.css?v=' . time(); 
+$extra_js = 'assets/js/booking.js?v=' . time();    
 $active_page = 'booking';              
 
 include 'includes/header.php';
@@ -50,9 +50,6 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
             <?php include 'includes/partials/tab_hotel_rooms.php'; ?>
             <?php include 'includes/partials/tab_resort_villa.php'; ?>
 
-            <!----PAYMENT SCHEME---->
-
-
         </div>
 
         <!-- RIGHT COLUMN: STICKY SUMMARY (35%) -->
@@ -71,7 +68,7 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                     <p><strong>Operating Hours:</strong> <span class="sum-val">Per Event Schedule</span></p>
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
-                    <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">100% Full</span></p>
+                    <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">To Be Arranged</span></p>
                 </div>
 
                 <div class="summary-container" id="sum-hotel-rooms">
@@ -101,9 +98,40 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                     <p><strong>Payment:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span></p>
                 </div>
 
+                <!-- DYNAMIC PRICING SECTION (Hidden for Events) -->
+                <div id="pricing-section">
+                    <div id="summary-breakdown"
+                        style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;"></div>
+
+                    <div class="summary-total"
+                        style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem; margin-top: 10px;">
+                        <span>Total Amount</span>
+                        <span id="summary-total-val" style="color: var(--color-gold);">₱0.00</span>
+                    </div>
+
+                    <div class="summary-total payable"
+                        style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px;">
+                        <span>Amount Due Now</span>
+                        <span id="summary-due-val">₱0.00</span>
+                    </div>
+                </div>
+
                 <!-- Universal Summary Footer -->
-                <div class="summary-footer">
-                    <!-- NEW: Additional Notes Input -->
+                <div class="summary-footer"
+                    style="margin-top: 25px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 20px;">
+
+                    <!-- Contact Number -->
+                    <div style="margin-bottom: 15px;">
+                        <label
+                            style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:8px; color:var(--color-dark);">Best
+                            Contact Number</label>
+                        <input type="text" id="contact-phone" placeholder="e.g. 09123456789"
+                            style="width:100%; padding:10px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); font-family:var(--font-body);">
+                        <small style="color: #888; display: block; margin-top: 5px;">We will call this number to confirm
+                            your booking.</small>
+                    </div>
+
+                    <!-- Additional Notes Input -->
                     <div style="margin-bottom: 20px;">
                         <label
                             style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:8px; color:var(--color-dark);">Special
@@ -112,6 +140,8 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                             placeholder="Allergies, early check-in requests, or specific event instructions..."
                             style="width:100%; padding:10px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); font-family:var(--font-body); resize:vertical;"></textarea>
                     </div>
+
+                    <!-- Lock Timer -->
                     <div class="timer-box" id="timer-box">
                         <span id="timer-text">Select your dates to book.</span>
                         <span id="countdown-wrapper" style="display: none;">Session expires in: <span
@@ -124,6 +154,7 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                                 Conditions</a></label>
                     </div>
 
+                    <!-- Action Buttons -->
                     <button class="btn btn-paymongo" id="btn-proceed">PROCEED VIA PAYMONGO</button>
                     <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
                 </div>

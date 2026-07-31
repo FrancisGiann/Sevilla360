@@ -13,16 +13,15 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'supe
 try {
     $response = [];
 
-    // 1. MAINTENANCE ALERTS (Rooms/Halls out of order TODAY)
+    // 1. MAINTENANCE ALERTS
     $res = $conn->query("
         SELECT v.name, m.maintenance_type, m.notes 
-        FROM maintenance m 
-        JOIN venues v ON m.venue_id = v.id 
+        FROM maintenance m JOIN venues v ON m.venue_id = v.id 
         WHERE CURDATE() BETWEEN m.start_date AND m.end_date
     ");
     $response['maintenanceAlerts'] = $res->fetch_all(MYSQLI_ASSOC);
 
-    // 2. ACTION REQUIRED (Pending Bookings + Reschedules + Cancels)
+    // 2. ACTION REQUIRED
     $res = $conn->query("SELECT COUNT(*) as c FROM bookings WHERE booking_status = 'Pending'");
     $pendingBookings = (int)($res->fetch_assoc()['c'] ?? 0);
     $res = $conn->query("SELECT COUNT(*) as c FROM cancellations WHERE status = 'Pending'");
@@ -88,14 +87,14 @@ try {
     }
     $response['charts']['status'] = array_values($statusData);
 
-    // 7. TODAY'S ITINERARY (Updated to fetch category and stay_type)
+    // 7. TODAY'S ITINERARY
     $res = $conn->query("
         SELECT c.first_name, c.last_name, v.name as venue_name, v.category,
                b.start_date, b.end_date, bed.stay_type
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
         JOIN venues v ON b.venue_id = v.id
-        LEFT JOIN booking_event_details bed ON b.id = bed.booking_id
+        LEFT JOIN booking_villa_details bed ON b.id = bed.booking_id
         WHERE CURDATE() BETWEEN b.start_date AND b.end_date 
         AND b.booking_status IN ('Confirmed', 'Completed')
         ORDER BY b.start_date ASC

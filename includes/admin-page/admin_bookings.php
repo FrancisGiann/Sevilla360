@@ -170,6 +170,10 @@ if ($result && $result->num_rows > 0) {
                                 data-due="<?php echo $balance_due; ?>">Collect Pay</button>
                             <button class="btn-action btn-cancel open-decline"
                                 data-id="<?php echo $b['id']; ?>">Decline</button>
+                            <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;"
+                                data-id="<?php echo $b['id']; ?>" data-total="<?php echo $b['total_amount']; ?>">Edit
+                                Price</button>
+
 
                             <!-- 2. CONFIRMED BOOKINGS -->
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
@@ -514,6 +518,26 @@ if ($result && $result->num_rows > 0) {
                 <button class="btn btn-outline btn-modal-cancel close-modal">Go Back</button>
                 <button class="btn btn-primary btn-modal-danger" id="btn-execute-force-cancel">Confirm
                     Cancellation</button>
+            </div>
+        </div>
+
+        <!-- NEW: Edit Price Modal -->
+        <div class="admin-modal modal-sm" id="editPriceModal">
+            <h3 class="modal-title">Update Invoice Price</h3>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; font-size: 0.9rem; color: #666;">
+                    Update the final total amount for Booking <strong id="ep-booking-id">--</strong> after your
+                    consultation with the customer.
+                </p>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">New Total Amount (₱)</label>
+                    <input type="number" id="ep-new-total" step="0.01"
+                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+                </div>
+            </div>
+            <div class="modal-actions-center">
+                <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
+                <button class="btn btn-primary" id="btn-execute-edit-price">Save New Price</button>
             </div>
         </div>
     </div>

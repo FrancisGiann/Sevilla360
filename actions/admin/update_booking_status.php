@@ -40,6 +40,25 @@ try {
         $message = "Booking #$booking_id has been cancelled!";
         
     } 
+    // ==========================================
+    // NEW: UPDATE PRICE LOGIC
+    // ==========================================
+    elseif ($action === 'update_price') {
+        if (!isset($data['new_total'])) {
+            throw new Exception("New total amount is required.");
+        }
+        $new_total = floatval($data['new_total']);
+        
+        $stmt = $conn->prepare("UPDATE bookings SET total_amount = ? WHERE id = ?");
+        $stmt->bind_param("di", $new_total, $booking_id);
+        
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to update price in the database.");
+        }
+        
+        $message = "Invoice price successfully updated to ₱" . number_format($new_total, 2) . "!";
+    }
+    // ==========================================
     elseif ($action === 'add_payment') {
         $amount_to_add = floatval($data['amount']);
         $method = $data['method'];
@@ -91,7 +110,6 @@ try {
             AND id != ? 
             AND (start_date < ? AND end_date > ?)
         ");
-        // We pass: venue_id, booking_id (to ignore itself), new_end, new_start
         $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
         $check_overlap->execute();
         

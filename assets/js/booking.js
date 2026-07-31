@@ -404,13 +404,20 @@ class BookingController {
         this.state.summary.html = '';
         this.determineActiveTab();
 
+        // 1. Safely grab the DOM elements first
+        const breakdownEl = this.getEl('summary-breakdown');
+        const totalValEl = this.getEl('summary-total-val');
+        const dueValEl = this.getEl('summary-due-val');
+
+        // 2. Check if dates are locked
         if (!this.state.isDatesLocked) {
-            this.getEl('summary-breakdown').innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select and lock dates to calculate.</i></div>';
-            this.getEl('summary-total-val').textContent = "₱0.00";
-            this.getEl('summary-due-val').textContent = "₱0.00";
+            if (breakdownEl) breakdownEl.innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select and lock dates to calculate.</i></div>';
+            if (totalValEl) totalValEl.textContent = "₱0.00";
+            if (dueValEl) dueValEl.textContent = "₱0.00";
             return;
         }
 
+        // 3. Run Math based on tab
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
             case 'event-hall': this.calcEventMath(); break;
@@ -424,17 +431,21 @@ class BookingController {
 
         const proceedBtn = this.getEl("btn-proceed");
 
+        // 4. Branching Logic for Event Inquiries vs Normal Bookings
         if (this.state.activeTabId === 'event-hall') {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
-            schemePct = 0; 
+            schemePct = 0; // Events pay 0 upfront during inquiry
             
             if (proceedBtn) {
                 proceedBtn.innerText = "SUBMIT EVENT INQUIRY";
                 proceedBtn.style.backgroundColor = "var(--color-dark)";
             }
+            if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
 
         } else {
+            if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "block";
+
             if (this.state.activeTabId === 'resort-villa') {
                 activeRadioName = 'villa-payment';
                 summaryTextId = 'sum-vl-payment';
@@ -454,15 +465,28 @@ class BookingController {
             }
         }
 
+        // 5. Final Calculation
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
         if (this.getEl(summaryTextId)) {
             this.getEl(summaryTextId).innerText = schemeText; 
         }
 
-        this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
-        this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
-        this.getEl('summary-due-val').textContent = this.formatCurrency(this.state.summary.amountDue);
+        // 6. Safely Output to DOM
+        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
+        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
+        if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
+
+        // Safely Output to DOM
+        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
+        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
+        if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
+
+        // NEW: HIDE PRICING FOR EVENT INQUIRIES!
+        const pricingSection = this.getEl('pricing-section');
+        if (pricingSection) {
+            pricingSection.style.display = (this.state.activeTabId === 'event-hall') ? 'none' : 'block';
+        }
     }
 
     calcHotelMath() {

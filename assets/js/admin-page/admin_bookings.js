@@ -648,4 +648,37 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // --- NEW: EDIT PRICE MODAL LOGIC ---
+  const editPriceModal = document.getElementById("editPriceModal");
+
+  document.querySelectorAll('.open-edit-price').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const bookingId = this.getAttribute('data-id');
+          const currentTotal = this.getAttribute('data-total');
+
+          document.getElementById('ep-booking-id').innerText = `#${bookingId}`;
+          document.getElementById('ep-new-total').value = parseFloat(currentTotal).toFixed(2);
+          
+          const executeBtn = document.getElementById('btn-execute-edit-price');
+          executeBtn.setAttribute('data-id', bookingId);
+
+          modalOverlay.classList.add('active');
+          editPriceModal.classList.add('active');
+      });
+  });
+
+  document.getElementById('btn-execute-edit-price')?.addEventListener('click', function() {
+      const bookingId = this.getAttribute('data-id');
+      const newTotal = parseFloat(document.getElementById('ep-new-total').value);
+
+      if (isNaN(newTotal) || newTotal < 0) {
+          showAlertModal("Invalid Amount", "Please enter a valid price.", "error", "editPriceModal");
+          return;
+      }
+
+      showConfirmModal(`Change the total price of this booking to ₱${newTotal.toLocaleString()}?`, () => {
+          // Re-using our universal processBookingAction function!
+          processBookingAction(bookingId, 'update_price', this, { new_total: newTotal });
+      }, 'editPriceModal');
+  });
 });

@@ -11,7 +11,7 @@
         <h4 style="margin-top: 0; margin-bottom: 10px; color: var(--color-dark); font-size: 1rem;">📅 How Event Booking
             Works:</h4>
         <ol style="margin: 0; padding-left: 20px; font-size: 0.9rem; color: var(--color-dark); line-height: 1.6;">
-            <li><strong>Hold the Date:</strong> Submit this inquiry to temporarily lock your date (No payment required
+            <li><strong>Hold the Date:</strong> Submit this inquiry to temporarily flag your date (No payment required
                 yet).</li>
             <li><strong>Consultation:</strong> We will call you within 24 hours to discuss menus, themes, and exact
                 guest counts.</li>
@@ -65,11 +65,16 @@
 
     <!-- 2. WHEN: CALENDAR UI -->
     <div style="margin-top: 2rem; margin-bottom: 2rem;">
-        <label class="small-label">HOLD YOUR DATES</label>
+        <label class="small-label">SELECT INQUIRY DATES</label>
         <?php
         $calendarId = 'cal-ui-event';
         include 'includes/partials/booking_calendar.php';
         ?>
+        <!-- NEW: Availability Warning -->
+        <p style="color: #c27c7c; font-size: 0.85rem; margin-top: 10px; font-weight: 500;">
+            <i>* Note: Dates are subject to availability. Multiple inquiries may be received for the same date. The slot
+                is awarded to the first finalized contract.</i>
+        </p>
     </div>
 
     <!-- 3. WHO & EXTRAS: GUESTS AND ADD-ONS -->
@@ -83,4 +88,5 @@
     <!-- ADD-ONS -->
     <?php include 'includes/partials/addons_section.php'; ?>
 
+    <!-- PAYMENT SCHEME COMPLETELY REMOVED FROM HERE! -->
 </div>
