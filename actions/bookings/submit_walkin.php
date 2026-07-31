@@ -14,29 +14,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $total_amount = floatval($_POST['total_amount']);
         $scheme = $_POST['payment_scheme'];
 
-        // 1. CALCULATE AMOUNT PAID
         $amount_paid = 0;
         if ($scheme === '100% Full') $amount_paid = $total_amount;
         elseif ($scheme === '50% Downpayment') $amount_paid = $total_amount * 0.5;
         elseif ($scheme === '20% Reservation') $amount_paid = $total_amount * 0.2;
 
-        // 2. DETERMINE STATUS
         $payment_status = ($amount_paid >= $total_amount) ? 'Paid' : 'Partial';
 
-        // 3. MAP PAYMENT METHOD
         $raw_method = strtolower($_POST['payment_method']);
         $pay_method = 'Cash';
         if ($raw_method === 'gcash') $pay_method = 'GCash';
         if ($raw_method === 'maya') $pay_method = 'Maya';
         if ($raw_method === 'bank') $pay_method = 'Bank Transfer';
 
-        // 4. Save Customer
         $stmt_cust = $conn->prepare("INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, 'Walk-in', ?, ?)");
         $stmt_cust->bind_param("sss", $_POST['guest_name'], $_POST['guest_email'], $_POST['guest_phone']);
         $stmt_cust->execute();
         $customer_id = $conn->insert_id;
 
-        // 5. Find Room 
         if ($_POST['room_type'] === 'Event Hall' || $_POST['room_type'] === 'Resort Villa') {
             $stmt_room = $conn->prepare("
                 SELECT id FROM venues 
@@ -61,7 +56,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $venue_id = $room_result->fetch_assoc()['id'];
 
-        // 6. SAVE BOOKING
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
@@ -73,15 +67,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // NEW: SAVE THE CUSTOM NOTES / SPECIAL REQUESTS
-        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : "";
-        if (!empty($custom_notes)) {
-            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, custom_notes) VALUES (?, ?)");
-            $stmt_notes->bind_param("is", $booking_id, $custom_notes);
+        // SAVE EVENT DETAILS AND NOTES
+        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
+        $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
+        $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
+
+        if (!empty($custom_notes) || !empty($event_type) || !empty($event_style)) {
+            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes) VALUES (?, ?, ?, ?)");
+            $stmt_notes->bind_param("isss", $booking_id, $event_style, $event_type, $custom_notes);
             $stmt_notes->execute();
         }
 
-        // 7. SAVE RECEIPT
         $transaction_id = !empty($_POST['transaction_id']) ? $_POST['transaction_id'] : null;
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);

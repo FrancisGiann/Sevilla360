@@ -2,19 +2,13 @@
 <div class="tab-content" id="tab-hotel-rooms">
     <h2 class="section-title">Book a Hotel Room</h2>
 
-    <!--- CALENDAR UI -->
-    <?php
-    $calendarId = 'cal-ui-hotel';
-    include 'includes/partials/booking_calendar.php';
-    ?>
-
     <div class="dynamic-img-wrapper">
         <img id="hotel-img"
             src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800"
             alt="Hotel Room">
     </div>
 
-    <!-- DYNAMIC DATABASE DROPDOWNS -->
+    <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWNS -->
     <div class="form-row">
         <div class="form-group">
             <label>Select Room Category</label>
@@ -33,6 +27,16 @@
         </div>
     </div>
 
+    <!-- 2. WHEN: CALENDAR UI (MOVED TO MIDDLE) -->
+    <div style="margin-top: 2rem; margin-bottom: 2rem;">
+        <label class="small-label">SELECT YOUR DATES</label>
+        <?php
+        $calendarId = 'cal-ui-hotel';
+        include 'includes/partials/booking_calendar.php';
+        ?>
+    </div>
+
+    <!-- 3. WHO & EXTRAS: GUESTS AND INCLUSIONS -->
     <div class="form-group">
         <label>Number of Guests</label>
         <input type="number" id="hotel-guests" min="1" max="4" value="2">
@@ -59,7 +63,7 @@
         </div>
     </div>
 
-    <!-- PAYMENT SCHEME IS BACK! -->
+    <!-- 4. PAYMENT SCHEME -->
     <div class="form-group">
         <label class="small-label">PAYMENT SCHEME</label>
         <div class="radio-group">

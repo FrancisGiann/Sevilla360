@@ -2,7 +2,6 @@
 session_start();
 require '../../config/db_connect.php';
 
-// Ensure the user is actually logged in!
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo "Error|You must be logged in to make a booking.";
     exit();
@@ -19,7 +18,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $total_amount = floatval($_POST['total_amount']);
         $scheme = $_POST['payment_scheme'];
 
-        // Get the logged-in Customer's Profile ID
         $stmt_cust = $conn->prepare("SELECT id FROM customers WHERE user_id = ?");
         $stmt_cust->bind_param("i", $_SESSION['user_id']);
         $stmt_cust->execute();
@@ -27,13 +25,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($cust_result->num_rows === 0) throw new Exception("Customer profile not found.");
         $customer_id = $cust_result->fetch_assoc()['id'];
 
-        // Grab the securely locked room ID from the session!
         if (!isset($_SESSION['locked_venue_id'])) {
             throw new Exception("Session expired or dates were not locked properly. Please select dates again.");
         }
         $venue_id = $_SESSION['locked_venue_id'];
 
-        // SAVE THE BOOKING
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
@@ -45,15 +41,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // NEW: SAVE THE CUSTOM NOTES / SPECIAL REQUESTS
-        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : "";
-        if (!empty($custom_notes)) {
-            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, custom_notes) VALUES (?, ?)");
-            $stmt_notes->bind_param("is", $booking_id, $custom_notes);
+        // SAVE EVENT DETAILS AND NOTES
+        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
+        $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
+        $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
+
+        if (!empty($custom_notes) || !empty($event_type) || !empty($event_style)) {
+            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes) VALUES (?, ?, ?, ?)");
+            $stmt_notes->bind_param("isss", $booking_id, $event_style, $event_type, $custom_notes);
             $stmt_notes->execute();
         }
 
-        // DELETE THE TEMPORARY LOCK
         $session_id = session_id();
         $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
         $stmt_unlock->bind_param("is", $venue_id, $session_id);

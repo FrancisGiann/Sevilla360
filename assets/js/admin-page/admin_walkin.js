@@ -1,17 +1,14 @@
 /**
  * ==========================================================================
  * SEVILLA360 - Admin Walk-In Booking Controller
- * Architecture: ES6 Class-Based Controller Pattern
- * Focus: Front-desk manual entry, no session timers, instant confirmed booking.
  * ==========================================================================
  */
 
 class AdminWalkinController {
     constructor() {
-        // 1. Centralized State (Admin Context)
         this.state = {
-            activeTabId: 'tab-event', // Admin uses different tab IDs (tab-event, tab-hotel, tab-villa)
-            isDatesLocked: false,     // Only a visual lock for the admin UI (No DB expiration)
+            activeTabId: 'tab-event',
+            isDatesLocked: false,     
             activeCalendar: null,
             summary: {
                 total: 0,
@@ -21,12 +18,10 @@ class AdminWalkinController {
             calendars: {}
         };
 
-        // 2. Map global functions required by external calendar.js
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
         window.calculateSummary = this.calculateSummary.bind(this);
 
-        // 3. Image Dictionary for Dynamic Swapping
         this.imageMap = {
             "grand-ballroom": "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1200&q=80",
             "garden-pavilion": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=1200&q=80",
@@ -41,11 +36,6 @@ class AdminWalkinController {
         this.init();
     }
 
-    /**
-     * ==========================================
-     * INITIALIZATION & EVENT BINDINGS
-     * ==========================================
-     */
     init() {
         this.initCalendars();
         this.bindTabs();
@@ -70,12 +60,10 @@ class AdminWalkinController {
     }
 
     bindUIInteractions() {
-        // Dynamic Image Swapping
         this.setupImageSwap("event-venue", "event-img");
         this.setupImageSwap("hotel-room-type", "hotel-img");
         this.setupImageSwap("villa-type", "villa-img");
 
-        // Hotel Cascading Dropdown (Category -> Specific Unit)
         const hotelTypeSelect = this.getEl("hotel-room-type");
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
@@ -88,7 +76,6 @@ class AdminWalkinController {
             });
         }
 
-        // Generic Dropdown Fetch Dates
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
@@ -99,7 +86,6 @@ class AdminWalkinController {
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', opt.text.split('(')[0].trim());
         });
 
-        // Event Type "Others" Toggle
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
             radio.addEventListener("change", (e) => {
                 const othersInput = this.getEl("event-type-others");
@@ -107,11 +93,9 @@ class AdminWalkinController {
             });
         });
 
-        // Add-ons Toggles
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
 
-        // Add-ons Counters
         document.querySelectorAll(".counter").forEach(counter => {
             const minus = counter.querySelector(".btn-minus");
             const plus = counter.querySelector(".btn-plus");
@@ -127,7 +111,6 @@ class AdminWalkinController {
             });
         });
 
-        // Admin Specific: Payment Method Toggle (Show/Hide Transaction ID input)
         document.querySelectorAll('input[name="payment-method"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 const transWrapper = this.getEl("transaction-wrapper");
@@ -146,12 +129,11 @@ class AdminWalkinController {
     }
 
     bindModalsAndSubmission() {
-        // Modal Confirmation bindings
         const btnConfirmDates = this.getEl("btn-confirm-dates");
         if (btnConfirmDates) {
             btnConfirmDates.addEventListener("click", () => {
                 this.getEl("confirm-dates-modal")?.classList.remove("active");
-                this.state.isDatesLocked = true; // Visually locked for the admin
+                this.state.isDatesLocked = true;
                 if (this.state.activeCalendar) this.state.activeCalendar.updateDateDisplay();
                 this.calculateSummary();
             });
@@ -162,20 +144,13 @@ class AdminWalkinController {
             if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
         });
 
-        // Submit Booking (Admin Confirm)
         document.querySelector(".btn-confirm-walkin")?.addEventListener("click", () => this.submitWalkinBooking());
         
-        // Cancel Form
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
             if(confirm("Are you sure you want to clear this booking form?")) window.location.reload();
         });
     }
 
-    /**
-     * ==========================================
-     * DOM & UI HELPER METHODS
-     * ==========================================
-     */
     getEl(id) { return document.getElementById(id); }
 
     safeFloat(val) { return parseFloat(val) || 0; }
@@ -233,11 +208,6 @@ class AdminWalkinController {
         nameSelect.disabled = false;
     }
 
-    /**
-     * ==========================================
-     * TAB NAVIGATION
-     * ==========================================
-     */
     handleTabSwitch(btn) {
         if (btn.classList.contains("active")) return;
         const targetId = btn.getAttribute("data-target");
@@ -249,7 +219,6 @@ class AdminWalkinController {
         this.getEl(targetId)?.classList.add("active");
         this.state.activeTabId = targetId;
 
-        // Force calendar UI updates for the new tab
         if (targetId === "tab-event" && this.state.calendars.event) this.state.calendars.event.updateDateDisplay();
         if (targetId === "tab-hotel" && this.state.calendars.hotel) this.state.calendars.hotel.updateDateDisplay();
         if (targetId === "tab-villa" && this.state.calendars.villa) this.state.calendars.villa.updateDateDisplay();
@@ -257,11 +226,6 @@ class AdminWalkinController {
         this.calculateSummary();
     }
 
-    /**
-     * ==========================================
-     * VISUAL DATE LOCKING (ADMIN SPECIFIC)
-     * ==========================================
-     */
     requestDateConfirmation(startDate, endDate, calendarInstance) {
         this.state.activeCalendar = calendarInstance;
         const dateModal = this.getEl("confirm-dates-modal");
@@ -304,11 +268,6 @@ class AdminWalkinController {
         newNo.addEventListener("click", () => overrideModal.classList.remove("active"));
     }
 
-    /**
-     * ==========================================
-     * DYNAMIC PRICING ENGINE
-     * ==========================================
-     */
     appendSummaryRow(label, amount) {
         this.state.summary.html += `<div class="summary-row"><span>${label}</span><span>${this.formatCurrency(amount)}</span></div>`;
     }
@@ -347,7 +306,6 @@ class AdminWalkinController {
             case 'tab-villa': this.calcVillaMath(); break;
         }
 
-        // Admin single payment scheme dropdown
         const schemePct = this.safeFloat(this.getEl("payment-scheme")?.value) || 1;
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
@@ -412,7 +370,7 @@ class AdminWalkinController {
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
         const villa = this.safeFloat(this.getEl('villa-type')?.value) * nights;
-        const stayType = this.safeFloat(document.querySelector('input[name="stay-type"]:checked')?.value) * nights; // Admin tab uses stay-type
+        const stayType = this.safeFloat(document.querySelector('input[name="stay-type"]:checked')?.value) * nights; 
         
         this.state.summary.total += villa + stayType; 
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
@@ -426,11 +384,6 @@ class AdminWalkinController {
         }
     }
 
-    /**
-     * ==========================================
-     * SUBMISSION & API HANDLING
-     * ==========================================
-     */
     getTabContextData() {
         const context = { roomType: '', roomName: '', baseAmt: 0, guests: 0 };
 
@@ -459,7 +412,6 @@ class AdminWalkinController {
     }
 
     async submitWalkinBooking() {
-        // Validation Guard 1: Missing Guest Info
         const guestName = this.getEl("guest-name")?.value.trim();
         const guestEmail = this.getEl("guest-email")?.value.trim();
         const guestPhone = this.getEl("guest-phone")?.value.trim();
@@ -469,7 +421,6 @@ class AdminWalkinController {
             return;
         }
 
-        // Validation Guard 2: Missing Dates
         if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
             alert("Please select dates on the calendar and confirm them first!");
             return;
@@ -481,7 +432,6 @@ class AdminWalkinController {
             return;
         }
 
-        // Parse Payment Strings for DB
         const schemeVal = this.getEl("payment-scheme")?.value;
         let schemeEnum = "100% Full";
         if (schemeVal === "0.5") schemeEnum = "50% Downpayment";
@@ -498,7 +448,6 @@ class AdminWalkinController {
         const btnConfirm = document.querySelector(".btn-confirm-walkin");
         
         const formData = new FormData();
-        const notesInput = this.getEl("guest-notes");
         formData.append("guest_name", guestName);
         formData.append("guest_email", guestEmail);
         formData.append("guest_phone", guestPhone);
@@ -512,7 +461,24 @@ class AdminWalkinController {
         formData.append("payment_scheme", schemeEnum);
         formData.append("payment_method", paymentMethod);
         formData.append("transaction_id", transactionId);
+
+        // GRAB NOTES & EVENT DETAILS FOR PHP
+        const notesInput = this.getEl("guest-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
+
+        if (context.roomType === 'Event Hall') {
+            const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
+            let evTypeTxt = '';
+            if (evTypeRadio) {
+                evTypeTxt = evTypeRadio.id === 'event-others-radio' ? this.getEl('event-type-others')?.value : (evTypeRadio.dataset.text || evTypeRadio.parentElement.innerText.trim());
+            }
+            
+            const evStyleSelect = this.getEl('event-style');
+            const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
+            
+            formData.append("event_type", evTypeTxt);
+            formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
+        }
 
         try {
             btnConfirm.innerText = "PROCESSING...";
@@ -536,7 +502,6 @@ class AdminWalkinController {
     }
 }
 
-// Instantiate Controller on Load
 document.addEventListener("DOMContentLoaded", () => {
     window.WalkinSystem = new AdminWalkinController();
 });

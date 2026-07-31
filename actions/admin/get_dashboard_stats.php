@@ -88,11 +88,16 @@ try {
     }
     $response['charts']['status'] = array_values($statusData);
 
-    // 7. TODAY'S ITINERARY
+    // 7. TODAY'S ITINERARY (Updated to fetch category and stay_type)
     $res = $conn->query("
-        SELECT c.first_name, c.last_name, v.name as venue_name, b.start_date, b.end_date
-        FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id
-        WHERE CURDATE() BETWEEN b.start_date AND b.end_date AND b.booking_status IN ('Confirmed', 'Completed')
+        SELECT c.first_name, c.last_name, v.name as venue_name, v.category,
+               b.start_date, b.end_date, bed.stay_type
+        FROM bookings b 
+        JOIN customers c ON b.customer_id = c.id 
+        JOIN venues v ON b.venue_id = v.id
+        LEFT JOIN booking_event_details bed ON b.id = bed.booking_id
+        WHERE CURDATE() BETWEEN b.start_date AND b.end_date 
+        AND b.booking_status IN ('Confirmed', 'Completed')
         ORDER BY b.start_date ASC
     ");
     $response['todaysOperations'] = $res->fetch_all(MYSQLI_ASSOC);

@@ -1,34 +1,29 @@
 /**
  * ==========================================================================
  * SEVILLA360 - Booking Controller (Refactored)
- * Architecture: ES6 Class-Based Controller Pattern
- * Focus: DRY, Modular Logic, Safe Parsing, and Strict API Data formatting.
  * ==========================================================================
  */
 
 class BookingController {
     constructor() {
-        // 1. Centralized Application State
         this.state = {
-            activeTabId: 'event-hall', // Default tab
+            activeTabId: 'event-hall', 
             isDatesLocked: false,
             activeCalendar: null,
             timerInterval: null,
-            timeLimit: 1800, // 30 minutes in seconds
+            timeLimit: 1800, 
             summary: {
                 total: 0,
                 amountDue: 0,
                 html: ''
             },
-            calendars: {} // Holds instances of SevillaCalendar
+            calendars: {} 
         };
 
-        // 2. Map global functions required by external calendar.js
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
         window.calculateSummary = this.calculateSummary.bind(this);
 
-        // 3. Image Dictionary for Dynamic Swapping
         this.imageMap = {
             "grand-ballroom": "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=800",
             "garden-pavilion": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=800",
@@ -43,11 +38,6 @@ class BookingController {
         this.init();
     }
 
-    /**
-     * ==========================================
-     * INITIALIZATION & EVENT BINDINGS
-     * ==========================================
-     */
     init() {
         this.initCalendars();
         this.bindNavigationAndTabs();
@@ -55,8 +45,6 @@ class BookingController {
         this.bindCalculatorTriggers();
         this.bindModalsAndSubmission();
         this.bindUnloadHook();
-
-        // Run initial calculations
         this.determineActiveTab();
     }
 
@@ -69,7 +57,6 @@ class BookingController {
     }
 
     bindNavigationAndTabs() {
-        // Mobile Navbar Toggle
         const hamburger = this.getEl("hamburger");
         const navLinks = this.getEl("nav-links");
         if (hamburger && navLinks) {
@@ -80,19 +67,16 @@ class BookingController {
             });
         }
 
-        // Tab Switching Logic with Safety Lock Check
         document.querySelectorAll(".tab-btn").forEach(btn => {
             btn.addEventListener("click", (e) => this.handleTabSwitch(e.target));
         });
     }
 
     bindUIInteractions() {
-        // Dynamic Image Swapping
         this.setupImageSwap("event-venue", "event-img");
         this.setupImageSwap("hotel-room-type", "hotel-img");
         this.setupImageSwap("villa-type", "villa-img");
 
-        // Hotel Cascading Dropdown (Category -> Specific Unit)
         const hotelTypeSelect = this.getEl("hotel-room-type");
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
@@ -104,7 +88,6 @@ class BookingController {
             });
         }
 
-        // Generic Dropdown Fetch Dates
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
@@ -115,7 +98,6 @@ class BookingController {
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', opt.text.split('(')[0].trim());
         });
 
-        // Event Type "Others" Reveal & Mirroring
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
             radio.addEventListener("change", (e) => {
                 const othersInput = this.getEl("event-type-others");
@@ -132,7 +114,6 @@ class BookingController {
             if (sumEvType) sumEvType.innerText = e.target.value || "Custom Event";
         });
 
-        // Villa Rules Reveal
         document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
             radio.addEventListener("change", (e) => {
                 const isOvernight = e.target.value === "2000";
@@ -141,11 +122,9 @@ class BookingController {
             });
         });
 
-        // Add-ons Toggles
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
 
-        // Custom Increment/Decrement Counters
         document.querySelectorAll(".counter").forEach(counter => {
             const minus = counter.querySelector(".btn-minus");
             const plus = counter.querySelector(".btn-plus");
@@ -163,7 +142,6 @@ class BookingController {
     }
 
     bindCalculatorTriggers() {
-        // Bind every input to the calculation engine dynamically
         document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"]').forEach(input => {
             input.addEventListener('change', () => this.calculateSummary());
             input.addEventListener('input', () => this.calculateSummary());
@@ -171,22 +149,18 @@ class BookingController {
     }
 
     bindModalsAndSubmission() {
-        // General Modals
         this.getEl("open-terms")?.addEventListener("click", (e) => { e.preventDefault(); this.getEl("tnc-modal")?.classList.add("active"); });
         this.getEl("btn-agree")?.addEventListener("click", () => { this.getEl("tnc-modal")?.classList.remove("active"); this.getEl("terms-check").checked = true; });
         
-        // Cancel Session
         this.getEl("btn-cancel")?.addEventListener("click", () => {
             this.stopTimerAndReset();
             this.unlockDatesAPI();
         });
 
-        // Overlay Click to close
         window.addEventListener("click", (e) => {
             if (e.target.classList.contains("modal-overlay")) e.target.classList.remove("active");
         });
 
-        // Submit Booking
         this.getEl("btn-proceed")?.addEventListener("click", () => this.submitOnlineBooking());
     }
 
@@ -196,11 +170,6 @@ class BookingController {
         });
     }
 
-    /**
-     * ==========================================
-     * DOM & UI HELPER METHODS
-     * ==========================================
-     */
     getEl(id) { return document.getElementById(id); }
 
     safeFloat(val) { return parseFloat(val) || 0; }
@@ -210,7 +179,6 @@ class BookingController {
     }
 
     formatSafeDate(dateObj) {
-        // Prevents Timezone shifting bugs (e.g. user selects 14th, outputs 13th 23:00)
         return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
     }
 
@@ -259,23 +227,16 @@ class BookingController {
         nameSelect.disabled = false;
     }
 
-    /**
-     * ==========================================
-     * TAB NAVIGATION & STATE
-     * ==========================================
-     */
     handleTabSwitch(btn) {
         if (btn.classList.contains("active")) return;
         const target = btn.getAttribute("data-tab");
 
-        // Guard: Prevent losing locked dates by accident
         if (this.state.isDatesLocked || (this.state.activeCalendar && this.state.activeCalendar.startDate)) {
             const switchModal = this.getEl('switch-tab-modal');
             if (!switchModal) return;
             
             switchModal.classList.add('active');
             
-            // Re-bind to clear previous listeners cleanly
             this.replaceElement("btn-confirm-switch").addEventListener("click", () => {
                 switchModal.classList.remove("active");
                 if (this.state.isDatesLocked) this.unlockDatesAPI();
@@ -303,11 +264,6 @@ class BookingController {
         this.calculateSummary();
     }
 
-    /**
-     * ==========================================
-     * TIMER & API DATE LOCKING
-     * ==========================================
-     */
     startTimer() {
         if (this.state.timerInterval) return;
 
@@ -354,7 +310,6 @@ class BookingController {
         catch (error) { console.error("Unlock failed", error); }
     }
 
-    // Called globally by calendar_engine.js
     requestDateConfirmation(startDate, endDate, calendarInstance) {
         this.state.activeCalendar = calendarInstance;
         const dateModal = this.getEl("date-confirm-modal");
@@ -413,7 +368,6 @@ class BookingController {
         });
     }
 
-    // Called globally by calendar_engine.js
     showOverrideModal(newDate, calendarInstance) {
         const overrideModal = this.getEl("override-date-modal");
         if(!overrideModal) return;
@@ -441,11 +395,6 @@ class BookingController {
         return newEl;
     }
 
-    /**
-     * ==========================================
-     * DYNAMIC PRICING ENGINE
-     * ==========================================
-     */
     appendSummaryRow(label, amount) {
         this.state.summary.html += `<div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom: 5px;"><span>${label}</span><span>${this.formatCurrency(amount)}</span></div>`;
     }
@@ -479,16 +428,14 @@ class BookingController {
             return;
         }
 
-        // Routing logic for modules
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
             case 'event-hall': this.calcEventMath(); break;
             case 'resort-villa': this.calcVillaMath(); break;
         }
 
-        // Apply Payment Scheme Math & Update Sidebar Text
         let activeRadioName = 'hotel-payment';
-        let summaryTextId = 'sum-ht-payment'; // Target the span in the HTML
+        let summaryTextId = 'sum-ht-payment'; 
         
         if (this.state.activeTabId === 'event-hall') {
             activeRadioName = 'payment-scheme';
@@ -501,25 +448,21 @@ class BookingController {
         let schemePct = 1.0;
         let schemeText = '100% Full';
 
-        // Loop through radios to find what is checked
         document.querySelectorAll(`input[name="${activeRadioName}"]`).forEach(radio => {
             if (radio.checked) {
-                schemeText = radio.value; // Grabs "20% Reservation" or "50% Downpayment"
+                schemeText = radio.value; 
                 if (radio.value.includes('50%')) schemePct = 0.5;
                 if (radio.value.includes('20%')) schemePct = 0.2;
             }
         });
 
-        // 1. UPDATE THE MATH
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
-        // 2. UPDATE THE TEXT IN THE SIDEBAR UI!
         const paymentTextEl = this.getEl(summaryTextId);
         if (paymentTextEl) {
             paymentTextEl.innerText = schemeText; 
         }
 
-        // Render to UI
         this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
         this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
         this.getEl('summary-due-val').textContent = this.formatCurrency(this.state.summary.amountDue);
@@ -559,7 +502,6 @@ class BookingController {
         if (style > 0) this.appendSummaryRow('Style Upgrade', style);
         if (typeFee > 0) this.appendSummaryRow('Event Setup Fee', typeFee);
 
-        // Extracted Add-on blocks
         if (this.getEl('check-catering')?.checked) {
             const guests = parseInt(guestsInput?.value) || 0;
             const tierPrice = this.safeFloat(document.querySelector('input[name="catering-tier"]:checked')?.value);
@@ -583,7 +525,20 @@ class BookingController {
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
         const villa = this.safeFloat(this.getEl('villa-type')?.value) * nights;
-        const stayType = this.safeFloat(document.querySelector('input[name="villa-stay"]:checked')?.value) * nights;
+        
+        // Find which radio button is checked (Day or Overnight)
+        const activeStayRadio = document.querySelector('input[name="villa-stay"]:checked');
+        const stayType = this.safeFloat(activeStayRadio?.value) * nights;
+        
+        // NEW: Update UI Text and Check-in/Out Times dynamically!
+        if (activeStayRadio) {
+            const isOvernight = activeStayRadio.id === 'stay-night';
+            const stayText = isOvernight ? 'Overnight Stay' : 'Day Time Stay';
+            
+            if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = stayText;
+            if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = isOvernight ? '2:00 PM' : '7:00 AM';
+            if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = isOvernight ? '12:00 PM' : '5:00 PM';
+        }
         
         this.state.summary.total += villa + stayType; 
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
@@ -597,11 +552,6 @@ class BookingController {
         }
     }
 
-    /**
-     * ==========================================
-     * SUBMISSION & API HANDLING
-     * ==========================================
-     */
     getTabContextData() {
         const context = { roomType: '', roomName: '', baseAmt: 0, guests: 0, activeRadioGroup: 'payment-scheme' };
 
@@ -633,7 +583,6 @@ class BookingController {
     }
 
     async submitOnlineBooking() {
-        // Early guards
         if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
             alert("Please select dates on the calendar and confirm them first!");
             return;
@@ -655,7 +604,6 @@ class BookingController {
         });
 
         const formData = new FormData();
-        const notesInput = document.getElementById("booking-notes");
         formData.append("room_type", context.roomType);
         formData.append("room_name", context.roomName);
         formData.append("start_date", this.formatSafeDate(this.state.activeCalendar.startDate));
@@ -664,7 +612,19 @@ class BookingController {
         formData.append("base_amount", context.baseAmt || 0);
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
+
+        // GRAB NOTES & EVENT DETAILS FOR PHP
+        const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
+
+        if (context.roomType === 'Event Hall') {
+            const evTypeTxt = document.getElementById('sum-ev-type')?.innerText || '';
+            const evStyleSelect = document.getElementById('event-style');
+            const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
+            
+            formData.append("event_type", evTypeTxt);
+            formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
+        }
 
         try {
             btn.innerText = "REDIRECTING...";
@@ -688,7 +648,6 @@ class BookingController {
     }
 }
 
-// Instantiate Controller on Load
 document.addEventListener("DOMContentLoaded", () => {
     window.BookingSystem = new BookingController();
 });

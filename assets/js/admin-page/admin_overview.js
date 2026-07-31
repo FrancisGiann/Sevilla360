@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- 1. Today's Itinerary (Widget + Modal) ---
+    // --- 1. Today's Itinerary (Widget + Modal) UPDATED WITH TIMES ---
     function renderTodaysOperations(bookings) {
         const widgetList = document.getElementById('widget-today-list');
         const modalBody = document.getElementById('modal-today-tbody');
@@ -93,15 +93,29 @@ document.addEventListener("DOMContentLoaded", () => {
         const todayStr = new Date().toLocaleDateString('en-CA');
 
         bookings.forEach((b, index) => {
+            // 1. Determine Status Badge
             let badgeHtml = '';
             if (b.start_date === todayStr) badgeHtml = '<span class="badge" style="background:#dbeafe; color:#1e40af;">Arriving</span>';
             else if (b.end_date === todayStr) badgeHtml = '<span class="badge" style="background:#fee2e2; color:#dc2626;">Checkout</span>';
             else badgeHtml = '<span class="badge" style="background:#dcfce7; color:#166534;">In-House</span>';
 
+            // 2. Determine Check-in / Check-out Times
+            let timeString = '';
+            if (b.category === 'Hotel Room') {
+                timeString = 'In: 2:00 PM | Out: 12:00 PM';
+            } else if (b.category === 'Resort Villa') {
+                timeString = (b.stay_type === 'Day Time Stay') ? 'In: 7:00 AM | Out: 5:00 PM' : 'In: 2:00 PM | Out: 12:00 PM';
+            } else {
+                timeString = 'Event Hours';
+            }
+
             // Populate Modal (All items)
             modalBody.insertAdjacentHTML('beforeend', `<tr>
                 <td><strong>${escapeHTML(b.first_name)} ${escapeHTML(b.last_name)}</strong></td>
-                <td>${escapeHTML(b.venue_name)}</td>
+                <td>
+                    ${escapeHTML(b.venue_name)}
+                    <span style="display:block; font-size: 0.8rem; color: #888; margin-top: 3px;"><i class="fa-regular fa-clock"></i> ${timeString}</span>
+                </td>
                 <td>${badgeHtml}</td>
             </tr>`);
 
@@ -111,6 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="widget-info">
                         <strong>${escapeHTML(b.last_name)}</strong>
                         <span>${escapeHTML(b.venue_name)}</span>
+                        <span style="font-size: 0.75rem; color: #a3a3a3; margin-top: 2px;"><i class="fa-regular fa-clock"></i> ${timeString}</span>
                     </div>
                     ${badgeHtml}
                 </div>`);

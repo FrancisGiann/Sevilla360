@@ -1,12 +1,6 @@
-<!-- RESORT VILLA  TAB-->
+<!-- RESORT VILLA TAB -->
 <div class="tab-content" id="tab-resort-villa">
     <h2 class="section-title">Reserve a Resort Villa</h2>
-
-    <!--- CALENDAR UI -->
-    <?php
-    $calendarId = 'cal-ui-villa';
-    include 'includes/partials/booking_calendar.php';
-    ?>
 
     <div class="dynamic-img-wrapper">
         <img id="villa-img"
@@ -14,13 +8,12 @@
             alt="Resort Villa">
     </div>
 
-    <!-- DYNAMIC DATABASE DROPDOWN -->
+    <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWN & STAY TYPE -->
     <div class="form-group">
         <label>Select Villa</label>
         <select id="villa-type">
             <option value="" disabled selected>Select a Villa...</option>
             <?php foreach($villas as $villa): ?>
-            <!-- ADDED data-name AND data-type HERE -->
             <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>"
                 data-name="<?php echo htmlspecialchars($villa['name']); ?>" data-type="Resort Villa">
                 <?php echo htmlspecialchars($villa['name']); ?> (₱<?php echo number_format($villa['base_rate']); ?>)
@@ -34,17 +27,27 @@
         <label class="small-label" style="margin-top: 1.5rem;">STAY TYPE</label>
         <div class="radio-group block-radios">
             <label>
-                <input type="radio" name="villa-stay" value="Day Time Stay" checked>
+                <input type="radio" name="villa-stay" id="stay-day" value="Day Time Stay" checked>
                 <span class="stay-title">Villa Day Time Stay — ₱3,500</span>
             </label>
             <label>
-                <input type="radio" name="villa-stay" value="Overnight">
+                <input type="radio" name="villa-stay" id="stay-night" value="Overnight">
                 <span class="stay-title">Villa Overnight — ₱6,500</span>
             </label>
         </div>
     </div>
 
-    <div class="form-group" style="margin-top: 1.5rem;">
+    <!-- 2. WHEN: CALENDAR UI (MOVED TO MIDDLE) -->
+    <div style="margin-top: 2rem; margin-bottom: 2rem;">
+        <label class="small-label">SELECT YOUR DATES</label>
+        <?php
+        $calendarId = 'cal-ui-villa';
+        include 'includes/partials/booking_calendar.php';
+        ?>
+    </div>
+
+    <!-- 3. WHO & EXTRAS: GUESTS AND INCLUSIONS -->
+    <div class="form-group">
         <label>Number of Guests</label>
         <input type="number" id="villa-guests" min="1" max="8" value="4">
         <small class="extra-pax-note">Additional ₱1,000 per head exceeding base capacity. <span
@@ -69,11 +72,8 @@
         <div class="inc-col">
             <h4 class="script-subtitle">What's inside the house?</h4>
             <ul>
-                <li>TV</li>
-                <li>Bed</li>
-                <li>Airconditioner</li>
-                <li>Hot and cold shower</li>
-                <li>Refrigerator</li>
+                <li>TV, Bed, Airconditioner</li>
+                <li>Hot and cold shower, Refrigerator</li>
                 <li>Toiletry items (Toothbrush, toothpaste, soap)</li>
             </ul>
         </div>
@@ -86,15 +86,13 @@
         </div>
     </div>
 
+    <!-- 4. PAYMENT SCHEME -->
     <div class="form-group">
         <label class="small-label">PAYMENT SCHEME</label>
         <div class="radio-group">
-            <label><input type="radio" name="villa-payment" value="100% Full" checked> 100%
-                Full</label>
-            <label><input type="radio" name="villa-payment" value="50% Downpayment"> 50%
-                Downpayment</label>
-            <label><input type="radio" name="villa-payment" value="20% Reservation"> 20%
-                Reservation</label>
+            <label><input type="radio" name="villa-payment" value="100% Full" checked> 100% Full</label>
+            <label><input type="radio" name="villa-payment" value="50% Downpayment"> 50% Downpayment</label>
+            <label><input type="radio" name="villa-payment" value="20% Reservation"> 20% Reservation</label>
         </div>
     </div>
 </div>

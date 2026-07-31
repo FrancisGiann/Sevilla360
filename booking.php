@@ -69,44 +69,36 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                     <p><strong>Venue:</strong> <span class="sum-val" id="sum-ev-venue">Grand Ballroom</span></p>
                     <p><strong>Event Type:</strong> <span class="sum-val" id="sum-ev-type">Plain Hall</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
+                    <p><strong>Operating Hours:</strong> <span class="sum-val">Per Event Schedule</span></p>
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
-                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ev-payment">100% Full</span>
-                    </p>
+                    <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">100% Full</span></p>
                 </div>
 
                 <div class="summary-container" id="sum-hotel-rooms">
                     <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
                     <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
-                    <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
-                    <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
-                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-ht-payment">100% Full</span>
+                    <p><strong>Check-in:</strong> <span class="sum-val" style="color:var(--color-gold);">2:00 PM</span>
                     </p>
+                    <p><strong>Check-out:</strong> <span class="sum-val" style="color:var(--color-gold);">12:00
+                            PM</span></p>
+                    <p><strong>Guests:</strong> <span class="sum-val" id="sum-ht-guests">2</span></p>
+                    <p><strong>Extra Pax:</strong> <span class="sum-val" id="sum-ht-fee">₱0</span></p>
+                    <p><strong>Payment:</strong> <span class="sum-val" id="sum-ht-payment">100% Full</span></p>
                 </div>
 
                 <div class="summary-container" id="sum-resort-villa">
                     <p><strong>Service:</strong> <span class="sum-val">Resort Villa</span></p>
-                    <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita (Poolside)</span>
-                    </p>
+                    <p><strong>Villa:</strong> <span class="sum-val" id="sum-vl-type">La Casita (Poolside)</span></p>
                     <p><strong>Stay:</strong> <span class="sum-val" id="sum-vl-stay">Day Time Stay</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
+                    <p><strong>Check-in:</strong> <span class="sum-val" id="sum-vl-in"
+                            style="color:var(--color-gold);">7:00 AM</span></p>
+                    <p><strong>Check-out:</strong> <span class="sum-val" id="sum-vl-out"
+                            style="color:var(--color-gold);">5:00 PM</span></p>
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-vl-guests">4</span></p>
-                    <p><strong>Extra Pax Fee:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
-                    <p><strong>Payment Scheme:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span>
-                    </p>
-                </div>
-
-                <div id="summary-breakdown" style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
-                </div>
-                <div class="summary-total"
-                    style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1rem; margin-top: 10px;">
-                    <span>Total Amount</span>
-                    <span id="summary-total-val" style="color: var(--color-gold);">₱0.00</span>
-                </div>
-                <div class="summary-total payable"
-                    style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px;">
-                    <span>Amount Due Now</span>
-                    <span id="summary-due-val">₱0.00</span>
+                    <p><strong>Extra Pax:</strong> <span class="sum-val" id="sum-vl-fee">₱0</span></p>
+                    <p><strong>Payment:</strong> <span class="sum-val" id="sum-vl-payment">100% Full</span></p>
                 </div>
 
                 <!-- Universal Summary Footer -->
