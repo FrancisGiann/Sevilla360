@@ -498,6 +498,7 @@ class AdminWalkinController {
         const btnConfirm = document.querySelector(".btn-confirm-walkin");
         
         const formData = new FormData();
+        const notesInput = this.getEl("guest-notes");
         formData.append("guest_name", guestName);
         formData.append("guest_email", guestEmail);
         formData.append("guest_phone", guestPhone);
@@ -511,6 +512,7 @@ class AdminWalkinController {
         formData.append("payment_scheme", schemeEnum);
         formData.append("payment_method", paymentMethod);
         formData.append("transaction_id", transactionId);
+        formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
         try {
             btnConfirm.innerText = "PROCESSING...";

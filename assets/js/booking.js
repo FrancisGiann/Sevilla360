@@ -655,6 +655,7 @@ class BookingController {
         });
 
         const formData = new FormData();
+        const notesInput = document.getElementById("booking-notes");
         formData.append("room_type", context.roomType);
         formData.append("room_name", context.roomName);
         formData.append("start_date", this.formatSafeDate(this.state.activeCalendar.startDate));
@@ -663,6 +664,7 @@ class BookingController {
         formData.append("base_amount", context.baseAmt || 0);
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
+        formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
         try {
             btn.innerText = "REDIRECTING...";

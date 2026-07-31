@@ -33,7 +33,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $venue_id = $_SESSION['locked_venue_id'];
 
-        // SAVE THE BOOKING (Status MUST strictly match the ENUM: 'Pending')
+        // SAVE THE BOOKING
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
@@ -44,6 +44,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
+
+        // NEW: SAVE THE CUSTOM NOTES / SPECIAL REQUESTS
+        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : "";
+        if (!empty($custom_notes)) {
+            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, custom_notes) VALUES (?, ?)");
+            $stmt_notes->bind_param("is", $booking_id, $custom_notes);
+            $stmt_notes->execute();
+        }
 
         // DELETE THE TEMPORARY LOCK
         $session_id = session_id();

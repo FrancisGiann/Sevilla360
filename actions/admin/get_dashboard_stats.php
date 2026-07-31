@@ -99,7 +99,7 @@ try {
 
     // 8. UPCOMING MAJOR EVENTS (Next 30 Days)
     $res = $conn->query("
-        SELECT b.start_date, b.end_date, v.name as venue_name, bed.event_type, bed.event_style, c.last_name
+        SELECT b.id, b.start_date, b.end_date, v.name as venue_name, bed.event_type, bed.event_style, c.last_name
         FROM bookings b JOIN venues v ON b.venue_id = v.id JOIN customers c ON b.customer_id = c.id
         LEFT JOIN booking_event_details bed ON b.id = bed.booking_id
         WHERE v.category = 'Event Hall' AND b.booking_status = 'Confirmed'

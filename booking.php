@@ -111,6 +111,15 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 
                 <!-- Universal Summary Footer -->
                 <div class="summary-footer">
+                    <!-- NEW: Additional Notes Input -->
+                    <div style="margin-bottom: 20px;">
+                        <label
+                            style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:8px; color:var(--color-dark);">Special
+                            Requests / Notes (Optional)</label>
+                        <textarea id="booking-notes" rows="3"
+                            placeholder="Allergies, early check-in requests, or specific event instructions..."
+                            style="width:100%; padding:10px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); font-family:var(--font-body); resize:vertical;"></textarea>
+                    </div>
                     <div class="timer-box" id="timer-box">
                         <span id="timer-text">Select your dates to book.</span>
                         <span id="countdown-wrapper" style="display: none;">Session expires in: <span

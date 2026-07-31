@@ -73,6 +73,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
+        // NEW: SAVE THE CUSTOM NOTES / SPECIAL REQUESTS
+        $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : "";
+        if (!empty($custom_notes)) {
+            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, custom_notes) VALUES (?, ?)");
+            $stmt_notes->bind_param("is", $booking_id, $custom_notes);
+            $stmt_notes->execute();
+        }
+
         // 7. SAVE RECEIPT
         $transaction_id = !empty($_POST['transaction_id']) ? $_POST['transaction_id'] : null;
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");

@@ -58,6 +58,14 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
                 <input type="email" id="guest-email" placeholder="Enter guest's email">
             </div>
         </div>
+        <div class="form-row">
+            <div class="form-group" style="width: 100%;">
+                <label>Special Requests / Internal Notes</label>
+                <textarea id="guest-notes" rows="3"
+                    placeholder="Enter any specific guest requirements or admin notes..."
+                    style="width:100%; padding:12px; border-radius:4px; border:1px solid rgba(42,37,34,0.15); font-family:var(--font-body); resize:vertical;"></textarea>
+            </div>
+        </div>
     </section>
 
     <!-- Booking Details & Tabs -->

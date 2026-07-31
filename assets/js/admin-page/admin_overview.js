@@ -132,28 +132,41 @@ document.addEventListener("DOMContentLoaded", () => {
 
         events.forEach((e, index) => {
             const dateStr = new Date(e.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
-            let eventDesc = e.event_type ? `${e.event_type} (${e.event_style})` : `Event`;
+            const eventType = e.event_type ? e.event_type : 'General Event';
+            const eventStyle = e.event_style ? `(${e.event_style})` : '';
+            
+            let badgeBg = '#f3f4f6'; let badgeText = '#374151'; // Default Gray
+            const typeLower = eventType.toLowerCase();
+            
+            if (typeLower.includes('wedding') || typeLower.includes('nuptial')) { badgeBg = '#fce7f3'; badgeText = '#be185d'; } 
+            else if (typeLower.includes('debut') || typeLower.includes('party')) { badgeBg = '#fef08a'; badgeText = '#a16207'; } 
+            else if (typeLower.includes('seminar') || typeLower.includes('corporate')) { badgeBg = '#dbeafe'; badgeText = '#1e40af'; }
 
-            // Populate Modal (All items)
-            modalBody.insertAdjacentHTML('beforeend', `<tr>
+            const badgeHtml = `<span style="background:${badgeBg}; color:${badgeText}; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">${escapeHTML(eventType)}</span>`;
+            
+            // NEW: Click action URL
+            const clickAction = `window.location.href='admin_dashboard.php?page=bookings&search=${e.id}'`;
+
+            // Modal Row (Hover effect added)
+            modalBody.insertAdjacentHTML('beforeend', `<tr style="cursor:pointer;" onclick="${clickAction}" onmouseover="this.style.backgroundColor='rgba(214,168,112,0.1)'" onmouseout="this.style.backgroundColor='transparent'">
                 <td style="font-weight:600; color:var(--color-gold);">${dateStr}</td>
-                <td><strong>${escapeHTML(eventDesc)}</strong><br><span style="font-size:0.8rem; color:#888;">Host: ${escapeHTML(e.last_name)}</span></td>
+                <td><div style="margin-bottom: 5px;">${badgeHtml} <span style="font-size:0.85rem; color:#666;">${escapeHTML(eventStyle)}</span></div>
+                <div style="font-size:0.85rem; color:var(--color-dark);">Host: <strong>${escapeHTML(e.last_name)}</strong></div></td>
                 <td>${escapeHTML(e.venue_name)}</td>
             </tr>`);
 
-            // Populate Compact Widget (Max 3 items)
+            // Compact Widget Row
             if (index < 3) {
-                widgetList.insertAdjacentHTML('beforeend', `<div class="widget-item">
+                widgetList.insertAdjacentHTML('beforeend', `<div class="widget-item" style="align-items: flex-start; cursor:pointer;" onclick="${clickAction}" onmouseover="this.style.backgroundColor='rgba(214,168,112,0.05)'" onmouseout="this.style.backgroundColor='transparent'">
                     <div class="widget-info">
                         <strong style="color:var(--color-gold); margin-right: 5px;">${dateStr}</strong> 
                         <strong>${escapeHTML(e.last_name)}</strong>
-                        <span>${escapeHTML(eventDesc)}</span>
+                        <div style="margin-top: 6px;">${badgeHtml}</div>
                     </div>
                 </div>`);
             }
         });
     }
-
     // --- 3. Recent Bookings (Restored Full Width Table) ---
     function renderRecentBookings(bookings) {
         const tbody = document.getElementById('recent-bookings-tbody');
