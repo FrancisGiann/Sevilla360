@@ -12,11 +12,7 @@ class BookingController {
             activeCalendar: null,
             timerInterval: null,
             timeLimit: 1800, 
-            summary: {
-                total: 0,
-                amountDue: 0,
-                html: ''
-            },
+            summary: { total: 0, amountDue: 0, html: '' },
             calendars: {} 
         };
 
@@ -102,7 +98,6 @@ class BookingController {
             radio.addEventListener("change", (e) => {
                 const othersInput = this.getEl("event-type-others");
                 const sumEvType = this.getEl("sum-ev-type");
-                
                 const isOthers = e.target.id === "event-others-radio";
                 if (othersInput) othersInput.classList.toggle("hidden", !isOthers);
                 if (sumEvType) sumEvType.innerText = isOthers ? (othersInput?.value || "Custom Event") : e.target.dataset.text;
@@ -116,7 +111,7 @@ class BookingController {
 
         document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
             radio.addEventListener("change", (e) => {
-                const isOvernight = e.target.value === "2000";
+                const isOvernight = e.target.value === "Overnight";
                 this.getEl("rule-day")?.classList.toggle("hidden", isOvernight);
                 this.getEl("rule-night")?.classList.toggle("hidden", !isOvernight);
             });
@@ -171,16 +166,9 @@ class BookingController {
     }
 
     getEl(id) { return document.getElementById(id); }
-
     safeFloat(val) { return parseFloat(val) || 0; }
-
-    formatCurrency(amount) {
-        return '₱' + this.safeFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    formatSafeDate(dateObj) {
-        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-    }
+    formatCurrency(amount) { return '₱' + this.safeFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    formatSafeDate(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
 
     determineActiveTab() {
         const activeBtn = document.querySelector('.tab-btn.active');
@@ -236,18 +224,15 @@ class BookingController {
             if (!switchModal) return;
             
             switchModal.classList.add('active');
-            
             this.replaceElement("btn-confirm-switch").addEventListener("click", () => {
                 switchModal.classList.remove("active");
                 if (this.state.isDatesLocked) this.unlockDatesAPI();
                 this.stopTimerAndReset();
                 this.executeTabVisualSwitch(btn, target);
             });
-
             this.replaceElement("btn-cancel-switch").addEventListener("click", () => switchModal.classList.remove("active"));
             return;
         }
-
         this.executeTabVisualSwitch(btn, target);
     }
 
@@ -266,7 +251,6 @@ class BookingController {
 
     startTimer() {
         if (this.state.timerInterval) return;
-
         const timerBox = this.getEl("timer-box");
         const countdownEl = this.getEl("countdown");
         
@@ -402,7 +386,6 @@ class BookingController {
     calcExtraPax(inputEl, baseCap, feePerHead, labelEl, guestsSumEl) {
         const guests = parseInt(inputEl?.value) || 0;
         if (guestsSumEl) guestsSumEl.innerText = guests > 0 ? guests : "--";
-
         let extraFee = 0;
         if (guests > baseCap) {
             extraFee = (guests - baseCap) * feePerHead;
@@ -436,31 +419,45 @@ class BookingController {
 
         let activeRadioName = 'hotel-payment';
         let summaryTextId = 'sum-ht-payment'; 
-        
-        if (this.state.activeTabId === 'event-hall') {
-            activeRadioName = 'payment-scheme';
-            summaryTextId = 'sum-ev-payment';
-        } else if (this.state.activeTabId === 'resort-villa') {
-            activeRadioName = 'villa-payment';
-            summaryTextId = 'sum-vl-payment';
-        }
-
         let schemePct = 1.0;
         let schemeText = '100% Full';
 
-        document.querySelectorAll(`input[name="${activeRadioName}"]`).forEach(radio => {
-            if (radio.checked) {
-                schemeText = radio.value; 
-                if (radio.value.includes('50%')) schemePct = 0.5;
-                if (radio.value.includes('20%')) schemePct = 0.2;
+        const proceedBtn = this.getEl("btn-proceed");
+
+        if (this.state.activeTabId === 'event-hall') {
+            summaryTextId = 'sum-ev-payment';
+            schemeText = 'To Be Arranged'; 
+            schemePct = 0; 
+            
+            if (proceedBtn) {
+                proceedBtn.innerText = "SUBMIT EVENT INQUIRY";
+                proceedBtn.style.backgroundColor = "var(--color-dark)";
             }
-        });
+
+        } else {
+            if (this.state.activeTabId === 'resort-villa') {
+                activeRadioName = 'villa-payment';
+                summaryTextId = 'sum-vl-payment';
+            }
+
+            document.querySelectorAll(`input[name="${activeRadioName}"]`).forEach(radio => {
+                if (radio.checked) {
+                    schemeText = radio.value; 
+                    if (radio.value.includes('50%')) schemePct = 0.5;
+                    if (radio.value.includes('20%')) schemePct = 0.2;
+                }
+            });
+
+            if (proceedBtn) {
+                proceedBtn.innerText = "PROCEED TO PAYMENT";
+                proceedBtn.style.backgroundColor = "var(--color-gold)";
+            }
+        }
 
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
-        const paymentTextEl = this.getEl(summaryTextId);
-        if (paymentTextEl) {
-            paymentTextEl.innerText = schemeText; 
+        if (this.getEl(summaryTextId)) {
+            this.getEl(summaryTextId).innerText = schemeText; 
         }
 
         this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
@@ -471,13 +468,11 @@ class BookingController {
     calcHotelMath() {
         const nights = this.state.calendars.hotel?.totalNights || 1;
         const roomRate = this.safeFloat(this.getEl('hotel-room-name')?.value);
-        
         if (roomRate > 0) {
             const roomTotal = roomRate * nights;
             this.state.summary.total += roomTotal; 
             this.appendSummaryRow(`Base Room Rate (x${nights} nights)`, roomTotal);
         }
-
         const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), 2, 800, this.getEl('hotel-extra-fee'), this.getEl('sum-ht-guests'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
@@ -489,18 +484,11 @@ class BookingController {
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
-        const style = this.safeFloat(this.getEl('event-style')?.value) * days;
-        
-        const typeRadio = document.querySelector('input[name="event-type"]:checked');
-        const typeFee = (typeRadio && typeRadio.id !== 'event-others-radio') ? this.safeFloat(typeRadio.value) * days : 0;
-        
         const guestsInput = this.getEl('event-guests');
         if (this.getEl('sum-ev-guests')) this.getEl('sum-ev-guests').innerText = guestsInput?.value || "--";
 
-        this.state.summary.total += venue + style + typeFee;
+        this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
-        if (style > 0) this.appendSummaryRow('Style Upgrade', style);
-        if (typeFee > 0) this.appendSummaryRow('Event Setup Fee', typeFee);
 
         if (this.getEl('check-catering')?.checked) {
             const guests = parseInt(guestsInput?.value) || 0;
@@ -526,23 +514,23 @@ class BookingController {
         const nights = this.state.calendars.villa?.totalNights || 1;
         const villa = this.safeFloat(this.getEl('villa-type')?.value) * nights;
         
-        // Find which radio button is checked (Day or Overnight)
         const activeStayRadio = document.querySelector('input[name="villa-stay"]:checked');
-        const stayType = this.safeFloat(activeStayRadio?.value) * nights;
-        
-        // NEW: Update UI Text and Check-in/Out Times dynamically!
+        let stayTypePrice = 0;
+        let stayText = 'Day Time Stay';
+
         if (activeStayRadio) {
-            const isOvernight = activeStayRadio.id === 'stay-night';
-            const stayText = isOvernight ? 'Overnight Stay' : 'Day Time Stay';
-            
+            const isOvernight = activeStayRadio.value === 'Overnight';
+            stayText = isOvernight ? 'Overnight' : 'Day Time Stay';
+            stayTypePrice = isOvernight ? (3000 * nights) : 0; 
+
             if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = stayText;
             if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = isOvernight ? '2:00 PM' : '7:00 AM';
             if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = isOvernight ? '12:00 PM' : '5:00 PM';
         }
         
-        this.state.summary.total += villa + stayType; 
+        this.state.summary.total += villa + stayTypePrice; 
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
-        if (stayType > 0) this.appendSummaryRow('Overnight Upgrade', stayType);
+        if (stayTypePrice > 0) this.appendSummaryRow('Overnight Upgrade', stayTypePrice);
         
         const extraFee = this.calcExtraPax(this.getEl('villa-guests'), 4, 1000, this.getEl('villa-extra-fee'), this.getEl('sum-vl-guests'));
         if (extraFee > 0) { 
@@ -587,7 +575,6 @@ class BookingController {
             alert("Please select dates on the calendar and confirm them first!");
             return;
         }
-
         if (!this.getEl('terms-check')?.checked) {
             alert("Please agree to the Terms & Conditions before proceeding.");
             return;
@@ -599,9 +586,13 @@ class BookingController {
         if (!context.roomName) { alert("Please ensure a valid room/venue is selected."); return; }
 
         let schemeEnum = '100% Full';
-        document.querySelectorAll(`input[name="${context.activeRadioGroup}"]`).forEach(radio => {
-            if (radio.checked) schemeEnum = radio.value;
-        });
+        if (this.state.activeTabId === 'event-hall') {
+            schemeEnum = '20% Reservation'; 
+        } else {
+            document.querySelectorAll(`input[name="${context.activeRadioGroup}"]`).forEach(radio => {
+                if (radio.checked) schemeEnum = radio.value;
+            });
+        }
 
         const formData = new FormData();
         formData.append("room_type", context.roomType);
@@ -613,7 +604,6 @@ class BookingController {
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
 
-        // GRAB NOTES & EVENT DETAILS FOR PHP
         const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
@@ -621,13 +611,17 @@ class BookingController {
             const evTypeTxt = document.getElementById('sum-ev-type')?.innerText || '';
             const evStyleSelect = document.getElementById('event-style');
             const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
-            
             formData.append("event_type", evTypeTxt);
             formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
         }
 
+        if (context.roomType === 'Resort Villa') {
+            const stayText = document.getElementById('sum-vl-stay')?.innerText === 'Overnight' ? 'Overnight' : 'Day Time Stay';
+            formData.append("stay_type", stayText);
+        }
+
         try {
-            btn.innerText = "REDIRECTING...";
+            btn.innerText = "PROCESSING...";
             btn.disabled = true;
 
             const res = await fetch('actions/bookings/submit_online.php', { method: 'POST', body: formData });
@@ -635,14 +629,14 @@ class BookingController {
             const response = data.split('|');
             
             if (response[0] === 'Success') {
-                alert("Booking reserved! Redirecting to Dashboard.");
+                alert("Success! Redirecting to Dashboard.");
                 window.location.href = "user_dashboard.php"; 
             } else {
                 throw new Error(response[1]);
             }
         } catch (error) {
             alert("Error: " + error.message);
-            btn.innerText = "PROCEED VIA PAYMONGO";
+            btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "PROCEED TO PAYMENT";
             btn.disabled = false;
         }
     }

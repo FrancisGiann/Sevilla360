@@ -52,6 +52,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_notes->execute();
         }
 
+        // FIXED: SAVE VILLA DETAILS
+        if ($_POST['room_type'] === 'Resort Villa' && isset($_POST['stay_type'])) {
+            $stay_type = $_POST['stay_type'];
+            $stmt_villa = $conn->prepare("INSERT INTO booking_villa_details (booking_id, stay_type) VALUES (?, ?)");
+            $stmt_villa->bind_param("is", $booking_id, $stay_type);
+            $stmt_villa->execute();
+        }
+
         $session_id = session_id();
         $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
         $stmt_unlock->bind_param("is", $venue_id, $session_id);

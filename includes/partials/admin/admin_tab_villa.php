@@ -1,10 +1,6 @@
 <!-- RESORT VILLA TAB -->
 <div class="tab-content" id="tab-villa">
-    <!--- CALENDAR UI -->
-    <?php
-    $calendarId = 'cal-ui-villa';
-    include 'includes/partials/booking_calendar.php';
-    ?>
+
 
     <div class="dynamic-img-wrapper">
         <img id="villa-img"
@@ -34,6 +30,12 @@
             <label><input type="radio" name="stay-type" value="2000"> Overnight (+₱2,000)</label>
         </div>
     </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-villa';
+    include 'includes/partials/booking_calendar.php';
+    ?>
+
 
     <div class="form-group">
         <label>Number of Guests <span class="extra-pax-note">Exceeding base:

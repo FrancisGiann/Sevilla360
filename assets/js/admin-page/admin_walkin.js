@@ -10,11 +10,7 @@ class AdminWalkinController {
             activeTabId: 'tab-event',
             isDatesLocked: false,     
             activeCalendar: null,
-            summary: {
-                total: 0,
-                amountDue: 0,
-                html: ''
-            },
+            summary: { total: 0, amountDue: 0, html: '' },
             calendars: {}
         };
 
@@ -67,7 +63,6 @@ class AdminWalkinController {
         const hotelTypeSelect = this.getEl("hotel-room-type");
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
-            
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 this.calculateSummary();
@@ -93,6 +88,14 @@ class AdminWalkinController {
             });
         });
 
+        document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
+            radio.addEventListener("change", (e) => {
+                const isOvernight = e.target.value === "Overnight";
+                this.getEl("rule-day")?.classList.toggle("hidden", isOvernight);
+                this.getEl("rule-night")?.classList.toggle("hidden", !isOvernight);
+            });
+        });
+
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
 
@@ -100,7 +103,6 @@ class AdminWalkinController {
             const minus = counter.querySelector(".btn-minus");
             const plus = counter.querySelector(".btn-plus");
             const valSpan = counter.querySelector(".val");
-
             minus.addEventListener("click", () => {
                 const current = parseInt(valSpan.innerText) || 0;
                 if (current > 0) { valSpan.innerText = current - 1; this.calculateSummary(); }
@@ -114,9 +116,7 @@ class AdminWalkinController {
         document.querySelectorAll('input[name="payment-method"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 const transWrapper = this.getEl("transaction-wrapper");
-                if (transWrapper) {
-                    transWrapper.classList.toggle('hidden', e.target.value === 'cash');
-                }
+                if (transWrapper) transWrapper.classList.toggle('hidden', e.target.value === 'cash');
             });
         });
     }
@@ -138,30 +138,21 @@ class AdminWalkinController {
                 this.calculateSummary();
             });
         }
-
         this.getEl("btn-cancel-dates")?.addEventListener("click", () => {
             this.getEl("confirm-dates-modal")?.classList.remove("active");
             if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
         });
 
         document.querySelector(".btn-confirm-walkin")?.addEventListener("click", () => this.submitWalkinBooking());
-        
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
             if(confirm("Are you sure you want to clear this booking form?")) window.location.reload();
         });
     }
 
     getEl(id) { return document.getElementById(id); }
-
     safeFloat(val) { return parseFloat(val) || 0; }
-
-    formatCurrency(amount) {
-        return '₱' + this.safeFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    formatSafeDate(dateObj) {
-        return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-    }
+    formatCurrency(amount) { return '₱' + this.safeFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    formatSafeDate(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
 
     determineActiveTab() {
         const activeBtn = document.querySelector('.tab-btn.active');
@@ -185,9 +176,7 @@ class AdminWalkinController {
     setupToggle(checkboxId, targetId) {
         const checkbox = this.getEl(checkboxId);
         const target = this.getEl(targetId);
-        if (checkbox && target) {
-            checkbox.addEventListener("change", () => target.classList.toggle("hidden", !checkbox.checked));
-        }
+        if (checkbox && target) checkbox.addEventListener("change", () => target.classList.toggle("hidden", !checkbox.checked));
     }
 
     populateSpecificHotelRooms(category) {
@@ -275,7 +264,6 @@ class AdminWalkinController {
     calcExtraPax(inputEl, baseCap, feePerHead, labelEl) {
         const guests = parseInt(inputEl?.value) || 0;
         let extraFee = 0;
-
         if (guests > baseCap) {
             extraFee = (guests - baseCap) * feePerHead;
             if (labelEl) {
@@ -317,13 +305,11 @@ class AdminWalkinController {
     calcHotelMath() {
         const nights = this.state.calendars.hotel?.totalNights || 1;
         const roomRate = this.safeFloat(this.getEl('hotel-room-name')?.value);
-        
         if (roomRate > 0) {
             const roomTotal = roomRate * nights;
             this.state.summary.total += roomTotal; 
             this.appendSummaryRow(`Base Room Rate (x${nights} nights)`, roomTotal);
         }
-
         const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), 2, 800, this.getEl('hotel-extra-fee'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
@@ -335,17 +321,10 @@ class AdminWalkinController {
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
-        const style = this.safeFloat(this.getEl('event-style')?.value) * days;
-        
-        const typeRadio = document.querySelector('input[name="event-type"]:checked');
-        const typeFee = (typeRadio && typeRadio.id !== 'event-others-radio') ? this.safeFloat(typeRadio.value) * days : 0;
-        
         const guestsInput = this.getEl('event-guests');
 
-        this.state.summary.total += venue + style + typeFee;
+        this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
-        if (style > 0) this.appendSummaryRow('Style Upgrade', style);
-        if (typeFee > 0) this.appendSummaryRow('Event Setup Fee', typeFee);
 
         if (this.getEl('check-catering')?.checked) {
             const guests = parseInt(guestsInput?.value) || 0;
@@ -370,11 +349,18 @@ class AdminWalkinController {
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
         const villa = this.safeFloat(this.getEl('villa-type')?.value) * nights;
-        const stayType = this.safeFloat(document.querySelector('input[name="stay-type"]:checked')?.value) * nights; 
         
-        this.state.summary.total += villa + stayType; 
+        const activeStayRadio = document.querySelector('input[name="villa-stay"]:checked');
+        let stayTypePrice = 0;
+        
+        if (activeStayRadio) {
+            const isOvernight = activeStayRadio.value === 'Overnight';
+            stayTypePrice = isOvernight ? (3000 * nights) : 0; 
+        }
+        
+        this.state.summary.total += villa + stayTypePrice; 
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
-        if (stayType > 0) this.appendSummaryRow('Overnight Upgrade', stayType);
+        if (stayTypePrice > 0) this.appendSummaryRow('Overnight Upgrade', stayTypePrice);
         
         const extraFee = this.calcExtraPax(this.getEl('villa-guests'), 4, 1000, this.getEl('villa-extra-fee'));
         if (extraFee > 0) { 
@@ -427,10 +413,7 @@ class AdminWalkinController {
         }
 
         const context = this.getTabContextData();
-        if (!context.roomName) {
-            alert("Please ensure a valid specific room/venue is selected.");
-            return;
-        }
+        if (!context.roomName) { alert("Please ensure a valid specific room/venue is selected."); return; }
 
         const schemeVal = this.getEl("payment-scheme")?.value;
         let schemeEnum = "100% Full";
@@ -462,7 +445,6 @@ class AdminWalkinController {
         formData.append("payment_method", paymentMethod);
         formData.append("transaction_id", transactionId);
 
-        // GRAB NOTES & EVENT DETAILS FOR PHP
         const notesInput = this.getEl("guest-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
@@ -472,12 +454,16 @@ class AdminWalkinController {
             if (evTypeRadio) {
                 evTypeTxt = evTypeRadio.id === 'event-others-radio' ? this.getEl('event-type-others')?.value : (evTypeRadio.dataset.text || evTypeRadio.parentElement.innerText.trim());
             }
-            
             const evStyleSelect = this.getEl('event-style');
             const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
             
             formData.append("event_type", evTypeTxt);
             formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
+        }
+
+        if (context.roomType === 'Resort Villa') {
+            const stayRadio = document.querySelector('input[name="villa-stay"]:checked');
+            formData.append("stay_type", stayRadio ? stayRadio.value : 'Day Time Stay');
         }
 
         try {

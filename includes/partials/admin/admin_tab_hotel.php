@@ -31,6 +31,11 @@
             </select>
         </div>
     </div>
+    <!--- CALENDAR UI -->
+    <?php
+    $calendarId = 'cal-ui-hotel';
+    include 'includes/partials/booking_calendar.php';
+    ?>
 
     <div class="form-row" style="margin-top: 15px;">
         <div class="form-group">
