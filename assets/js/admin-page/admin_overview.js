@@ -191,11 +191,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const dateStr = new Date(booking.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 
+            // Mask price for pending events
+            let amountText = currencyFormatter.format(booking.total_amount);
+            if (booking.venue_category === 'Event Hall' && booking.booking_status === 'Pending') {
+                amountText = '<span style="color:#b5884e; font-style:italic;">TBA</span>';
+            }
+
             tbody.insertAdjacentHTML('beforeend', `<tr>
                 <td>#${booking.reference_no}</td>
                 <td>${escapeHTML(booking.venue_name)}</td>
                 <td>${dateStr}</td>
-                <td>${currencyFormatter.format(booking.total_amount)}</td>
+                <td>${amountText}</td>
                 <td><span class="badge ${badgeClass}">${statusText}</span></td>
             </tr>`);
         });

@@ -249,7 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // C. View Details Button
+  // C. View Details Button (UPDATED)
   document.querySelectorAll(".btn-details").forEach((btn) => {
     btn.addEventListener("click", function(e) {
         const bookingId = this.getAttribute('data-id');
@@ -291,7 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const eDate = new Date(data.end_date).toLocaleDateString("en-US", opts);
             document.getElementById('ud-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
 
-            // Specifics
+            // Specifics & Custom Notes
             const specRow = document.getElementById('ud-specific-row');
             const specLabel = document.getElementById('ud-specific-label');
             const specValue = document.getElementById('ud-specific-value');
@@ -299,8 +299,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (specifics) {
                 specRow.style.display = 'flex';
                 if (data.venue_category === 'Event Hall') {
-                    specLabel.innerText = "Event Type:";
-                    specValue.innerText = `${specifics.event_type} (${specifics.event_style})`;
+                    specLabel.innerText = "Event Details:";
+                    specValue.innerHTML = `
+                        <strong>${specifics.event_type}</strong> (${specifics.event_style})<br>
+                        <span style="color:#666; font-size:0.85rem; display:block; margin-top:5px;">
+                            <strong>Your Notes:</strong> ${specifics.custom_notes || 'None'}
+                        </span>
+                    `;
                 } else if (data.venue_category === 'Resort Villa') {
                     specLabel.innerText = "Stay Type:";
                     specValue.innerText = specifics.stay_type;
@@ -322,16 +327,26 @@ document.addEventListener("DOMContentLoaded", () => {
                 addonsContainer.style.display = 'none';
             }
 
-            // Money
+            // Money & TBA Logic
             const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
-            document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
-            document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
-            document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
+            const isPendingEvent = data.venue_category === 'Event Hall' && data.booking_status === 'Pending';
+
+            if (isPendingEvent) {
+                document.getElementById('ud-base-amt').innerText = "TBA";
+                document.getElementById('ud-addons-amt').innerText = "TBA";
+                document.getElementById('ud-extrapax-amt').innerText = "TBA";
+                document.getElementById('ud-total-amt').innerText = "To Be Arranged";
+                document.getElementById('ud-scheme').innerText = "To Be Arranged";
+            } else {
+                document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
+                document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
+                document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
+                document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
+                document.getElementById('ud-scheme').innerText = data.payment_scheme;
+            }
             
-            document.getElementById('ud-scheme').innerText = data.payment_scheme;
             document.getElementById('ud-paid-amt').innerText = formatCash(data.amount_paid);
-            document.getElementById('ud-tid').innerText = res.data.transaction_id;
+            document.getElementById('ud-tid').innerText = res.data.transaction_id || "--";
 
             openModal("details");
         })
@@ -369,12 +384,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // UX: Disable button while loading
       const originalText = this.innerText;
       this.innerText = "Processing...";
       this.disabled = true;
 
-      // Send to our new PHP backend!
       fetch("actions/user/request_cancel.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -387,7 +400,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .then((data) => {
           if (data.success) {
             alert(data.message);
-            window.location.reload(); // Refresh to show "Cancel Requested" badge
+            window.location.reload(); 
           } else {
             alert("Error: " + data.message);
             this.innerText = originalText;

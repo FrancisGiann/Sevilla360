@@ -114,7 +114,9 @@ try {
 
     // 9. RECENT BOOKINGS
     $res = $conn->query("
-        SELECT b.reference_no, v.name as venue_name, b.start_date, b.total_amount, b.booking_status, b.payment_status, cx.status AS cancel_status, rr.status AS resched_status
+        SELECT b.reference_no, v.name as venue_name, v.category as venue_category, 
+               b.start_date, b.total_amount, b.booking_status, b.payment_status, 
+               cx.status AS cancel_status, rr.status AS resched_status
         FROM bookings b JOIN venues v ON b.venue_id = v.id 
         LEFT JOIN cancellations cx ON b.id = cx.booking_id AND cx.status = 'Pending'
         LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'

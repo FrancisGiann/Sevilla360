@@ -604,6 +604,16 @@ class BookingController {
             return;
         }
 
+        // =======================================================
+        // THE FIX: REQUIRE PHONE NUMBER AND GRAB IT FROM HTML
+        // =======================================================
+        const phoneInput = document.getElementById("contact-phone");
+        if (!phoneInput || phoneInput.value.trim() === "") {
+            alert("Please provide a contact number so our admin team can call you!");
+            return;
+        }
+        // =======================================================
+
         const btn = this.getEl("btn-proceed");
         const context = this.getTabContextData();
         
@@ -627,6 +637,12 @@ class BookingController {
         formData.append("base_amount", context.baseAmt || 0);
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
+
+        // =======================================================
+        // THE FIX: SEND PHONE NUMBER TO THE PHP BACKEND
+        // =======================================================
+        formData.append("contact_phone", phoneInput.value.trim());
+        // =======================================================
 
         const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");

@@ -604,8 +604,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 specLabel.style.display = 'block';
                 specValue.style.display = 'block';
                 if (data.venue_category === 'Event Hall') {
-                    specLabel.innerText = "Event Type:";
-                    specValue.innerText = `${specifics.event_type} (${specifics.event_style})`;
+                    specLabel.innerText = "Event Details:";
+                    // UPDATED: Show the Event Type, Style, AND Custom Notes!
+                    specValue.innerHTML = `
+                        <strong>${specifics.event_type}</strong> (${specifics.event_style})<br>
+                        <span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;">
+                            <strong>Notes:</strong> ${specifics.custom_notes || 'No special requests.'}
+                        </span>
+                    `;
                 } else if (data.venue_category === 'Resort Villa') {
                     specLabel.innerText = "Stay Type:";
                     specValue.innerText = specifics.stay_type;
@@ -628,12 +634,22 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('vd-base-amt').innerText = formatCash(data.base_amount);
-            document.getElementById('vd-addons-amt').innerText = formatCash(data.addons_amount);
-            document.getElementById('vd-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
-            document.getElementById('vd-total-amt').innerText = formatCash(data.total_amount);
             
-            document.getElementById('vd-scheme').innerText = data.payment_scheme;
+            // UPDATED: Hide the Price if it's a Pending Event Inquiry
+            if (data.venue_category === 'Event Hall' && data.booking_status === 'Pending') {
+                document.getElementById('vd-base-amt').innerText = "TBA";
+                document.getElementById('vd-addons-amt').innerText = "TBA";
+                document.getElementById('vd-extrapax-amt').innerText = "TBA";
+                document.getElementById('vd-total-amt').innerText = "To Be Arranged";
+                document.getElementById('vd-scheme').innerText = "To Be Arranged";
+            } else {
+                document.getElementById('vd-base-amt').innerText = formatCash(data.base_amount);
+                document.getElementById('vd-addons-amt').innerText = formatCash(data.addons_amount);
+                document.getElementById('vd-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
+                document.getElementById('vd-total-amt').innerText = formatCash(data.total_amount);
+                document.getElementById('vd-scheme').innerText = data.payment_scheme;
+            }
+            
             document.getElementById('vd-paid-amt').innerText = formatCash(data.amount_paid);
 
             modalOverlay.classList.add('active');
@@ -677,7 +693,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       showConfirmModal(`Change the total price of this booking to ₱${newTotal.toLocaleString()}?`, () => {
-          // Re-using our universal processBookingAction function!
           processBookingAction(bookingId, 'update_price', this, { new_total: newTotal });
       }, 'editPriceModal');
   });

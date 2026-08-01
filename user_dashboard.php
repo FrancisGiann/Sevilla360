@@ -6,13 +6,16 @@ require_once 'config/db_connect.php';
 // =========================================================================
 // DATABASE HYGIENE: Auto-Cancel Expired Unpaid Bookings
 // Automatically cancels any 'Pending' booking that hasn't been paid within 30 minutes.
+// NOTE: We exclude Event Halls because they require Admin Approval first!
 // =========================================================================
 $cleanup_stmt = $conn->prepare("
-    UPDATE bookings 
-    SET booking_status = 'Cancelled', updated_at = NOW() 
-    WHERE booking_status = 'Pending' 
-    AND payment_status = 'Unpaid'
-    AND created_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+    UPDATE bookings b
+    JOIN venues v ON b.venue_id = v.id
+    SET b.booking_status = 'Cancelled', b.updated_at = NOW() 
+    WHERE b.booking_status = 'Pending' 
+    AND b.payment_status = 'Unpaid'
+    AND v.category != 'Event Hall'
+    AND b.created_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
 ");
 $cleanup_stmt->execute();
 $cleanup_stmt->close();
@@ -94,7 +97,6 @@ while ($row = $bookings_result->fetch_assoc()) {
             </div>
 
             <div class="user-profile">
-                <!-- Auto-generate Avatar Initials -->
                 <div class="avatar">
                     <?php echo strtoupper(substr($customer['first_name'], 0, 1) . substr($customer['last_name'], 0, 1)); ?>
                 </div>
@@ -127,7 +129,6 @@ while ($row = $bookings_result->fetch_assoc()) {
         <!-- MAIN CONTENT -->
         <main class="dashboard-main">
 
-            <!-- Topbar -->
             <header class="dashboard-topbar">
                 <div class="topbar-right">
                     <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> Back to Home</a>
@@ -153,7 +154,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                         </div>
                     </div>
 
-                    <!-- Dynamic Stats Grid -->
                     <div class="stats-grid">
                         <div class="stat-card">
                             <div class="stat-value text-gold"><?php echo $stat_total; ?></div>
@@ -201,21 +201,29 @@ while ($row = $bookings_result->fetch_assoc()) {
                                     </tr>
                                     <?php else: ?>
                                     <?php foreach ($bookings as $b): 
-                                        // Date Formatting
                                         $start = new DateTime($b['start_date']);
                                         $end = new DateTime($b['end_date']);
                                         $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
 
-                                        // Money
                                         $total_amt = floatval($b['total_amount']);
                                         $amount_paid = floatval($b['amount_paid']);
-                                        // get room type
                                         $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
 
-                                        // Badge & Filtering Logic
+                                        // NEW: Check if this is a pending event inquiry
+                                        $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $b['booking_status'] === 'Pending');
+
+                                        $display_amount = '₱' . number_format($total_amt, 2);
+                                        if ($is_pending_inquiry) {
+                                            $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
+                                        }
+
                                         $badge_class = 'badge-pending'; 
                                         $status_text = 'Pending Payment';
                                         $filter_data = 'Pending';
+
+                                        if ($is_pending_inquiry) {
+                                            $status_text = 'Inquiry Sent';
+                                        }
 
                                         if ($b['booking_status'] === 'Confirmed') {
                                             if ($b['payment_status'] === 'Partial') {
@@ -239,7 +247,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         <td><?php echo $date_str; ?></td>
                                         <td
                                             class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'text-muted' : ''; ?>">
-                                            ₱<?php echo number_format($total_amt, 2); ?>
+                                            <?php echo $display_amount; ?>
                                         </td>
                                         <td>
                                             <span class="badge <?php echo $badge_class; ?>">
@@ -248,15 +256,14 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         </td>
                                         <td class="action-cell">
 
+                                            <!-- NEW: Hide 'Pay Now' if it's an unapproved Event Inquiry -->
                                             <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && $b['payment_status'] === 'Partial')): ?>
+                                            <?php if (!$is_pending_inquiry): ?>
                                             <button class="btn-action btn-green">Pay Now</button>
                                             <?php endif; ?>
+                                            <?php endif; ?>
 
-                                            <!-- Only show Reschedule/Cancel if the booking isn't cancelled and doesn't have a pending request -->
                                             <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
-
-                                            <!-- RESCHEDULE BUTTON -->
-                                            <!-- Only allow reschedule if the booking is Confirmed! -->
                                             <?php if ($b['booking_status'] === 'Confirmed'): ?>
                                             <button class="btn-action btn-blue btn-reschedule"
                                                 data-id="<?php echo $b['id']; ?>"
@@ -267,7 +274,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             </button>
                                             <?php endif; ?>
 
-                                            <!-- CANCEL/REFUND BUTTON -->
                                             <button class="btn-action btn-red btn-cancel"
                                                 data-id="<?php echo $b['id']; ?>"
                                                 data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
@@ -275,7 +281,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                                 data-paid="<?php echo $amount_paid; ?>">
                                                 <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
                                             </button>
-
                                             <?php endif; ?>
 
                                             <!-- VIEW DETAILS BUTTON -->
@@ -303,6 +308,7 @@ while ($row = $bookings_result->fetch_assoc()) {
 
             <!-- ================= TAB: SETTINGS ================= -->
             <div id="tab-settings" class="tab-pane">
+                <!-- Rest of settings stays same -->
                 <div class="content-header">
                     <div class="header-titles">
                         <h1 class="page-title">ACCOUNT SETTINGS</h1>
@@ -375,8 +381,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                 </div>
             </div>
 
-    </div>
-    </main>
+        </main>
     </div>
 
     <!-- ================= MODALS ================= -->
@@ -387,16 +392,15 @@ while ($row = $bookings_result->fetch_assoc()) {
             <h2 class="modal-title">Cancel Reservation?</h2>
 
             <div class="modal-summary">
-                <p><span>Customer Name:</span> Francis Empleo</p>
+                <p><span>Customer Name:</span>
+                    <?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></p>
                 <p><span>Venue Type:</span> <span id="cancel-venue">Event Hall</span></p>
-                <p><span>Date:</span> <span id="cancel-date">March 30, 2026</span></p>
+                <p><span>Date:</span> <span id="cancel-date">--</span></p>
 
-                <!-- Shown only if partially/fully paid -->
                 <div id="cancel-refund-info" style="display: none;">
-                    <p><span>Total Paid by Guest:</span> <span id="cancel-paid">₱20,000</span></p>
+                    <p><span>Total Paid by Guest:</span> <span id="cancel-paid">₱0</span></p>
                     <p class="fee-note"><i class="fa-solid fa-circle-info"></i> Non-refundable Service Fee: ₱461</p>
-                    <p class="refund-amount"><span>Refund Amount:</span> <span id="cancel-refund-total">₱19,539</span>
-                    </p>
+                    <p class="refund-amount"><span>Refund Amount:</span> <span id="cancel-refund-total">₱0</span></p>
                 </div>
             </div>
 
@@ -507,8 +511,9 @@ while ($row = $bookings_result->fetch_assoc()) {
             </div>
         </div>
     </div>
-    <script src="assets/js/calendar.js?v=1.0"></script>
-    <script src="assets/js/user_dashboard.js?v=1.5"></script>
+
+    <script src="assets/js/calendar.js?v=<?= time() ?>"></script>
+    <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
 </body>
 
 </html>

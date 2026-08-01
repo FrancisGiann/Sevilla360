@@ -18,6 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $total_amount = floatval($_POST['total_amount']);
         $scheme = $_POST['payment_scheme'];
 
+        // 1. Get Customer ID
         $stmt_cust = $conn->prepare("SELECT id FROM customers WHERE user_id = ?");
         $stmt_cust->bind_param("i", $_SESSION['user_id']);
         $stmt_cust->execute();
@@ -25,11 +26,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($cust_result->num_rows === 0) throw new Exception("Customer profile not found.");
         $customer_id = $cust_result->fetch_assoc()['id'];
 
+        // ========================================================
+        // THE FIX: SAVE THE PHONE NUMBER TO THE DATABASE!
+        // ========================================================
+        $contact_phone = isset($_POST['contact_phone']) ? trim($_POST['contact_phone']) : null;
+        if (!empty($contact_phone)) {
+            $stmt_phone = $conn->prepare("UPDATE customers SET phone = ? WHERE id = ?");
+            $stmt_phone->bind_param("si", $contact_phone, $customer_id);
+            $stmt_phone->execute();
+        }
+        // ========================================================
+
         if (!isset($_SESSION['locked_venue_id'])) {
             throw new Exception("Session expired or dates were not locked properly. Please select dates again.");
         }
         $venue_id = $_SESSION['locked_venue_id'];
 
+        // 2. Save Booking
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
@@ -41,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // SAVE EVENT DETAILS AND NOTES
+        // 3. Save Event Details and Notes
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
         $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
@@ -52,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_notes->execute();
         }
 
-        // FIXED: SAVE VILLA DETAILS
+        // 4. Save Villa Details
         if ($_POST['room_type'] === 'Resort Villa' && isset($_POST['stay_type'])) {
             $stay_type = $_POST['stay_type'];
             $stmt_villa = $conn->prepare("INSERT INTO booking_villa_details (booking_id, stay_type) VALUES (?, ?)");
@@ -60,6 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_villa->execute();
         }
 
+        // 5. Unlock Dates
         $session_id = session_id();
         $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
         $stmt_unlock->bind_param("is", $venue_id, $session_id);

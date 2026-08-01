@@ -99,6 +99,12 @@ if ($result && $result->num_rows > 0) {
                             $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
                             $balance_due = $total_amt - $amount_paid;
 
+                            // NEW: Mask the price for Pending Event Inquiries
+                            $display_amount = '₱' . number_format($total_amt, 2);
+                            if ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
+                                $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
+                            }
+
                             // Badge Styling Logic
                             $badge_class = 'status-pending'; 
                             $status_text = 'Pending';
@@ -155,7 +161,7 @@ if ($result && $result->num_rows > 0) {
                         <td><?php echo $customer_name; ?></td>
                         <td><?php echo $date_str; ?></td>
                         <td class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-text' : ''; ?>">
-                            ₱<?php echo number_format($total_amt, 2); ?>
+                            <?php echo $display_amount; ?>
                         </td>
                         <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>
                         </td>
