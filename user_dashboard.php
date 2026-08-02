@@ -86,7 +86,7 @@ while ($row = $bookings_result->fetch_assoc()) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/user_dashboard.css">
+    <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
 </head>
 
 <body class="dashboard-body">
@@ -300,9 +300,10 @@ while ($row = $bookings_result->fetch_assoc()) {
                             </table>
                         </div>
                     </div>
+                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
+                        complete or 'Refresh Status' to sync with PayMongo.</p>
                 </div>
-                <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
-                    complete or 'Refresh Status' to sync with PayMongo.</p>
+
             </div>
 
             <!-- ================= TAB: SETTINGS (UPDATED WITH IDs) ================= -->
