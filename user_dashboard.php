@@ -316,7 +316,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                 </div>
 
                 <div class="settings-container">
-                    <!-- Profile Form -->
+                    <!-- Profile Form (Updated with DOB) -->
                     <div class="settings-card">
                         <h3 class="settings-title">Personal Information</h3>
                         <form class="settings-form">
@@ -340,6 +340,14 @@ while ($row = $bookings_result->fetch_assoc()) {
                                     <label>Phone Number</label>
                                     <input type="tel" id="set-phone" class="form-control"
                                         value="<?php echo htmlspecialchars($customer['phone']); ?>">
+                                </div>
+                                <!-- NEW: Date of Birth -->
+                                <div class="form-group full-width">
+                                    <label>Date of Birth</label>
+                                    <input type="date" id="set-dob" class="form-control" style="max-width: 50%;"
+                                        value="<?php echo isset($customer['dob']) ? $customer['dob'] : ''; ?>">
+                                    <small style="color: #888; margin-top: 5px;">We use this to send you a special treat
+                                        if you stay with us on your birthday!</small>
                                 </div>
                             </div>
                             <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
@@ -378,6 +386,23 @@ while ($row = $bookings_result->fetch_assoc()) {
                             <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
                                 Password</button>
                         </form>
+                    </div>
+
+                    <!-- NEW: Danger Zone -->
+                    <div class="settings-card" style="border-top-color: #ef4444;">
+                        <h3 class="settings-title" style="color: #dc2626;">Danger Zone</h3>
+                        <div class="form-group">
+                            <p style="font-size: 0.95rem; color: var(--color-dark); margin-top: 0; line-height: 1.5;">
+                                Permanently delete your SEVILLA360 account and erase all personal data.
+                                <br><small style="color: #888;">Note: You cannot delete your account if you have an
+                                    active or pending reservation.</small>
+                            </p>
+                            <button type="button" class="btn btn-outline-dark"
+                                style="color: #dc2626; border-color: #dc2626; margin-top: 10px;"
+                                onclick="alert('For security and audit purposes, please contact frontdesk@sevilla360.com to process full data deletion.');">
+                                Request Account Deletion
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

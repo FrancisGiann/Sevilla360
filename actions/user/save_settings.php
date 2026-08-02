@@ -18,17 +18,23 @@ try {
         $fname = trim($data['fname']);
         $lname = trim($data['lname']);
         $phone = trim($data['phone']);
+        // NEW: Grab the DOB, or set it to NULL if they left it blank
+        $dob = !empty($data['dob']) ? trim($data['dob']) : null; 
 
         if (empty($fname) || empty($lname)) {
             throw new Exception("First and Last name are required.");
         }
 
-        $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ? WHERE user_id = ?");
-        $stmt->bind_param("sssi", $fname, $lname, $phone, $user_id);
-        if (!$stmt->execute()) throw new Exception("Failed to update profile.");
+        // UPDATED: Added `dob` to the SQL query
+        $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ?, dob = ? WHERE user_id = ?");
+        $stmt->bind_param("ssssi", $fname, $lname, $phone, $dob, $user_id);
+        
+        if (!$stmt->execute()) {
+            throw new Exception("Failed to update profile.");
+        }
 
         echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
-    } 
+    }
     
     elseif ($action === 'update_prefs') {
         $prefs = trim($data['prefs']);

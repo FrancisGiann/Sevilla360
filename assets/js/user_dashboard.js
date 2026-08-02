@@ -412,7 +412,8 @@ document.addEventListener("DOMContentLoaded", () => {
           action: 'update_profile',
           fname: document.getElementById('set-fname').value,
           lname: document.getElementById('set-lname').value,
-          phone: document.getElementById('set-phone').value
+          phone: document.getElementById('set-phone').value,
+          dob: document.getElementById('set-dob').value // NEW: Grabs the Birthday!
       }, this);
   });
 
