@@ -1,6 +1,6 @@
 /**
  * SEVILLA360 - User Dashboard Logic
- * Handles Tabs, Filtering, and Modals (Cancel, Reschedule, Details).
+ * Handles Tabs, Filtering, Modals, and Settings Updates.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -11,15 +11,9 @@ document.addEventListener("DOMContentLoaded", () => {
   navItems.forEach((item) => {
     item.addEventListener("click", (e) => {
       e.preventDefault();
-
-      // Remove active classes
       navItems.forEach((nav) => nav.classList.remove("active"));
       tabPanes.forEach((pane) => pane.classList.remove("active"));
-
-      // Add active to clicked nav
       item.classList.add("active");
-
-      // Show corresponding tab
       const targetTab = item.getAttribute("data-tab");
       document.getElementById(`tab-${targetTab}`).classList.add("active");
     });
@@ -56,34 +50,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function openModal(modalId) {
     modals[modalId].classList.add("active");
-    document.body.style.overflow = "hidden"; // Prevent background scrolling
+    document.body.style.overflow = "hidden"; 
   }
 
   function closeModal() {
     Object.values(modals).forEach((modal) => modal.classList.remove("active"));
     document.body.style.overflow = "";
 
-    // Reset cancel modal state on close
     const checkboxGrp = document.getElementById("cancel-checkbox-group");
     const refundInfo = document.getElementById("cancel-refund-info");
     if (checkboxGrp) checkboxGrp.style.display = "none";
     if (refundInfo) refundInfo.style.display = "none";
 
-    // Reset inputs
-    document
-      .querySelectorAll(".modal-box textarea, .modal-box input")
-      .forEach((input) => {
+    document.querySelectorAll(".modal-box textarea, .modal-box input").forEach((input) => {
         if (input.type === "checkbox") input.checked = false;
         else input.value = "";
-      });
+    });
   }
 
-  // Close buttons inside modals
   document.querySelectorAll(".close-modal").forEach((btn) => {
     btn.addEventListener("click", closeModal);
   });
 
-  // Close on overlay click
   Object.values(modals).forEach((modal) => {
     modal.addEventListener("click", (e) => {
       if (e.target === modal) closeModal();
@@ -102,9 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const amountPaid = parseFloat(paidStr) || 0;
 
       if (amountPaid === 0) {
-          // INSTANT CANCEL: If they haven't paid, don't ask for a reason. Just ask "Are you sure?"
           if (confirm(`Are you sure you want to cancel your reservation for ${venue} on ${date}?`)) {
-              
               const originalText = btn.innerText;
               btn.innerText = "Cancelling...";
               btn.disabled = true;
@@ -127,7 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
               });
           }
       } else {
-          // REFUND REQUEST: If they HAVE paid, show the modal to explain the fees and ask for a reason.
           document.getElementById("cancel-venue").textContent = venue;
           document.getElementById("cancel-date").textContent = date;
 
@@ -152,19 +137,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-// B. Reschedule Button Logic
+  // B. Reschedule Button Logic
   let userReschedCalendar = null;
   if (typeof SevillaCalendar !== 'undefined' && document.getElementById("cal-ui-user-resched")) {
       userReschedCalendar = new SevillaCalendar("cal-ui-user-resched");
   }
 
-  // 1. Open the Modal & Fetch Calendar Dates
   document.querySelectorAll(".btn-reschedule").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       const bookingId = btn.getAttribute("data-id");
       const venueName = btn.getAttribute("data-venue");
       const originalDate = btn.getAttribute("data-date");
-      // (Assumes you add data-type to the PHP table button just like admin!)
       const venueType = btn.getAttribute("data-type") || "Hotel Room"; 
 
       document.getElementById("reschedule-venue").textContent = venueName;
@@ -173,13 +156,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const submitBtn = document.getElementById("btn-submit-resched");
       if (submitBtn) submitBtn.setAttribute("data-id", bookingId);
 
-      // Clear input and checkbox
       const reasonInput = document.getElementById("reschedule-reason");
       const confirmCheck = document.getElementById("confirm-reschedule");
       if (reasonInput) reasonInput.value = "";
       if (confirmCheck) confirmCheck.checked = false;
 
-      // Load booked dates so the user can't select red dates!
       if (userReschedCalendar) {
           userReschedCalendar.clearSelection();
           userReschedCalendar.fetchBookedDates(venueType, venueName);
@@ -190,7 +171,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // 2. Execute Submit Request
   const btnSubmitResched = document.getElementById("btn-submit-resched");
   if (btnSubmitResched) {
       btnSubmitResched.addEventListener("click", function() {
@@ -249,13 +229,12 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  // C. View Details Button (UPDATED)
+  // C. View Details Button
   document.querySelectorAll(".btn-details").forEach((btn) => {
     btn.addEventListener("click", function(e) {
         const bookingId = this.getAttribute('data-id');
         const originalText = this.innerText;
         
-        // Show loading state
         this.innerText = "Loading...";
         this.disabled = true;
 
@@ -276,7 +255,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
             document.getElementById('ud-title').innerText = `Booking #${data.id}`;
             
-            // Status Badge
             const badge = document.getElementById('ud-status-badge');
             badge.innerText = data.booking_status;
             badge.className = 'badge ' + (data.booking_status === 'Confirmed' ? 'badge-paid' : (data.booking_status === 'Cancelled' ? 'badge-cancelled' : 'badge-pending'));
@@ -285,13 +263,11 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById('ud-venue').innerText = `${data.venue_name} (${data.venue_category})`;
             document.getElementById('ud-guests').innerText = data.guests_count;
 
-            // Dates
             const opts = { month: "short", day: "numeric", year: "numeric" };
             const sDate = new Date(data.start_date).toLocaleDateString("en-US", opts);
             const eDate = new Date(data.end_date).toLocaleDateString("en-US", opts);
             document.getElementById('ud-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
 
-            // Specifics & Custom Notes
             const specRow = document.getElementById('ud-specific-row');
             const specLabel = document.getElementById('ud-specific-label');
             const specValue = document.getElementById('ud-specific-value');
@@ -314,7 +290,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 specRow.style.display = 'none';
             }
 
-            // Add-ons
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
             addonsList.innerHTML = ''; 
@@ -327,7 +302,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 addonsContainer.style.display = 'none';
             }
 
-            // Money & TBA Logic
             const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             const isPendingEvent = data.venue_category === 'Event Hall' && data.booking_status === 'Pending';
 
@@ -359,30 +333,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // --- 5. Modal Confirm Actions ---
-  const btnConfirmCancel = document.querySelector(
-    "#modal-cancel .btn-confirm-red",
-  );
+  const btnConfirmCancel = document.querySelector("#modal-cancel .btn-confirm-red");
   if (btnConfirmCancel) {
     btnConfirmCancel.addEventListener("click", function () {
       const bookingId = this.getAttribute("data-id");
       const reasonInput = document.querySelector("#modal-cancel textarea");
       const reason = reasonInput ? reasonInput.value.trim() : "";
-      const isRefundable =
-        document.getElementById("cancel-refund-info").style.display === "block";
+      const isRefundable = document.getElementById("cancel-refund-info").style.display === "block";
       const isChecked = document.getElementById("confirm-fee").checked;
 
-      if (reason === "") {
-        alert("Please provide a reason for the cancellation.");
-        return;
-      }
-
-      if (isRefundable && !isChecked) {
-        alert(
-          "Please acknowledge the non-refundable service fee by checking the box.",
-        );
-        return;
-      }
+      if (reason === "") { alert("Please provide a reason for the cancellation."); return; }
+      if (isRefundable && !isChecked) { alert("Please acknowledge the non-refundable service fee by checking the box."); return; }
 
       const originalText = this.innerText;
       this.innerText = "Processing...";
@@ -391,10 +352,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fetch("actions/user/request_cancel.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          booking_id: bookingId,
-          reason: reason,
-        }),
+        body: JSON.stringify({ booking_id: bookingId, reason: reason }),
       })
         .then((response) => response.json())
         .then((data) => {
@@ -415,4 +373,62 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
   }
+
+  // --- 6. User Settings Logic (NEW) ---
+  function updateSettings(payload, buttonElement) {
+      const originalText = buttonElement.innerText;
+      buttonElement.innerText = "Saving...";
+      buttonElement.disabled = true;
+
+      fetch("actions/user/save_settings.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+      })
+      .then(res => res.json())
+      .then(data => {
+          alert(data.success ? "Success: " + data.message : "Error: " + data.message);
+          buttonElement.innerText = originalText;
+          buttonElement.disabled = false;
+          
+          if (data.success && payload.action === 'update_password') {
+              document.getElementById('set-old-pass').value = '';
+              document.getElementById('set-new-pass').value = '';
+          }
+          if (data.success && payload.action === 'update_profile') {
+              window.location.reload(); 
+          }
+      })
+      .catch(err => {
+          console.error(err);
+          alert("Network error.");
+          buttonElement.innerText = originalText;
+          buttonElement.disabled = false;
+      });
+  }
+
+  document.getElementById('btn-save-profile')?.addEventListener('click', function() {
+      updateSettings({
+          action: 'update_profile',
+          fname: document.getElementById('set-fname').value,
+          lname: document.getElementById('set-lname').value,
+          phone: document.getElementById('set-phone').value
+      }, this);
+  });
+
+  document.getElementById('btn-save-prefs')?.addEventListener('click', function() {
+      updateSettings({
+          action: 'update_prefs',
+          prefs: document.getElementById('set-prefs').value
+      }, this);
+  });
+
+  document.getElementById('btn-update-password')?.addEventListener('click', function() {
+      updateSettings({
+          action: 'update_password',
+          old_pass: document.getElementById('set-old-pass').value,
+          new_pass: document.getElementById('set-new-pass').value
+      }, this);
+  });
+
 });

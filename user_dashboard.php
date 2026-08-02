@@ -23,7 +23,9 @@ $cleanup_stmt->close();
 
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
-$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone FROM customers WHERE user_id = ?");
+
+// UPDATED: Added `special_req` to the fetch query!
+$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone, special_req FROM customers WHERE user_id = ?");
 $stmt_cust->bind_param("i", $user_id);
 $stmt_cust->execute();
 $customer_res = $stmt_cust->get_result();
@@ -209,7 +211,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         $amount_paid = floatval($b['amount_paid']);
                                         $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
 
-                                        // NEW: Check if this is a pending event inquiry
                                         $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $b['booking_status'] === 'Pending');
 
                                         $display_amount = '₱' . number_format($total_amt, 2);
@@ -256,7 +257,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         </td>
                                         <td class="action-cell">
 
-                                            <!-- NEW: Hide 'Pay Now' if it's an unapproved Event Inquiry -->
                                             <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && $b['payment_status'] === 'Partial')): ?>
                                             <?php if (!$is_pending_inquiry): ?>
                                             <button class="btn-action btn-green">Pay Now</button>
@@ -283,7 +283,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             </button>
                                             <?php endif; ?>
 
-                                            <!-- VIEW DETAILS BUTTON -->
                                             <button class="btn-action btn-outline btn-details"
                                                 data-id="<?php echo $b['id']; ?>"
                                                 data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
@@ -306,9 +305,8 @@ while ($row = $bookings_result->fetch_assoc()) {
                     complete or 'Refresh Status' to sync with PayMongo.</p>
             </div>
 
-            <!-- ================= TAB: SETTINGS ================= -->
+            <!-- ================= TAB: SETTINGS (UPDATED WITH IDs) ================= -->
             <div id="tab-settings" class="tab-pane">
-                <!-- Rest of settings stays same -->
                 <div class="content-header">
                     <div class="header-titles">
                         <h1 class="page-title">ACCOUNT SETTINGS</h1>
@@ -324,22 +322,26 @@ while ($row = $bookings_result->fetch_assoc()) {
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label>First Name</label>
-                                    <input type="text" class="form-control" value="Francis">
+                                    <input type="text" id="set-fname" class="form-control"
+                                        value="<?php echo htmlspecialchars($customer['first_name']); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label>Last Name</label>
-                                    <input type="text" class="form-control" value="Empleo">
+                                    <input type="text" id="set-lname" class="form-control"
+                                        value="<?php echo htmlspecialchars($customer['last_name']); ?>">
                                 </div>
                                 <div class="form-group">
                                     <label>Email Address</label>
-                                    <input type="email" class="form-control" value="user@email.com" readonly>
+                                    <input type="email" class="form-control"
+                                        value="<?php echo htmlspecialchars($customer['email']); ?>" readonly disabled>
                                 </div>
                                 <div class="form-group">
                                     <label>Phone Number</label>
-                                    <input type="tel" class="form-control" value="+63 912 345 6789">
+                                    <input type="tel" id="set-phone" class="form-control"
+                                        value="<?php echo htmlspecialchars($customer['phone']); ?>">
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-save">Save Profile</button>
+                            <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
                         </form>
                     </div>
 
@@ -348,16 +350,11 @@ while ($row = $bookings_result->fetch_assoc()) {
                         <h3 class="settings-title">Guest Preferences</h3>
                         <form class="settings-form">
                             <div class="form-group full-width">
-                                <label>Dietary Requirements / Allergies</label>
-                                <textarea class="form-control" rows="2"
-                                    placeholder="e.g., Vegetarian, Peanut Allergy..."></textarea>
+                                <label>Dietary Requirements / Special Requests</label>
+                                <textarea id="set-prefs" class="form-control" rows="3"
+                                    placeholder="e.g., Vegetarian, Peanut Allergy, Ground floor preferred..."><?php echo isset($customer['special_req']) ? htmlspecialchars($customer['special_req']) : ''; ?></textarea>
                             </div>
-                            <div class="form-group full-width">
-                                <label>Special Requests for Future Stays</label>
-                                <textarea class="form-control" rows="2"
-                                    placeholder="e.g., Extra pillows, Ground floor preferred..."></textarea>
-                            </div>
-                            <button type="button" class="btn btn-save">Save Preferences</button>
+                            <button type="button" id="btn-save-prefs" class="btn btn-save">Save Preferences</button>
                         </form>
                     </div>
 
@@ -368,14 +365,17 @@ while ($row = $bookings_result->fetch_assoc()) {
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label>Current Password</label>
-                                    <input type="password" class="form-control" placeholder="••••••••">
+                                    <input type="password" id="set-old-pass" class="form-control"
+                                        placeholder="••••••••">
                                 </div>
                                 <div class="form-group">
                                     <label>New Password</label>
-                                    <input type="password" class="form-control" placeholder="Enter new password">
+                                    <input type="password" id="set-new-pass" class="form-control"
+                                        placeholder="Enter new password">
                                 </div>
                             </div>
-                            <button type="button" class="btn btn-outline-dark">Update Password</button>
+                            <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
+                                Password</button>
                         </form>
                     </div>
                 </div>
