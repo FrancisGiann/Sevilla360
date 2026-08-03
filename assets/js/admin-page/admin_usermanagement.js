@@ -136,4 +136,35 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
     });
+
+    // --- 5. Suspend/Activate Customer Logic ---
+    document.querySelectorAll(".btn-suspend").forEach((btn) => {
+        btn.addEventListener("click", function() {
+            const userId = this.getAttribute('data-id');
+            const newStatus = this.getAttribute('data-action');
+            const actionText = newStatus === 'suspended' ? 'suspend' : 're-activate';
+
+            if (confirm(`Are you sure you want to ${actionText} this customer's account?`)) {
+                const origText = this.innerText;
+                this.innerText = 'Processing...';
+                this.disabled = true;
+
+                fetch('actions/admin/suspend_user.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, action: newStatus })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert("Error: " + data.message);
+                        this.innerText = origText;
+                        this.disabled = false;
+                    }
+                });
+            }
+        });
+    });
 });
