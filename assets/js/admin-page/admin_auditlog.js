@@ -1,30 +1,46 @@
 /**
  * SEVILLA360 - Admin Audit Log Scripts
+ * Handles Real-time Text Search and Date Filtering
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const searchInput = document.getElementById('auditSearch');
-  const tableRows = document.querySelectorAll('#auditTable tbody tr');
+    const searchInput = document.getElementById('auditSearch');
+    const dateInput = document.getElementById('auditDate');
+    const tableRows = document.querySelectorAll('#auditTable tbody tr');
+  
+    function filterTable() {
+        if (!tableRows) return;
 
-  if (searchInput && tableRows) {
+        const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+        const dateTerm = dateInput ? dateInput.value : ''; // Format: YYYY-MM-DD
+  
+        tableRows.forEach(row => {
+            // Skip the "No logs found" row
+            if (row.querySelector("td[colspan]")) return;
+
+            const rowText = row.textContent.toLowerCase();
+            const rowDate = row.getAttribute('data-date') || '';
+  
+            // Check Conditions
+            const matchesText = rowText.includes(searchTerm);
+            const matchesDate = (dateTerm === '') || (rowDate === dateTerm);
+  
+            // If it matches BOTH, show it
+            if (matchesText && matchesDate) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+  
     // Listen to keystrokes in the search bar
-    searchInput.addEventListener('keyup', function(e) {
-      const searchTerm = e.target.value.toLowerCase();
+    if (searchInput) {
+        searchInput.addEventListener('keyup', filterTable);
+    }
 
-      // Loop through all table rows
-      tableRows.forEach(row => {
-        // Get the entire text content of the row
-        const rowText = row.textContent.toLowerCase();
-
-        // Check if row text includes the search term
-        if (rowText.includes(searchTerm)) {
-          // Show row
-          row.style.display = '';
-        } else {
-          // Hide row
-          row.style.display = 'none';
-        }
-      });
-    });
-  }
+    // Listen to changes in the date picker
+    if (dateInput) {
+        dateInput.addEventListener('change', filterTable);
+    }
 });

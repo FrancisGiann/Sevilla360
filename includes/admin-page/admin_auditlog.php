@@ -1,3 +1,31 @@
+<?php
+// Ensure this is only accessible by superadmins
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+    echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>';
+    exit;
+}
+
+require_once 'config/db_connect.php';
+
+// Fetch the last 150 Audit Logs
+// We use COALESCE to grab the Staff Name, or fallback to the User Email, or fallback to 'System'
+$query = "
+    SELECT 
+        a.created_at, 
+        a.action, 
+        a.module, 
+        a.ip_address, 
+        COALESCE(s.full_name, u.email, 'System') as staff_name
+    FROM audit_logs a
+    LEFT JOIN users u ON a.user_id = u.id
+    LEFT JOIN staff s ON u.id = s.user_id
+    ORDER BY a.created_at DESC
+    LIMIT 150
+";
+$result = $conn->query($query);
+$logs = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+?>
+
 <!-- Audit Log Container -->
 <div class="audit-log-container">
 
@@ -28,59 +56,48 @@
             <thead>
                 <tr>
                     <th>Date/Time</th>
-                    <th>Staff Name</th>
+                    <th>Staff / User</th>
                     <th>Action Taken</th>
                     <th>IP Address</th>
                 </tr>
             </thead>
             <tbody>
-                <!-- Row 1: Positive -->
+                <?php if (empty($logs)): ?>
                 <tr>
-                    <td>Oct 24, 2023 - 09:14 AM</td>
-                    <td>Elena Rossi</td>
-                    <td class="action-text action-positive">Confirmed Walk-in</td>
-                    <td>192.168.1.45</td>
+                    <td colspan="4" style="text-align: center; padding: 20px; color: #888;">No audit logs recorded yet.
+                    </td>
                 </tr>
+                <?php else: ?>
+                <?php foreach ($logs as $log): 
+                        // 1. Format the Date
+                        $dateObj = new DateTime($log['created_at']);
+                        $displayDate = $dateObj->format('M d, Y - h:i A');
+                        $filterDate = $dateObj->format('Y-m-d'); // Hidden attribute for the JS Date Picker
 
-                <!-- Row 2: Negative -->
-                <tr>
-                    <td>Oct 24, 2023 - 10:30 AM</td>
-                    <td>Marcus Thorne</td>
-                    <td class="action-text action-negative">Deleted Booking #1042</td>
-                    <td>10.0.0.212</td>
-                </tr>
+                        // 2. Dynamic Color Coding
+                        $actionLower = strtolower($log['action']);
+                        $text_class = 'action-neutral'; // Default gray/blue
 
-                <!-- Row 3: Neutral -->
-                <tr>
-                    <td>Oct 24, 2023 - 11:05 AM</td>
-                    <td>Sarah Jenkins</td>
-                    <td class="action-text action-neutral">Updated Rate Settings</td>
-                    <td>192.168.1.88</td>
+                        if (strpos($actionLower, 'cancel') !== false || strpos($actionLower, 'delete') !== false || strpos($actionLower, 'refund') !== false || strpos($actionLower, 'reject') !== false) {
+                            $text_class = 'action-negative'; // Red
+                        } elseif (strpos($actionLower, 'confirm') !== false || strpos($actionLower, 'approve') !== false || strpos($actionLower, 'add') !== false || strpos($actionLower, 'success') !== false) {
+                            $text_class = 'action-positive'; // Green
+                        }
+                    ?>
+                <!-- data-date is used by the Javascript Date filter! -->
+                <tr data-date="<?php echo $filterDate; ?>">
+                    <td><?php echo $displayDate; ?></td>
+                    <td style="font-weight: 500;"><?php echo htmlspecialchars($log['staff_name']); ?></td>
+                    <td class="action-text <?php echo $text_class; ?>">
+                        <?php echo htmlspecialchars($log['action']); ?>
+                        <span style="display:block; font-size: 0.75rem; color: #888; font-weight: normal;">Module:
+                            <?php echo htmlspecialchars($log['module']); ?></span>
+                    </td>
+                    <td style="font-family: monospace; color: #666;"><?php echo htmlspecialchars($log['ip_address']); ?>
+                    </td>
                 </tr>
-
-                <!-- Row 4: Positive -->
-                <tr>
-                    <td>Oct 24, 2023 - 01:22 PM</td>
-                    <td>Elena Rossi</td>
-                    <td class="action-text action-positive">Added Staff (Housekeeping)</td>
-                    <td>192.168.1.45</td>
-                </tr>
-
-                <!-- Row 5: Negative -->
-                <tr>
-                    <td>Oct 24, 2023 - 03:45 PM</td>
-                    <td>James Arlington</td>
-                    <td class="action-text action-negative">Processed Refund ($450)</td>
-                    <td>172.16.254.1</td>
-                </tr>
-
-                <!-- Row 6: Neutral -->
-                <tr>
-                    <td>Oct 24, 2023 - 04:10 PM</td>
-                    <td>Sarah Jenkins</td>
-                    <td class="action-text action-neutral">Exported Guest List</td>
-                    <td>192.168.1.88</td>
-                </tr>
+                <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>

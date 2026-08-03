@@ -44,6 +44,17 @@ try {
     $stmt_del->bind_param("i", $media_id);
     $stmt_del->execute();
 
+    // AUDIT LOG
+    if (isset($_SESSION['user_id'])) {
+        $log_user = $_SESSION['user_id'];
+        $log_module = 'Media CMS';
+        $log_action = "Deleted media file: " . basename($media['file_path']);
+        $log_ip = $_SERVER['REMOTE_ADDR'];
+
+        $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
+        $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
+        $audit_stmt->execute();
+    }
     echo json_encode(['success' => true, 'message' => 'Media deleted successfully.']);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

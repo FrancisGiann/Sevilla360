@@ -63,9 +63,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $book_stmt->execute();
         }
 
-        // 3. (Optional) Insert into a dedicated `maintenance_logs` table here if you have one!
-        // $log_stmt = $conn->prepare("INSERT INTO maintenance_logs (venue_id, area, type, notes, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)");
-        // ...
+         if (isset($_SESSION['user_id'])) {
+            $log_user = $_SESSION['user_id'];
+            $log_module = 'Maintenance';
+            // Assuming you have variables $venue_name, $start_date, $end_date in your script
+            $log_action = "Scheduled maintenance for Venue ID #$venue_id from $start_date to $end_date"; 
+            $log_ip = $_SERVER['REMOTE_ADDR'];
+
+            $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
+            $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
+            $audit_stmt->execute();
+        }
 
         $conn->commit();
         echo "Success|Maintenance scheduled successfully.";

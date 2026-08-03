@@ -91,6 +91,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($successful_uploads > 0) {
+            
+            // AUDIT LOG
+            if (isset($_SESSION['user_id'])) {
+                $log_user = $_SESSION['user_id'];
+                $log_module = 'Media CMS';
+                $log_action = "Uploaded $successful_uploads file(s) to slot: $website_slot";
+                $log_ip = $_SERVER['REMOTE_ADDR'];
+
+                $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
+                $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
+                $audit_stmt->execute();
+            }
+
             $conn->commit();
             echo json_encode(['success' => true, 'message' => "Successfully uploaded $successful_uploads file(s)!"]);
         } else {

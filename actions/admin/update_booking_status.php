@@ -176,7 +176,17 @@ try {
     else {
         throw new Exception('Invalid action provided.');
     }
+    // audit log
+    if (isset($_SESSION['user_id'])) {
+        $log_user = $_SESSION['user_id'];
+        $log_module = 'Booking Management';
+        $log_action = $message; // We just use the success message we already generated!
+        $log_ip = $_SERVER['REMOTE_ADDR'];
 
+        $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
+        $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
+        $audit_stmt->execute();
+    }
     // If everything worked, commit it to the database!
     $conn->commit();
     echo json_encode(['success' => true, 'message' => $message]);

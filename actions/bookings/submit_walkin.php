@@ -91,6 +91,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);
         $stmt_pay->execute();
 
+        // audit log
+        if (isset($_SESSION['user_id'])) {
+            $log_user = $_SESSION['user_id'];
+            $log_module = 'Walk-in Bookings';
+            $log_action = "Created Walk-in Booking #$booking_id for $guestName";
+            $log_ip = $_SERVER['REMOTE_ADDR'];
+
+            $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
+            $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
+            $audit_stmt->execute();
+        }
         $conn->commit();
         echo "Success|" . $ref_no;
 
