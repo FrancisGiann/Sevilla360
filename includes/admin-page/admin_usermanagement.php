@@ -1,13 +1,33 @@
-<!-- User Management Container -->
-<div class="um-container">
+<?php
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+    echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>'; exit;
+}
+require_once 'config/db_connect.php';
 
-    <!-- Top Header Section (Tabs & Controls) -->
+// Fetch Staff
+$staff_query = $conn->query("
+    SELECT s.user_id, s.full_name, s.status, u.email, u.role 
+    FROM staff s JOIN users u ON s.user_id = u.id 
+    ORDER BY u.role DESC, s.full_name ASC
+");
+$staff_list = $staff_query->fetch_all(MYSQLI_ASSOC);
+
+// Fetch Customers + Total Bookings
+$cust_query = $conn->query("
+    SELECT c.id, c.first_name, c.last_name, c.email, COUNT(b.id) as total_bookings 
+    FROM customers c 
+    LEFT JOIN bookings b ON c.id = b.customer_id 
+    GROUP BY c.id ORDER BY total_bookings DESC
+");
+$customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
+?>
+
+<div class="um-container">
     <div class="um-header">
         <div class="um-tabs">
             <button class="um-tab active" data-target="staffTable">Staff Accounts</button>
             <button class="um-tab" data-target="customerTable">Customer Accounts</button>
         </div>
-
         <div class="um-controls">
             <div class="um-search-wrapper">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -15,16 +35,14 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" placeholder="Search accounts...">
+                <input type="text" id="umSearch" placeholder="Search accounts...">
             </div>
             <button class="btn btn-primary" id="openAddStaffBtn">+ Add New Staff</button>
         </div>
     </div>
 
-    <!-- Main Table Card -->
     <div class="um-card">
-
-        <!-- STAFF TABLE (Default Active) -->
+        <!-- STAFF TABLE -->
         <table class="um-table active" id="staffTable">
             <thead>
                 <tr>
@@ -36,40 +54,32 @@
                 </tr>
             </thead>
             <tbody>
+                <?php foreach ($staff_list as $s): ?>
                 <tr>
-                    <td>Isabella Rossi</td>
-                    <td>isabella@sevilla360.com</td>
-                    <td>Super Admin</td>
-                    <td><span class="um-pill pill-active">Active</span></td>
+                    <td><?php echo htmlspecialchars($s['full_name']); ?></td>
+                    <td><?php echo htmlspecialchars($s['email']); ?></td>
+                    <td style="text-transform: capitalize;"><?php echo htmlspecialchars($s['role']); ?></td>
+                    <td><span
+                            class="um-pill <?php echo $s['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>"><?php echo ucfirst($s['status']); ?></span>
+                    </td>
                     <td class="um-actions">
-                        <button class="action-edit btn-staff-modal">Edit</button>
-                        <button class="action-delete">Delete</button>
+                        <button class="action-edit btn-staff-modal" data-id="<?php echo $s['user_id']; ?>"
+                            data-name="<?php echo htmlspecialchars($s['full_name']); ?>"
+                            data-email="<?php echo htmlspecialchars($s['email']); ?>"
+                            data-role="<?php echo $s['role']; ?>"
+                            data-status="<?php echo $s['status']; ?>">Edit</button>
+
+                        <?php if ($s['user_id'] != $_SESSION['user_id']): ?>
+                        <button class="action-delete btn-delete-staff"
+                            data-id="<?php echo $s['user_id']; ?>">Delete</button>
+                        <?php endif; ?>
                     </td>
                 </tr>
-                <tr>
-                    <td>Marcus Thorne</td>
-                    <td>marcus@sevilla360.com</td>
-                    <td>Admin</td>
-                    <td><span class="um-pill pill-active">Active</span></td>
-                    <td class="um-actions">
-                        <button class="action-edit btn-staff-modal">Edit</button>
-                        <button class="action-delete">Delete</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Elena Vance</td>
-                    <td>elena.v@sevilla360.com</td>
-                    <td>Admin</td>
-                    <td><span class="um-pill pill-inactive">Inactive</span></td>
-                    <td class="um-actions">
-                        <button class="action-edit btn-staff-modal">Edit</button>
-                        <button class="action-delete">Delete</button>
-                    </td>
-                </tr>
+                <?php endforeach; ?>
             </tbody>
         </table>
 
-        <!-- CUSTOMER TABLE (Hidden by Default) -->
+        <!-- CUSTOMER TABLE -->
         <table class="um-table" id="customerTable">
             <thead>
                 <tr>
@@ -80,74 +90,62 @@
                 </tr>
             </thead>
             <tbody>
+                <?php foreach ($customer_list as $c): ?>
                 <tr>
-                    <td>Julian Sterling</td>
-                    <td>j.sterling@example.com</td>
-                    <td>4</td>
+                    <td><?php echo htmlspecialchars($c['first_name'] . ' ' . $c['last_name']); ?></td>
+                    <td><?php echo htmlspecialchars($c['email']); ?></td>
+                    <td><?php echo $c['total_bookings']; ?></td>
                     <td class="um-actions">
-                        <button class="action-view btn-history-modal">View History</button>
+                        <button class="action-view btn-history-modal" data-id="<?php echo $c['id']; ?>">View
+                            History</button>
                     </td>
                 </tr>
-                <tr>
-                    <td>Sophia Laurent</td>
-                    <td>slaurent92@example.com</td>
-                    <td>1</td>
-                    <td class="um-actions">
-                        <button class="action-view btn-history-modal">View History</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td>David Chen</td>
-                    <td>david.c.business@example.com</td>
-                    <td>7</td>
-                    <td class="um-actions">
-                        <button class="action-view btn-history-modal">View History</button>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Amelia Hart</td>
-                    <td>amelia.hart@example.com</td>
-                    <td>2</td>
-                    <td class="um-actions">
-                        <button class="action-view btn-history-modal">View History</button>
-                    </td>
-                </tr>
+                <?php endforeach; ?>
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- ==============================================
-     MODALS 
-     ============================================== -->
-
+<!-- ================= MODALS ================= -->
 <!-- Add/Edit Staff Modal -->
 <div class="um-modal-overlay" id="staffModal">
     <div class="um-modal-content">
-        <h3 class="um-modal-title">Staff Account</h3>
-        <form class="um-form">
+        <h3 class="um-modal-title" id="staffModalTitle">Staff Account</h3>
+        <form class="um-form" id="staffForm">
+            <input type="hidden" id="staff_user_id" value="">
             <div class="um-form-group">
                 <label>Full Name</label>
-                <input type="text" placeholder="Enter full name" required>
+                <input type="text" id="staff_name" placeholder="Enter full name" required>
             </div>
             <div class="um-form-group">
                 <label>Email Address</label>
-                <input type="email" placeholder="Enter email address" required>
+                <input type="email" id="staff_email" placeholder="Enter email address" required>
             </div>
             <div class="um-form-group">
                 <label>Password</label>
-                <input type="password" placeholder="Enter password (leave blank to keep current)">
+                <input type="password" id="staff_password" placeholder="Enter password (leave blank to keep current)">
+                <small id="pw_hint" style="color:#888; font-size:0.8rem; display:none;">Leave blank to keep existing
+                    password.</small>
             </div>
-            <div class="um-form-group">
-                <label>Assign Role</label>
-                <select required>
-                    <option value="admin">Admin</option>
-                    <option value="superadmin">Super Admin</option>
-                </select>
+            <div class="um-form-group" style="display: flex; gap: 15px;">
+                <div style="flex: 1;">
+                    <label>Assign Role</label>
+                    <select id="staff_role" required style="width: 100%; padding: 10px;">
+                        <option value="admin">Admin</option>
+                        <option value="superadmin">Super Admin</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label>Status</label>
+                    <select id="staff_status" required style="width: 100%; padding: 10px;">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
             </div>
             <div class="um-modal-actions">
                 <button type="button" class="btn btn-outline close-staff-modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Account</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveStaff">Save Account</button>
             </div>
         </form>
     </div>
@@ -157,7 +155,6 @@
 <div class="um-modal-overlay" id="historyModal">
     <div class="um-modal-content um-modal-large">
         <h3 class="um-modal-title">Booking History</h3>
-
         <div class="um-history-table-wrapper">
             <table class="um-history-table">
                 <thead>
@@ -167,26 +164,13 @@
                         <th>Amount Spent</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="historyTbody">
                     <tr>
-                        <td>Oct 12, 2023</td>
-                        <td>Grand Ballroom</td>
-                        <td>$4,500.00</td>
-                    </tr>
-                    <tr>
-                        <td>Jun 05, 2023</td>
-                        <td>Garden Pavilion</td>
-                        <td>$2,200.00</td>
-                    </tr>
-                    <tr>
-                        <td>Dec 18, 2022</td>
-                        <td>Rooftop Lounge</td>
-                        <td>$1,850.00</td>
+                        <td colspan="3" style="text-align:center;">Loading...</td>
                     </tr>
                 </tbody>
             </table>
         </div>
-
         <div class="um-modal-actions">
             <button type="button" class="btn btn-outline close-history-modal">Close</button>
         </div>
