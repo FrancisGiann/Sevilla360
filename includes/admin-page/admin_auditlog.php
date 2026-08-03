@@ -47,6 +47,8 @@ $logs = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
             <div class="input-wrapper">
                 <input type="date" id="auditDate">
             </div>
+
+            <button id="btnExportCSV" class="btn-export-csv"><i class="fa-solid fa-file-csv"></i> Export</button>
         </div>
     </div>
 

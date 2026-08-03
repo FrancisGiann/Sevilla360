@@ -141,6 +141,30 @@
 .action-neutral {
   color: var(--color-dark);
 }
+/* Export CSV Button */
+.btn-export-csv {
+  background-color: var(--color-dark);
+  color: var(--color-white);
+  border: none;
+  padding: 0 20px;
+  height: 42px; /* Matches the height of your input boxes */
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-snappy);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn-export-csv:hover {
+  background-color: var(--color-gold);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3);
+}
 
 /* Simple entry animation */
 @keyframes fade-in {
@@ -154,17 +178,48 @@
   }
 }
 
+/* ==========================================================================
+   Responsive Mobile View
+   ========================================================================== */
 @media (max-width: 768px) {
+  .audit-log-container {
+    padding: 1.5rem; /* Slightly less padding on mobile */
+  }
+
   .audit-log-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 1rem;
   }
+
   .audit-controls {
     width: 100%;
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column; /* Stack the search, date, and export button */
+    align-items: stretch;   /* Force them to fill the width */
+    gap: 10px;
   }
-  #auditSearch {
+
+  /* Force the wrappers and inputs to stretch 100% on mobile */
+  .input-wrapper,
+  .input-wrapper input {
     width: 100%;
+    box-sizing: border-box; /* Ensures padding doesn't break the width */
+  }
+
+  #auditSearch {
+    width: 100%; /* Overrides the 250px hardcoded width */
+  }
+
+  /* Center the export button text on mobile */
+  .btn-export-csv {
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* Fix table overflow */
+  .audit-table th, 
+  .audit-table td {
+    white-space: nowrap; /* Prevents text from awkwardly wrapping in tiny columns */
+    padding: 1rem;
   }
 }
