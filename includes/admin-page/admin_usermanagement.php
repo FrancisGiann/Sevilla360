@@ -14,9 +14,9 @@ $staff_list = $staff_query->fetch_all(MYSQLI_ASSOC);
 
 // UPDATED: Fetch Customers + Status + Total Bookings
 $cust_query = $conn->query("
-    SELECT c.id, u.id as user_id, u.status, c.first_name, c.last_name, c.email, COUNT(b.id) as total_bookings 
+    SELECT c.id, c.user_id, u.status, c.first_name, c.last_name, c.email, COUNT(b.id) as total_bookings 
     FROM customers c 
-    JOIN users u ON c.user_id = u.id
+    LEFT JOIN users u ON c.user_id = u.id
     LEFT JOIN bookings b ON c.id = b.customer_id 
     GROUP BY c.id ORDER BY total_bookings DESC
 ");
@@ -98,21 +98,27 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
                     <td><?php echo htmlspecialchars($c['email']); ?></td>
                     <td><?php echo $c['total_bookings']; ?></td>
                     <td>
+                        <?php if ($c['user_id'] !== null): ?>
                         <span
                             class="um-pill <?php echo $c['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>">
                             <?php echo ucfirst($c['status']); ?>
                         </span>
+                        <?php else: ?>
+                        <span class="um-pill" style="background:#e5e7eb; color:#374151;">Walk-in</span>
+                        <?php endif; ?>
                     </td>
                     <td class="um-actions">
                         <button class="action-view btn-history-modal" data-id="<?php echo $c['id']; ?>">History</button>
 
-                        <!-- NEW SUSPEND/ACTIVATE BUTTON -->
+                        <!-- Only show Suspend button if they actually have a User Account to suspend! -->
+                        <?php if ($c['user_id'] !== null): ?>
                         <?php if ($c['status'] === 'active'): ?>
                         <button class="action-delete btn-suspend" data-id="<?php echo $c['user_id']; ?>"
                             data-action="suspended">Suspend</button>
                         <?php else: ?>
                         <button class="action-edit btn-suspend" style="background:#4ade80; color:#000;"
                             data-id="<?php echo $c['user_id']; ?>" data-action="active">Activate</button>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
