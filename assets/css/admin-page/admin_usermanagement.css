@@ -176,6 +176,47 @@
 .action-delete {
   color: #c75c5c; /* Soft red */
 }
+/* --- Filter Pills (Matches Bookings Design) --- */
+.filter-pills {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-pill {
+  background: var(--color-white);
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-dark-light);
+  cursor: pointer;
+  transition: var(--transition-snappy);
+  white-space: nowrap;
+}
+
+.filter-pill:hover {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+
+.filter-pill.active {
+  background: var(--color-gold);
+  color: var(--color-white);
+  border-color: var(--color-gold);
+  font-weight: 600;
+  box-shadow: 0 4px 10px rgba(214, 168, 112, 0.3); /* Adds a soft gold glow */
+}
 
 /* --- Modals --- */
 .um-modal-overlay {

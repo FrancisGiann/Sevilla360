@@ -25,6 +25,30 @@ document.addEventListener("DOMContentLoaded", () => {
             row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
         });
     }
+    // --- Customer Type Filter Logic ---
+    const custFilters = document.querySelectorAll(".cust-filter");
+    const custRows = document.querySelectorAll(".cust-row");
+
+    custFilters.forEach(btn => {
+        btn.addEventListener("click", () => {
+            // 1. Reset all buttons
+            custFilters.forEach(f => f.classList.remove("active"));
+
+            // 2. Highlight clicked button
+            btn.classList.add("active");
+
+            // 3. Filter the rows
+            const filterValue = btn.getAttribute("data-filter");
+            
+            custRows.forEach(row => {
+                if (filterValue === "All" || row.getAttribute("data-type") === filterValue) {
+                    row.style.display = ""; // Show
+                } else {
+                    row.style.display = "none"; // Hide
+                }
+            });
+        });
+    });
   
     // --- 2. Modal Controls ---
     const staffModal = document.getElementById("staffModal");

@@ -81,50 +81,67 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
         </table>
 
         <!-- CUSTOMER TABLE -->
-        <table class="um-table" id="customerTable">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Email Address</th>
-                    <th>Total Bookings</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($customer_list as $c): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($c['first_name'] . ' ' . $c['last_name']); ?></td>
-                    <td><?php echo htmlspecialchars($c['email']); ?></td>
-                    <td><?php echo $c['total_bookings']; ?></td>
-                    <td>
-                        <?php if ($c['user_id'] !== null): ?>
-                        <span
-                            class="um-pill <?php echo $c['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>">
-                            <?php echo ucfirst($c['status']); ?>
-                        </span>
-                        <?php else: ?>
-                        <span class="um-pill" style="background:#e5e7eb; color:#374151;">Walk-in</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="um-actions">
-                        <button class="action-view btn-history-modal" data-id="<?php echo $c['id']; ?>">History</button>
+        <div id="customerTable" class="um-table">
 
-                        <!-- Only show Suspend button if they actually have a User Account to suspend! -->
-                        <?php if ($c['user_id'] !== null): ?>
-                        <?php if ($c['status'] === 'active'): ?>
-                        <button class="action-delete btn-suspend" data-id="<?php echo $c['user_id']; ?>"
-                            data-action="suspended">Suspend</button>
-                        <?php else: ?>
-                        <button class="action-edit btn-suspend" style="background:#4ade80; color:#000;"
-                            data-id="<?php echo $c['user_id']; ?>" data-action="active">Activate</button>
-                        <?php endif; ?>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+            <!-- NEW: Filter Pills for Customers -->
+            <div class="filter-pills">
+                <button class="filter-pill active cust-filter" data-filter="All">All Customers</button>
+                <button class="filter-pill cust-filter" data-filter="Registered">Registered Accounts</button>
+                <button class="filter-pill cust-filter" data-filter="Walk-in">Walk-in Guests</button>
+            </div>
+
+            <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email Address</th>
+                        <th>Total Bookings</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($customer_list as $c): 
+                        // Determine if Registered or Walk-in for the JS filter
+                        $rowType = ($c['user_id'] !== null) ? 'Registered' : 'Walk-in';
+                    ?>
+                    <!-- Added data-type for JS filtering -->
+                    <tr class="cust-row" data-type="<?php echo $rowType; ?>">
+                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                            <?php echo htmlspecialchars($c['first_name'] . ' ' . $c['last_name']); ?></td>
+                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                            <?php echo htmlspecialchars($c['email']); ?></td>
+                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                            <?php echo $c['total_bookings']; ?></td>
+                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                            <?php if ($c['user_id'] !== null): ?>
+                            <span
+                                class="um-pill <?php echo $c['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>">
+                                <?php echo ucfirst($c['status']); ?>
+                            </span>
+                            <?php else: ?>
+                            <span class="um-pill" style="background:#e5e7eb; color:#374151;">Walk-in</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="um-actions" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                            <button class="action-view btn-history-modal"
+                                data-id="<?php echo $c['id']; ?>">History</button>
+
+                            <?php if ($c['user_id'] !== null): ?>
+                            <?php if ($c['status'] === 'active'): ?>
+                            <button class="action-delete btn-suspend" data-id="<?php echo $c['user_id']; ?>"
+                                data-action="suspended">Suspend</button>
+                            <?php else: ?>
+                            <button class="action-edit btn-suspend" style="background:#4ade80; color:#000;"
+                                data-id="<?php echo $c['user_id']; ?>" data-action="active">Activate</button>
+                            <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
