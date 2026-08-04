@@ -36,9 +36,17 @@ class SevillaCalendar {
   async fetchBookedDates(room_type, room_name) {
     if (!room_type || !room_name) return;
     try {
-      const response = await fetch(`actions/bookings/fetch_dates.php?room_type=${encodeURIComponent(room_type)}&room_name=${encodeURIComponent(room_name)}`);
+      const formData = new FormData();
+      formData.append('room_type', room_type);
+      formData.append('room_name', room_name);
+
+      const response = await fetch('actions/bookings/fetch_dates.php', {
+          method: 'POST',
+          body: formData
+      });
+      
       const data = await response.json();
-      this.bookedDatesList = data;
+      this.bookedDatesList = data || [];
       this.render();
     } catch (error) {
       console.error("Error fetching dates:", error);

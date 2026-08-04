@@ -1,6 +1,6 @@
 /**
  * ==========================================================================
- * SEVILLA360 - Booking Controller (Refactored)
+ * SEVILLA360 - Booking Controller (Refactored & Fully Patched)
  * ==========================================================================
  */
 
@@ -337,7 +337,11 @@ class BookingController {
                     this.state.isDatesLocked = true;
                     calendarInstance.updateDateDisplay();
                     this.calculateSummary();
-                    this.startTimer();
+                    
+                    // ONLY START THE TIMER IF IT IS NOT AN EVENT INQUIRY
+                    if (this.state.activeTabId !== 'event-hall') {
+                        this.startTimer();
+                    }
                 } else {
                     throw new Error(response[1]);
                 }
@@ -399,17 +403,21 @@ class BookingController {
         return extraFee;
     }
 
+    // =========================================================================
+    // CALCULATION LOGIC (WITH CRASH FIXES & PRICING HIDER!)
+    // =========================================================================
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
         this.determineActiveTab();
 
-        // 1. Safely grab the DOM elements first
+        // 1. SAFELY GRAB DOM ELEMENTS
         const breakdownEl = this.getEl('summary-breakdown');
         const totalValEl = this.getEl('summary-total-val');
         const dueValEl = this.getEl('summary-due-val');
+        const pricingSection = this.getEl('pricing-section');
 
-        // 2. Check if dates are locked
+        // 2. CHECK IF DATES ARE LOCKED
         if (!this.state.isDatesLocked) {
             if (breakdownEl) breakdownEl.innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select and lock dates to calculate.</i></div>';
             if (totalValEl) totalValEl.textContent = "₱0.00";
@@ -417,7 +425,6 @@ class BookingController {
             return;
         }
 
-        // 3. Run Math based on tab
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
             case 'event-hall': this.calcEventMath(); break;
@@ -431,20 +438,22 @@ class BookingController {
 
         const proceedBtn = this.getEl("btn-proceed");
 
-        // 4. Branching Logic for Event Inquiries vs Normal Bookings
+        // 3. BRANCHING LOGIC: EVENT INQUIRY VS NORMAL BOOKING
         if (this.state.activeTabId === 'event-hall') {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
-            schemePct = 0; // Events pay 0 upfront during inquiry
+            schemePct = 0; 
             
             if (proceedBtn) {
                 proceedBtn.innerText = "SUBMIT EVENT INQUIRY";
                 proceedBtn.style.backgroundColor = "var(--color-dark)";
             }
             if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
+            if (pricingSection) pricingSection.style.display = "none"; // HIDES PRICING
 
         } else {
             if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "block";
+            if (pricingSection) pricingSection.style.display = "block"; // SHOWS PRICING
 
             if (this.state.activeTabId === 'resort-villa') {
                 activeRadioName = 'villa-payment';
@@ -465,28 +474,16 @@ class BookingController {
             }
         }
 
-        // 5. Final Calculation
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
         if (this.getEl(summaryTextId)) {
             this.getEl(summaryTextId).innerText = schemeText; 
         }
 
-        // 6. Safely Output to DOM
+        // 4. SAFELY OUTPUT TO DOM
         if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
         if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
         if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
-
-        // Safely Output to DOM
-        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
-        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
-        if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
-
-        // NEW: HIDE PRICING FOR EVENT INQUIRIES!
-        const pricingSection = this.getEl('pricing-section');
-        if (pricingSection) {
-            pricingSection.style.display = (this.state.activeTabId === 'event-hall') ? 'none' : 'block';
-        }
     }
 
     calcHotelMath() {
@@ -594,6 +591,9 @@ class BookingController {
         return context;
     }
 
+    // =========================================================================
+    // SUBMISSION & PAYMONGO REDIRECT
+    // =========================================================================
     async submitOnlineBooking() {
         if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
             alert("Please select dates on the calendar and confirm them first!");
@@ -604,15 +604,12 @@ class BookingController {
             return;
         }
 
-        // =======================================================
-        // THE FIX: REQUIRE PHONE NUMBER AND GRAB IT FROM HTML
-        // =======================================================
+        // REQUIRE PHONE NUMBER
         const phoneInput = document.getElementById("contact-phone");
         if (!phoneInput || phoneInput.value.trim() === "") {
-            alert("Please provide a contact number so our admin team can call you!");
+            alert("Please provide a contact number so our team can call you!");
             return;
         }
-        // =======================================================
 
         const btn = this.getEl("btn-proceed");
         const context = this.getTabContextData();
@@ -637,13 +634,9 @@ class BookingController {
         formData.append("base_amount", context.baseAmt || 0);
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
-
-        // =======================================================
-        // THE FIX: SEND PHONE NUMBER TO THE PHP BACKEND
-        // =======================================================
+        
+        // APPEND PHONE & NOTES
         formData.append("contact_phone", phoneInput.value.trim());
-        // =======================================================
-
         const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
@@ -668,7 +661,12 @@ class BookingController {
             const data = await res.text();
             const response = data.split('|');
             
-            if (response[0] === 'Success') {
+            // IF PAYMONGO SENDS A LINK, GO THERE
+            if (response[0] === 'CheckoutUrl') {
+                window.location.href = response[1]; 
+            } 
+            // OTHERWISE GO TO DASHBOARD
+            else if (response[0] === 'Success') {
                 alert("Success! Redirecting to Dashboard.");
                 window.location.href = "user_dashboard.php"; 
             } else {
