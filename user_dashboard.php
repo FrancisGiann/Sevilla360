@@ -539,6 +539,40 @@ while ($row = $bookings_result->fetch_assoc()) {
         </div>
     </div>
 
+    <!-- Universal Confirm Modal -->
+    <div class="modal-overlay" id="uniConfirmModal" style="z-index: 9999;">
+        <div class="modal-box" style="max-width: 400px; text-align: center; padding: 30px;">
+            <i class="fa-solid fa-circle-question"
+                style="font-size: 3rem; color: var(--color-gold); margin-bottom: 15px;"></i>
+            <h3 class="modal-title" style="margin-bottom: 10px; font-size: 1.5rem;">Confirm Action</h3>
+            <p id="uc-message" style="color: var(--color-dark-light); font-size: 0.95rem; margin-bottom: 25px;">Are you
+                sure?</p>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-modal btn-go-back" id="uc-btn-no"
+                    style="flex: 1; background: transparent; border: 1px solid rgba(42, 37, 34, 0.2); color: var(--color-dark);">No,
+                    Cancel</button>
+                <button class="btn-modal btn-confirm-red" id="uc-btn-yes"
+                    style="flex: 1; background-color: var(--color-gold); border-color: var(--color-gold);">Yes,
+                    Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Universal Alert Modal -->
+    <div class="modal-overlay" id="uniAlertModal" style="z-index: 10000;">
+        <div class="modal-box" style="max-width: 400px; text-align: center; padding: 30px;">
+            <i id="ua-icon" class="fa-solid fa-circle-info"
+                style="font-size: 3rem; color: var(--color-gold); margin-bottom: 15px;"></i>
+            <h3 class="modal-title" id="ua-title" style="margin-bottom: 10px; font-size: 1.5rem;">Notice</h3>
+            <p id="ua-message" style="color: var(--color-dark-light); font-size: 0.95rem; margin-bottom: 25px;">Message
+                goes here.</p>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-modal btn-confirm-red" id="ua-btn-ok"
+                    style="flex: 1; background-color: var(--color-gold); border-color: var(--color-gold);">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script src="assets/js/calendar.js?v=<?= time() ?>"></script>
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
 </body>
