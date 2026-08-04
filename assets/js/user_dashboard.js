@@ -431,5 +431,37 @@ document.addEventListener("DOMContentLoaded", () => {
           new_pass: document.getElementById('set-new-pass').value
       }, this);
   });
+// --- 7. Pay Now Button Logic ---
+  document.querySelectorAll(".btn-pay-now").forEach(btn => {
+      btn.addEventListener("click", function() {
+          const bookingId = this.getAttribute('data-id');
+          const originalText = this.innerText;
 
+          this.innerText = "Connecting...";
+          this.disabled = true;
+
+          fetch("actions/user/pay_existing.php", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ booking_id: bookingId })
+          })
+          .then(res => res.json())
+          .then(data => {
+              if (data.success) {
+                  // Redirect to the PayMongo Checkout Link!
+                  window.location.href = data.checkout_url;
+              } else {
+                  alert("Error: " + data.message);
+                  this.innerText = originalText;
+                  this.disabled = false;
+              }
+          })
+          .catch(err => {
+              console.error(err);
+              alert("Network error occurred.");
+              this.innerText = originalText;
+              this.disabled = false;
+          });
+      });
+  });
 });

@@ -1,20 +1,35 @@
 <?php
-// actions/bookings/paymongo_webhook.php
+// Force PHP to report ALL errors to the screen and log
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require '../../config/db_connect.php';
 
-// Create a log file path in the same directory
-$log_file = __DIR__ . '/webhook_debug.log';
+// Put the log file in the same folder as this script, but make sure it uses the absolute directory path
+$log_file = dirname(__FILE__) . '/webhook_debug.log';
 
 // 1. Receive the JSON payload from PayMongo
 $payload = file_get_contents('php://input');
+
+// If payload is empty, log it and stop
+if (empty($payload)) {
+    file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] ERROR: Received completely empty payload from Ngrok/PayMongo.\n\n", FILE_APPEND);
+    http_response_code(400);
+    echo "Empty payload";
+    exit();
+}
+
 $data = json_decode($payload, true);
 
 // Log the exact payload we received
 file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] RECEIVED PAYLOAD:\n" . print_r($data, true) . "\n\n", FILE_APPEND);
 
+// Validate structure
 if (!$data || !isset($data['data']['attributes']['type'])) {
-    file_put_contents($log_file, "ERROR: Invalid Payload Structure.\n", FILE_APPEND);
+    file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] ERROR: Invalid Payload Structure.\n\n", FILE_APPEND);
     http_response_code(400);
+    echo "Invalid structure";
     exit();
 }
 
@@ -25,7 +40,7 @@ if ($event_type === 'checkout_session.payment.paid') {
         $checkout_data = $data['data']['attributes']['data']['attributes'];
         $reference_no = $checkout_data['reference_number'] ?? null;
         
-        file_put_contents($log_file, "Attempting to process Ref No: " . $reference_no . "\n", FILE_APPEND);
+        file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] Attempting to process Ref No: " . $reference_no . "\n", FILE_APPEND);
 
         // Safely extract payment details
         $payments = $checkout_data['payments'] ?? [];
@@ -36,11 +51,15 @@ if ($event_type === 'checkout_session.payment.paid') {
         $amount_paid = floatval($payments[0]['attributes']['amount']) / 100;
         $transaction_id = $payments[0]['id'];
         
-        $raw_method = $payments[0]['attributes']['source']['type'] ?? '';
-        $payment_method = 'Card';
-        if (strpos($raw_method, 'gcash') !== false) $payment_method = 'GCash';
-        if (strpos($raw_method, 'paymaya') !== false) $payment_method = 'Maya';
-        if (strpos($raw_method, 'dob') !== false) $payment_method = 'Bank Transfer';
+        // Use the checkout session data to find the method
+        $raw_method = $checkout_data['payment_method_used'] ?? '';
+        
+        $payment_method = 'PayMongo'; // Fallback
+        
+        if ($raw_method === 'gcash') $payment_method = 'GCash';
+        elseif ($raw_method === 'paymaya') $payment_method = 'Maya';
+        elseif ($raw_method === 'dob') $payment_method = 'Bank Transfer';
+        elseif ($raw_method === 'card') $payment_method = 'Card';
 
         $conn->begin_transaction();
 
@@ -78,14 +97,14 @@ if ($event_type === 'checkout_session.payment.paid') {
         if (!$audit->execute()) throw new Exception("Failed to insert audit log.");
 
         $conn->commit();
-        file_put_contents($log_file, "SUCCESS! Database updated to Confirmed/Paid.\n\n", FILE_APPEND);
+        file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] SUCCESS! Database updated to Confirmed/Paid.\n\n", FILE_APPEND);
 
     } catch (Exception $e) {
         $conn->rollback();
-        file_put_contents($log_file, "SQL/LOGIC ERROR: " . $e->getMessage() . "\n\n", FILE_APPEND);
+        file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] SQL/LOGIC ERROR: " . $e->getMessage() . "\n\n", FILE_APPEND);
     }
 } else {
-    file_put_contents($log_file, "SKIPPED: Event was not checkout_session.payment.paid.\n\n", FILE_APPEND);
+    file_put_contents($log_file, "[" . date('Y-m-d H:i:s') . "] SKIPPED: Event was not checkout_session.payment.paid. It was: " . $event_type . "\n\n", FILE_APPEND);
 }
 
 http_response_code(200);

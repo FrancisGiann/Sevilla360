@@ -259,7 +259,8 @@ while ($row = $bookings_result->fetch_assoc()) {
 
                                             <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && $b['payment_status'] === 'Partial')): ?>
                                             <?php if (!$is_pending_inquiry): ?>
-                                            <button class="btn-action btn-green">Pay Now</button>
+                                            <button class="btn-action btn-green btn-pay-now"
+                                                data-id="<?php echo $b['id']; ?>">Pay Now</button>
                                             <?php endif; ?>
                                             <?php endif; ?>
 
