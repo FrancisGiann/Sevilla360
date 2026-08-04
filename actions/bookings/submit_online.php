@@ -54,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // 4. Save Event/Villa Details
+        // 4. Save Event/Villa Details (RESTORED!)
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
         $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
@@ -79,7 +79,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_unlock->execute();
         unset($_SESSION['locked_venue_id']);
 
-        $conn->commit();
 
         // =========================================================================
         // PAYMONGO CHECKOUT INTEGRATION
@@ -87,8 +86,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $amount_due = 0;
         if ($scheme === '100% Full') $amount_due = $total_amount;
-        elseif ($scheme === '50% Downpayment') $amount_due = $total_amount * 0.5;
-        elseif ($scheme === '20% Reservation') $amount_due = $total_amount * 0.2;
+        elseif (strpos($scheme, '50%') !== false) $amount_due = $total_amount * 0.5;
+        elseif (strpos($scheme, '20%') !== false) $amount_due = $total_amount * 0.2;
 
         // STRICT GUARD: Prevent bypassing PayMongo if it's a Hotel or Villa
         if ($_POST['room_type'] !== 'Event Hall' && $amount_due <= 0) {
@@ -104,7 +103,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $success_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=success";
             $cancel_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=failed";
 
+            // CRITICAL FIXES FOR CREDIT CARDS
             $centavos = (int)round($amount_due * 100);
+            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']);
+            $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
 
             $payload = [
                 'data' => [
@@ -112,21 +114,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         'billing' => [
                             'name' => $customer_name,
                             'email' => $customer_email,
-                            'phone' => $contact_phone ?? '09000000000'
+                            'phone' => $safe_phone
                         ],
-                        'send_email_receipt' => true,
-                        'show_description' => true,
+                        'send_email_receipt' => false,
+                        'show_description' => false,
                         'show_line_items' => true,
                         'description' => "Sevilla360 Booking: $ref_no",
                         'line_items' => [
                             [
                                 'currency' => 'PHP',
                                 'amount' => $centavos,
-                                'name' => $_POST['room_type'] . " ($scheme)",
+                                'name' => "Booking Deposit ($scheme)",
+                                'description' => $safe_room_name,
                                 'quantity' => 1
                             ]
                         ],
-                        'payment_method_types' => ['gcash', 'paymaya', 'card'],
+                        'payment_method_types' => ['card', 'gcash', 'paymaya'],
                         'reference_number' => $ref_no,
                         'success_url' => $success_url,
                         'cancel_url' => $cancel_url
@@ -140,9 +143,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
             
-            // INDUSTRY STANDARD: Timeouts prevent your server from freezing if API goes down
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
@@ -154,16 +157,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $err = curl_error($ch);
             curl_close($ch);
 
-            // CATCH ERRORS PROPERLY
-            if ($err) {
-                throw new Exception("cURL Error: " . $err);
-            }
+            if ($err) throw new Exception("cURL Error: " . $err);
 
             $res_data = json_decode($response, true);
 
-            if (isset($res_data['errors'])) {
-                throw new Exception("PayMongo API Error: " . $res_data['errors'][0]['detail']);
-            }
+            if (isset($res_data['errors'])) throw new Exception("PayMongo API Error: " . $res_data['errors'][0]['detail']);
 
             if (isset($res_data['data']['attributes']['checkout_url'])) {
                 $conn->commit();
@@ -174,7 +172,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
         
-        // If amount due is 0 (Event Inquiry ONLY), just say Success
+        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO AND GO STRAIGHT TO DASHBOARD
         $conn->commit();
         echo "Success|" . $ref_no;
 
