@@ -56,6 +56,16 @@ try {
     $centavos = (int)round($balance_due * 100);
     $customer_name = $booking['first_name'] . ' ' . $booking['last_name'];
     $payment_description = ($booking['amount_paid'] > 0) ? "Balance Payment" : "Initial Payment";
+    
+    // Clean string to prevent JSON breaking
+    $safe_venue_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $booking['venue_name']);
+
+    // CRITICAL FIX 1: Make Reference Number unique by appending "_BAL" and a timestamp!
+    // Example: SV-12345_BAL169000
+    $unique_paymongo_ref = $booking['reference_no'] . '_BAL' . time();
+
+    // CRITICAL FIX 2: Ensure phone is strictly a string, not empty
+    $safe_phone = !empty($booking['phone']) ? $booking['phone'] : '09000000000';
 
     $payload = [
         'data' => [
@@ -63,7 +73,7 @@ try {
                 'billing' => [
                     'name' => $customer_name,
                     'email' => $booking['email'],
-                    'phone' => $booking['phone'] ?? '09000000000'
+                    'phone' => $safe_phone
                 ],
                 'send_email_receipt' => true,
                 'show_description' => true,
@@ -73,12 +83,13 @@ try {
                     [
                         'currency' => 'PHP',
                         'amount' => $centavos,
-                        'name' => $booking['venue_name'] . " ($payment_description)",
+                        'name' => "$payment_description",
+                        'description' => $safe_venue_name,
                         'quantity' => 1
                     ]
                 ],
-                'payment_method_types' => ['gcash', 'paymaya', 'card'],
-                'reference_number' => $booking['reference_no'], // VERY IMPORTANT: Same reference number so webhook updates the correct row!
+                'payment_method_types' => ['card', 'gcash', 'paymaya'],
+                'reference_number' => $unique_paymongo_ref, // Use the new UNIQUE reference!
                 'success_url' => $success_url,
                 'cancel_url' => $cancel_url
             ]
