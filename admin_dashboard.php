@@ -195,29 +195,11 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         </main>
     </div>
 
-    <!-- Global Notification Engine -->
-    <script>
-    document.addEventListener("DOMContentLoaded", () => {
-        function fetchGlobalNotifs() {
-            fetch('actions/admin/get_dashboard_stats.php')
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.actionRequired > 0) {
-                        const badge = document.getElementById('global-notif-badge');
-                        badge.innerText = data.actionRequired;
-                        badge.style.display = 'block';
-                    } else {
-                        document.getElementById('global-notif-badge').style.display = 'none';
-                    }
-                }).catch(e => console.log('Notif check silent fail', e));
-        }
-        fetchGlobalNotifs();
-        setInterval(fetchGlobalNotifs, 60000); // Checks every 60 seconds silently
-    });
-    </script>
 
     <!-- Shared Calendar Engine -->
     <script src="assets/js/calendar.js?v=1"></script>
+    <!-- Notification Engine -->
+    <script src="assets/js/admin-page/admin_notifications.js?v=<?= time() ?>"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
