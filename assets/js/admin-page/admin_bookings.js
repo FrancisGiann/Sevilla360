@@ -155,16 +155,55 @@ document.addEventListener("DOMContentLoaded", () => {
       executeTableFilters();
     });
   });
-  
-  // --- NEW FIX: Auto-Select Tab based on URL Parameter ---
+
+  // =========================================================================
+  // FIX: AUTO-SELECT TABS, SCROLL, AND SOFT HIGHLIGHT (No Hard Filtering!)
+  // =========================================================================
   const urlParams = new URLSearchParams(window.location.search);
   const urlFilter = urlParams.get('filter');
+  const urlSearch = urlParams.get('search'); // This is the SV-XXXXX number
+
+  // 1. Auto-Switch Tabs
   if (urlFilter) {
       const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
-      if (targetTab) {
-          targetTab.click(); // Simulates the user clicking the tab!
-      }
+      if (targetTab) targetTab.click(); 
   }
+
+  // 2. Soft Highlight & Scroll (No Search Bar Isolation!)
+  if (urlSearch) {
+      // We do NOT put the text in the searchInput. We just look for the row.
+      
+      setTimeout(() => {
+          let foundRow = null;
+          
+          tableRows.forEach(row => {
+              // Skip empty state row
+              if (row.querySelector("td[colspan]")) return;
+              
+              const rowSearchText = row.getAttribute("data-search") || "";
+              
+              // If this row contains the SV- number
+              if (rowSearchText.includes(urlSearch.toLowerCase())) {
+                  foundRow = row;
+                  
+                  // Highlight Animation (Flashes gold, then fades back)
+                  row.style.transition = "background-color 1s ease";
+                  row.style.backgroundColor = "rgba(214, 168, 112, 0.4)"; 
+                  
+                  setTimeout(() => {
+                      row.style.backgroundColor = ""; 
+                  }, 2000); // Hold the color a bit longer
+              }
+          });
+
+          // Scroll the browser window directly to the highlighted row!
+          if (foundRow) {
+              foundRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          
+      }, 300); // 300ms delay ensures the table tab has finished animating open
+  }
+  // =========================================================================
   // --- 3. Shared AJAX Function ---
   const processBookingAction = (bookingId, action, buttonElement, extraData = {}) => {
     const originalText = buttonElement.innerText;

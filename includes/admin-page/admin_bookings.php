@@ -1,10 +1,10 @@
 <?php
 require_once 'config/db_connect.php';
 
-// 1. Fetch Bookings (FIXED SORTING: Pending Requests go to the top!)
+// 1. Fetch Bookings (ADDED b.reference_no)
 $query = "
     SELECT 
-        b.id, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
+        b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
         c.first_name, c.last_name, 
         v.name AS venue_name, v.category AS venue_category,
         hr.room_type AS hotel_room_type,
@@ -146,7 +146,7 @@ if ($result && $result->num_rows > 0) {
                             }
 
                             // Create a searchable string for JavaScript
-                            $search_string = strtolower($b['id'] . ' ' . $customer_name . ' ' . $venue_name);
+                            $search_string = strtolower($b['reference_no'] . ' ' . $customer_name . ' ' . $venue_name);
                         ?>
 
                     <!-- INJECTED data-* ATTRIBUTES FOR JAVASCRIPT FILTERING -->
@@ -156,7 +156,8 @@ if ($result && $result->num_rows > 0) {
                         data-status="<?php echo $filter_status; ?>">
 
                         <!-- COLUMNS -->
-                        <td>#<?php echo $b['id']; ?></td>
+                        <td style="font-weight: 600; color: var(--color-gold);">
+                            <?php echo htmlspecialchars($b['reference_no']); ?></td>
                         <td><?php echo $venue_name; ?></td>
                         <td><?php echo $customer_name; ?></td>
                         <td><?php echo $date_str; ?></td>
