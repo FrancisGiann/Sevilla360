@@ -27,7 +27,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <?php elseif ($page === 'calendar'): ?>
-    <!-- FullCalendar CDN -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
     <link rel="stylesheet" href="assets/css/admin-page/admin_calendar.css?v=<?= time() ?>">
     <?php elseif ($page === 'bookings'): ?>
@@ -38,8 +37,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=<?= time() ?>">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= time() ?>">
-
-    <!-- SUPER ADMIN CSS -->
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
@@ -64,63 +61,52 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                 <ul class="nav-list">
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=overview"
-                            class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-chart-pie"></i> Overview
-                        </a>
+                            class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-chart-pie"></i> Overview</a>
                     </li>
-                    <!-- NEW MASTER CALENDAR LINK -->
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=calendar"
-                            class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-calendar-days"></i> Master Calendar
-                        </a>
+                            class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-calendar-days"></i> Master Calendar</a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=bookings"
-                            class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-calendar-check"></i> Bookings
-                        </a>
+                            class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-calendar-check"></i> Bookings</a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=walkin"
-                            class="nav-link <?php echo $page === 'walkin' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry
-                        </a>
+                            class="nav-link <?php echo $page === 'walkin' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry</a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=maintenance"
-                            class="nav-link <?php echo $page === 'maintenance' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-screwdriver-wrench"></i> Maintenance
-                        </a>
+                            class="nav-link <?php echo $page === 'maintenance' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-screwdriver-wrench"></i> Maintenance</a>
                     </li>
 
-                    <!-- SUPER ADMIN ONLY LINKS -->
                     <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=usermanagement"
-                            class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-users-gear"></i> User Management
-                        </a>
+                            class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-users-gear"></i> User Management</a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=auditlog"
-                            class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-clipboard-list"></i> Audit Log
-                        </a>
+                            class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-clipboard-list"></i> Audit Log</a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=cms"
-                            class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-images"></i> Media CMS
-                        </a>
+                            class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-images"></i> Media CMS</a>
                     </li>
                     <?php endif; ?>
 
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=settings"
-                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>">
-                            <i class="fa-solid fa-gear"></i> Settings
-                        </a>
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-gear"></i> Settings</a>
                     </li>
                 </ul>
             </nav>
@@ -150,6 +136,38 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                 </h2>
                 <div class="header-actions">
                     <a href="index.php" class="btn-back"><i class="fa-solid fa-house"></i> Back to Home</a>
+
+                    <!-- NEW: FULL NOTIFICATION CENTER -->
+                    <div class="notification-center" id="notifCenter" style="position: relative; margin-right: 20px;">
+
+                        <!-- The Bell Button -->
+                        <div class="notification-bell" id="notifBell"
+                            style="cursor: pointer; position: relative; padding: 5px;">
+                            <i class="fa-regular fa-bell"
+                                style="font-size: 1.4rem; color: var(--color-dark); transition: 0.2s;"
+                                onmouseover="this.style.color='var(--color-gold)'"
+                                onmouseout="this.style.color='var(--color-dark)'"></i>
+                            <span id="global-notif-badge"
+                                style="display:none; position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; border-radius: 50%; padding: 2px 5px; font-size: 0.65rem; font-weight: bold; border: 2px solid white;">0</span>
+                        </div>
+
+                        <!-- The Dropdown Window (Hidden by Default) -->
+                        <div class="notif-dropdown" id="notifDropdown">
+                            <div class="notif-header">
+                                <h4>Notifications</h4>
+                                <a href="admin_dashboard.php?page=bookings&filter=action_req"
+                                    style="font-size: 0.8rem; color: var(--color-gold); text-decoration: none;">View
+                                    All</a>
+                            </div>
+                            <div class="notif-body" id="notifList">
+                                <!-- JS will inject notification items here -->
+                                <div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">You're
+                                    all caught up!</div>
+                            </div>
+                        </div>
+
+                    </div>
+
                     <div class="admin-profile"><i class="fa-solid fa-circle-user profile-icon"></i></div>
                 </div>
             </header>
@@ -176,6 +194,27 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
             ?>
         </main>
     </div>
+
+    <!-- Global Notification Engine -->
+    <script>
+    document.addEventListener("DOMContentLoaded", () => {
+        function fetchGlobalNotifs() {
+            fetch('actions/admin/get_dashboard_stats.php')
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.actionRequired > 0) {
+                        const badge = document.getElementById('global-notif-badge');
+                        badge.innerText = data.actionRequired;
+                        badge.style.display = 'block';
+                    } else {
+                        document.getElementById('global-notif-badge').style.display = 'none';
+                    }
+                }).catch(e => console.log('Notif check silent fail', e));
+        }
+        fetchGlobalNotifs();
+        setInterval(fetchGlobalNotifs, 60000); // Checks every 60 seconds silently
+    });
+    </script>
 
     <!-- Shared Calendar Engine -->
     <script src="assets/js/calendar.js?v=1"></script>

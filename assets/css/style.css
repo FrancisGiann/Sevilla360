@@ -838,6 +838,99 @@ section {
 .dot.unavailable {
   background: #999;
 }
+/* ==========================================================================
+   Notification Center Dropdown
+   ========================================================================== */
+.notif-dropdown {
+    position: absolute;
+    top: 45px;
+    right: -10px;
+    width: 320px;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(42, 37, 34, 0.1);
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Toggled by Javascript */
+.notif-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.notif-header {
+    padding: 15px 20px;
+    border-bottom: 1px solid rgba(42, 37, 34, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notif-header h4 {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-dark);
+}
+
+.notif-body {
+    max-height: 350px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Custom Scrollbar for the dropdown */
+.notif-body::-webkit-scrollbar { width: 6px; }
+.notif-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+
+.notif-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid rgba(42, 37, 34, 0.05);
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+    text-decoration: none;
+}
+
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: rgba(214, 168, 112, 0.05); }
+
+.notif-icon {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.notif-icon.bg-yellow { background: #fef08a; color: #a16207; }
+.notif-icon.bg-red { background: #fecaca; color: #b91c1c; }
+.notif-icon.bg-blue { background: #bfdbfe; color: #1d4ed8; }
+
+.notif-content p {
+    margin: 0 0 5px 0;
+    font-size: 0.85rem;
+    color: var(--color-dark);
+    line-height: 1.4;
+}
+
+.notif-content span {
+    font-size: 0.75rem;
+    color: #888;
+}
 
 /* --- Media Queries --- */
 @media (max-width: 992px) {

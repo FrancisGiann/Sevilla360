@@ -16,7 +16,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $sDate = $_POST['start_date'];
         $eDate = $_POST['end_date'];
         $scheme = $_POST['payment_scheme'];
-        $room_type = $_POST['room_type'];
         $guests = (int)$_POST['guests'];
 
         // 1. Get Customer ID & Email
@@ -45,8 +44,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // =========================================================================
         // SECURITY FIX: BACKEND PRICE VERIFICATION
-        // Ignores JS price and recalculates everything using the Database rates
         // =========================================================================
+        
+        // Find the true category of this venue directly from the database
+        $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ?");
+        $stmt_cat->bind_param("i", $venue_id);
+        $stmt_cat->execute();
+        $venue_category = $stmt_cat->get_result()->fetch_assoc()['category'];
+
+        // Calculate Nights/Days
         $start_dt = new DateTime($sDate);
         $end_dt = new DateTime($eDate);
         $nights = $start_dt->diff($end_dt)->days;
@@ -55,7 +61,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $true_total = 0;
         $base_amount = 0;
 
-        if ($room_type === 'Hotel Room') {
+        if ($venue_category === 'Hotel Room') {
             $stmt = $conn->prepare("SELECT nightly_rate, base_capacity, extra_pax_rate FROM hotel_rooms WHERE venue_id = ?");
             $stmt->bind_param("i", $venue_id);
             $stmt->execute();
@@ -69,7 +75,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $true_total += ($extra_pax * floatval($room['extra_pax_rate']) * $nights);
             }
         } 
-        elseif ($room_type === 'Resort Villa') {
+        elseif ($venue_category === 'Resort Villa') {
             $stmt = $conn->prepare("SELECT day_rate, base_capacity, extra_pax_rate FROM villas WHERE venue_id = ?");
             $stmt->bind_param("i", $venue_id);
             $stmt->execute();
@@ -86,7 +92,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $true_total += ($extra_pax * floatval($villa['extra_pax_rate']) * $nights);
             }
         } 
-        elseif ($room_type === 'Event Hall') {
+        elseif ($venue_category === 'Event Hall') {
             $stmt = $conn->prepare("SELECT base_rate FROM event_halls WHERE venue_id = ?");
             $stmt->bind_param("i", $venue_id);
             $stmt->execute();
@@ -120,7 +126,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_notes->execute();
         }
 
-        if ($_POST['room_type'] === 'Resort Villa' && isset($_POST['stay_type'])) {
+        if ($venue_category === 'Resort Villa' && isset($_POST['stay_type'])) {
             $stay_type = $_POST['stay_type'];
             $stmt_villa = $conn->prepare("INSERT INTO booking_villa_details (booking_id, stay_type) VALUES (?, ?)");
             $stmt_villa->bind_param("is", $booking_id, $stay_type);
@@ -135,17 +141,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         unset($_SESSION['locked_venue_id']);
 
         // =========================================================================
-        // PAYMONGO CHECKOUT INTEGRATION (Untouched)
+        // PAYMONGO CHECKOUT INTEGRATION 
         // =========================================================================
         
         $amount_due = 0;
-        // Use the secure $true_total to calculate the due amount
         if ($scheme === '100% Full') $amount_due = $true_total;
         elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;
         elseif (strpos($scheme, '20%') !== false) $amount_due = $true_total * 0.2;
 
         // STRICT GUARD: Prevent bypassing PayMongo if it's a Hotel or Villa
-        if ($_POST['room_type'] !== 'Event Hall' && $amount_due <= 0) {
+        if ($venue_category !== 'Event Hall' && $amount_due <= 0) {
             throw new Exception("Error calculating price. Amount due cannot be zero for Hotels/Villas.");
         }
 
@@ -158,9 +163,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $success_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=success";
             $cancel_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=failed";
 
-            // CRITICAL FIXES FOR CREDIT CARDS
             $centavos = (int)round($amount_due * 100);
-            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']);
+            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']); // Just for display
             $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
 
             $payload = [
@@ -197,11 +201,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
                 'accept: application/json',
@@ -227,7 +229,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
         
-        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO AND GO STRAIGHT TO DASHBOARD
+        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO
         $conn->commit();
         echo "Success|" . $ref_no;
 
