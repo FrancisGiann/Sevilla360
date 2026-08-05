@@ -15,8 +15,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $ref_no = "SV-" . mt_rand(10000, 99999);
         $sDate = $_POST['start_date'];
         $eDate = $_POST['end_date'];
-        $total_amount = floatval($_POST['total_amount']);
         $scheme = $_POST['payment_scheme'];
+        $room_type = $_POST['room_type'];
+        $guests = (int)$_POST['guests'];
 
         // 1. Get Customer ID & Email
         $stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email FROM customers WHERE user_id = ?");
@@ -42,19 +43,73 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $venue_id = $_SESSION['locked_venue_id'];
 
-        // 3. Save Booking
+        // =========================================================================
+        // SECURITY FIX: BACKEND PRICE VERIFICATION
+        // Ignores JS price and recalculates everything using the Database rates
+        // =========================================================================
+        $start_dt = new DateTime($sDate);
+        $end_dt = new DateTime($eDate);
+        $nights = $start_dt->diff($end_dt)->days;
+        if ($nights === 0) $nights = 1; 
+
+        $true_total = 0;
+        $base_amount = 0;
+
+        if ($room_type === 'Hotel Room') {
+            $stmt = $conn->prepare("SELECT nightly_rate, base_capacity, extra_pax_rate FROM hotel_rooms WHERE venue_id = ?");
+            $stmt->bind_param("i", $venue_id);
+            $stmt->execute();
+            $room = $stmt->get_result()->fetch_assoc();
+
+            $base_amount = floatval($room['nightly_rate']);
+            $true_total = $base_amount * $nights;
+            
+            if ($guests > $room['base_capacity']) {
+                $extra_pax = $guests - $room['base_capacity'];
+                $true_total += ($extra_pax * floatval($room['extra_pax_rate']) * $nights);
+            }
+        } 
+        elseif ($room_type === 'Resort Villa') {
+            $stmt = $conn->prepare("SELECT day_rate, base_capacity, extra_pax_rate FROM villas WHERE venue_id = ?");
+            $stmt->bind_param("i", $venue_id);
+            $stmt->execute();
+            $villa = $stmt->get_result()->fetch_assoc();
+
+            $base_amount = floatval($villa['day_rate']);
+            $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
+            
+            $stay_upgrade = ($stay_type === 'Overnight') ? (3000 * $nights) : 0;
+            $true_total = ($base_amount * $nights) + $stay_upgrade;
+
+            if ($guests > $villa['base_capacity']) {
+                $extra_pax = $guests - $villa['base_capacity'];
+                $true_total += ($extra_pax * floatval($villa['extra_pax_rate']) * $nights);
+            }
+        } 
+        elseif ($room_type === 'Event Hall') {
+            $stmt = $conn->prepare("SELECT base_rate FROM event_halls WHERE venue_id = ?");
+            $stmt->bind_param("i", $venue_id);
+            $stmt->execute();
+            $hall = $stmt->get_result()->fetch_assoc();
+
+            $base_amount = floatval($hall['base_rate']);
+            $true_total = $base_amount * $nights; 
+        }
+        // =========================================================================
+
+        // 3. Save Booking (Using the secure $base_amount and $true_total)
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
         ");
         $stmt_book->bind_param("siissidds", 
             $ref_no, $customer_id, $venue_id, $sDate, $eDate, 
-            $_POST['guests'], $_POST['base_amount'], $total_amount, $scheme
+            $guests, $base_amount, $true_total, $scheme
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
 
-        // 4. Save Event/Villa Details (RESTORED!)
+        // 4. Save Event/Villa Details
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
         $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
@@ -79,15 +134,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_unlock->execute();
         unset($_SESSION['locked_venue_id']);
 
-
         // =========================================================================
-        // PAYMONGO CHECKOUT INTEGRATION
+        // PAYMONGO CHECKOUT INTEGRATION (Untouched)
         // =========================================================================
         
         $amount_due = 0;
-        if ($scheme === '100% Full') $amount_due = $total_amount;
-        elseif (strpos($scheme, '50%') !== false) $amount_due = $total_amount * 0.5;
-        elseif (strpos($scheme, '20%') !== false) $amount_due = $total_amount * 0.2;
+        // Use the secure $true_total to calculate the due amount
+        if ($scheme === '100% Full') $amount_due = $true_total;
+        elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;
+        elseif (strpos($scheme, '20%') !== false) $amount_due = $true_total * 0.2;
 
         // STRICT GUARD: Prevent bypassing PayMongo if it's a Hotel or Villa
         if ($_POST['room_type'] !== 'Event Hall' && $amount_due <= 0) {
