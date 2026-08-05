@@ -57,11 +57,11 @@ if ($result && $result->num_rows > 0) {
     <div class="table-card">
         <h3 class="card-title">Booking History</h3>
 
+        <!-- PENDING TAB REMOVED FOR CLEANER UI -->
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
             <button class="tab-btn" data-filter="action_req" style="color: #e06666; font-weight: 600;">Action
                 Required</button>
-            <button class="tab-btn" data-filter="pending">Pending</button>
             <button class="tab-btn" data-filter="partial">Balances Due</button>
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
@@ -105,10 +105,12 @@ if ($result && $result->num_rows > 0) {
                                 $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
                             }
 
-                            // Badge Styling Logic
+                            // ==========================================
+                            // BADGE STYLING & FILTER LOGIC
+                            // ==========================================
                             $badge_class = 'status-pending'; 
                             $status_text = 'Pending';
-                            $filter_status = strtolower($b['booking_status']); // For JS filtering
+                            $filter_status = strtolower($b['booking_status']); 
 
                             if ($b['booking_status'] === 'Confirmed') {
                                 if ($b['payment_status'] === 'Partial') {
@@ -124,26 +126,20 @@ if ($result && $result->num_rows > 0) {
                                 $status_text = 'Cancelled';
                             }
 
-                            // Override badge for pending requests
+                            // OVERRIDES FOR ACTION REQUIRED
                             if ($b['cancel_status'] === 'Pending') {
                                 $badge_class = 'status-pending-refund';
                                 $status_text = 'Cancel Req.';
-                                $filter_status .= ' action_req'; // Add to JS filter
+                                $filter_status .= ' action_req'; 
                             } elseif ($b['resched_status'] === 'Pending') {
                                 $badge_class = 'status-reschedule'; 
                                 $status_text = 'Resched Req.';
-                                $filter_status .= ' action_req'; // Add to JS filter
+                                $filter_status .= ' action_req'; 
+                            } elseif ($b['booking_status'] === 'Pending') {
+                                // FIX: ALL new/unpaid bookings are 'Action Required'
+                                $filter_status .= ' action_req'; 
                             }
-
-                            $has_conflict = 'false';
-                            if ($b['resched_status'] === 'Pending') {
-                                $chk_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)");
-                                $chk_overlap->bind_param("iiss", $b['venue_id'], $b['id'], $b['new_end_date'], $b['new_start_date']);
-                                $chk_overlap->execute();
-                                if ($chk_overlap->get_result()->num_rows > 0) {
-                                    $has_conflict = 'true';
-                                }
-                            }
+                            // ==========================================
 
                             // Create a searchable string for JavaScript
                             $search_string = strtolower($b['reference_no'] . ' ' . $customer_name . ' ' . $venue_name);
@@ -180,7 +176,6 @@ if ($result && $result->num_rows > 0) {
                             <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;"
                                 data-id="<?php echo $b['id']; ?>" data-total="<?php echo $b['total_amount']; ?>">Edit
                                 Price</button>
-
 
                             <!-- 2. CONFIRMED BOOKINGS -->
                             <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
