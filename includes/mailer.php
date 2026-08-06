@@ -93,4 +93,44 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         throw new Exception("Mailer Error: {$mail->ErrorInfo}");
     }
 }
+function send_custom_email($to_email, $to_name, $subject, $html_content) {
+    // ==========================================
+    // YOUR GMAIL CREDENTIALS
+    // ==========================================
+    $smtp_email = 'your.email@gmail.com'; 
+    $smtp_password = 'your 16 letter app password'; 
+    // ==========================================
+
+    $mail = new PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $smtp_email;
+        $mail->Password   = $smtp_password;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
+
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+
+        $mail->setFrom($smtp_email, 'Sevilla360 Accounts');
+        $mail->addAddress($to_email, $to_name); 
+
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body    = $html_content;
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        throw new Exception("Mailer Error: {$mail->ErrorInfo}");
+    }
+}
 ?>
