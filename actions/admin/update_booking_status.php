@@ -78,8 +78,7 @@ try {
             throw new Exception("Failed to update price in the database.");
         }
         $message = "Invoice price successfully updated to ₱" . number_format($new_total, 2) . "!";
-    }
-    elseif ($action === 'add_payment') {
+    }elseif ($action === 'add_payment') {
         $amount_to_add = floatval($data['amount']);
         $method = $data['method'];
         $trans_id = !empty($data['transaction_id']) ? $data['transaction_id'] : 'CASH-' . time();
@@ -91,9 +90,37 @@ try {
         
         if ($res->num_rows === 0) throw new Exception('Booking not found.');
         $booking = $res->fetch_assoc();
+
+        // =========================================================================
+        // FIX: GUARD AGAINST OVERPAYMENT / DUPLICATE SUBMISSION
+        // =========================================================================
+        $current_paid = floatval($booking['amount_paid']);
+        $total = floatval($booking['total_amount']);
+        $remaining_due = $total - $current_paid;
+
+        if ($amount_to_add <= 0) {
+            throw new Exception("Payment amount must be greater than zero.");
+        }
+        if ($remaining_due <= 0) {
+            throw new Exception("This booking is already fully paid. No balance remaining.");
+        }
+        if ($amount_to_add > $remaining_due + 0.01) { // small tolerance for float rounding
+            throw new Exception("Amount exceeds the remaining balance of ₱" . number_format($remaining_due, 2) . ".");
+        }
+
+        // Idempotency: reject if this exact non-cash transaction_id was already recorded
+        if (!empty($data['transaction_id'])) {
+            $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
+            $stmt_dupe->bind_param("s", $trans_id);
+            $stmt_dupe->execute();
+            if ($stmt_dupe->get_result()->num_rows > 0) {
+                throw new Exception("This transaction ID has already been recorded.");
+            }
+        }
+        // =========================================================================
         
-        $new_amount_paid = floatval($booking['amount_paid']) + $amount_to_add;
-        $new_payment_status = ($new_amount_paid >= floatval($booking['total_amount'])) ? 'Paid' : 'Partial';
+        $new_amount_paid = $current_paid + $amount_to_add;
+        $new_payment_status = ($new_amount_paid >= $total) ? 'Paid' : 'Partial';
 
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
         $stmt_pay->bind_param("issd", $booking_id, $trans_id, $method, $amount_to_add);
@@ -105,7 +132,7 @@ try {
         
         $message = "Payment of ₱" . number_format($amount_to_add, 2) . " received successfully!";
         
-    } 
+    }
     elseif ($action === 'reschedule') {
         if (!isset($data['new_start_date']) || !isset($data['new_end_date'])) {
             throw new Exception("Missing new dates for reschedule.");

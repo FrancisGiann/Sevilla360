@@ -38,14 +38,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if (!isset($_SESSION['locked_venue_id'])) {
-            throw new Exception("Session expired or dates were not locked properly.");
-        }
-        $venue_id = $_SESSION['locked_venue_id'];
+    throw new Exception("Session expired or dates were not locked properly.");
+}
+$venue_id = $_SESSION['locked_venue_id'];
 
         // =========================================================================
-        // SECURITY FIX: BACKEND PRICE VERIFICATION
+        // FIX: RE-VALIDATE DATE AVAILABILITY BEFORE BOOKING (prevents double-booking)
         // =========================================================================
-        
+        $stmt_overlap = $conn->prepare("
+            SELECT id FROM bookings 
+            WHERE venue_id = ? 
+            AND booking_status IN ('Pending', 'Confirmed', 'Completed') 
+            AND (start_date < ? AND end_date > ?)
+        ");
+        $stmt_overlap->bind_param("iss", $venue_id, $eDate, $sDate);
+        $stmt_overlap->execute();
+        if ($stmt_overlap->get_result()->num_rows > 0) {
+            throw new Exception("Sorry, these dates were just booked by another guest. Please choose different dates.");
+        }
+
+        // Also check maintenance blocks, same as lock_dates.php does
+        $stmt_maint = $conn->prepare("
+            SELECT id FROM maintenance 
+            WHERE venue_id = ? AND is_blocking = 1 
+            AND (start_date <= ? AND end_date >= ?)
+        ");
+        $stmt_maint->bind_param("iss", $venue_id, $eDate, $sDate);
+        $stmt_maint->execute();
+        if ($stmt_maint->get_result()->num_rows > 0) {
+            throw new Exception("These dates are currently under maintenance. Please choose different dates.");
+        }
+        // =========================================================================
+
         // Find the true category of this venue directly from the database
         $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ?");
         $stmt_cat->bind_param("i", $venue_id);

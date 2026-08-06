@@ -343,6 +343,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } else specRow.style.display = 'none';
 
+            // Cancellation reason (only relevant if booking is Cancelled)
+            const cancelRow = document.getElementById('ud-cancel-row');
+            const cancelReasonEl = document.getElementById('ud-cancel-reason');
+            const cancellation = res.data.cancellation;
+
+            if (data.booking_status === 'Cancelled' && cancellation && cancellation.reason) {
+            cancelReasonEl.innerText = cancellation.reason;
+            cancelRow.style.display = 'flex';
+            } else {
+            cancelRow.style.display = 'none';
+}
+
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
             addonsList.innerHTML = ''; 

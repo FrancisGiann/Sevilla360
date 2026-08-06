@@ -23,10 +23,20 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             $transaction_id = $payments[0]['id'];
             $method_str = $checkout['payment_method_used'] ?? 'card';
         } else {
-            // Fallback for auto-accept cards
             $amount_paid = floatval($checkout['line_items'][0]['amount']) / 100;
             $transaction_id = $checkout['payment_intent']['id'] ?? 'PM_' . time();
             $method_str = 'card';
+        }
+
+        // =========================================================================
+        // FIX: IDEMPOTENCY CHECK — prevent double-crediting on webhook retries
+        // =========================================================================
+        $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
+        $stmt_dupe->bind_param("s", $transaction_id);
+        $stmt_dupe->execute();
+        if ($stmt_dupe->get_result()->num_rows > 0) {
+            echo "IGNORED: Duplicate webhook for transaction $transaction_id (already processed).";
+            exit();
         }
 
         $payment_method = 'PayMongo'; 

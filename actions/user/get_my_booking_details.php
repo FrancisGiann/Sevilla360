@@ -65,7 +65,21 @@ try {
     while($row = $addons_result->fetch_assoc()) {
         $response['data']['addons'][] = $row;
     }
-
+    // 4.5. Get Cancellation Reason (if this booking was cancelled)
+    if ($booking['booking_status'] === 'Cancelled') {
+        $stmt_cx = $conn->prepare("
+            SELECT reason, admin_reply, status 
+            FROM cancellations 
+            WHERE booking_id = ? 
+            ORDER BY id DESC LIMIT 1
+        ");
+        $stmt_cx->bind_param("i", $booking_id);
+        $stmt_cx->execute();
+        $cx_res = $stmt_cx->get_result();
+        $response['data']['cancellation'] = ($cx_res->num_rows > 0) ? $cx_res->fetch_assoc() : null;
+    } else {
+        $response['data']['cancellation'] = null;
+    }
     // 5. Get Transaction ID (if exists)
     $stmt_pay = $conn->prepare("SELECT transaction_id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
     $stmt_pay->bind_param("i", $booking_id);

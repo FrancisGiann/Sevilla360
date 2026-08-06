@@ -518,6 +518,10 @@ while ($row = $bookings_result->fetch_assoc()) {
                     <span id="ud-specific-label">Specifics:</span>
                     <span id="ud-specific-value">--</span>
                 </p>
+                <p id="ud-cancel-row" style="display:none;">
+                    <span>Cancellation Reason:</span>
+                    <span id="ud-cancel-reason" style="color: #c27c7c;">--</span>
+                </p>
 
                 <!-- Dynamic Add-ons -->
                 <div id="ud-addons-container"
