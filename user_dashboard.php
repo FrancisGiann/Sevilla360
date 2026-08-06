@@ -44,11 +44,13 @@ $stmt_bookings = $conn->prepare("
         v.category AS venue_type,
         hr.room_type AS hotel_room_type,
         cx.status AS cancel_status,
+        rr.status AS resched_status,
         p.transaction_id
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
+    LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
     LEFT JOIN payments p ON b.id = p.booking_id
     WHERE b.customer_id = ?
     GROUP BY b.id
@@ -244,10 +246,10 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         // OVERRIDE TEXT IF A REQUEST IS PENDING!
                                         if ($b['cancel_status'] === 'Pending') {
                                             $status_text = 'Cancel Requested';
-                                            $badge_class = 'badge-cancelled'; // Make it red
+                                            $badge_class = 'badge-cancelled'; 
                                         } elseif ($b['resched_status'] === 'Pending') {
                                             $status_text = 'Resched Requested';
-                                            $badge_class = 'badge-partial'; // Make it blue
+                                            $badge_class = 'badge-reschedule';  
                                         }
                                     ?>
                                     <tr data-status="<?php echo $filter_data; ?>">
