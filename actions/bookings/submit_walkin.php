@@ -102,6 +102,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
             $audit_stmt->execute();
         }
+        // NEW: Send the Automated Receipt Email!
+        require_once '../../includes/mailer.php';
+        send_booking_receipt($_POST['guest_email'], $_POST['guest_name'], $ref_no, $_POST['room_name'], $amount_paid, 'Confirmed (Walk-in)');
         $conn->commit();
         echo "Success|" . $ref_no;
 

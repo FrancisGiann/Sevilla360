@@ -749,27 +749,39 @@ section {
   margin: 0 4px;
 }
 
-.cal-day-cell:hover:not(.booked):not(.unavailable):not(.empty):not(.selected):not(.in-range) {
+.cal-day-cell:not(.booked):not(.unavailable):not(.past-date):not(.empty):hover {
   background: #ebebeb;
 }
 
 .cal-day-cell.empty {
   background: transparent;
   cursor: default;
+  pointer-events: none;
 }
 
 .cal-day-cell.booked {
-  background: #e06666;
-  color: white;
-  cursor: not-allowed;
+  background: #e06666 !important;
+  color: #fff !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+.cal-day-cell.booked:hover {
+  background: #e06666 !important;
+  color: #fff !important;
 }
 
 .cal-day-cell.unavailable {
-  background: #e0e0e0;
-  color: #999;
-  cursor: not-allowed;
+  background: #e0e0e0 !important;
+  color: #999 !important;
   text-decoration: line-through;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }
+.cal-day-cell.unavailable:hover {
+  background: #e0e0e0 !important;
+  color: #999 !important;
+}
+
 
 /* Range Styles */
 .cal-day-cell.selected {
@@ -795,6 +807,18 @@ section {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   margin-left: 0;
+}
+.cal-day-cell.past-date {
+  background: #999;
+  color: #ccc;
+  text-decoration: line-through;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.cal-day-cell.past-date:hover {
+  background: #999;
+  color: #ccc;
 }
 
 /* Legend */
@@ -838,6 +862,7 @@ section {
 .dot.unavailable {
   background: #999;
 }
+
 /* ==========================================================================
    Notification Center Dropdown
    ========================================================================== */

@@ -68,25 +68,16 @@ class SevillaCalendar {
     this.grid.innerHTML = "";
     const year = this.currentDate.getFullYear();
     const month = this.currentDate.getMonth();
-    const monthNames = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     this.monthYearDisplay.innerText = `${monthNames[month]} ${year}`;
 
     const firstDayIndex = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    // NEW: Get Today's exact date, and set time to midnight so we can compare accurately!
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     for (let i = 0; i < firstDayIndex; i++) {
       const emptyCell = document.createElement("div");
@@ -102,26 +93,31 @@ class SevillaCalendar {
 
       const cellDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-      if (this.bookedDatesList.includes(cellDateStr)) {
+      // NEW LOGIC: Is this date in the past?
+      const isPastDate = cellDate < today;
+
+      if (isPastDate) {
+        // If it's in the past, gray it out completely and DO NOT attach a click listener.
+        cell.classList.add("past-date");
+      } 
+      else if (this.bookedDatesList.includes(cellDateStr)) {
+        // If it's booked by someone else
         cell.classList.add("booked");
-      } else {
+      } 
+      else {
+        // IF IT IS A VALID, FUTURE DATE:
         if (this.startDate && cellDate.getTime() === this.startDate.getTime()) {
           cell.classList.add("selected", "start-date");
         }
         if (this.endDate && cellDate.getTime() === this.endDate.getTime()) {
           cell.classList.add("selected", "end-date");
         }
-        if (
-          this.startDate &&
-          this.endDate &&
-          cellDate > this.startDate &&
-          cellDate < this.endDate
-        ) {
+        if (this.startDate && this.endDate && cellDate > this.startDate && cellDate < this.endDate) {
           cell.classList.add("in-range");
         }
 
+        // Attach click listener ONLY for valid future dates
         cell.addEventListener("click", () => {
-          // Check if dates are locked AND the override function exists
           if (window.isDatesLocked && typeof window.showOverrideModal === "function") {
             window.showOverrideModal(cellDate, this);
             return;
@@ -147,7 +143,6 @@ class SevillaCalendar {
                 this.endDate = cellDate;
                 this.render();
                 
-                // CRITICAL FIX: Only call confirmation modal if the function exists!
                 if (typeof window.requestDateConfirmation === "function") {
                     window.requestDateConfirmation(this.startDate, this.endDate, this);
                 }
