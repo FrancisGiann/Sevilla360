@@ -230,14 +230,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         
         // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO
-        // Send Inquiry Confirmation Email!
+        // =========================================================
+        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
+        // =========================================================
+        $conn->commit();
+
+        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO
         try {
             require_once '../../includes/mailer.php';
             send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'], 0, 'Inquiry Sent (Pending)');
         } catch (Exception $mail_e) {
             // Log silently
         }
-        $conn->commit();
+        
         echo "Success|" . $ref_no;
 
     } catch (Exception $e) {
@@ -245,4 +250,5 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         echo "Error|" . $e->getMessage();
     }
 }
+?>
 ?>

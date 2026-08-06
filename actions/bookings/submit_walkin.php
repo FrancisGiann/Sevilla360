@@ -167,6 +167,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);
         $stmt_pay->execute();
 
+        // FIX: Replaced $guestName with $_POST['guest_name'] to prevent PHP Crash
         if (isset($_SESSION['user_id'])) {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Walk-in Bookings';
@@ -178,15 +179,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $audit_stmt->execute();
         }
 
-        // EMAIL MAILER: Wrapped in a try-catch so if the email fails, the booking still saves!
+        // =========================================================
+        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
+        // =========================================================
+        $conn->commit();
+
+        // EMAIL MAILER
         try {
             require_once '../../includes/mailer.php';
             send_booking_receipt($_POST['guest_email'], $_POST['guest_name'], $ref_no, $_POST['room_name'], $amount_paid, 'Confirmed (Walk-in)');
         } catch (Exception $mail_e) {
             // Log silently, don't crash
+            file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
         }
 
-        $conn->commit();
         echo "Success|" . $ref_no;
 
     } catch (Exception $e) {

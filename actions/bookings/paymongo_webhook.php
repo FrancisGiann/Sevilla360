@@ -29,31 +29,20 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             $method_str = 'card';
         }
 
-        $payment_method = 'Card';
+        $payment_method = 'PayMongo'; 
         if (strpos($method_str, 'gcash') !== false) $payment_method = 'GCash';
         if (strpos($method_str, 'paymaya') !== false) $payment_method = 'Maya';
 
         // 3. DATABASE UPDATE
         $conn->begin_transaction();
         
-        // UPDATED: Joined Customers and Venues so we have data for the Email Receipt!
-        $stmt_find = $conn->prepare("
-            SELECT b.id, b.total_amount, b.amount_paid, 
-                   c.email, c.first_name, c.last_name, 
-                   v.name as venue_name 
-            FROM bookings b 
-            JOIN customers c ON b.customer_id = c.id 
-            JOIN venues v ON b.venue_id = v.id 
-            WHERE b.reference_no = ?
-        ");
+        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid FROM bookings WHERE reference_no = ?");
         $stmt_find->bind_param("s", $reference_no);
         $stmt_find->execute();
         $res = $stmt_find->get_result();
         
         if ($res->num_rows === 0) {
-            echo "FAILED: Ref $reference_no not found in DB."; 
-            http_response_code(400); 
-            exit(); 
+            echo "FAILED: Ref $reference_no not found in DB."; http_response_code(400); exit(); 
         }
         $booking = $res->fetch_assoc();
 
@@ -68,28 +57,34 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         $stmt_up->bind_param("sdi", $status, $new_amount, $booking['id']);
         $stmt_up->execute();
 
-        // =========================================================================
-        // NEW: 4. RECORD TO AUDIT LOG
-        // =========================================================================
+        // 4. RECORD TO AUDIT LOG
         $log_action = "Automated Webhook: Received ₱" . number_format($amount_paid, 2) . " via $payment_method for Booking $reference_no";
         $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (NULL, 'PayMongo Webhook', ?, 'PayMongo Server')");
         $audit->bind_param("s", $log_action);
         $audit->execute();
 
-        // =========================================================================
-        // NEW: 5. SEND AUTOMATED EMAIL RECEIPT
-        // =========================================================================
+        // =========================================================
+        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
+        // =========================================================
+        $conn->commit();
+        
+        // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)
         try {
             require_once '../../includes/mailer.php';
-            $customer_name = $booking['first_name'] . ' ' . $booking['last_name'];
+            // We need to fetch the customer name and email again since we committed
+            $stmt_cust = $conn->prepare("SELECT c.email, c.first_name, c.last_name, v.name as venue_name FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id WHERE b.reference_no = ?");
+            $stmt_cust->bind_param("s", $reference_no);
+            $stmt_cust->execute();
+            $c_data = $stmt_cust->get_result()->fetch_assoc();
+
+            $customer_name = $c_data['first_name'] . ' ' . $c_data['last_name'];
             $email_status = ($status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Downpayment)';
-            send_booking_receipt($booking['email'], $customer_name, $reference_no, $booking['venue_name'], $amount_paid, $email_status);
+            
+            send_booking_receipt($c_data['email'], $customer_name, $reference_no, $c_data['venue_name'], $new_amount, $email_status);
         } catch (Exception $mail_e) {
-            // Silently log email errors so the database still commits the payment
             file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
         }
 
-        $conn->commit();
         echo "SUCCESS: Updated Booking $reference_no to $status.";
 
     } catch (Exception $e) {
