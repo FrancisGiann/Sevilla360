@@ -36,7 +36,16 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         // 3. DATABASE UPDATE
         $conn->begin_transaction();
         
-        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid FROM bookings WHERE reference_no = ?");
+        // UPDATED: Joined Customers and Venues so we have data for the Email Receipt!
+        $stmt_find = $conn->prepare("
+            SELECT b.id, b.total_amount, b.amount_paid, 
+                   c.email, c.first_name, c.last_name, 
+                   v.name as venue_name 
+            FROM bookings b 
+            JOIN customers c ON b.customer_id = c.id 
+            JOIN venues v ON b.venue_id = v.id 
+            WHERE b.reference_no = ?
+        ");
         $stmt_find->bind_param("s", $reference_no);
         $stmt_find->execute();
         $res = $stmt_find->get_result();
@@ -58,6 +67,27 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         $stmt_up = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed', payment_status = ?, amount_paid = ? WHERE id = ?");
         $stmt_up->bind_param("sdi", $status, $new_amount, $booking['id']);
         $stmt_up->execute();
+
+        // =========================================================================
+        // NEW: 4. RECORD TO AUDIT LOG
+        // =========================================================================
+        $log_action = "Automated Webhook: Received ₱" . number_format($amount_paid, 2) . " via $payment_method for Booking $reference_no";
+        $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (NULL, 'PayMongo Webhook', ?, 'PayMongo Server')");
+        $audit->bind_param("s", $log_action);
+        $audit->execute();
+
+        // =========================================================================
+        // NEW: 5. SEND AUTOMATED EMAIL RECEIPT
+        // =========================================================================
+        try {
+            require_once '../../includes/mailer.php';
+            $customer_name = $booking['first_name'] . ' ' . $booking['last_name'];
+            $email_status = ($status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Downpayment)';
+            send_booking_receipt($booking['email'], $customer_name, $reference_no, $booking['venue_name'], $amount_paid, $email_status);
+        } catch (Exception $mail_e) {
+            // Silently log email errors so the database still commits the payment
+            file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
+        }
 
         $conn->commit();
         echo "SUCCESS: Updated Booking $reference_no to $status.";
