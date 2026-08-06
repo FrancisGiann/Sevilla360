@@ -40,7 +40,7 @@
                 Others</label>
         </div>
         <input type="text" id="event-type-others" class="hidden custom-input"
-            placeholder="Please specify your event type (e.g. Corporate Seminar)...">
+            placeholder="Please specify event type (e.g. Corporate Seminar)...">
     </div>
 
     <!-- 2. WHEN: CALENDAR UI -->

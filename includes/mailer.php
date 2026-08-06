@@ -1,14 +1,20 @@
 <?php
 // includes/mailer.php
 
+// 1. Load PHPMailer from Composer
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_name, $amount_paid, $status) {
-    // YOUR RESEND API KEY
-    $resend_api_key = 're_jQepU2zL_E1CcErKXYwhBYV7YjUPgZfwi'; 
     
-    // NOTE: On Resend's free tier, you can only send FROM 'onboarding@resend.dev' 
-    // to the exact email address you used to sign up for Resend! 
-    // (Once you add a real domain later, you can send to anyone).
-    $from_email = 'onboarding@resend.dev'; 
+    // ==========================================
+    // YOUR GMAIL CREDENTIALS
+    // ==========================================
+    $smtp_email = 'francisgiann25@gmail.com'; // Put your real Gmail here
+    $smtp_password = 'oclcivfearkmzreq'; // Put your App Password here (no spaces!)
+    // ==========================================
 
     $subject = "Sevilla360 Booking Update: $ref_no";
 
@@ -18,7 +24,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         $formatted_amount = "To Be Arranged (Inquiry)";
     }
 
-    // A beautiful, modern HTML Email Template!
+    // HTML Email Template
     $html_content = "
     <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;'>
         <h2 style='color: #d6a870; text-align: center;'>SEVILLA360</h2>
@@ -51,31 +57,40 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     </div>
     ";
 
-    // Setup the Payload for Resend
-    $payload = json_encode([
-        'from' => 'Sevilla360 <' . $from_email . '>',
-        'to' => [$customer_email], // The customer's email
-        'subject' => $subject,
-        'html' => $html_content
-    ]);
+    $mail = new PHPMailer(true);
 
-    // Send using cURL!
-    $ch = curl_init('https://api.resend.com/emails');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    
-    // XAMPP SSL bypass
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
-    
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $resend_api_key,
-        'Content-Type: application/json'
-    ]);
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $smtp_email;
+        $mail->Password   = $smtp_password;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
 
-    $response = curl_exec($ch);
-    curl_close($ch);
-    
-    return $response;
+        // Bypasses SSL issues on Localhost (XAMPP/Fedora)
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+
+        // Recipients
+        $mail->setFrom($smtp_email, 'Sevilla360 Reservations');
+        $mail->addAddress($customer_email, $customer_name); 
+
+        // Content
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body    = $html_content;
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        throw new Exception("Mailer Error: {$mail->ErrorInfo}");
+    }
 }
 ?>

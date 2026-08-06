@@ -129,20 +129,6 @@ class AdminWalkinController {
     }
 
     bindModalsAndSubmission() {
-        const btnConfirmDates = this.getEl("btn-confirm-dates");
-        if (btnConfirmDates) {
-            btnConfirmDates.addEventListener("click", () => {
-                this.getEl("confirm-dates-modal")?.classList.remove("active");
-                this.state.isDatesLocked = true;
-                if (this.state.activeCalendar) this.state.activeCalendar.updateDateDisplay();
-                this.calculateSummary();
-            });
-        }
-        this.getEl("btn-cancel-dates")?.addEventListener("click", () => {
-            this.getEl("confirm-dates-modal")?.classList.remove("active");
-            if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
-        });
-
         document.querySelector(".btn-confirm-walkin")?.addEventListener("click", () => this.submitWalkinBooking());
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
             if(confirm("Are you sure you want to clear this booking form?")) window.location.reload();
@@ -215,47 +201,31 @@ class AdminWalkinController {
         this.calculateSummary();
     }
 
+    // ==========================================
+    // ADMIN FIX: INSTANT DATE LOCKING (NO MODALS)
+    // ==========================================
     requestDateConfirmation(startDate, endDate, calendarInstance) {
         this.state.activeCalendar = calendarInstance;
-        const dateModal = this.getEl("confirm-dates-modal");
-        const dateDisplay = this.getEl("confirm-date-display");
-
-        const opts = { month: "short", day: "numeric", year: "numeric" };
-        const startStr = startDate.toLocaleDateString("en-US", opts);
-        const endStr = endDate ? endDate.toLocaleDateString("en-US", opts) : startStr;
+        this.state.isDatesLocked = true; // Instantly flags as locked for the calculation engine
         
-        if (dateDisplay) dateDisplay.innerText = `${startStr} — ${endStr}`;
-        if (dateModal) dateModal.classList.add("active");
+        if (this.state.activeCalendar) {
+            this.state.activeCalendar.updateDateDisplay();
+        }
+        this.calculateSummary();
     }
 
     showOverrideModal(newDate, calendarInstance) {
-        const overrideModal = this.getEl("change-dates-modal");
-        if (!overrideModal) return;
-        overrideModal.classList.add("active");
-
-        const oldYes = this.getEl("btn-override-yes");
-        const newYes = oldYes.cloneNode(true);
-        oldYes.parentNode.replaceChild(newYes, oldYes);
-
-        const oldNo = this.getEl("btn-override-no");
-        const newNo = oldNo.cloneNode(true);
-        oldNo.parentNode.replaceChild(newNo, oldNo);
-
-        newYes.addEventListener("click", () => {
-            overrideModal.classList.remove("active");
-            this.state.isDatesLocked = false;
-            if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
-
-            this.state.activeCalendar = calendarInstance;
-            calendarInstance.startDate = newDate;
-            calendarInstance.endDate = null;
-            calendarInstance.render();
-            calendarInstance.updateDateDisplay();
-            this.calculateSummary();
-        });
-
-        newNo.addEventListener("click", () => overrideModal.classList.remove("active"));
+        this.state.isDatesLocked = false;
+        this.state.activeCalendar = calendarInstance;
+        
+        calendarInstance.clearSelection();
+        calendarInstance.startDate = newDate;
+        calendarInstance.endDate = null;
+        calendarInstance.render();
+        calendarInstance.updateDateDisplay();
+        this.calculateSummary();
     }
+    // ==========================================
 
     appendSummaryRow(label, amount) {
         this.state.summary.html += `<div class="summary-row"><span>${label}</span><span>${this.formatCurrency(amount)}</span></div>`;
@@ -281,8 +251,8 @@ class AdminWalkinController {
         this.state.summary.html = '';
         this.determineActiveTab();
 
-        if (!this.state.isDatesLocked) {
-            this.getEl('summary-breakdown').innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select and confirm dates to calculate.</i></div>';
+        if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
+            this.getEl('summary-breakdown').innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select dates to calculate.</i></div>';
             this.getEl('summary-total-val').textContent = "₱0.00";
             this.getEl('summary-due-val').textContent = "₱0.00";
             return;
@@ -407,8 +377,9 @@ class AdminWalkinController {
             return;
         }
 
-        if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
-            alert("Please select dates on the calendar and confirm them first!");
+        // VALIDATION UPDATED: Just checks if they picked a date on the calendar!
+        if (!this.state.activeCalendar || !this.state.activeCalendar.startDate) {
+            alert("Please select dates on the calendar first!");
             return;
         }
 
