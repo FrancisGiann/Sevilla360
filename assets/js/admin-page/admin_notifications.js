@@ -28,13 +28,13 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch('actions/admin/get_dashboard_stats.php')
         .then(res => res.json())
         .then(data => {
-            if (!data.recentBookings) return;
+            if (!data.notifications) return;
 
             let unreadCount = 0;
             let htmlList = '';
 
-            // Loop through recent bookings to find Action Required items
-            data.recentBookings.forEach(b => {
+            // Loop through the dedicated notifications array!
+            data.notifications.forEach(b => {
                 let iconClass = '';
                 let icon = '';
                 let message = '';
@@ -54,7 +54,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     message = `<strong>New Event Inquiry</strong> for ${b.venue_name} (#${b.reference_no})`;
                 }
 
-                // If it's a notification, build the HTML row
                 if (message !== '') {
                     htmlList += `
                         <a href="admin_dashboard.php?page=bookings&search=${b.reference_no}" class="notif-item">
@@ -68,7 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
 
-            // 3. Update the UI
             if (unreadCount > 0) {
                 badge.innerText = unreadCount;
                 badge.style.display = 'block';

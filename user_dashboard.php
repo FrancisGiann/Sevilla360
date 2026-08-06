@@ -218,15 +218,14 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
                                         }
 
+                                        // Badge & Filtering Logic
                                         $badge_class = 'badge-pending'; 
                                         $status_text = 'Pending Payment';
                                         $filter_data = 'Pending';
 
                                         if ($is_pending_inquiry) {
                                             $status_text = 'Inquiry Sent';
-                                        }
-
-                                        if ($b['booking_status'] === 'Confirmed') {
+                                        } elseif ($b['booking_status'] === 'Confirmed') {
                                             if ($b['payment_status'] === 'Partial') {
                                                 $badge_class = 'badge-partial';
                                                 $status_text = 'Partially Paid';
@@ -240,6 +239,15 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             $badge_class = 'badge-cancelled';
                                             $status_text = 'Cancelled';
                                             $filter_data = 'Cancelled';
+                                        }
+
+                                        // OVERRIDE TEXT IF A REQUEST IS PENDING!
+                                        if ($b['cancel_status'] === 'Pending') {
+                                            $status_text = 'Cancel Requested';
+                                            $badge_class = 'badge-cancelled'; // Make it red
+                                        } elseif ($b['resched_status'] === 'Pending') {
+                                            $status_text = 'Resched Requested';
+                                            $badge_class = 'badge-partial'; // Make it blue
                                         }
                                     ?>
                                     <tr data-status="<?php echo $filter_data; ?>">

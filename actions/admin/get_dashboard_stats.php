@@ -124,6 +124,21 @@ try {
     ");
     $response['recentBookings'] = $res->fetch_all(MYSQLI_ASSOC);
 
+    // 10. DEDICATED NOTIFICATIONS QUERY (Finds ALL pending actions, ignoring limits)
+    $res = $conn->query("
+        SELECT b.reference_no, b.start_date, v.name as venue_name, v.category as venue_category, 
+               b.booking_status, cx.status as cancel_status, rr.status as resched_status
+        FROM bookings b
+        JOIN venues v ON b.venue_id = v.id
+        LEFT JOIN cancellations cx ON b.id = cx.booking_id AND cx.status = 'Pending'
+        LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
+        WHERE cx.status = 'Pending' 
+           OR rr.status = 'Pending' 
+           OR (v.category = 'Event Hall' AND b.booking_status = 'Pending')
+        ORDER BY b.id DESC
+    ");
+    $response['notifications'] = $res->fetch_all(MYSQLI_ASSOC);
+    
     echo json_encode($response);
 
 } catch (Exception $e) {

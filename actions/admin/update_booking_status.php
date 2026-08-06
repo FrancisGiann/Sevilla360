@@ -10,6 +10,11 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'admin' && $_SESSION['ro
 
 require_once '../../config/db_connect.php'; 
 
+// ==========================================
+// NEW: INCLUDE MAILER FOR NOTIFICATIONS
+// ==========================================
+require_once '../../includes/mailer.php'; 
+
 // 2. Get POST JSON Data
 $rawData = file_get_contents('php://input');
 $data = json_decode($rawData, true);
@@ -23,9 +28,30 @@ $booking_id = intval($data['booking_id']);
 $action = $data['action'];
 
 try {
-    // We will use a transaction so if anything fails, it rolls back safely
     $conn->begin_transaction();
 
+    // ==========================================
+    // FETCH CUSTOMER DATA FOR EMAILS
+    // ==========================================
+    $stmt_info = $conn->prepare("
+        SELECT b.reference_no, c.email, c.first_name, c.last_name, v.name as venue_name 
+        FROM bookings b 
+        JOIN customers c ON b.customer_id = c.id 
+        JOIN venues v ON b.venue_id = v.id 
+        WHERE b.id = ?
+    ");
+    $stmt_info->bind_param("i", $booking_id);
+    $stmt_info->execute();
+    $b_info = $stmt_info->get_result()->fetch_assoc();
+    
+    $c_email = $b_info['email'] ?? '';
+    $c_name = ($b_info['first_name'] ?? '') . ' ' . ($b_info['last_name'] ?? '');
+    $ref_no = $b_info['reference_no'] ?? '';
+    $v_name = $b_info['venue_name'] ?? '';
+
+    // ==========================================
+    // ACTIONS
+    // ==========================================
     if ($action === 'confirm') {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
@@ -40,9 +66,6 @@ try {
         $message = "Booking #$booking_id has been cancelled!";
         
     } 
-    // ==========================================
-    // NEW: UPDATE PRICE LOGIC
-    // ==========================================
     elseif ($action === 'update_price') {
         if (!isset($data['new_total'])) {
             throw new Exception("New total amount is required.");
@@ -51,20 +74,16 @@ try {
         
         $stmt = $conn->prepare("UPDATE bookings SET total_amount = ? WHERE id = ?");
         $stmt->bind_param("di", $new_total, $booking_id);
-        
         if (!$stmt->execute()) {
             throw new Exception("Failed to update price in the database.");
         }
-        
         $message = "Invoice price successfully updated to ₱" . number_format($new_total, 2) . "!";
     }
-    // ==========================================
     elseif ($action === 'add_payment') {
         $amount_to_add = floatval($data['amount']);
         $method = $data['method'];
         $trans_id = !empty($data['transaction_id']) ? $data['transaction_id'] : 'CASH-' . time();
 
-        // Check current balance
         $stmt_check = $conn->prepare("SELECT total_amount, amount_paid FROM bookings WHERE id = ?");
         $stmt_check->bind_param("i", $booking_id);
         $stmt_check->execute();
@@ -76,12 +95,10 @@ try {
         $new_amount_paid = floatval($booking['amount_paid']) + $amount_to_add;
         $new_payment_status = ($new_amount_paid >= floatval($booking['total_amount'])) ? 'Paid' : 'Partial';
 
-        // Insert Payment Record
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
         $stmt_pay->bind_param("issd", $booking_id, $trans_id, $method, $amount_to_add);
         $stmt_pay->execute();
 
-        // Update Booking Status
         $stmt_update = $conn->prepare("UPDATE bookings SET payment_status = ?, amount_paid = ?, booking_status = 'Confirmed' WHERE id = ?");
         $stmt_update->bind_param("sdi", $new_payment_status, $new_amount_paid, $booking_id);
         $stmt_update->execute();
@@ -96,19 +113,14 @@ try {
         $new_start = $data['new_start_date'];
         $new_end = $data['new_end_date'];
         
-        // 1. Get the Venue ID for this booking
         $stmt_venue = $conn->prepare("SELECT venue_id FROM bookings WHERE id = ?");
         $stmt_venue->bind_param("i", $booking_id);
         $stmt_venue->execute();
         $venue_id = $stmt_venue->get_result()->fetch_assoc()['venue_id'];
 
-        // 2. THE COLLISION CHECK: Are these new dates already taken by someone else?
         $check_overlap = $conn->prepare("
             SELECT id FROM bookings 
-            WHERE venue_id = ? 
-            AND booking_status IN ('Pending', 'Confirmed')
-            AND id != ? 
-            AND (start_date < ? AND end_date > ?)
+            WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)
         ");
         $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
         $check_overlap->execute();
@@ -117,42 +129,47 @@ try {
             throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
         }
 
-        // 3. If safe, update the booking dates!
         $stmt = $conn->prepare("UPDATE bookings SET start_date = ?, end_date = ? WHERE id = ?");
         $stmt->bind_param("ssi", $new_start, $new_end, $booking_id);
         $stmt->execute();
 
-        // 4. If this came from a customer request, mark the request as Approved
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Approved' WHERE booking_id = ? AND status = 'Pending'");
         $stmt_req->bind_param("i", $booking_id);
         $stmt_req->execute();
         
         $message = "Booking #$booking_id successfully rescheduled to $new_start!";
         
+        // EMAIL NOTIFICATION
+        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Approved</h2><p>Hello $c_name,</p><p>Good news! Your request to reschedule your booking at <strong>$v_name</strong> to <strong>$new_start</strong> has been approved.</p><p>You can view your updated itinerary on your dashboard.</p></div>";
+        try { send_custom_email($c_email, $c_name, "Reschedule Approved - $ref_no", $html); } catch (Exception $e) {}
     }
     elseif ($action === 'reject_reschedule') {
         $admin_reply = isset($data['admin_reply']) ? trim($data['admin_reply']) : "No reason provided.";
 
-        // Mark the request as Rejected and save the reason!
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = ? WHERE booking_id = ? AND status = 'Pending'");
         $stmt_req->bind_param("si", $admin_reply, $booking_id);
         $stmt_req->execute();
         
         $message = "Reschedule request rejected successfully.";
+
+        // EMAIL NOTIFICATION
+        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Update</h2><p>Hello $c_name,</p><p>Regarding your request to reschedule your booking at <strong>$v_name</strong>, the administration left the following note:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #d6a870;'><em>$admin_reply</em></p><p>Your original dates remain secured.</p></div>";
+        try { send_custom_email($c_email, $c_name, "Reschedule Update - $ref_no", $html); } catch (Exception $e) {}
     }
     elseif ($action === 'refund') {
-        // Mark Booking as Cancelled and Refunded
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         
-        // Mark the cancellation request as Processed
         $stmt_cx = $conn->prepare("UPDATE cancellations SET status = 'Processed' WHERE booking_id = ?");
         $stmt_cx->bind_param("i", $booking_id);
         $stmt_cx->execute();
         
         $message = "Refund processed and booking cancelled!";
-        
+
+        // EMAIL NOTIFICATION
+        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Refund Processed</h2><p>Hello $c_name,</p><p>Your cancellation request for <strong>$v_name</strong> has been approved.</p><p>Your refund has been processed. Please allow 5-10 business days for the funds to reflect in your account.</p></div>";
+        try { send_custom_email($c_email, $c_name, "Refund Processed - $ref_no", $html); } catch (Exception $e) {}
     } 
     elseif ($action === 'admin_force_cancel') {
         if (!isset($data['reason'])) throw new Exception("Reason is required.");
@@ -161,38 +178,42 @@ try {
         $refund_amount = floatval($data['refund_amount']);
         $fee = 0.00; // Resort shoulders the fee
 
-        // 1. Insert into cancellations as 'Processed' (since Admin is forcing it)
         $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status, admin_reply) VALUES (?, ?, ?, ?, 'Processed', 'Admin Initiated (Force Majeure)')");
         $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee);
         $stmt_cx->execute();
 
-        // 2. Mark Booking as Cancelled & Refunded
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         
         $message = "Booking #$booking_id forcefully cancelled. 100% refund recorded.";
+
+        // EMAIL NOTIFICATION
+        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Booking Cancelled</h2><p>Hello $c_name,</p><p>Unfortunately, your booking for <strong>$v_name</strong> has been cancelled by the administration for the following reason:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #e06666;'><em>$reason</em></p><p>A 100% full refund of ₱".number_format($refund_amount, 2)." has been issued to your original payment method.</p></div>";
+        try { send_custom_email($c_email, $c_name, "Booking Cancelled - $ref_no", $html); } catch (Exception $e) {}
     }
     else {
         throw new Exception('Invalid action provided.');
     }
-    // audit log
+
+    // ==========================================
+    // YOUR ORIGINAL AUDIT LOG
+    // ==========================================
     if (isset($_SESSION['user_id'])) {
         $log_user = $_SESSION['user_id'];
         $log_module = 'Booking Management';
-        $log_action = $message; // We just use the success message we already generated!
+        $log_action = $message; 
         $log_ip = $_SERVER['REMOTE_ADDR'];
 
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
         $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
         $audit_stmt->execute();
     }
-    // If everything worked, commit it to the database!
+
     $conn->commit();
     echo json_encode(['success' => true, 'message' => $message]);
 
 } catch (Exception $e) {
-    // If anything fails, rollback so we don't break the database
     $conn->rollback();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
