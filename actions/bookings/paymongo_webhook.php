@@ -4,6 +4,51 @@ require '../../config/db_connect.php';
 $payload = file_get_contents('php://input');
 if (empty($payload)) { http_response_code(400); echo "Empty"; exit(); }
 
+// =========================================================================
+// SECURITY FIX: VERIFY PAYMONGO WEBHOOK SIGNATURE
+// =========================================================================
+$signature_header = $_SERVER['HTTP_PAYMONGO_SIGNATURE'] ?? '';
+
+if (empty($signature_header)) { 
+    http_response_code(400); 
+    echo "Missing Paymongo-Signature header"; 
+    exit(); 
+}
+
+$webhook_secret = $_ENV['PAYMONGO_WEBHOOK_SECRET'] ?? '';
+if (empty($webhook_secret)) {
+    http_response_code(500); 
+    echo "Server Misconfiguration: Webhook secret not set."; 
+    exit();
+}
+
+// Parse the signature header (Format: t=timestamp,te=test_signature,li=live_signature)
+$signature_parts = explode(',', $signature_header);
+$timestamp = '';
+$test_signature = '';
+$live_signature = '';
+
+foreach ($signature_parts as $part) {
+    $pair = explode('=', trim($part), 2);
+    if (count($pair) === 2) {
+        if ($pair[0] === 't') $timestamp = $pair[1];
+        if ($pair[0] === 'te') $test_signature = $pair[1];
+        if ($pair[0] === 'li') $live_signature = $pair[1];
+    }
+}
+
+// Compute the expected HMAC-SHA256 signature
+$signature_payload = $timestamp . '.' . $payload;
+$computed_signature = hash_hmac('sha256', $signature_payload, $webhook_secret);
+
+// Validate (Secure comparison against both test and live signatures)
+if (!hash_equals($computed_signature, $test_signature) && !hash_equals($computed_signature, $live_signature)) {
+    http_response_code(400); 
+    echo "Invalid Webhook Signature"; 
+    exit();
+}
+// =========================================================================
+
 $data = json_decode($payload, true);
 if (!$data || !isset($data['data']['attributes']['type'])) { http_response_code(400); echo "Invalid"; exit(); }
 
