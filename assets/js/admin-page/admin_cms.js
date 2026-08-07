@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // =========================================================
-  // 6. Manage Gallery, Lightbox, Primary & Delete Logic
+  // 6. Manage Gallery, Lightbox, Primary & Bulk Delete Logic
   // =========================================================
   const manageGalleryModal = document.getElementById('manageGalleryModal');
   const mgGrid = document.getElementById('mg-grid');
@@ -250,6 +250,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const lightbox = document.getElementById('cms-lightbox');
   const lightboxImg = document.getElementById('cms-lightbox-img');
 
+  // Bulk Elements
+  const bulkControls = document.getElementById('mg-bulk-controls');
+  const selectAllCheck = document.getElementById('mg-select-all');
+  const btnBulkDelete = document.getElementById('btn-mg-bulk-delete');
+  const mgSelCount = document.getElementById('mg-sel-count');
+
+  function updateBulkDeleteState() {
+      const checks = mgGrid.querySelectorAll('.mg-bulk-check');
+      let checkedCount = 0;
+      checks.forEach(c => { if(c.checked) checkedCount++; });
+      
+      if (mgSelCount) mgSelCount.innerText = checkedCount;
+      
+      if (checkedCount > 0) {
+          btnBulkDelete.style.opacity = '1';
+          btnBulkDelete.disabled = false;
+      } else {
+          btnBulkDelete.style.opacity = '0.5';
+          btnBulkDelete.disabled = true;
+      }
+
+      if (selectAllCheck && checks.length > 0) {
+          selectAllCheck.checked = (checkedCount === checks.length);
+      }
+  }
+
   // Open Manage Gallery
   document.querySelectorAll('.btn-manage-gallery').forEach(btn => {
       btn.addEventListener('click', function() {
@@ -259,13 +285,20 @@ document.addEventListener('DOMContentLoaded', () => {
           
           document.getElementById('mg-title').innerText = `Manage Photos`;
           mgGrid.innerHTML = '';
+          
           photos.forEach((photo, index) => {
               const isPrimary = index === 0;
               const starColor = isPrimary ? "var(--color-gold)" : "#ccc";
               
               mgGrid.innerHTML += `
-                  <div class="mg-photo-card" style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                      <img src="${photo.file_path}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
+                  <div class="mg-photo-card" data-id="${photo.id}" style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+                      
+                      <!-- Bulk Checkbox -->
+                      <div style="position: absolute; top: 8px; left: 8px; z-index: 10; background: white; border-radius: 4px; padding: 3px 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+                          <input type="checkbox" class="mg-bulk-check" value="${photo.id}" style="cursor: pointer; transform: scale(1.2); margin: 0;">
+                      </div>
+
+                      <img src="${photo.file_path}?v=${Date.now()}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           
                           <button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" title="Set as Main Photo" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
@@ -281,14 +314,154 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
               `;
           });
+
+          // Reset bulk states when modal opens
+          if (selectAllCheck) selectAllCheck.checked = false;
+          updateBulkDeleteState();
+          if (bulkControls) bulkControls.style.display = photos.length > 0 ? 'flex' : 'none';
+
           manageGalleryModal.classList.add('active');
       });
   });
 
+  // Bulk Checkbox Listeners
+  if (selectAllCheck) {
+      selectAllCheck.addEventListener('change', function() {
+          const checks = mgGrid.querySelectorAll('.mg-bulk-check');
+          checks.forEach(c => c.checked = selectAllCheck.checked);
+          updateBulkDeleteState();
+      });
+  }
+
+  // Grid Actions (Lightbox, Star, Single Delete, Checkboxes)
+  if (mgGrid) {
+      // Listen for checkbox changes dynamically
+      mgGrid.addEventListener('change', function(e) {
+          if (e.target.classList.contains('mg-bulk-check')) {
+              updateBulkDeleteState();
+          }
+      });
+
+      mgGrid.addEventListener('click', function(e) {
+          
+          // LIGHTBOX
+          if (e.target.classList.contains('mg-thumb')) {
+              lightboxImg.src = e.target.src;
+              lightbox.style.display = 'flex';
+              return;
+          }
+
+          // SET PRIMARY (STAR)
+          const primaryBtn = e.target.closest('.btn-primary-media');
+          if (primaryBtn) {
+              const mediaId = primaryBtn.getAttribute('data-id');
+              const slot = primaryBtn.getAttribute('data-slot');
+              
+              mgGrid.querySelectorAll('.btn-primary-media').forEach(btn => btn.style.color = '#ccc');
+              primaryBtn.style.color = "var(--color-gold)";
+
+              fetch("actions/admin/set_primary_media.php", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id: mediaId, slot_assignment: slot })
+              })
+              .then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      showAlertModal("Success", "Primary image updated successfully!", "success", false);
+                      window.needsCmsRefresh = true;
+                  } else {
+                      showAlertModal("Error", data.message, "error", false);
+                  }
+              });
+              return;
+          }
+
+          // SINGLE DELETE CLICK
+          const deleteBtn = e.target.closest('.btn-delete-media');
+          if (deleteBtn) {
+              showConfirmModal("Are you sure you want to permanently delete this image?", () => {
+                  const mediaId = deleteBtn.getAttribute('data-id');
+                  const card = deleteBtn.closest('.mg-photo-card'); 
+                  
+                  deleteBtn.innerHTML = "...";
+                  deleteBtn.disabled = true;
+
+                  fetch("actions/admin/delete_media.php", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id: mediaId })
+                  })
+                  .then(res => res.json())
+                  .then(data => {
+                      if (data.success) {
+                          card.remove(); 
+                          window.needsCmsRefresh = true; 
+                          updateBulkDeleteState(); // update counts just in case
+                          
+                          if (mgGrid.children.length === 0) {
+                              document.getElementById('btnCloseGalleryModal').click();
+                          }
+                      } else {
+                          showAlertModal("Error", data.message, "error", false);
+                          deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                          deleteBtn.disabled = false;
+                      }
+                  });
+              });
+          }
+      });
+  }
+
+  // BULK DELETE CLICK
+  if (btnBulkDelete) {
+      btnBulkDelete.addEventListener('click', () => {
+          const checks = mgGrid.querySelectorAll('.mg-bulk-check:checked');
+          if (checks.length === 0) return;
+
+          const ids = Array.from(checks).map(c => c.value);
+
+          showConfirmModal(`Are you sure you want to permanently delete ${ids.length} selected image(s)?`, () => {
+              const originalHTML = btnBulkDelete.innerHTML;
+              btnBulkDelete.innerHTML = "Deleting...";
+              btnBulkDelete.disabled = true;
+
+              fetch("actions/admin/delete_media.php", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ids: ids })
+              })
+              .then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      ids.forEach(id => {
+                          const card = document.querySelector(`.mg-photo-card[data-id="${id}"]`);
+                          if (card) card.remove();
+                      });
+                      window.needsCmsRefresh = true; 
+                      updateBulkDeleteState();
+                      
+                      if (mgGrid.children.length === 0) {
+                          document.getElementById('btnCloseGalleryModal').click();
+                      }
+                  } else {
+                      showAlertModal("Error", data.message, "error", false);
+                  }
+              })
+              .catch(err => {
+                  showAlertModal("Error", "Network error.", "error", false);
+              })
+              .finally(() => {
+                  btnBulkDelete.innerHTML = originalHTML;
+                  updateBulkDeleteState();
+              });
+          });
+      });
+  }
+
   // Close the modal
   document.getElementById('btnCloseGalleryModal')?.addEventListener('click', () => {
       manageGalleryModal.classList.remove('active');
-      // If they made changes, we refresh the page ONLY when they finally close the modal
       if (window.needsCmsRefresh) {
           sessionStorage.setItem('activeCMSFilter', document.querySelector('.cms-pill.active').getAttribute('data-filter'));
           window.location.reload();
@@ -307,87 +480,6 @@ document.addEventListener('DOMContentLoaded', () => {
               slotDropdown.value = currentManageSlot;
           }
           uploadModal.classList.add('active');
-      });
-  }
-
-  // Grid Actions (Lightbox, Star, Delete)
-  if (mgGrid) {
-      mgGrid.addEventListener('click', function(e) {
-          
-          // LIGHTBOX
-          if (e.target.classList.contains('mg-thumb')) {
-              lightboxImg.src = e.target.src;
-              lightbox.style.display = 'flex';
-              return;
-          }
-
-          // SET PRIMARY (STAR)
-          const primaryBtn = e.target.closest('.btn-primary-media');
-          if (primaryBtn) {
-              const mediaId = primaryBtn.getAttribute('data-id');
-              const slot = primaryBtn.getAttribute('data-slot');
-              
-              // Change the star visually immediately so it feels fast
-              mgGrid.querySelectorAll('.btn-primary-media').forEach(btn => btn.style.color = '#ccc');
-              primaryBtn.style.color = "var(--color-gold)";
-
-              fetch("actions/admin/set_primary_media.php", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: mediaId, slot_assignment: slot })
-              })
-              .then(res => res.json())
-              .then(data => {
-                  if (data.success) {
-                      showAlertModal("Success", "Primary image updated successfully!", "success", false);
-                      window.needsCmsRefresh = true; // Tell system to reload when modal closes
-                  } else {
-                      showAlertModal("Error", data.message, "error", false);
-                  }
-              });
-              return;
-          }
-
-          // DELETE CLICK
-          const deleteBtn = e.target.closest('.btn-delete-media');
-          if (deleteBtn) {
-              showConfirmModal("Are you sure you want to permanently delete this image?", () => {
-                  const mediaId = deleteBtn.getAttribute('data-id');
-                  const card = deleteBtn.closest('.mg-photo-card'); 
-                  
-                  deleteBtn.innerHTML = "...";
-                  deleteBtn.disabled = true;
-
-                  fetch("actions/admin/delete_media.php", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ id: mediaId })
-                  })
-                  .then(res => res.json())
-                  .then(data => {
-                      if (data.success) {
-                          // Destroy the image card instantly without reloading!
-                          card.remove(); 
-                          window.needsCmsRefresh = true; 
-                          
-                          // If they deleted the last photo, close the modal
-                          if (mgGrid.children.length === 0) {
-                              document.getElementById('btnCloseGalleryModal').click();
-                          }
-                      } else {
-                          showAlertModal("Error", data.message, "error", false);
-                          deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-                          deleteBtn.disabled = false;
-                      }
-                  })
-                  .catch(err => {
-                      console.error(err);
-                      showAlertModal("Error", "Network error.", "error", false);
-                      deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-                      deleteBtn.disabled = false;
-                  });
-              });
-          }
       });
   }
 

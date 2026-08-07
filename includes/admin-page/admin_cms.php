@@ -329,10 +329,25 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
 <div class="cms-modal-overlay" id="manageGalleryModal">
     <div class="cms-modal-content" style="max-width: 800px;">
         <h3 class="cms-modal-title" id="mg-title">Manage Gallery</h3>
+
+        <!-- NEW: BULK DELETE CONTROLS -->
+        <div id="mg-bulk-controls"
+            style="display: none; justify-content: space-between; align-items: center; margin-bottom: 15px; background: #f9f9f9; padding: 10px 15px; border-radius: 6px; border: 1px solid #e0e0e0;">
+            <label
+                style="cursor:pointer; font-weight:600; display:flex; align-items:center; gap:8px; color: var(--color-dark);">
+                <input type="checkbox" id="mg-select-all" style="transform:scale(1.2);"> Select All
+            </label>
+            <button type="button" class="btn" style="background:#c75c5c; color:#fff; border:none; opacity:0.5;"
+                id="btn-mg-bulk-delete" disabled>
+                <i class="fa-solid fa-trash"></i> Delete Selected (<span id="mg-sel-count">0</span>)
+            </button>
+        </div>
+
         <div id="mg-grid"
             style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 50vh; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
             <!-- JavaScript will inject photos here -->
         </div>
+
         <div class="cms-modal-actions" style="justify-content: space-between;">
             <button type="button" class="btn cms-btn-outline" id="btnCloseGalleryModal">Close</button>
             <button type="button" class="btn btn-primary" id="btn-mg-add">Add Photos</button>
