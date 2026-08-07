@@ -180,7 +180,7 @@ $venue_id = $_SESSION['locked_venue_id'];
 
         // TRIGGER PAYMONGO IF AMOUNT IS GREATER THAN ZERO
         if ($amount_due > 0) {
-            $paymongo_sk = 'sk_test_xcJMk42B2XeNY1TzgksSXgPh'; 
+            $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY']; 
             
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
             $domain = $_SERVER['HTTP_HOST'];

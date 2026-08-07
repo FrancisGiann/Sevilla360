@@ -1,18 +1,15 @@
 <?php
 // includes/mailer.php
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../config/env.php'; // Load env variables
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
 function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_name, $amount_paid, $status) {
     
-    // ==========================================
-    // YOUR GMAIL CREDENTIALS
-    // ==========================================
-    $smtp_email = 'francisgiann25@gmail.com'; 
-    $smtp_password = 'oclcivfearkmzreq'; 
-    // ==========================================
+    $smtp_email = $_ENV['SMTP_EMAIL']; 
+    $smtp_password = $_ENV['SMTP_PASSWORD']; 
 
     // 1. SMART FETCH: Grab the full booking details AND Venue Category
     require __DIR__ . '/../config/db_connect.php';
@@ -161,8 +158,8 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 }
 
 function send_custom_email($to_email, $to_name, $subject, $html_content) {
-    $smtp_email = 'francisgiann25@gmail.com'; 
-    $smtp_password = 'oclcivfearkmzreq'; 
+    $smtp_email = $_ENV['SMTP_EMAIL']; 
+    $smtp_password = $_ENV['SMTP_PASSWORD']; 
     
     $mail = new PHPMailer(true);
     try {

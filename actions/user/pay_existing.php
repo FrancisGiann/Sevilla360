@@ -25,7 +25,7 @@ try {
     // BULLETPROOF UNIQUE ID: Example "BAL_169999_SV-123"
     $unique_ref = "BAL_" . time() . "_" . $booking['reference_no'];
 
-    $paymongo_sk = 'sk_test_xcJMk42B2XeNY1TzgksSXgPh'; 
+    $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY']; 
     $domain = isset($_SERVER['HTTPS']) ? "https://" : "http://";
     $domain .= $_SERVER['HTTP_HOST'];
 
