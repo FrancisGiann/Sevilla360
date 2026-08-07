@@ -113,13 +113,17 @@ if ($result && $result->num_rows > 0) {
                             $filter_status = strtolower($b['booking_status']); 
 
                             if ($b['booking_status'] === 'Confirmed') {
-                                if ($b['payment_status'] === 'Partial') {
+                                if ($b['payment_status'] === 'Paid') {
+                                    $badge_class = 'status-paid';
+                                    $status_text = 'Fully Paid';
+                                } elseif ($b['payment_status'] === 'Partial') {
                                     $badge_class = 'status-partial';
                                     $status_text = 'Partially Paid';
                                     $filter_status .= ' partial'; 
                                 } else {
-                                    $badge_class = 'status-paid';
-                                    $status_text = 'Fully Paid';
+                                    $badge_class = 'status-pending'; 
+                                    $status_text = 'Unpaid';
+                                    $filter_status .= ' partial action_req'; 
                                 }
                             } elseif ($b['booking_status'] === 'Cancelled') {
                                 $badge_class = 'status-refunded';
@@ -136,7 +140,7 @@ if ($result && $result->num_rows > 0) {
                                 $status_text = 'Resched Req.';
                                 $filter_status .= ' action_req'; 
                             } elseif ($b['booking_status'] === 'Pending') {
-                                // FIX: ALL new/unpaid bookings are 'Action Required'
+                                // ALL new/unpaid pending bookings are 'Action Required'
                                 $filter_status .= ' action_req'; 
                             }
                             // ==========================================
@@ -203,7 +207,7 @@ if ($result && $result->num_rows > 0) {
 
                             <?php else: ?>
                             <!-- Normal Operations (No requests pending) -->
-                            <?php if ($b['payment_status'] === 'Partial' && $balance_due > 0): ?>
+                            <?php if (in_array($b['payment_status'], ['Unpaid', 'Partial']) && $balance_due > 0): ?>
                             <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
                                 data-due="<?php echo $balance_due; ?>">
                                 Collect Pay
