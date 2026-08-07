@@ -32,9 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $allowed_types = ['image/jpeg', 'image/png', 'image/webp'];
     
-    // CRITICAL FIX: Explicitly define which slots are strictly 1-to-1 (Must overwrite old image)
-    // ONLY the Homepage Previews (home-hero, home-eventhall, etc.) are strict!
-    // 360 Panoramas and Standard Photos skip this check, allowing them to stack in the database!
+    // CRITICAL FIX: Explicitly define which slots are strictly 1-to-1
     $is_strict_slot = false;
     if (strpos($website_slot, 'home-') === 0) {
         $is_strict_slot = true; 
@@ -42,28 +40,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $conn->begin_transaction();
+        
+        $file_count = count($_FILES['fileInput']['name']);
 
-        // 2. ONLY delete the old image if it is a 1-to-1 strict homepage slot!
+        // 2. ONLY delete old images if it is a 1-to-1 strict homepage slot!
         if ($is_strict_slot) {
             $stmt_check = $conn->prepare("SELECT id, file_path FROM media_cms WHERE slot_assignment = ?");
             $stmt_check->bind_param("s", $website_slot);
             $stmt_check->execute();
             $res = $stmt_check->get_result();
 
+            // FIX: Use a WHILE loop to scrub ALL duplicates if they somehow got orphaned in the DB
             if ($res->num_rows > 0) {
-                // It found an old image in this slot. Delete it physically and from DB.
-                $old_media = $res->fetch_assoc();
-                if (file_exists('../../' . $old_media['file_path'])) {
-                    unlink('../../' . $old_media['file_path']);
+                while ($old_media = $res->fetch_assoc()) {
+                    if (file_exists('../../' . $old_media['file_path'])) {
+                        unlink('../../' . $old_media['file_path']);
+                    }
+                    $stmt_del = $conn->prepare("DELETE FROM media_cms WHERE id = ?");
+                    $stmt_del->bind_param("i", $old_media['id']);
+                    $stmt_del->execute();
                 }
-                $stmt_del = $conn->prepare("DELETE FROM media_cms WHERE id = ?");
-                $stmt_del->bind_param("i", $old_media['id']);
-                $stmt_del->execute();
             }
+            
+            // FIX: Strictly override loop to only process the FIRST file for 1-to-1 slots
+            $file_count = 1;
         }
 
-        // 3. Loop through all uploaded files and insert them
-        $file_count = count($_FILES['fileInput']['name']);
+        // 3. Loop through uploaded files and insert them
         $successful_uploads = 0;
 
         for ($i = 0; $i < $file_count; $i++) {
@@ -74,8 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $ext = pathinfo($_FILES['fileInput']['name'][$i], PATHINFO_EXTENSION);
             
-            // Generate a unique filename using microtime so bulk uploads don't overwrite each other
-            $new_filename = $website_slot . '_' . time() . '_' . $i . '.' . $ext; 
+            // FIX: Use uniqid() instead of time() so bulk/fast uploads NEVER collide on disk
+            $new_filename = $website_slot . '_' . uniqid() . '_' . $i . '.' . $ext; 
             
             $destination = $upload_dir . $new_filename;
             $db_file_path = 'assets/uploads/' . $new_filename;

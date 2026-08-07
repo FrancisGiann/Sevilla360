@@ -24,8 +24,9 @@ $website_slots = [
     'home-hotel' => ['title' => 'Homepage - Hotel Preview', 'badge' => 'Homepage', 'type' => 'standard']
 ];
 
-$venue_360_slots = []; // Strictly 1 slot per venue
-$venue_categories = []; // Dropdown options
+$venue_standard_slots = []; // FIX: Distinct array for venue standard slots
+$venue_360_slots = [];
+$venue_categories = []; 
 
 // Automatically create picture slots per unique building/room combination
 if ($venues_query) {
@@ -44,8 +45,8 @@ if ($venues_query) {
         
         $venue_categories['venue_' . $safe_id] = $clean_name; 
         
-        // MISSING BLOCK RESTORED: Slot for standard picture!
-        $website_slots['venue_' . $safe_id] = [
+        // FIX: Place into the new dedicated array instead of $website_slots
+        $venue_standard_slots['venue_' . $safe_id] = [
             'title' => $clean_name . ' (Standard Photo)',
             'badge' => $v['category'],
             'type' => 'standard'
@@ -61,14 +62,14 @@ if ($venues_query) {
     }
 }
 
-// 3. Fetch all uploaded media, pushing "Primary" photos to the front!
-$query = "SELECT * FROM media_cms ORDER BY is_primary DESC, id ASC";
+// FIX: ORDER BY id DESC so the newest uploaded photo always becomes the cover [0]!
+$query = "SELECT * FROM media_cms ORDER BY is_primary DESC, id DESC";
 $result = $conn->query($query);
 
 $uploaded_media = []; // For 1-to-1 slots (Homepage Previews)
 $gallery_items = [];  // General gallery
 $standard_venue_photos = []; // Grouped standard photos
-$pano_venue_photos = [];     // NEW: Grouped 360 panoramas!
+$pano_venue_photos = [];     // Grouped 360 panoramas
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
@@ -77,9 +78,12 @@ if ($result && $result->num_rows > 0) {
         if ($slot === 'gallery') {
             $gallery_items[] = $row;
         } elseif (strpos($slot, 'home-') === 0) {
-            $uploaded_media[$slot] = $row;
+            // FIX: Since id DESC, grab ONLY the first (newest) record, ignore DB ghost rows.
+            if (!isset($uploaded_media[$slot])) {
+                $uploaded_media[$slot] = $row;
+            }
         } elseif (strpos($slot, '_360') !== false) {
-            $pano_venue_photos[$slot][] = $row; // Stack 360 photos here!
+            $pano_venue_photos[$slot][] = $row;
         } else {
             $standard_venue_photos[$slot][] = $row;
         }
@@ -87,7 +91,6 @@ if ($result && $result->num_rows > 0) {
 }
 ?>
 
-<!-- Pass ALL grouped photos to JavaScript so the modal can read them! -->
 <script>
 window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, $pano_venue_photos)); ?>;
 </script>
@@ -115,8 +118,11 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
         <div class="cms-card" data-type="standard">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
-                <?php if ($has_img): ?> <img src="<?php echo htmlspecialchars($img_path); ?>"> <?php else: ?> <span
-                    style="color:#888;">Empty Slot</span> <?php endif; ?>
+                <?php if ($has_img): ?>
+                <img src="<?php echo htmlspecialchars($img_path); ?>?v=<?php echo time(); ?>">
+                <?php else: ?>
+                <span style="color:#888;">Empty Slot</span>
+                <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
@@ -132,7 +138,7 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
         </div>
         <?php endforeach; ?>
 
-        <!-- 2. 360 PANORAMA SLOTS (Multiple Allowed!) -->
+        <!-- 2. 360 PANORAMA SLOTS -->
         <?php foreach($venue_360_slots as $slot_key => $slot_info): 
             $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
@@ -143,7 +149,7 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
-                <img src="<?php echo htmlspecialchars($first_photo); ?>">
+                <img src="<?php echo htmlspecialchars($first_photo); ?>?v=<?php echo time(); ?>">
                 <?php else: ?>
                 <span style="color:#888;">Empty Slot</span>
                 <?php endif; ?>
@@ -165,7 +171,6 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
                     <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360">
                         <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
-                    <!-- NEW: Manage button for 360s! -->
                     <?php if ($has_img): ?>
                     <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
@@ -175,28 +180,43 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
         </div>
         <?php endforeach; ?>
 
-        <!-- 3. STANDARD VENUE PHOTOS (Grouped into Single Cards!) -->
-        <?php foreach($standard_venue_photos as $slot_key => $photos_array): 
+        <!-- 3. STANDARD VENUE PHOTOS -->
+        <!-- FIX: Iterate via $venue_standard_slots (includes empty ones), not just photos that exist -->
+        <?php foreach($venue_standard_slots as $slot_key => $slot_info): 
+            $photos_array = isset($standard_venue_photos[$slot_key]) ? $standard_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
-            $first_photo = $photos_array[0]['file_path']; // Show the first photo as the thumbnail
+            $has_img = $photo_count > 0;
+            $first_photo = $has_img ? $photos_array[0]['file_path'] : ''; 
         ?>
         <div class="cms-card" data-type="standard">
-            <div class="cms-img-wrapper">
-                <img src="<?php echo htmlspecialchars($first_photo); ?>">
+            <div class="cms-img-wrapper"
+                style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
+                <?php if ($has_img): ?>
+                <img src="<?php echo htmlspecialchars($first_photo); ?>?v=<?php echo time(); ?>">
+                <?php else: ?>
+                <span style="color:#888;">Empty Slot</span>
+                <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
-                    <h4 class="cms-title">
-                        <?php echo isset($venue_categories[$slot_key]) ? $venue_categories[$slot_key] : 'Unknown Venue'; ?>
-                    </h4>
-                    <span class="badge badge-gray"><?php echo $photo_count; ?> Photos</span>
+                    <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
+                    <span
+                        class="badge badge-gray"><?php echo $has_img ? $photo_count . ' Photos' : $slot_info['badge']; ?></span>
                 </div>
+                <?php if (!$has_img): ?>
+                <p class="cms-size">No standard photos uploaded yet.</p>
+                <?php else: ?>
                 <p class="cms-size">Standard Photo Gallery</p>
+                <?php endif; ?>
+
                 <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>"
-                        data-type="standard">Add More</button>
+                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard">
+                        <?php echo $has_img ? 'Add More' : 'Upload'; ?>
+                    </button>
+                    <?php if ($has_img): ?>
                     <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -206,7 +226,7 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
         <?php foreach($gallery_items as $item): ?>
         <div class="cms-card" data-type="<?php echo $item['media_type']; ?>">
             <div class="cms-img-wrapper">
-                <img src="<?php echo htmlspecialchars($item['file_path']); ?>">
+                <img src="<?php echo htmlspecialchars($item['file_path']); ?>?v=<?php echo time(); ?>">
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
@@ -269,12 +289,11 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
                     </optgroup>
 
                     <optgroup label="Resort Venues">
-                        <?php foreach($website_slots as $key => $slot): ?>
-                        <?php if(strpos($key, 'venue_') === 0): ?>
+                        <!-- FIX: Iterate over correct Standard Venue array inside dropdown -->
+                        <?php foreach($venue_standard_slots as $key => $slot): ?>
                         <option value="<?php echo $key; ?>" data-type="standard" style="display:none;">
                             <?php echo $slot['title']; ?>
                         </option>
-                        <?php endif; ?>
                         <?php endforeach; ?>
 
                         <?php foreach($venue_360_slots as $key => $slot): ?>
@@ -286,7 +305,6 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
                 </select>
             </div>
 
-            <!-- Upload Progress Bar -->
             <div id="upload-progress-container" style="display: none; margin-bottom: 15px;">
                 <div
                     style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.85rem; font-weight: 600;">
@@ -311,12 +329,10 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
 <div class="cms-modal-overlay" id="manageGalleryModal">
     <div class="cms-modal-content" style="max-width: 800px;">
         <h3 class="cms-modal-title" id="mg-title">Manage Gallery</h3>
-
         <div id="mg-grid"
             style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 50vh; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
             <!-- JavaScript will inject photos here -->
         </div>
-
         <div class="cms-modal-actions" style="justify-content: space-between;">
             <button type="button" class="btn cms-btn-outline" id="btnCloseGalleryModal">Close</button>
             <button type="button" class="btn btn-primary" id="btn-mg-add">Add Photos</button>
