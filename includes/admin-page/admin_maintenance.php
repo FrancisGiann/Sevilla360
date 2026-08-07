@@ -1,6 +1,15 @@
 <?php
 require_once 'config/db_connect.php';
 
+// Fetch Upcoming Maintenance
+$upcoming_maint = $conn->query("
+    SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, v.name as venue_name 
+    FROM maintenance m 
+    JOIN venues v ON m.venue_id = v.id 
+    WHERE m.end_date >= CURDATE() 
+    ORDER BY m.start_date ASC
+");
+
 // Fetch all available venues grouped by category
 $venues_query = $conn->query("SELECT category, name FROM venues WHERE status = 'Available' ORDER BY category, name");
 $grouped_venues = [
@@ -117,4 +126,52 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             </div>
         </div>
     </div>
-</div>
+    <!-- BOTTOM SECTION: UPCOMING MAINTENANCE TABLE -->
+    <div class="table-card" style="margin-top: 30px;">
+        <h3 class="card-title">Active & Upcoming Maintenance</h3>
+        <div class="table-responsive">
+            <table class="bookings-table">
+                <thead>
+                    <tr>
+                        <th>VENUE</th>
+                        <th>START DATE</th>
+                        <th>END DATE</th>
+                        <th>TYPE</th>
+                        <th>STATUS</th>
+                        <th>ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
+                    <?php while($m = $upcoming_maint->fetch_assoc()): ?>
+                    <tr>
+                        <td style="font-weight: 600;"><?php echo htmlspecialchars($m['venue_name']); ?></td>
+                        <td><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
+                        <td><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
+                        <td><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
+                        <td>
+                            <?php if($m['is_blocking']): ?>
+                            <span class="status-badge status-refunded"
+                                style="background:#fee2e2; color:#dc2626;">Blocked</span>
+                            <?php else: ?>
+                            <span class="status-badge status-paid" style="background:#e0f2fe; color:#0284c7;">Note
+                                Only</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <button class="btn-action btn-cancel btn-delete-maint"
+                                data-id="<?php echo $m['id']; ?>">Cancel / Delete</button>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                    <?php else: ?>
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 20px;">No upcoming maintenance scheduled.
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </d iv>

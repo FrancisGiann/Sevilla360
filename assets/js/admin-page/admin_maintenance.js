@@ -156,6 +156,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // --- 5. Delete Maintenance ---
+    const deleteMaintBtns = document.querySelectorAll(".btn-delete-maint");
+    deleteMaintBtns.forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            const maintId = e.target.getAttribute("data-id");
+
+            if (!confirm("Are you sure you want to cancel and delete this maintenance block? This will free up the dates on the calendar immediately.")) {
+                return;
+            }
+
+            e.target.innerText = "Deleting...";
+            e.target.disabled = true;
+
+            try {
+                const res = await fetch("actions/admin/delete_maintenance.php", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: maintId })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert("Maintenance successfully deleted!");
+                    window.location.reload();
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                alert("Error: " + error.message);
+                e.target.innerText = "Cancel / Delete";
+                e.target.disabled = false;
+            }
+        });
+    });
+
     // Clear Form
     document.getElementById("btn-clear-maint").addEventListener("click", () => window.location.reload());
 });
