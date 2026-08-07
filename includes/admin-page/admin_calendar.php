@@ -1,4 +1,3 @@
-<!-- includes/admin-page/admin_calendar.php -->
 <div class="calendar-page-container">
     <div class="calendar-header-card">
         <div>
@@ -20,6 +19,9 @@
             </span>
             <span class="legend-item">
                 <div class="color-box" style="background:#88a096;"></div> Villas
+            </span>
+            <span class="legend-item">
+                <div class="color-box" style="background:#e08f24;"></div> Maintenance
             </span>
         </div>
     </div>

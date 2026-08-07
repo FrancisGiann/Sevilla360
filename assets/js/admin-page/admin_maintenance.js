@@ -97,8 +97,20 @@ document.addEventListener("DOMContentLoaded", () => {
             sumDuration.innerText = "1 day";
         } else {
             sumDate.innerText = `${startStr} - ${maintCalendar.endDate.toLocaleDateString("en-US", opts)}`;
-            // Total nights from calendar + 1 gives us total days of maintenance
-            sumDuration.innerText = `${maintCalendar.totalNights + 1} days`;
+            
+            // Standardize both dates to midnight to prevent timezone/daylight savings math errors
+            const start = new Date(maintCalendar.startDate.getFullYear(), maintCalendar.startDate.getMonth(), maintCalendar.startDate.getDate());
+            const end = new Date(maintCalendar.endDate.getFullYear(), maintCalendar.endDate.getMonth(), maintCalendar.endDate.getDate());
+            
+            // Calculate absolute difference in time
+            const diffTime = Math.abs(end - start);
+            // Convert time to days
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            
+            // Add 1 to make it inclusive (e.g., Aug 31 to Aug 31 = 1 day. Aug 21 to Aug 30 = 10 days)
+            const totalDays = diffDays + 1; 
+
+            sumDuration.innerText = `${totalDays} day${totalDays > 1 ? 's' : ''}`;
         }
     }
 

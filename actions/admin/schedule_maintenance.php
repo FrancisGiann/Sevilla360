@@ -30,9 +30,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($venue_res->num_rows === 0) throw new Exception("Venue not found in database.");
         $venue_id = $venue_res->fetch_assoc()['id'];
 
-        // 2. If Blocking Calendar, insert a "Maintenance Booking"
+        // 2. If Blocking Calendar, insert a "Maintenance Booking" lock
         if ($is_blocking) {
-            // Check if dummy "Maintenance" customer exists, if not create it
             $cust_res = $conn->query("SELECT id FROM customers WHERE first_name = 'SYSTEM' AND last_name = 'MAINTENANCE'");
             if ($cust_res->num_rows > 0) {
                 $customer_id = $cust_res->fetch_assoc()['id'];
@@ -41,7 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $customer_id = $conn->insert_id;
             }
 
-            // Check if dates are already booked by a real customer to prevent overlap
+            // Check if dates are already booked
             $check_stmt = $conn->prepare("
                 SELECT id FROM bookings 
                 WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') 
@@ -63,11 +62,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $book_stmt->execute();
         }
 
+        // ==========================================
+        // FIX: ACTUALLY INSERT INTO MAINTENANCE TABLE
+        // ==========================================
+        $maint_stmt = $conn->prepare("INSERT INTO maintenance (venue_id, start_date, end_date, maintenance_type, notes, is_blocking) VALUES (?, ?, ?, ?, ?, ?)");
+        $maint_block_val = $is_blocking ? 1 : 0;
+        $maint_stmt->bind_param("issssi", $venue_id, $sDate, $eDate, $type, $notes, $maint_block_val);
+        $maint_stmt->execute();
+
          if (isset($_SESSION['user_id'])) {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Maintenance';
-            // Assuming you have variables $venue_name, $start_date, $end_date in your script
-            $log_action = "Scheduled maintenance for Venue ID #$venue_id from $start_date to $end_date"; 
+            $log_action = "Scheduled maintenance for Venue ID #$venue_id from $sDate to $eDate"; 
             $log_ip = $_SERVER['REMOTE_ADDR'];
 
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");

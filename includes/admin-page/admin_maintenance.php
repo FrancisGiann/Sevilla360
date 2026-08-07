@@ -27,8 +27,8 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
         <!-- COMBINED TABS -->
         <div class="booking-tabs venue-tabs" id="maintenance-tabs">
             <button class="tab-btn active" data-venue="Event Hall">Event Hall</button>
-            <button class="tab-btn" data-venue="Resort Villa">Resort Villa</button>
             <button class="tab-btn" data-venue="Hotel Room">Hotel Room</button>
+            <button class="tab-btn" data-venue="Resort Villa">Resort Villa</button>
         </div>
     </div>
 
