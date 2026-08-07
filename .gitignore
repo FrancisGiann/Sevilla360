@@ -1,0 +1,9 @@
+# Ignore Environment Variables (Secrets)
+.env
+
+# Ignore Composer Vendor folder (Standard PHP practice)
+vendor/
+
+# Ignore error logs
+error_log
+*.log
