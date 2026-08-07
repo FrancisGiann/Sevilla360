@@ -417,6 +417,16 @@ textarea:focus {
 .btn-done:hover {
   background: #bbf7d0;
 }
+/* Prevent awkward text wrapping in the maintenance table */
+.bookings-table th, 
+.bookings-table td {
+  white-space: nowrap; 
+}
+
+/* Ensure the action buttons don't have unnecessary margins since we use flex gap now */
+.btn-done {
+  margin-right: 0 !important;
+}
 
 /* ==========================================================================
    RESPONSIVE DESIGN (Tablets & Mobile)

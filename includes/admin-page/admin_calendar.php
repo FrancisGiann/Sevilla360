@@ -21,7 +21,7 @@
                 <div class="color-box" style="background:#88a096;"></div> Villas
             </span>
             <span class="legend-item">
-                <div class="color-box" style="background:#e08f24;"></div> Maintenance
+                <div class="color-box" style="background:#64748b;"></div> Maintenance
             </span>
         </div>
     </div>

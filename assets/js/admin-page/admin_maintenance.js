@@ -192,6 +192,41 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // --- 6. Mark Maintenance as Done (Early Completion) ---
+    const completeMaintBtns = document.querySelectorAll(".btn-complete-maint");
+    completeMaintBtns.forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            const maintId = e.target.getAttribute("data-id");
+
+            if (!confirm("Mark this maintenance as completed? This will instantly free up the room for new bookings today, while keeping the historical record intact.")) {
+                return;
+            }
+
+            e.target.innerText = "Processing...";
+            e.target.disabled = true;
+
+            try {
+                const res = await fetch("actions/admin/complete_maintenance.php", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id: maintId })
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    alert("Maintenance marked as completed! Calendar has been updated.");
+                    window.location.reload();
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                alert("Error: " + error.message);
+                e.target.innerText = "Mark Done";
+                e.target.disabled = false;
+            }
+        });
+    });
+
     // Clear Form
     document.getElementById("btn-clear-maint").addEventListener("click", () => window.location.reload());
 });

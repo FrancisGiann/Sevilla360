@@ -73,9 +73,9 @@ try {
         $endDateObj = new DateTime($row['end_date']);
         $endDateObj->modify('+1 day'); 
 
-        // Distinct styling for Maintenance (Orange if blocking, faded gray if just a note)
-        $color = $row['is_blocking'] ? '#e08f24' : '#a3a3a3';
-        $border = $row['is_blocking'] ? '#b57014' : '#7a7a7a';
+        // Distinct styling for Maintenance (Slate Blue if blocking, faded gray if just a note)
+        $color = $row['is_blocking'] ? '#64748b' : '#a3a3a3';
+        $border = $row['is_blocking'] ? '#475569' : '#7a7a7a';
 
         $title_prefix = $row['is_blocking'] ? '🔧 BLOCKED: ' : '🧹 NOTE: ';
 

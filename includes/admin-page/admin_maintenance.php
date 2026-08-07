@@ -100,6 +100,63 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                     </label>
                 </div>
             </div>
+            <!-- BOTTOM SECTION: UPCOMING MAINTENANCE TABLE -->
+            <div class="table-card" style="margin-top: 30px;">
+                <h3 class="card-title">Active & Upcoming Maintenance</h3>
+                <div class="table-responsive">
+                    <table class="bookings-table">
+                        <thead>
+                            <tr>
+                                <th>VENUE</th>
+                                <th>START DATE</th>
+                                <th>END DATE</th>
+                                <th>TYPE</th>
+                                <th>STATUS</th>
+                                <th>ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
+                            <?php while($m = $upcoming_maint->fetch_assoc()): ?>
+                            <tr>
+                                <td style="font-weight: 600;"><?php echo htmlspecialchars($m['venue_name']); ?></td>
+                                <td><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
+                                <td><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
+                                <td><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
+                                <td>
+                                    <?php if($m['is_blocking']): ?>
+                                    <span class="status-badge status-refunded"
+                                        style="background:#fee2e2; color:#dc2626;">Blocked</span>
+                                    <?php else: ?>
+                                    <span class="status-badge status-paid"
+                                        style="background:#e0f2fe; color:#0284c7;">Note
+                                        Only</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <!-- Wrapped in a flex div to keep them side-by-side cleanly -->
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <button class="btn-action btn-done btn-complete-maint"
+                                            data-id="<?php echo $m['id']; ?>"
+                                            title="Finish early & free up calendar">Mark Done</button>
+                                        <button class="btn-action btn-cancel btn-delete-maint"
+                                            data-id="<?php echo $m['id']; ?>"
+                                            title="Completely delete this record">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
+                            <?php else: ?>
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 20px;">No upcoming maintenance
+                                    scheduled.
+                                </td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Right Section: Summary Sidebar -->
@@ -126,52 +183,4 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             </div>
         </div>
     </div>
-    <!-- BOTTOM SECTION: UPCOMING MAINTENANCE TABLE -->
-    <div class="table-card" style="margin-top: 30px;">
-        <h3 class="card-title">Active & Upcoming Maintenance</h3>
-        <div class="table-responsive">
-            <table class="bookings-table">
-                <thead>
-                    <tr>
-                        <th>VENUE</th>
-                        <th>START DATE</th>
-                        <th>END DATE</th>
-                        <th>TYPE</th>
-                        <th>STATUS</th>
-                        <th>ACTIONS</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
-                    <?php while($m = $upcoming_maint->fetch_assoc()): ?>
-                    <tr>
-                        <td style="font-weight: 600;"><?php echo htmlspecialchars($m['venue_name']); ?></td>
-                        <td><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
-                        <td><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
-                        <td><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
-                        <td>
-                            <?php if($m['is_blocking']): ?>
-                            <span class="status-badge status-refunded"
-                                style="background:#fee2e2; color:#dc2626;">Blocked</span>
-                            <?php else: ?>
-                            <span class="status-badge status-paid" style="background:#e0f2fe; color:#0284c7;">Note
-                                Only</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <button class="btn-action btn-cancel btn-delete-maint"
-                                data-id="<?php echo $m['id']; ?>">Cancel / Delete</button>
-                        </td>
-                    </tr>
-                    <?php endwhile; ?>
-                    <?php else: ?>
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 20px;">No upcoming maintenance scheduled.
-                        </td>
-                    </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-    </d iv>
+</div>
