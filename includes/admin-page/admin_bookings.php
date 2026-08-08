@@ -325,12 +325,13 @@ if ($result && $result->num_rows > 0) {
                 <span class="value" id="vd-specific-value" style="display:none;">--</span>
             </div>
 
-            <!-- Add-ons Container (Injected via JS) -->
+            <!-- Add-ons & Line Items Container -->
             <div id="vd-addons-container" style="display: none; margin-bottom: 20px;">
                 <h4 class="modal-subtitle"
-                    style="font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 5px;">Add-ons</h4>
-                <div class="summary-grid" id="vd-addons-list" style="grid-template-columns: 1fr auto;">
-                    <!-- JS injects addons here -->
+                    style="font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 5px;">Add-ons & Line Items
+                </h4>
+                <div class="summary-grid" id="vd-addons-list" style="grid-template-columns: 1fr auto; row-gap: 8px;">
+                    <!-- JS injects addons/line items here -->
                 </div>
             </div>
 
@@ -355,7 +356,8 @@ if ($result && $result->num_rows > 0) {
             </div>
 
             <div class="modal-actions" style="margin-top: 30px;">
-                <button class="btn-modal btn-modal-cancel close-modal" style="width: 100%;">Close</button>
+                <button class="btn-modal btn-modal-cancel close-modal"
+                    style="width: 100%; background: transparent; color: var(--color-dark); border: 1px solid #ccc;">Close</button>
             </div>
         </div>
 
@@ -558,7 +560,9 @@ if ($result && $result->num_rows > 0) {
             <div
                 style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
                 <h4 style="margin:0; font-size:1.1rem; color:var(--color-dark);">Additional Line Items</h4>
-                <button type="button" class="btn-action btn-done" id="ep-btn-add-item">+ Add Item</button>
+                <button type="button" class="btn-action" id="ep-btn-add-item"
+                    style="background: var(--color-dark); color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem;"><i
+                        class="fa-solid fa-plus"></i> Add Item</button>
             </div>
 
             <!-- JS will inject rows here -->
@@ -566,14 +570,15 @@ if ($result && $result->num_rows > 0) {
                 style="max-height: 200px; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;"></div>
 
             <div class="refund-total"
-                style="margin-top: 10px; justify-content: space-between; background: #faf9f7; padding: 15px; border-radius: 6px;">
+                style="margin-top: 10px; justify-content: space-between; background: #faf9f7; padding: 15px; border-radius: 6px; border: 1px dashed #ccc;">
                 <span class="label" style="font-size:1.2rem;">Final Total:</span>
                 <span class="value amount" id="ep-calc-total"
                     style="color: var(--color-gold); font-size:1.5rem;">₱0.00</span>
             </div>
 
             <div class="modal-actions" style="margin-top: 25px;">
-                <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
+                <button class="btn-modal btn-modal-cancel close-modal"
+                    style="background: transparent; color: var(--color-dark); border: 1px solid #ccc;">Cancel</button>
                 <button class="btn-modal btn-modal-primary" id="btn-execute-edit-price"
                     style="background-color: var(--color-gold); color: white; border: none;">Save & Send
                     Invoice</button>

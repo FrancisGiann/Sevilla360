@@ -619,8 +619,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = res.data.booking;
             const specifics = res.data.specifics;
             const addons = res.data.addons;
+            const lineItems = res.data.line_items; // Get the custom line items!
 
-            document.getElementById('vd-title').innerText = `Booking #${data.id}`;
+            // FIX: Use reference_no instead of database ID!
+            document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
+            
             const badge = document.getElementById('vd-status-badge');
             badge.innerText = data.booking_status;
             badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
@@ -644,7 +647,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 specValue.style.display = 'block';
                 if (data.venue_category === 'Event Hall') {
                     specLabel.innerText = "Event Details:";
-                    // UPDATED: Show the Event Type, Style, AND Custom Notes!
                     specValue.innerHTML = `
                         <strong>${specifics.event_type}</strong> (${specifics.event_style})<br>
                         <span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;">
@@ -660,21 +662,31 @@ document.addEventListener("DOMContentLoaded", () => {
                 specValue.style.display = 'none';
             }
 
+            // FIX: Render Addons AND Custom Line Items
             const addonsContainer = document.getElementById('vd-addons-container');
             const addonsList = document.getElementById('vd-addons-list');
             addonsList.innerHTML = ''; 
+            let hasExtras = false;
+
             if (addons && addons.length > 0) {
-                addonsContainer.style.display = 'block';
+                hasExtras = true;
                 addons.forEach(addon => {
-                    addonsList.innerHTML += `<span class="label">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString()}</span>`;
+                    addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                 });
-            } else {
-                addonsContainer.style.display = 'none';
             }
+
+            if (lineItems && lineItems.length > 0) {
+                hasExtras = true;
+                lineItems.forEach(item => {
+                    addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${item.item_name}</span> <span class="value">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+                });
+            }
+
+            if (hasExtras) addonsContainer.style.display = 'block';
+            else addonsContainer.style.display = 'none';
 
             const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             
-            // UPDATED: Hide the Price if it's a Pending Event Inquiry
             if (data.venue_category === 'Event Hall' && data.booking_status === 'Pending') {
                 document.getElementById('vd-base-amt').innerText = "TBA";
                 document.getElementById('vd-addons-amt').innerText = "TBA";
@@ -724,13 +736,31 @@ document.addEventListener("DOMContentLoaded", () => {
       row.className = "ep-row";
       row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
       row.innerHTML = `
-          <input type="text" class="ep-item-name" value="${name}" placeholder="Item Description (e.g. Catering for 100pax)" style="flex:2; padding:10px; border:1px solid #ccc; border-radius:4px;">
-          <input type="number" class="ep-item-cost ep-calc-trigger" value="${amount}" step="0.01" placeholder="Amount (₱)" style="flex:1; padding:10px; border:1px solid #ccc; border-radius:4px;">
-          <button type="button" class="btn-action btn-cancel ep-remove-row" style="margin:0; padding:10px 15px;"><i class="fa-solid fa-trash"></i></button>
+          <input type="text" class="ep-item-name" value="${name}" placeholder="Item Description" style="flex: 2; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <input type="number" class="ep-item-cost ep-calc-trigger" value="${amount}" step="0.01" placeholder="Amount (₱)" style="flex: 1; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <button type="button" class="btn-action ep-remove-row" style="flex: 0 0 45px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; padding: 0;"><i class="fa-solid fa-trash"></i></button>
       `;
       lineItemsContainer.appendChild(row);
 
-      // Attach Listeners
+      row.querySelector(".ep-calc-trigger").addEventListener("input", calculateInvoiceTotal);
+      row.querySelector(".ep-remove-row").addEventListener("click", () => {
+          row.remove();
+          calculateInvoiceTotal();
+      });
+  }
+  
+  // Row Builder
+  function addLineItemRow(name = "", amount = "") {
+      const row = document.createElement("div");
+      row.className = "ep-row";
+      row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
+      row.innerHTML = `
+          <input type="text" class="ep-item-name" value="${name}" placeholder="Item Description" style="flex: 2; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <input type="number" class="ep-item-cost ep-calc-trigger" value="${amount}" step="0.01" placeholder="Amount (₱)" style="flex: 1; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <button type="button" class="btn-action ep-remove-row" style="flex: 0 0 45px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; padding: 0;"><i class="fa-solid fa-trash"></i></button>
+      `;
+      lineItemsContainer.appendChild(row);
+
       row.querySelector(".ep-calc-trigger").addEventListener("input", calculateInvoiceTotal);
       row.querySelector(".ep-remove-row").addEventListener("click", () => {
           row.remove();
@@ -760,7 +790,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const addons = res.data.addons; // Old initial addons
               const lineItems = res.data.line_items; // Saved custom items (if already edited)
 
-              document.getElementById('ep-booking-id').innerText = `#${bookingId}`;
+              document.getElementById('ep-booking-id').innerText = `${data.reference_no}`;
               document.getElementById('ep-guests').value = data.guests_count;
               document.getElementById('ep-event-type').value = specifics ? specifics.event_type : "";
               baseRateInput.value = parseFloat(data.base_amount).toFixed(2);
