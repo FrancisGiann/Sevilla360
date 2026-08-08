@@ -91,9 +91,7 @@ try {
         if ($res->num_rows === 0) throw new Exception('Booking not found.');
         $booking = $res->fetch_assoc();
 
-        // =========================================================================
-        // FIX: GUARD AGAINST OVERPAYMENT / DUPLICATE SUBMISSION
-        // =========================================================================
+        // GUARD AGAINST OVERPAYMENT
         $current_paid = floatval($booking['amount_paid']);
         $total = floatval($booking['total_amount']);
         $remaining_due = $total - $current_paid;
@@ -104,11 +102,11 @@ try {
         if ($remaining_due <= 0) {
             throw new Exception("This booking is already fully paid. No balance remaining.");
         }
-        if ($amount_to_add > $remaining_due + 0.01) { // small tolerance for float rounding
+        if ($amount_to_add > $remaining_due + 0.01) {
             throw new Exception("Amount exceeds the remaining balance of ₱" . number_format($remaining_due, 2) . ".");
         }
 
-        // Idempotency: reject if this exact non-cash transaction_id was already recorded
+        // Idempotency
         if (!empty($data['transaction_id'])) {
             $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
             $stmt_dupe->bind_param("s", $trans_id);
@@ -117,7 +115,6 @@ try {
                 throw new Exception("This transaction ID has already been recorded.");
             }
         }
-        // =========================================================================
         
         $new_amount_paid = $current_paid + $amount_to_add;
         $new_payment_status = ($new_amount_paid >= $total) ? 'Paid' : 'Partial';
@@ -132,6 +129,17 @@ try {
         
         $message = "Payment of ₱" . number_format($amount_to_add, 2) . " received successfully!";
         
+        // =========================================================
+        // NEW FIX: SEND EMAIL RECEIPT FOR ADMIN MANUAL PAYMENTS
+        // =========================================================
+        try {
+            $email_status = ($new_payment_status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Manual Payment)';
+            send_booking_receipt($c_email, $c_name, $ref_no, $v_name, $new_amount_paid, $email_status);
+        } catch (Exception $mail_e) {
+            // Silently fail so the admin doesn't get an error popup if Gmail is slow
+            error_log("Failed to send admin payment receipt: " . $mail_e->getMessage());
+        }
+        // =========================================================
     }
     elseif ($action === 'reschedule') {
         if (!isset($data['new_start_date']) || !isset($data['new_end_date'])) {
