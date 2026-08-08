@@ -38,12 +38,24 @@ try {
         $specifics = $st->get_result()->fetch_assoc();
     }
 
+    // Fetch Initial Addons
     $st_add = $conn->prepare("SELECT a.name, ba.quantity, ba.total_price FROM booking_addons ba JOIN addons a ON ba.addon_id = a.id WHERE ba.booking_id = ?");
     $st_add->bind_param("i", $booking_id);
     $st_add->execute();
     $addons = $st_add->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    echo json_encode(['success' => true, 'data' => ['booking' => $booking, 'specifics' => $specifics, 'addons' => $addons]]);
+    // Fetch Custom Line Items (If finalized)
+    $st_li = $conn->prepare("SELECT item_name, amount FROM booking_line_items WHERE booking_id = ?");
+    $st_li->bind_param("i", $booking_id);
+    $st_li->execute();
+    $line_items = $st_li->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    echo json_encode(['success' => true, 'data' => [
+        'booking' => $booking, 
+        'specifics' => $specifics, 
+        'addons' => $addons,
+        'line_items' => $line_items
+    ]]);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

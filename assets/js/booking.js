@@ -653,6 +653,47 @@ class BookingController {
             formData.append("stay_type", stayText);
         }
 
+        // =========================================================
+        // FIX: CAPTURE CUSTOM HTML ADD-ONS AS LINE ITEMS
+        // =========================================================
+        let customLineItems = [];
+
+        // 1. Catering
+        const checkCatering = document.getElementById('check-catering');
+        if (checkCatering && checkCatering.checked) {
+            const activeTier = document.querySelector('input[name="catering-tier"]:checked');
+            if (activeTier) {
+                const tierName = activeTier.parentElement.querySelector('h4').innerText;
+                const tierPrice = parseFloat(activeTier.value) || 0;
+                const guestCount = parseInt(context.guests) || 0;
+                const totalCatering = tierPrice * guestCount;
+                customLineItems.push({
+                    name: `Catering: ${tierName} (${guestCount} pax)`,
+                    amount: totalCatering
+                });
+            }
+        }
+
+        // 2. Hotel Rooms
+        const checkRooms = document.getElementById('check-rooms');
+        if (checkRooms && checkRooms.checked) {
+            const deluxeQty = parseInt(document.getElementById('qty-deluxe')?.innerText) || 0;
+            const vipQty = parseInt(document.getElementById('qty-vip')?.innerText) || 0;
+            
+            if (deluxeQty > 0) customLineItems.push({ name: `Reserved Deluxe Room (x${deluxeQty})`, amount: (deluxeQty * 4500) });
+            if (vipQty > 0) customLineItems.push({ name: `Reserved VIP Suite (x${vipQty})`, amount: (vipQty * 8500) });
+        }
+
+        // 3. A/V Setup
+        const checkAv = document.getElementById('check-av');
+        if (checkAv && checkAv.checked) {
+            customLineItems.push({ name: `Premium A/V Setup`, amount: 5000 });
+        }
+
+        // Append as a JSON string so PHP can read it easily
+        formData.append('custom_line_items', JSON.stringify(customLineItems));
+        // =========================================================
+
         try {
             btn.innerText = "PROCESSING...";
             btn.disabled = true;

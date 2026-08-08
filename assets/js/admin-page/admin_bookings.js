@@ -703,36 +703,113 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // --- NEW: EDIT PRICE MODAL LOGIC ---
+  // --- NEW: EVENT INVOICE / EDIT PRICE MODAL LOGIC ---
   const editPriceModal = document.getElementById("editPriceModal");
+  const lineItemsContainer = document.getElementById("ep-line-items");
+  const baseRateInput = document.getElementById("ep-base-rate");
+  const calcTotalDisplay = document.getElementById("ep-calc-total");
 
+  // Live Math Calculator
+  function calculateInvoiceTotal() {
+      let total = parseFloat(baseRateInput.value) || 0;
+      document.querySelectorAll(".ep-item-cost").forEach(input => {
+          total += (parseFloat(input.value) || 0);
+      });
+      calcTotalDisplay.innerText = `₱${total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  }
+
+  // Row Builder
+  function addLineItemRow(name = "", amount = "") {
+      const row = document.createElement("div");
+      row.className = "ep-row";
+      row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
+      row.innerHTML = `
+          <input type="text" class="ep-item-name" value="${name}" placeholder="Item Description (e.g. Catering for 100pax)" style="flex:2; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <input type="number" class="ep-item-cost ep-calc-trigger" value="${amount}" step="0.01" placeholder="Amount (₱)" style="flex:1; padding:10px; border:1px solid #ccc; border-radius:4px;">
+          <button type="button" class="btn-action btn-cancel ep-remove-row" style="margin:0; padding:10px 15px;"><i class="fa-solid fa-trash"></i></button>
+      `;
+      lineItemsContainer.appendChild(row);
+
+      // Attach Listeners
+      row.querySelector(".ep-calc-trigger").addEventListener("input", calculateInvoiceTotal);
+      row.querySelector(".ep-remove-row").addEventListener("click", () => {
+          row.remove();
+          calculateInvoiceTotal();
+      });
+  }
+
+  // Add Item Button
+  document.getElementById("ep-btn-add-item")?.addEventListener("click", () => addLineItemRow());
+  baseRateInput?.addEventListener("input", calculateInvoiceTotal);
+
+  // Open Modal (Fetch Data First!)
   document.querySelectorAll('.open-edit-price').forEach(btn => {
       btn.addEventListener('click', function() {
           const bookingId = this.getAttribute('data-id');
-          const currentTotal = this.getAttribute('data-total');
-
-          document.getElementById('ep-booking-id').innerText = `#${bookingId}`;
-          document.getElementById('ep-new-total').value = parseFloat(currentTotal).toFixed(2);
+          const originalText = this.innerText;
+          this.innerText = "Loading...";
           
-          const executeBtn = document.getElementById('btn-execute-edit-price');
-          executeBtn.setAttribute('data-id', bookingId);
+          fetch(`actions/admin/get_booking_details.php?id=${bookingId}`)
+          .then(res => res.json())
+          .then(res => {
+              this.innerText = originalText;
+              if (!res.success) return showAlertModal("Error", res.message, "error", false);
 
-          modalOverlay.classList.add('active');
-          editPriceModal.classList.add('active');
+              const data = res.data.booking;
+              const specifics = res.data.specifics;
+              const addons = res.data.addons; // Old initial addons
+              const lineItems = res.data.line_items; // Saved custom items (if already edited)
+
+              document.getElementById('ep-booking-id').innerText = `#${bookingId}`;
+              document.getElementById('ep-guests').value = data.guests_count;
+              document.getElementById('ep-event-type').value = specifics ? specifics.event_type : "";
+              baseRateInput.value = parseFloat(data.base_amount).toFixed(2);
+              
+              lineItemsContainer.innerHTML = ""; // Clear old rows
+
+              // Populate Rows: If line items exist, use them. Else, convert initial addons!
+              if (lineItems && lineItems.length > 0) {
+                  lineItems.forEach(item => addLineItemRow(item.item_name, item.amount));
+              } else if (addons && addons.length > 0) {
+                  addons.forEach(addon => {
+                      // Automatically merges qty * price into the line item amount
+                      addLineItemRow(`${addon.name} (x${addon.quantity})`, parseFloat(addon.total_price).toFixed(2));
+                  });
+              }
+
+              calculateInvoiceTotal();
+
+              document.getElementById('btn-execute-edit-price').setAttribute('data-id', bookingId);
+              modalOverlay.classList.add('active');
+              editPriceModal.classList.add('active');
+          });
       });
   });
 
+  // Submit and Save
   document.getElementById('btn-execute-edit-price')?.addEventListener('click', function() {
       const bookingId = this.getAttribute('data-id');
-      const newTotal = parseFloat(document.getElementById('ep-new-total').value);
+      const guests = document.getElementById('ep-guests').value;
+      const eventType = document.getElementById('ep-event-type').value;
+      const baseRate = document.getElementById('ep-base-rate').value;
 
-      if (isNaN(newTotal) || newTotal < 0) {
-          showAlertModal("Invalid Amount", "Please enter a valid price.", "error", "editPriceModal");
-          return;
-      }
+      // Gather Line Items Array
+      let lineItemsArr = [];
+      document.querySelectorAll(".ep-row").forEach(row => {
+          const name = row.querySelector(".ep-item-name").value.trim();
+          const cost = parseFloat(row.querySelector(".ep-item-cost").value) || 0;
+          if (name !== "" && cost >= 0) {
+              lineItemsArr.push({ name: name, amount: cost });
+          }
+      });
 
-      showConfirmModal(`Change the total price of this booking to ₱${newTotal.toLocaleString()}?`, () => {
-          processBookingAction(bookingId, 'update_price', this, { new_total: newTotal });
+      showConfirmModal(`Finalize invoice and email customer?`, () => {
+          processBookingAction(bookingId, 'finalize_event_invoice', this, { 
+              guests: guests, 
+              event_type: eventType, 
+              base_rate: baseRate,
+              line_items: lineItemsArr
+          });
       }, 'editPriceModal');
   });
 });

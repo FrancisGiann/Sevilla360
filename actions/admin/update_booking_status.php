@@ -66,18 +66,54 @@ try {
         $message = "Booking #$booking_id has been cancelled!";
         
     } 
-    elseif ($action === 'update_price') {
-        if (!isset($data['new_total'])) {
-            throw new Exception("New total amount is required.");
+    elseif ($action === 'finalize_event_invoice') {
+        $guests = intval($data['guests']);
+        $event_type = trim($data['event_type']);
+        $base_rate = floatval($data['base_rate']);
+        $line_items = $data['line_items'] ?? [];
+
+        // 1. Calculate new math
+        $addons_amount = 0;
+        foreach ($line_items as $item) {
+            $addons_amount += floatval($item['amount']);
         }
-        $new_total = floatval($data['new_total']);
-        
-        $stmt = $conn->prepare("UPDATE bookings SET total_amount = ? WHERE id = ?");
-        $stmt->bind_param("di", $new_total, $booking_id);
-        if (!$stmt->execute()) {
-            throw new Exception("Failed to update price in the database.");
+        $new_total = $base_rate + $addons_amount; // Assuming extra pax isn't used for events, but you can add it if needed.
+
+        // 2. Update Main Bookings Table (AUTO-APPROVE THE BOOKING)
+        $stmt_b = $conn->prepare("UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, booking_status = 'Confirmed' WHERE id = ?");
+        $stmt_b->bind_param("idddi", $guests, $base_rate, $addons_amount, $new_total, $booking_id);
+        $stmt_b->execute();
+
+        // 3. Update Event Details
+        $stmt_e = $conn->prepare("UPDATE booking_event_details SET event_type = ? WHERE booking_id = ?");
+        $stmt_e->bind_param("si", $event_type, $booking_id);
+        $stmt_e->execute();
+
+        // 4. Wipe old initial addons & rewrite new line items
+        $conn->query("DELETE FROM booking_addons WHERE booking_id = $booking_id");
+        $conn->query("DELETE FROM booking_line_items WHERE booking_id = $booking_id");
+
+        if (!empty($line_items)) {
+            $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+            foreach ($line_items as $item) {
+                $name = trim($item['name']);
+                $amt = floatval($item['amount']);
+                $stmt_li->bind_param("isd", $booking_id, $name, $amt);
+                $stmt_li->execute();
+            }
         }
-        $message = "Invoice price successfully updated to ₱" . number_format($new_total, 2) . "!";
+
+        // 5. Send Notification Email
+        try {
+            // Generates a link straight to their dashboard
+            $domain = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https://" : "http://";
+            $dash_link = $domain . $_SERVER['HTTP_HOST'] . "/Sevilla360/user_dashboard.php";
+            send_invoice_ready_email($c_email, $c_name, $ref_no, $new_total, $dash_link);
+        } catch (Throwable $mail_e) {
+            error_log("Failed to send invoice email: " . $mail_e->getMessage());
+        }
+
+        $message = "Invoice finalized and sent to customer!";
     }elseif ($action === 'add_payment') {
         $amount_to_add = floatval($data['amount']);
         $method = $data['method'];

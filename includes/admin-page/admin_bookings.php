@@ -527,23 +527,56 @@ if ($result && $result->num_rows > 0) {
             </div>
         </div>
 
-        <!-- NEW: Edit Price Modal -->
-        <div class="admin-modal modal-sm" id="editPriceModal">
-            <h3 class="modal-title">Update Invoice Price</h3>
-            <div class="modal-body">
-                <p style="margin-bottom: 15px; font-size: 0.9rem; color: #666;">
-                    Update the final total amount for Booking <strong id="ep-booking-id">--</strong> after your
-                    consultation with the customer.
-                </p>
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">New Total Amount (₱)</label>
-                    <input type="number" id="ep-new-total" step="0.01"
-                        style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px;">
+        <!-- Event Hall Itemized Invoice / Edit Price Modal -->
+        <div class="admin-modal" id="editPriceModal" style="max-width: 650px;">
+            <h3 class="modal-main-title">Finalize Event Invoice</h3>
+            <p style="margin-bottom: 20px; font-size: 0.9rem; color: #666;">
+                Review the consultation details and finalize the itemized invoice for Booking <strong
+                    id="ep-booking-id">--</strong>. Once saved, an email will be sent to the customer to collect their
+                downpayment.
+            </p>
+
+            <div class="summary-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:5px;">Guest Count</label>
+                    <input type="number" id="ep-guests"
+                        style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;">
+                </div>
+                <div>
+                    <label style="display:block; font-weight:600; margin-bottom:5px;">Event Type</label>
+                    <input type="text" id="ep-event-type"
+                        style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px;">
                 </div>
             </div>
-            <div class="modal-actions-center">
-                <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
-                <button class="btn btn-primary" id="btn-execute-edit-price">Save New Price</button>
+
+            <div style="margin-bottom: 25px;">
+                <label style="display:block; font-weight:600; margin-bottom:5px;">Venue Base Rate (₱)</label>
+                <input type="number" id="ep-base-rate" step="0.01" class="ep-calc-trigger"
+                    style="width:100%; padding:12px; border:1px solid #ccc; border-radius:4px; font-size:1.1rem; color:var(--color-dark);">
+            </div>
+
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+                <h4 style="margin:0; font-size:1.1rem; color:var(--color-dark);">Additional Line Items</h4>
+                <button type="button" class="btn-action btn-done" id="ep-btn-add-item">+ Add Item</button>
+            </div>
+
+            <!-- JS will inject rows here -->
+            <div id="ep-line-items"
+                style="max-height: 200px; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;"></div>
+
+            <div class="refund-total"
+                style="margin-top: 10px; justify-content: space-between; background: #faf9f7; padding: 15px; border-radius: 6px;">
+                <span class="label" style="font-size:1.2rem;">Final Total:</span>
+                <span class="value amount" id="ep-calc-total"
+                    style="color: var(--color-gold); font-size:1.5rem;">₱0.00</span>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 25px;">
+                <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
+                <button class="btn-modal btn-modal-primary" id="btn-execute-edit-price"
+                    style="background-color: var(--color-gold); color: white; border: none;">Save & Send
+                    Invoice</button>
             </div>
         </div>
     </div>

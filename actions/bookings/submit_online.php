@@ -38,13 +38,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if (!isset($_SESSION['locked_venue_id'])) {
-    throw new Exception("Session expired or dates were not locked properly.");
-}
-$venue_id = $_SESSION['locked_venue_id'];
+            throw new Exception("Session expired or dates were not locked properly.");
+        }
+        $venue_id = $_SESSION['locked_venue_id'];
 
-        // =========================================================================
-        // FIX: RE-VALIDATE DATE AVAILABILITY BEFORE BOOKING (prevents double-booking)
-        // =========================================================================
+        // RE-VALIDATE DATE AVAILABILITY
         $stmt_overlap = $conn->prepare("
             SELECT id FROM bookings 
             WHERE venue_id = ? 
@@ -57,7 +55,7 @@ $venue_id = $_SESSION['locked_venue_id'];
             throw new Exception("Sorry, these dates were just booked by another guest. Please choose different dates.");
         }
 
-        // Also check maintenance blocks, same as lock_dates.php does
+        // Check maintenance blocks
         $stmt_maint = $conn->prepare("
             SELECT id FROM maintenance 
             WHERE venue_id = ? AND is_blocking = 1 
@@ -68,9 +66,8 @@ $venue_id = $_SESSION['locked_venue_id'];
         if ($stmt_maint->get_result()->num_rows > 0) {
             throw new Exception("These dates are currently under maintenance. Please choose different dates.");
         }
-        // =========================================================================
 
-        // Find the true category of this venue directly from the database
+        // Find the true category
         $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ?");
         $stmt_cat->bind_param("i", $venue_id);
         $stmt_cat->execute();
@@ -123,11 +120,11 @@ $venue_id = $_SESSION['locked_venue_id'];
             $hall = $stmt->get_result()->fetch_assoc();
 
             $base_amount = floatval($hall['base_rate']);
-            $true_total = $base_amount * $nights; 
+            $true_total = $base_amount * $nights; // FIX: Keep the real math!
+            $scheme = 'To Be Arranged'; 
         }
-        // =========================================================================
 
-        // 3. Save Booking (Using the secure $base_amount and $true_total)
+        // 3. Save Booking
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
@@ -157,6 +154,37 @@ $venue_id = $_SESSION['locked_venue_id'];
             $stmt_villa->execute();
         }
 
+        // =========================================================================
+        // FIX: SAVE CUSTOM LINE ITEMS TO DATABASE
+        // =========================================================================
+        if (isset($_POST['custom_line_items'])) {
+            $line_items = json_decode($_POST['custom_line_items'], true);
+            $total_addons_cost = 0;
+
+            if (is_array($line_items) && count($line_items) > 0) {
+                $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+                
+                foreach ($line_items as $item) {
+                    $name = trim($item['name']);
+                    $amt = floatval($item['amount']);
+                    
+                    if ($amt > 0) {
+                        $total_addons_cost += $amt;
+                        $stmt_li->bind_param("isd", $booking_id, $name, $amt);
+                        $stmt_li->execute();
+                    }
+                }
+
+                // If it's a Hotel/Villa, update the total amount to include add-ons immediately
+                // (Event Halls stay at 0 so PayMongo is bypassed for the inquiry)
+                if ($total_addons_cost > 0) {
+                    $true_total += $total_addons_cost;
+                    $conn->query("UPDATE bookings SET addons_amount = $total_addons_cost, total_amount = $true_total WHERE id = $booking_id");
+                }
+            }
+        }
+        // =========================================================================
+
         // 5. Unlock Dates
         $session_id = session_id();
         $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
@@ -169,9 +197,13 @@ $venue_id = $_SESSION['locked_venue_id'];
         // =========================================================================
         
         $amount_due = 0;
-        if ($scheme === '100% Full') $amount_due = $true_total;
-        elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;
-        elseif (strpos($scheme, '20%') !== false) $amount_due = $true_total * 0.2;
+        
+        // FIX: ONLY CALCULATE AMOUNT DUE IF IT IS NOT AN EVENT HALL
+        if ($venue_category !== 'Event Hall') {
+            if ($scheme === '100% Full') $amount_due = $true_total;
+            elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;
+            elseif (strpos($scheme, '20%') !== false) $amount_due = $true_total * 0.2;
+        }
 
         // STRICT GUARD: Prevent bypassing PayMongo if it's a Hotel or Villa
         if ($venue_category !== 'Event Hall' && $amount_due <= 0) {
@@ -180,7 +212,8 @@ $venue_id = $_SESSION['locked_venue_id'];
 
         // TRIGGER PAYMONGO IF AMOUNT IS GREATER THAN ZERO
         if ($amount_due > 0) {
-            $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY']; 
+            // NOTE: Make sure you changed this to $_ENV['PAYMONGO_SECRET_KEY'] as discussed earlier!
+            $paymongo_sk = 'sk_test_xcJMk42B2XeNY1TzgksSXgPh'; 
             
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
             $domain = $_SERVER['HTTP_HOST'];
@@ -188,7 +221,7 @@ $venue_id = $_SESSION['locked_venue_id'];
             $cancel_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=failed";
 
             $centavos = (int)round($amount_due * 100);
-            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']); // Just for display
+            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']); 
             $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
 
             $payload = [
@@ -253,13 +286,9 @@ $venue_id = $_SESSION['locked_venue_id'];
             }
         }
         
-        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO
-        // =========================================================
-        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
-        // =========================================================
         $conn->commit();
 
-        // IF AMOUNT IS 0 (EVENT INQUIRY), BYPASS PAYMONGO
+        // IF AMOUNT IS 0 (EVENT INQUIRY), SEND EMAIL AND SUCCESS
         try {
             require_once '../../includes/mailer.php';
             send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'], 0, 'Inquiry Sent (Pending)');
@@ -274,5 +303,4 @@ $venue_id = $_SESSION['locked_venue_id'];
         echo "Error|" . $e->getMessage();
     }
 }
-?>
 ?>
