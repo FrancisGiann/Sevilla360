@@ -1,39 +1,3 @@
-<?php
-require_once 'config/db_connect.php';
-
-// 1. Fetch Bookings (ADDED b.reference_no)
-$query = "
-    SELECT 
-        b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
-        c.first_name, c.last_name, 
-        v.name AS venue_name, v.category AS venue_category,
-        hr.room_type AS hotel_room_type,
-        cx.status AS cancel_status, cx.reason AS cancel_reason,
-        rr.status AS resched_status, rr.new_start_date, rr.new_end_date, rr.reason AS resched_reason
-    FROM bookings b
-    JOIN customers c ON b.customer_id = c.id
-    JOIN venues v ON b.venue_id = v.id
-    LEFT JOIN cancellations cx ON b.id = cx.booking_id AND cx.status = 'Pending'
-    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
-    LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-    GROUP BY b.id
-    ORDER BY 
-        CASE 
-            WHEN cx.status = 'Pending' THEN 1 
-            WHEN rr.status = 'Pending' THEN 1 
-            ELSE 0 
-        END DESC, 
-        b.id DESC
-";
-$result = $conn->query($query);
-$bookings = [];
-if ($result && $result->num_rows > 0) {
-    while($row = $result->fetch_assoc()) {
-        $bookings[] = $row;
-    }
-}
-?>
-
 <div class="admin-bookings-container">
     <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
 
@@ -42,7 +6,7 @@ if ($result && $result->num_rows > 0) {
         <div class="top-controls">
             <div class="search-bar">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="table-search" placeholder="Search by name, id, or venue">
+                <input type="text" id="table-search" placeholder="Search by name, ID, or venue...">
             </div>
             <select class="control-select" id="table-venue-filter">
                 <option value="All">All Venues</option>
@@ -57,7 +21,6 @@ if ($result && $result->num_rows > 0) {
     <div class="table-card">
         <h3 class="card-title">Booking History</h3>
 
-        <!-- PENDING TAB REMOVED FOR CLEANER UI -->
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
             <button class="tab-btn" data-filter="action_req" style="color: #e06666; font-weight: 600;">Action
@@ -81,165 +44,36 @@ if ($result && $result->num_rows > 0) {
                     </tr>
                 </thead>
                 <tbody id="admin-bookings-tbody">
-                    <?php if (empty($bookings)): ?>
+                    <!-- Default loading state. JS will overwrite this! -->
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 30px;">No bookings found.</td>
-                    </tr>
-                    <?php else: ?>
-                    <?php foreach ($bookings as $b): 
-                            
-                            $start = new DateTime($b['start_date']);
-                            $end = new DateTime($b['end_date']);
-                            $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
-
-                            $customer_name = htmlspecialchars($b['first_name'] . ' ' . $b['last_name']);
-                            $venue_name = htmlspecialchars($b['venue_name']);
-                            $actual_room_type = ($b['venue_category'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_category'];
-                            $total_amt = floatval($b['total_amount']);
-                            $amount_paid = isset($b['amount_paid']) ? floatval($b['amount_paid']) : 0;
-                            $balance_due = $total_amt - $amount_paid;
-
-                            // NEW: Mask the price for Pending Event Inquiries
-                            $display_amount = '₱' . number_format($total_amt, 2);
-                            if ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
-                                $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
-                            }
-
-                            // ==========================================
-                            // BADGE STYLING & FILTER LOGIC
-                            // ==========================================
-                            $badge_class = 'status-pending'; 
-                            $status_text = 'Pending';
-                            $filter_status = strtolower($b['booking_status']); 
-
-                            if ($b['booking_status'] === 'Confirmed') {
-                                if ($b['payment_status'] === 'Paid') {
-                                    $badge_class = 'status-paid';
-                                    $status_text = 'Fully Paid';
-                                } elseif ($b['payment_status'] === 'Partial') {
-                                    $badge_class = 'status-partial';
-                                    $status_text = 'Partially Paid';
-                                    $filter_status .= ' partial'; 
-                                } else {
-                                    $badge_class = 'status-pending'; 
-                                    $status_text = 'Unpaid';
-                                    $filter_status .= ' partial action_req'; 
-                                }
-                            } elseif ($b['booking_status'] === 'Cancelled') {
-                                $badge_class = 'status-refunded';
-                                $status_text = 'Cancelled';
-                            }
-
-                            // OVERRIDES FOR ACTION REQUIRED
-                            if ($b['cancel_status'] === 'Pending') {
-                                $badge_class = 'status-pending-refund';
-                                $status_text = 'Cancel Req.';
-                                $filter_status .= ' action_req'; 
-                            } elseif ($b['resched_status'] === 'Pending') {
-                                $badge_class = 'status-reschedule'; 
-                                $status_text = 'Resched Req.';
-                                $filter_status .= ' action_req'; 
-                            } elseif ($b['booking_status'] === 'Pending') {
-                                // ALL new/unpaid pending bookings are 'Action Required'
-                                $filter_status .= ' action_req'; 
-                            }
-                            // ==========================================
-
-                            // Create a searchable string for JavaScript
-                            $search_string = strtolower($b['reference_no'] . ' ' . $customer_name . ' ' . $venue_name);
-                        ?>
-
-                    <!-- INJECTED data-* ATTRIBUTES FOR JAVASCRIPT FILTERING -->
-                    <tr class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-row' : ''; ?>"
-                        data-search="<?php echo $search_string; ?>"
-                        data-venue="<?php echo htmlspecialchars($b['venue_category']); ?>"
-                        data-status="<?php echo $filter_status; ?>">
-
-                        <!-- COLUMNS -->
-                        <td style="font-weight: 600; color: var(--color-gold);">
-                            <?php echo htmlspecialchars($b['reference_no']); ?></td>
-                        <td><?php echo $venue_name; ?></td>
-                        <td><?php echo $customer_name; ?></td>
-                        <td><?php echo $date_str; ?></td>
-                        <td class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'faded-text' : ''; ?>">
-                            <?php echo $display_amount; ?>
-                        </td>
-                        <td><span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>
-                        </td>
-
-                        <!-- ACTION BUTTONS -->
-                        <td class="action-cells">
-                            <!-- 1. PENDING BOOKINGS -->
-                            <?php if ($b['booking_status'] === 'Pending'): ?>
-                            <button class="btn-action btn-confirm open-approve"
-                                data-id="<?php echo $b['id']; ?>">Approve</button>
-                            <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
-                                data-due="<?php echo $balance_due; ?>">Collect Pay</button>
-                            <button class="btn-action btn-cancel open-decline"
-                                data-id="<?php echo $b['id']; ?>">Decline</button>
-                            <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;"
-                                data-id="<?php echo $b['id']; ?>" data-total="<?php echo $b['total_amount']; ?>">Edit
-                                Price</button>
-
-                            <!-- 2. CONFIRMED BOOKINGS -->
-                            <?php elseif ($b['booking_status'] === 'Confirmed'): ?>
-
-                            <?php if ($b['cancel_status'] === 'Pending'): ?>
-                            <!-- Refund Request Button -->
-                            <button class="btn-action btn-refund open-refund" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-date="<?php echo $date_str; ?>" data-paid="<?php echo $amount_paid; ?>"
-                                data-reason="<?php echo htmlspecialchars($b['cancel_reason']); ?>">
-                                Refund Req
-                            </button>
-
-                            <?php elseif ($b['resched_status'] === 'Pending'): ?>
-                            <!-- Review Reschedule Request Button -->
-                            <button class="btn-action btn-reschedule open-review-resched"
-                                data-id="<?php echo $b['id']; ?>" data-customer="<?php echo $customer_name; ?>"
-                                data-venue="<?php echo $venue_name; ?>" data-old="<?php echo $date_str; ?>"
-                                data-newstart="<?php echo $b['new_start_date']; ?>"
-                                data-newend="<?php echo $b['new_end_date']; ?>"
-                                data-reason="<?php echo htmlspecialchars($b['resched_reason']); ?>"
-                                data-conflict="<?php echo $has_conflict; ?>">
-                                Review Resched
-                            </button>
-
-                            <?php else: ?>
-                            <!-- Normal Operations (No requests pending) -->
-                            <?php if (in_array($b['payment_status'], ['Unpaid', 'Partial']) && $balance_due > 0): ?>
-                            <button class="btn-action btn-confirm open-payment" data-id="<?php echo $b['id']; ?>"
-                                data-due="<?php echo $balance_due; ?>">
-                                Collect Pay
-                            </button>
-                            <?php endif; ?>
-
-                            <!-- Standard Reschedule Button -->
-                            <button class="btn-action btn-reschedule open-reschedule" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-venue="<?php echo $venue_name; ?>"
-                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
-                                data-date="<?php echo $date_str; ?>">
-                                Reschedule
-                            </button>
-
-                            <!-- Admin Force Cancel Button -->
-                            <button class="btn-action btn-cancel open-force-cancel" data-id="<?php echo $b['id']; ?>"
-                                data-customer="<?php echo $customer_name; ?>" data-paid="<?php echo $amount_paid; ?>">
-                                Force Cancel
-                            </button>
-                            <?php endif; ?>
-
-                            <?php endif; ?>
-
-                            <!-- View Details is ALWAYS available -->
-                            <button class="btn-action btn-view" data-id="<?php echo $b['id']; ?>">View Details</button>
-
+                        <td colspan="7" style="text-align: center; padding: 40px; color: #888;">
+                            <i class="fa-solid fa-circle-notch fa-spin"
+                                style="font-size: 1.5rem; margin-bottom: 10px; color: var(--color-gold);"></i><br>
+                            Loading Bookings...
                         </td>
                     </tr>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+
+        <!-- NEW: Server-Side Pagination Controls -->
+        <div class="pagination-controls"
+            style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-top: 1px solid #eee; background: #faf9f7; border-radius: 0 0 8px 8px;">
+            <div style="font-size: 0.9rem; color: #666;">
+                Showing <span id="pag-total-rows" style="font-weight: 600; color: var(--color-dark);">0</span> total
+                bookings
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button id="btn-prev-page" class="btn-action btn-outline"
+                    style="padding: 6px 12px; border: 1px solid #ccc; background: white; cursor: pointer;"
+                    disabled>&laquo; Prev</button>
+                <span style="font-size: 0.9rem; font-weight: 600; color: var(--color-dark);">Page <span
+                        id="pag-current-page" style="color: var(--color-gold);">1</span> of <span
+                        id="pag-total-pages">1</span></span>
+                <button id="btn-next-page" class="btn-action btn-outline"
+                    style="padding: 6px 12px; border: 1px solid #ccc; background: white; cursor: pointer;" disabled>Next
+                    &raquo;</button>
+            </div>
         </div>
     </div>
 
@@ -401,21 +235,19 @@ if ($result && $result->num_rows > 0) {
 
             <div class="modal-actions-center">
                 <button class="btn btn-outline btn-modal-cancel close-modal">Cancel</button>
-                <!-- Used btn-primary so it gets the brand Gold color -->
                 <button class="btn btn-primary" id="btn-execute-payment">Confirm</button>
             </div>
         </div>
+
         <!-- Approve Booking Modal -->
         <div class="admin-modal modal-sm" id="approveModal">
             <i class="fa-solid fa-circle-check modal-icon-warning" style="color: #4ade80;"></i>
             <h3 class="modal-title">Approve Booking?</h3>
             <div class="modal-body modal-text-center">
-                <!-- FIX: Removed display: block class so text stays on one line -->
                 <p>Are you sure you want to manually confirm Booking <strong style="color: var(--color-gold);">#<span
                             id="approve-booking-id"></span></strong>?</p>
             </div>
             <div class="modal-actions-center">
-                <!-- FIX: Forced transparent background and dark text -->
                 <button class="btn btn-modal-cancel close-modal"
                     style="background: transparent; color: var(--color-dark); border: 1px solid rgba(42, 37, 34, 0.2);">Cancel</button>
                 <button class="btn btn-primary" id="btn-execute-approve"
@@ -429,7 +261,6 @@ if ($result && $result->num_rows > 0) {
             <i class="fa-solid fa-triangle-exclamation modal-icon-warning"></i>
             <h3 class="modal-title">Decline Booking?</h3>
             <div class="modal-body modal-text-center">
-                <!-- FIX: Removed display: block class so text stays on one line -->
                 <p>Are you sure you want to cancel Booking <strong style="color: #e06666;">#<span
                             id="decline-booking-id"></span></strong>?</p>
                 <p class="modal-subtext">This action cannot be undone and will free up the dates.</p>
@@ -441,6 +272,7 @@ if ($result && $result->num_rows > 0) {
                 <button class="btn btn-primary btn-modal-danger" id="btn-execute-decline">Yes, Cancel It</button>
             </div>
         </div>
+
         <!--  Confirm Modal -->
         <div class="admin-modal modal-sm" id="uniConfirmModal">
             <i class="fa-solid fa-circle-question modal-icon-warning" style="color: var(--color-gold);"></i>
@@ -481,14 +313,12 @@ if ($result && $result->num_rows > 0) {
                     style="font-size: 0.9rem; color: #666;">--</span>
             </div>
 
-            <!-- NEW: Conflict Warning -->
             <div id="rr-conflict-warning"
                 style="display: none; background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 4px; margin-top: 15px; font-weight: 500; text-align: center;">
                 <i class="fa-solid fa-triangle-exclamation"></i> Warning: These requested dates are already booked by
                 another customer!
             </div>
 
-            <!-- NEW: Reject Reason Box -->
             <div id="rr-reject-box" style="display: none; margin-top: 15px;">
                 <label style="font-weight: 600; display: block; margin-bottom: 5px;">Reason for Rejection:</label>
                 <textarea id="rr-reject-reason"
