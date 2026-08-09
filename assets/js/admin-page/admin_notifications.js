@@ -1,6 +1,7 @@
 /**
- * SEVILLA360 - Global Notification Engine
- * Fetches Action-Required items (Refunds, Reschedules, Inquiries) and builds the dropdown UI.
+ * SEVILLA360 - Global Notification Engine & Master Poller
+ * Fetches ALL dashboard stats every 60 seconds. Updates the notification UI,
+ * then broadcasts the data globally so page-specific scripts (like overview) can use it without double-fetching.
  */
 document.addEventListener("DOMContentLoaded", () => {
     const bell = document.getElementById('notifBell');
@@ -23,63 +24,69 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 2. Fetch and Build Notifications
-    function fetchGlobalNotifs() {
+    // 2. MASTER FETCH: Grabs all data and shares it
+    function fetchGlobalData() {
         fetch('actions/admin/get_dashboard_stats.php')
         .then(res => res.json())
         .then(data => {
-            if (!data.notifications) return;
+            
+            // A. Update Notifications UI
+            if (data.notifications) {
+                let unreadCount = 0;
+                let htmlList = '';
 
-            let unreadCount = 0;
-            let htmlList = '';
+                data.notifications.forEach(b => {
+                    let iconClass = '';
+                    let icon = '';
+                    let message = '';
+                    let timeAgo = new Date(b.start_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
 
-            // Loop through the dedicated notifications array!
-            data.notifications.forEach(b => {
-                let iconClass = '';
-                let icon = '';
-                let message = '';
-                let timeAgo = new Date(b.start_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+                    if (b.cancel_status === 'Pending') {
+                        unreadCount++;
+                        iconClass = 'bg-red'; icon = 'fa-solid fa-arrow-rotate-left';
+                        message = `<strong>Refund Requested</strong> for ${b.venue_name} (#${b.reference_no})`;
+                    } else if (b.resched_status === 'Pending') {
+                        unreadCount++;
+                        iconClass = 'bg-blue'; icon = 'fa-solid fa-calendar-day';
+                        message = `<strong>Reschedule Request</strong> for ${b.venue_name} (#${b.reference_no})`;
+                    } else if (b.venue_category === 'Event Hall' && b.booking_status === 'Pending') {
+                        unreadCount++;
+                        iconClass = 'bg-yellow'; icon = 'fa-solid fa-champagne-glasses';
+                        message = `<strong>New Event Inquiry</strong> for ${b.venue_name} (#${b.reference_no})`;
+                    }
 
-                if (b.cancel_status === 'Pending') {
-                    unreadCount++;
-                    iconClass = 'bg-red'; icon = 'fa-solid fa-arrow-rotate-left';
-                    message = `<strong>Refund Requested</strong> for ${b.venue_name} (#${b.reference_no})`;
-                } else if (b.resched_status === 'Pending') {
-                    unreadCount++;
-                    iconClass = 'bg-blue'; icon = 'fa-solid fa-calendar-day';
-                    message = `<strong>Reschedule Request</strong> for ${b.venue_name} (#${b.reference_no})`;
-                } else if (b.venue_category === 'Event Hall' && b.booking_status === 'Pending') {
-                    unreadCount++;
-                    iconClass = 'bg-yellow'; icon = 'fa-solid fa-champagne-glasses';
-                    message = `<strong>New Event Inquiry</strong> for ${b.venue_name} (#${b.reference_no})`;
+                    if (message !== '') {
+                        htmlList += `
+                            <a href="admin_dashboard.php?page=bookings&search=${b.reference_no}" class="notif-item">
+                                <div class="notif-icon ${iconClass}"><i class="${icon}"></i></div>
+                                <div class="notif-content">
+                                    <p>${message}</p>
+                                    <span>Target Date: ${timeAgo}</span>
+                                </div>
+                            </a>
+                        `;
+                    }
+                });
+
+                if (unreadCount > 0) {
+                    badge.innerText = unreadCount;
+                    badge.style.display = 'block';
+                    notifList.innerHTML = htmlList;
+                } else {
+                    badge.style.display = 'none';
+                    notifList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">You\'re all caught up!</div>';
                 }
-
-                if (message !== '') {
-                    htmlList += `
-                        <a href="admin_dashboard.php?page=bookings&search=${b.reference_no}" class="notif-item">
-                            <div class="notif-icon ${iconClass}"><i class="${icon}"></i></div>
-                            <div class="notif-content">
-                                <p>${message}</p>
-                                <span>Target Date: ${timeAgo}</span>
-                            </div>
-                        </a>
-                    `;
-                }
-            });
-
-            if (unreadCount > 0) {
-                badge.innerText = unreadCount;
-                badge.style.display = 'block';
-                notifList.innerHTML = htmlList;
-            } else {
-                badge.style.display = 'none';
-                notifList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">You\'re all caught up!</div>';
             }
 
-        }).catch(e => console.log('Notif check silent fail', e));
+            // B. BROADCAST DATA TO OTHER SCRIPTS
+            // This allows admin_overview.js to receive the exact same payload without making a second fetch!
+            const event = new CustomEvent('SevillaDashboardData', { detail: data });
+            window.dispatchEvent(event);
+
+        }).catch(e => console.log('Dashboard fetch silent fail', e));
     }
 
     // Run instantly on page load, then check every 60 seconds
-    fetchGlobalNotifs();
-    setInterval(fetchGlobalNotifs, 60000); 
+    fetchGlobalData();
+    setInterval(fetchGlobalData, 60000); 
 });

@@ -13,50 +13,53 @@ document.addEventListener("DOMContentLoaded", () => {
         return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
     }
   
-    async function loadDashboardData() {
-        try {
-            const response = await fetch('actions/admin/get_dashboard_stats.php');
-            const data = await response.json();
-            
-            if(data.error) return console.error("Dashboard Error:", data.error);
+    // =========================================================================
+    // LISTEN FOR DATA BROADCAST FROM admin_notifications.js
+    // Prevents redundant polling of the backend endpoint.
+    // =========================================================================
+    window.addEventListener('SevillaDashboardData', (e) => {
+        const data = e.detail;
+        if(data.error) return console.error("Dashboard Error:", data.error);
 
-            // 1. Maintenance Alerts
-            const alertsContainer = document.getElementById('maintenance-alerts-container');
-            if (alertsContainer) {
-                alertsContainer.innerHTML = ''; 
-                if (data.maintenanceAlerts && data.maintenanceAlerts.length > 0) {
-                    data.maintenanceAlerts.forEach(alert => {
-                        alertsContainer.insertAdjacentHTML('beforeend', `
-                            <div class="maintenance-alert">
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                                <div>
-                                    <strong>Out of Order: ${escapeHTML(alert.name)}</strong>
-                                    <p>${escapeHTML(alert.maintenance_type)} - ${escapeHTML(alert.notes || 'No extra notes provided.')}</p>
-                                </div>
+        // 1. Maintenance Alerts
+        const alertsContainer = document.getElementById('maintenance-alerts-container');
+        if (alertsContainer) {
+            alertsContainer.innerHTML = ''; 
+            if (data.maintenanceAlerts && data.maintenanceAlerts.length > 0) {
+                data.maintenanceAlerts.forEach(alert => {
+                    alertsContainer.insertAdjacentHTML('beforeend', `
+                        <div class="maintenance-alert">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <div>
+                                <strong>Out of Order: ${escapeHTML(alert.name)}</strong>
+                                <p>${escapeHTML(alert.maintenance_type)} - ${escapeHTML(alert.notes || 'No extra notes provided.')}</p>
                             </div>
-                        `);
-                    });
-                }
+                        </div>
+                    `);
+                });
             }
-
-            // 2. Stats
-            document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
-            document.getElementById('stat-action-req').textContent = data.actionRequired;
-            document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
-            document.getElementById('stat-occupancy-rate').textContent = `${data.occupancyRate}%`;
-
-            // 3. Render Sections
-            renderCharts(data.charts);
-            renderTodaysOperations(data.todaysOperations);
-            renderUpcomingEvents(data.upcomingEvents);
-            renderRecentBookings(data.recentBookings);
-
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
         }
-    }
+
+        // 2. Top Stats Row
+        document.getElementById('stat-monthly-revenue').textContent = currencyFormatter.format(data.monthlyRevenue);
+        document.getElementById('stat-action-req').textContent = data.actionRequired;
+        document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
+        document.getElementById('stat-occupancy-rate').textContent = `${data.occupancyRate}%`;
+
+        // 3. Render Advanced Sections
+        renderCharts(data.charts);
+        renderTodaysOperations(data.todaysOperations);
+        renderUpcomingEvents(data.upcomingEvents);
+        renderRecentBookings(data.recentBookings);
+    });
   
     function renderCharts(chartsData) {
+        // Destroy old charts to prevent overlapping when updated
+        let revChart = Chart.getChart("revenueChart");
+        let statChart = Chart.getChart("statusChart");
+        if(revChart) revChart.destroy();
+        if(statChart) statChart.destroy();
+
         new Chart(document.getElementById("revenueChart").getContext("2d"), {
             type: "bar",
             data: { labels: chartsData.revenue.labels, datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }] },
@@ -148,7 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
             else if (typeLower.includes('seminar') || typeLower.includes('corporate') || typeLower.includes('meeting')) { badgeBg = '#dbeafe'; badgeText = '#1e40af'; }
 
             const badgeHtml = `<span style="background:${badgeBg}; color:${badgeText}; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">${escapeHTML(eventType)}</span>`;
-            const clickAction = `window.location.href='admin_dashboard.php?page=bookings&search=${e.id}'`;
+            const clickAction = `window.location.href='admin_dashboard.php?page=bookings&search=${e.reference_no}'`;
 
             modalBody.insertAdjacentHTML('beforeend', `<tr style="cursor:pointer;" onclick="${clickAction}" onmouseover="this.style.backgroundColor='rgba(214,168,112,0.1)'" onmouseout="this.style.backgroundColor='transparent'">
                 <td style="font-weight:600; color:var(--color-gold);">${dateStr}</td>
@@ -235,8 +238,4 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-
-    // Start Dashboard
-    loadDashboardData();
-    setInterval(loadDashboardData, 60000); // Auto-refresh every 60s
 });
