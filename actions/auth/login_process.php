@@ -40,6 +40,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         //Verify the typed password against the encrypted one in the database
         if (password_verify($password, $user['password_hash'])) {
             
+            // =========================================================================
+            // SECURITY FIX: SESSION FIXATION PREVENTION
+            // Destroy the old, unauthenticated session ID and issue a brand new one
+            // =========================================================================
+            session_regenerate_id(true);
+            
             // Success! Save user data into the Session
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = $user['role'];
