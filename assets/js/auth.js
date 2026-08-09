@@ -88,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
               // If the button is disabled (timer is running), do nothing
               if (this.style.pointerEvents === 'none') return;
 
-              // 1. Tell PHP to generate a new code in the background
+              // 1. Tell PHP to generate and email a new code in the background
               fetch('actions/auth/resend_code.php', {
                   method: 'POST',
                   headers: { 
@@ -99,8 +99,12 @@ document.addEventListener("DOMContentLoaded", () => {
               })
               .then(response => response.text())
               .then(data => {
-                  // For testing: Show the new code in an alert
-                  alert("DEVELOPMENT MODE:\nYour NEW verification code is: " + data);
+                  // NO MORE DEV MODE LEAKS!
+                  if (data === "Success") {
+                      alert("A new verification code has been sent to your email inbox!");
+                  } else {
+                      alert(data); // Shows the error (e.g. "Account already verified")
+                  }
               });
 
               // 2. Disable the button and start the 60-second UI timer

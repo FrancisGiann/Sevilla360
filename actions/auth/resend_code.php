@@ -25,11 +25,46 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['email'])) {
     $stmt->execute();
 
     if ($stmt->affected_rows > 0) {
-        // Success! In production, use PHPMailer to email $new_code to $email here.
-        // For our test, we just echo the code back to the JavaScript so it can alert it.
-        echo $new_code;
+        
+        // 3. Fetch the customer's name for the email
+        $name_stmt = $conn->prepare("SELECT first_name, last_name FROM customers WHERE email = ? LIMIT 1");
+        $name_stmt->bind_param("s", $email);
+        $name_stmt->execute();
+        $name_res = $name_stmt->get_result();
+        $customer_name = "Guest";
+        if ($name_res->num_rows > 0) {
+            $c = $name_res->fetch_assoc();
+            $customer_name = trim($c['first_name'] . ' ' . $c['last_name']);
+        }
+        
+        // 4. Send the Email!
+        require_once '../../includes/mailer.php';
+        $subject = "Your New Verification Code - Sevilla360";
+        $html_content = "
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;'>
+            <h2 style='color: #d6a870; text-align: center;'>SEVILLA360</h2>
+            <div style='background: #faf9f7; padding: 20px; border-radius: 6px; text-align: center;'>
+                <h3 style='margin-top: 0; color: #2a2522;'>Hello, $customer_name!</h3>
+                <p style='color: #555; font-size: 16px;'>You requested a new verification code. Please use the 6-digit code below to verify your account. It expires in 15 minutes.</p>
+                
+                <div style='background: #fff; border: 2px dashed #d6a870; padding: 15px; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #2a2522; margin: 20px auto; width: fit-content;'>
+                    $new_code
+                </div>
+                
+                <p style='color: #888; font-size: 12px; margin-top: 20px;'>If you did not request this code, please ignore this email.</p>
+            </div>
+        </div>
+        ";
+        
+        try {
+            send_custom_email($email, $customer_name, $subject, $html_content);
+            echo "Success"; // NEVER ECHO THE CODE. JUST "Success".
+        } catch (Exception $e) {
+            echo "Error: Failed to send email. Please try again later.";
+        }
+
     } else {
-        echo "Error: Could not resend. Account may already be verified.";
+        echo "Error: Could not resend. Account may not exist or is already verified.";
     }
 
     $stmt->close();
