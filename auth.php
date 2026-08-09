@@ -8,6 +8,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?php echo $_SESSION['csrf_token']; ?>">
     <title>Authentication - SEVILLA360</title>
 
     <link rel="stylesheet" href="assets/css/style.css">
@@ -36,6 +37,9 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 <p class="auth-subtitle">Sign in to manage your bookings</p>
 
                 <form id="form-login" action="actions/auth/login_process.php" method="POST">
+                    <!-- CSRF TOKEN INJECTED HERE -->
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
                         <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
@@ -55,7 +59,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 </form>
 
                 <div class="auth-footer">
-                    New customer? <a id="link-goto-register">Create Account</a>
+                    New customer? <a id="link-goto-register" style="cursor: pointer;">Create Account</a>
                 </div>
             </div>
 
@@ -65,6 +69,8 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 <p class="auth-subtitle">Book venues & manage reservations online</p>
 
                 <form id="form-register" action="actions/auth/register_process.php" method="POST">
+                    <!-- CSRF TOKEN INJECTED HERE -->
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
 
                     <div class="form-group">
                         <label>FIRST NAME</label>
@@ -78,20 +84,17 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
-                        <!-- MUST HAVE name="email" -->
                         <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
                     </div>
 
                     <div class="form-group">
                         <label>DATE OF BIRTH</label>
-                        <!-- MUST HAVE name="dob" -->
                         <input type="date" name="dob" class="form-control" required>
                     </div>
 
                     <div class="form-group">
                         <label>PASSWORD</label>
                         <div class="password-wrapper">
-                            <!-- MUST HAVE name="password" -->
                             <input type="password" name="password" class="form-control" placeholder="Create a password"
                                 required>
                             <span class="password-toggle">SHOW</span>
@@ -101,7 +104,6 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                     <div class="form-group">
                         <label>CONFIRM PASSWORD</label>
                         <div class="password-wrapper">
-                            <!-- MUST HAVE name="confirm_password" -->
                             <input type="password" name="confirm_password" class="form-control"
                                 placeholder="Confirm your password" required>
                             <span class="password-toggle">SHOW</span>
@@ -111,7 +113,8 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                     <div class="terms-checkbox-group">
                         <input type="checkbox" id="agree-checkbox" required>
                         <label for="agree-checkbox">
-                            I agree to the <span class="terms-link" id="link-goto-terms">Terms of Service</span> and
+                            I agree to the <span class="terms-link" id="link-goto-terms" style="cursor: pointer;">Terms
+                                of Service</span> and
                             Privacy Policy.
                         </label>
                     </div>
@@ -120,7 +123,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 </form>
 
                 <div class="auth-footer">
-                    Already have an account? <a id="link-goto-login">Log in</a>
+                    Already have an account? <a id="link-goto-login" style="cursor: pointer;">Log in</a>
                 </div>
             </div>
 
@@ -152,15 +155,20 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 <h2 class="auth-title">Administrator Portal</h2>
                 <p class="auth-subtitle">Secure system access</p>
 
-                <form id="form-admin">
+                <form id="form-admin" action="actions/auth/login_process.php" method="POST">
+                    <!-- CSRF TOKEN INJECTED HERE -->
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
                     <div class="form-group">
                         <label>ADMIN EMAIL</label>
-                        <input type="email" class="form-control" placeholder="admin@sevilla360.com" required>
+                        <input type="email" name="email" class="form-control" placeholder="admin@sevilla360.com"
+                            required>
                     </div>
                     <div class="form-group">
                         <label>PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" class="form-control" placeholder="Enter admin password" required>
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Enter admin password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
                     </div>
@@ -169,13 +177,13 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
                 </form>
 
                 <div class="auth-footer">
-                    <a id="link-back-login">&larr; Back to User Login</a>
+                    <a id="link-back-login" style="cursor: pointer;">&larr; Back to User Login</a>
                 </div>
             </div>
 
-
         </div>
     </div>
+
     <!-- EMAIL VERIFICATION MODAL -->
     <div id="verification-modal"
         style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center;">
@@ -193,6 +201,9 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
             </p>
 
             <form id="form-verify" action="actions/auth/verify_process.php" method="POST" style="margin-top: 20px;">
+                <!-- CSRF TOKEN INJECTED HERE -->
+                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
                 <!-- Hidden input to pass the email to PHP -->
                 <input type="hidden" name="email" id="verify-email-input">
 
@@ -213,7 +224,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
     </div>
 
     <!-- Link to the logic script -->
-    <script src="assets/js/auth.js?v=1.1"></script>
+    <script src="assets/js/auth.js?v=<?= time(); ?>"></script>
 </body>
 
 </html>
