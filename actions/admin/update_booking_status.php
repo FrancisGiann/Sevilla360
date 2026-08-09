@@ -70,6 +70,7 @@ try {
         $guests = intval($data['guests']);
         $event_type = trim($data['event_type']);
         $base_rate = floatval($data['base_rate']);
+        $scheme = $data['payment_scheme'] ?? '100% Full'; // <--- GRABS IT FROM JS
         $line_items = $data['line_items'] ?? [];
 
         // 1. Calculate new math
@@ -77,11 +78,11 @@ try {
         foreach ($line_items as $item) {
             $addons_amount += floatval($item['amount']);
         }
-        $new_total = $base_rate + $addons_amount; // Assuming extra pax isn't used for events, but you can add it if needed.
+        $new_total = $base_rate + $addons_amount;
 
-        // 2. Update Main Bookings Table (AUTO-APPROVE THE BOOKING)
-        $stmt_b = $conn->prepare("UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, booking_status = 'Confirmed' WHERE id = ?");
-        $stmt_b->bind_param("idddi", $guests, $base_rate, $addons_amount, $new_total, $booking_id);
+        // 2. Update Main Bookings Table (SAVES THE SCHEME!)
+        $stmt_b = $conn->prepare("UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, payment_scheme = ?, booking_status = 'Confirmed' WHERE id = ?");
+        $stmt_b->bind_param("idddsi", $guests, $base_rate, $addons_amount, $new_total, $scheme, $booking_id);
         $stmt_b->execute();
 
         // 3. Update Event Details

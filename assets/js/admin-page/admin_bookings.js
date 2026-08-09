@@ -795,6 +795,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         const guests = document.getElementById('ep-guests').value;
                         const eventType = document.getElementById('ep-event-type').value;
                         const baseRate = document.getElementById('ep-base-rate').value;
+                        const scheme = document.getElementById('ep-payment-scheme').value; // <--- GRABS THE SCHEME
                   
                         let lineItemsArr = [];
                         document.querySelectorAll(".ep-row").forEach(row => {
@@ -808,6 +809,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 guests: guests, 
                                 event_type: eventType, 
                                 base_rate: baseRate,
+                                payment_scheme: scheme, // <--- SENDS SCHEME TO PHP
                                 line_items: lineItemsArr
                             });
                         }, 'editPriceModal');

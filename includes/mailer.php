@@ -54,8 +54,10 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     $subject = "Sevilla360: Your Booking Itinerary [$ref_no]";
 
-    // Build the Itemized Breakdown HTML
+    // Build the Itemized Breakdown HTML (Always show items, but hide total for inquiries)
     $breakdown_html = "";
+    $is_inquiry = (strpos($status, 'Inquiry') !== false);
+
     if (count($line_items) > 0 || $booking['category'] === 'Event Hall') {
         $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Itemized Estimate:</strong></td></tr>";
         $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
@@ -65,10 +67,11 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         }
     }
 
-    if (strpos($status, 'Inquiry') !== false) {
+    // Hide all money math if it is just a pending inquiry
+    if ($is_inquiry) {
         $money_block = $breakdown_html . "
-            <tr><td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Estimated Total:</strong></td><td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 16px; color: #d6a870;'><strong>₱" . number_format($total_amt, 2) . "</strong></td></tr>
-            <tr><td colspan='2' style='padding: 5px 12px; text-align: center; color: #888; font-size: 12px; font-style: italic;'>*This is a preliminary estimate subject to final consultation.</td></tr>
+            <tr><td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Estimated Total:</strong></td><td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 16px; color: #d6a870;'><strong>To Be Arranged</strong></td></tr>
+            <tr><td colspan='2' style='padding: 5px 12px; text-align: center; color: #888; font-size: 12px; font-style: italic;'>*Our coordinator will consult with you to provide an exact quotation.</td></tr>
         ";
         $header_title = "EVENT INQUIRY RECEIVED";
         $header_desc = "We have received your event inquiry. Based on your selections, here is your preliminary estimate. Our coordinator will contact you shortly to finalize the details and exact pricing.";
@@ -140,6 +143,9 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     }
 }
 
+// -------------------------------------------------------------
+// STANDALONE FUNCTION (Fixed from being nested!)
+// -------------------------------------------------------------
 function send_custom_email($to_email, $to_name, $subject, $html_content) {
     $smtp_email = $_ENV['SMTP_EMAIL']; 
     $smtp_password = $_ENV['SMTP_PASSWORD']; 
@@ -166,32 +172,94 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
         $mail->send();
         return true;
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+}
 
-    function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $total_amount, $dashboard_link) {
+// -------------------------------------------------------------
+// STANDALONE FUNCTION (Fixed from being nested!)
+// -------------------------------------------------------------
+function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $total_amount, $dashboard_link) {
     global $conn;
     $smtp_email = $_ENV['SMTP_EMAIL']; 
     $smtp_password = $_ENV['SMTP_PASSWORD']; 
 
-    $subject = "Sevilla360: Your Event Invoice is Ready [$ref_no]";
-    $formatted_total = number_format($total_amount, 2);
+    // 1. Fetch Booking Details
+    $stmt = $conn->prepare("
+        SELECT b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.payment_scheme, v.name as venue_name 
+        FROM bookings b JOIN venues v ON b.venue_id = v.id 
+        WHERE b.reference_no = ?
+    ");
+    $stmt->bind_param("s", $ref_no);
+    $stmt->execute();
+    $booking = $stmt->get_result()->fetch_assoc();
 
+    // 2. Fetch Itemized Line Items!
+    $stmt_li = $conn->prepare("SELECT item_name, amount FROM booking_line_items WHERE booking_id = ?");
+    $stmt_li->bind_param("i", $booking['id']);
+    $stmt_li->execute();
+    $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    $subject = "Sevilla360: Your Final Event Invoice [$ref_no]";
+    
+    $check_in = date('F j, Y', strtotime($booking['start_date']));
+    $check_out = date('F j, Y', strtotime($booking['end_date']));
+    $date_str = ($check_in === $check_out) ? $check_in : "$check_in - $check_out";
+
+    // 3. Build the Itemized Breakdown HTML
+    $breakdown_html = "";
+    $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Finalized Itemized Invoice:</strong></td></tr>";
+    $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
+    
+    foreach ($line_items as $item) {
+        $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
+    }
+    
+    // 4. Calculate the required downpayment based on their scheme
+    $scheme = $booking['payment_scheme'];
+    $downpayment = 0;
+    if (strpos($scheme, '50%') !== false) $downpayment = $booking['total_amount'] * 0.50;
+    elseif (strpos($scheme, '20%') !== false) $downpayment = $booking['total_amount'] * 0.20;
+    else $downpayment = $booking['total_amount'];
+
+    // 5. Build the Email
     $html_content = "
-    <div style='background-color: #f4f4f4; padding: 40px 0; font-family: Arial, sans-serif;'>
-        <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden;'>
+    <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
+        <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
             <div style='background-color: #2a2522; padding: 30px; text-align: center;'>
-                <h1 style='color: #d6a870; margin: 0; font-size: 24px;'>SEVILLA360</h1>
+                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px;'>SEVILLA360</h1>
+                <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px;'>LUXURY RESORT & EVENTS</p>
             </div>
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0;'>Your Event Consultation is Complete!</h2>
-                <p style='color: #555; font-size: 16px; line-height: 1.6;'>
+                <p style='color: #555; font-size: 15px; line-height: 1.6;'>
                     Hello <strong>$customer_name</strong>,<br><br>
-                    Our administration has finalized your customized event quotation. Your total invoice amount is <strong>₱$formatted_total</strong>.
+                    Our administration has finalized your customized event quotation based on our recent consultation. Please review the updated details below.
                 </p>
-                <p style='color: #555; font-size: 16px; line-height: 1.6;'>
-                    To view your itemized breakdown and secure your dates, please log in to your dashboard to pay the downpayment.
-                </p>
+                
+                <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 20px;'>
+                    <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
+                        <tr>
+                            <td style='padding: 12px; border-bottom: 1px solid #eee; width: 40%;'><strong>Reference No:</strong></td>
+                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #d6a870;'><strong>$ref_no</strong></td>
+                        </tr>
+                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>" . $booking['venue_name'] . "</td></tr>
+                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Event Date:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$date_str</td></tr>
+                        <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>" . $booking['guests_count'] . " Persons</td></tr>
+                        
+                        $breakdown_html
+                        
+                        <tr>
+                            <td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Final Total Amount:</strong></td>
+                            <td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 18px; color: #d6a870;'><strong>₱" . number_format($booking['total_amount'], 2) . "</strong></td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 12px; border-bottom: none;'><strong>Required to Secure Dates ($scheme):</strong></td>
+                            <td style='padding: 12px; border-bottom: none; text-align: right; color: #e06666;'><strong>₱" . number_format($downpayment, 2) . "</strong></td>
+                        </tr>
+                    </table>
+                </div>
+
                 <div style='text-align: center; margin-top: 30px;'>
-                    <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>View Dashboard & Pay</a>
+                    <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>Pay Now to Secure Booking</a>
                 </div>
             </div>
         </div>
@@ -216,7 +284,5 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
         $mail->Body    = $html_content;
         $mail->send();
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
-}
-
 }
 ?>

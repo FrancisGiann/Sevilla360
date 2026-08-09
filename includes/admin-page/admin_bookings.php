@@ -399,6 +399,19 @@
             <div id="ep-line-items"
                 style="max-height: 200px; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;"></div>
 
+            <!-- NEW: ADMIN PAYMENT SCHEME SELECTOR -->
+            <div style="margin-bottom: 20px;">
+                <label style="display:block; font-weight:600; margin-bottom:5px;">Required Payment Scheme</label>
+                <select id="ep-payment-scheme"
+                    style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px; font-size: 0.95rem;">
+                    <option value="100% Full">100% Full Payment</option>
+                    <option value="50% Downpayment">50% Downpayment</option>
+                    <option value="20% Reservation" selected>20% Reservation Fee</option>
+                </select>
+                <small style="color: #666; display: block; margin-top: 5px;">This dictates how much the customer must
+                    pay today via their dashboard.</small>
+            </div>
+
             <div class="refund-total"
                 style="margin-top: 10px; justify-content: space-between; background: #faf9f7; padding: 15px; border-radius: 6px; border: 1px dashed #ccc;">
                 <span class="label" style="font-size:1.2rem;">Final Total:</span>
