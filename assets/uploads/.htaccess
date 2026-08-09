@@ -1,0 +1,19 @@
+# 1. Disable PHP Execution
+php_flag engine off
+RemoveHandler .phtml .php .php3 .php4 .php5 .php6 .phps .cgi .exe .pl .asp .aspx .shtml .shtm .fcgi .fpl .jsp .htm .html .wml
+
+# 2. Block execution in Apache AddHandler
+<FilesMatch "\.(php|phtml|php3|php4|php5|php6|phps|cgi|exe|pl|asp|aspx|shtml|shtm|fcgi|fpl|jsp|htm|html|wml)$">
+    SetHandler None
+    ForceType text/plain
+</FilesMatch>
+
+# 3. Only allow browsers to access images
+Order Deny,Allow
+Deny from all
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Allow from all
+</FilesMatch>
+
+# 4. Prevent directory listing (so people can't see all your files)
+Options -Indexes
