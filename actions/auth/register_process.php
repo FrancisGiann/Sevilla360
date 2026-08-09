@@ -16,6 +16,12 @@ $cleanup_stmt->close();
 // =========================================================================
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+// CSRF PROTECTION FOR FORMS
+    if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        echo "<script>alert('Security token expired. Please refresh the page and try again.'); window.history.back();</script>";
+        exit();
+    }
     
     //  Sanitize and retrieve POST data
     $first_name = trim($_POST['first_name']);

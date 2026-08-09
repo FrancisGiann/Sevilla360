@@ -13,6 +13,7 @@ $active_page = isset($active_page) ? $active_page : '';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
     <title><?php echo $page_title; ?></title>
 
     <!-- Google Fonts (Playfair Display, Inter, Great Vibes) -->

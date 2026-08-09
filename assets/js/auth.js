@@ -1,4 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   // --- View Elements ---
   const viewLogin = document.getElementById("view-user-login");
   const viewRegister = document.getElementById("view-user-register");
@@ -89,7 +91,10 @@ document.addEventListener("DOMContentLoaded", () => {
               // 1. Tell PHP to generate a new code in the background
               fetch('actions/auth/resend_code.php', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  headers: { 
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                      'X-CSRF-Token': csrfToken
+                  },
                   body: 'email=' + encodeURIComponent(verifyEmail)
               })
               .then(response => response.text())

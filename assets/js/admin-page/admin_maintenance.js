@@ -1,11 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
     if (!document.getElementById("cal-ui-maint")) return;
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     const maintTabs = document.querySelectorAll("#maintenance-tabs .tab-btn");
     const specificVenueSelect = document.getElementById("maint-specific-venue");
     const specificVenueLabel = document.getElementById("label-specific-venue");
     const sumMaintCategory = document.getElementById("sum-maint-category");
     const sumMaintUnit = document.getElementById("sum-maint-unit");
+    
 
     let currentCategory = "Event Hall";
 
@@ -139,7 +141,11 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.innerText = "SCHEDULING...";
             btn.disabled = true;
 
-            const res = await fetch("actions/admin/schedule_maintenance.php", { method: "POST", body: formData });
+            const res = await fetch("actions/admin/schedule_maintenance.php", { 
+                method: "POST", 
+                headers: { "X-CSRF-Token": csrfToken },
+                body: formData 
+            });
             const data = await res.text();
             const response = data.split("|");
 
@@ -172,7 +178,10 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const res = await fetch("actions/admin/delete_maintenance.php", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken 
+                    },
                     body: JSON.stringify({ id: maintId })
                 });
                 
@@ -208,7 +217,10 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const res = await fetch("actions/admin/complete_maintenance.php", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "X-CSRF-Token": csrfToken 
+                    },
                     body: JSON.stringify({ id: maintId })
                 });
                 

@@ -8,6 +8,16 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
     exit;
 }
 
+// ==========================================
+// CSRF PROTECTION GUARD (JSON)
+// ==========================================
+$client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'CSRF validation failed. Unauthorized request.']);
+    exit;
+}
+
 $rawData = file_get_contents('php://input');
 $data = json_decode($rawData, true);
 

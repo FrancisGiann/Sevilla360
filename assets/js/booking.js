@@ -6,6 +6,7 @@
 
 class BookingController {
     constructor() {
+        this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         this.state = {
             activeTabId: 'event-hall', 
             isDatesLocked: false,
@@ -290,7 +291,12 @@ class BookingController {
     }
 
     async unlockDatesAPI() {
-        try { await fetch('actions/bookings/unlock_dates.php'); } 
+        try { 
+            await fetch('actions/bookings/unlock_dates.php', {
+                method: 'POST', // Changed to POST
+                headers: { "X-CSRF-Token": this.csrfToken } // Added the token!
+            }); 
+        } 
         catch (error) { console.error("Unlock failed", error); }
     }
 
@@ -328,7 +334,11 @@ class BookingController {
             confirmBtn.disabled = true;
 
             try {
-                const res = await fetch('actions/bookings/lock_dates.php', { method: 'POST', body: formData });
+                const res = await fetch('actions/bookings/lock_dates.php', { 
+                method: 'POST', 
+                headers: { "X-CSRF-Token": this.csrfToken }, 
+                body: formData 
+            });
                 const text = await res.text();
                 const response = text.split('|');
 
@@ -698,7 +708,11 @@ class BookingController {
             btn.innerText = "PROCESSING...";
             btn.disabled = true;
 
-            const res = await fetch('actions/bookings/submit_online.php', { method: 'POST', body: formData });
+            const res = await fetch('actions/bookings/submit_online.php', { 
+                method: 'POST', 
+                headers: { "X-CSRF-Token": this.csrfToken }, 
+                body: formData 
+            });
             const data = await res.text();
             const response = data.split('|');
             

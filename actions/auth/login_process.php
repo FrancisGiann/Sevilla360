@@ -8,6 +8,12 @@ require '../../config/db_connect.php';
 // Check if the form was actually submitted
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
+    // CSRF PROTECTION FOR FORMS
+    if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        echo "<script>alert('Security token expired. Please refresh the page and try again.'); window.history.back();</script>";
+        exit();
+    }
+    
     // Grab the data from the HTML form's 'name' attributes
     $email = $_POST['email'];
     $password = $_POST['password'];

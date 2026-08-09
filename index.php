@@ -4,7 +4,8 @@ $extra_css = 'assets/css/style.css?v=' . time();
 $active_page = 'home';
 
 require_once 'config/db_connect.php';
-
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 // 1. FETCH CMS IMAGES
 $cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
 $cms_images = [];
@@ -20,6 +21,7 @@ $cms_images[$row['slot_assignment']] = $row['file_path'];
 function get_cms_image($slot_name, $default_url, $cms_images) {
 return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
 }
+
 
 include 'includes/header.php';
 ?>

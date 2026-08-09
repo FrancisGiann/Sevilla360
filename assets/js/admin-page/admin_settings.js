@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // 1. TAB SWITCHING LOGIC
   // =========================================================
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   const tabLinks = document.querySelectorAll(".tab-link");
   const settingsPanels = document.querySelectorAll(".settings-panel");
 
@@ -69,6 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       fetch("actions/admin/save_preferences.php", {
         method: "POST",
+        headers: { "X-CSRF-Token": csrfToken },
         body: formData,
       })
       .then(res => res.text())
@@ -219,7 +221,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const formData = new FormData(this);
       formData.append("category", catSelect.value); // Re-append because disabled selects aren't sent
 
-      fetch("actions/admin/save_venue.php", { method: "POST", body: formData })
+      fetch("actions/admin/save_venue.php", { 
+          method: "POST", 
+          headers: { "X-CSRF-Token": csrfToken },
+          body: formData 
+      })
       .then(res => res.json())
       .then(data => {
           if (data.success) {

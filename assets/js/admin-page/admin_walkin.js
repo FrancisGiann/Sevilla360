@@ -6,6 +6,7 @@
 
 class AdminWalkinController {
     constructor() {
+        this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         this.state = {
             activeTabId: 'tab-event',
             isDatesLocked: false,     
@@ -437,11 +438,57 @@ class AdminWalkinController {
             formData.append("stay_type", stayRadio ? stayRadio.value : 'Day Time Stay');
         }
 
+        // =========================================================
+        // CAPTURE CUSTOM HTML ADD-ONS AS LINE ITEMS FOR EVENT HALL
+        // =========================================================
+        if (context.roomType === 'Event Hall') {
+            let customLineItems = [];
+
+            // 1. Catering
+            const checkCatering = document.getElementById('check-catering');
+            if (checkCatering && checkCatering.checked) {
+                const activeTier = document.querySelector('input[name="catering-tier"]:checked');
+                if (activeTier) {
+                    const tierName = activeTier.parentElement.querySelector('h4').innerText;
+                    const tierPrice = parseFloat(activeTier.value) || 0;
+                    const guestCount = parseInt(context.guests) || 0;
+                    const totalCatering = tierPrice * guestCount;
+                    customLineItems.push({
+                        name: `Catering: ${tierName} (${guestCount} pax)`,
+                        amount: totalCatering
+                    });
+                }
+            }
+
+            // 2. Hotel Rooms
+            const checkRooms = document.getElementById('check-rooms');
+            if (checkRooms && checkRooms.checked) {
+                const deluxeQty = parseInt(document.getElementById('qty-deluxe')?.innerText) || 0;
+                const vipQty = parseInt(document.getElementById('qty-vip')?.innerText) || 0;
+                
+                if (deluxeQty > 0) customLineItems.push({ name: `Reserved Deluxe Room (x${deluxeQty})`, amount: (deluxeQty * 4500) });
+                if (vipQty > 0) customLineItems.push({ name: `Reserved VIP Suite (x${vipQty})`, amount: (vipQty * 8500) });
+            }
+
+            // 3. A/V Setup
+            const checkAv = document.getElementById('check-av');
+            if (checkAv && checkAv.checked) {
+                customLineItems.push({ name: `Premium A/V Setup`, amount: 5000 });
+            }
+
+            formData.append('custom_line_items', JSON.stringify(customLineItems));
+        }
+        // =========================================================
+
         try {
             btnConfirm.innerText = "PROCESSING...";
             btnConfirm.disabled = true;
 
-            const res = await fetch("actions/bookings/submit_walkin.php", { method: "POST", body: formData });
+            const res = await fetch("actions/bookings/submit_walkin.php", { 
+                method: "POST", 
+                headers: { "X-CSRF-Token": this.csrfToken }, 
+                body: formData 
+            });
             const data = await res.text();
             const response = data.split("|");
 

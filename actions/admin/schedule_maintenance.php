@@ -8,6 +8,16 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'admin' && $_SESSION['ro
     exit();
 }
 
+// ==========================================
+// CSRF PROTECTION GUARD (TEXT)
+// ==========================================
+$client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
+    http_response_code(403);
+    echo "Error|CSRF validation failed. Unauthorized request.";
+    exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
@@ -63,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // ==========================================
-        // FIX: ACTUALLY INSERT INTO MAINTENANCE TABLE
+        // ACTUALLY INSERT INTO MAINTENANCE TABLE
         // ==========================================
         $maint_stmt = $conn->prepare("INSERT INTO maintenance (venue_id, start_date, end_date, maintenance_type, notes, is_blocking) VALUES (?, ?, ?, ?, ?, ?)");
         $maint_block_val = $is_blocking ? 1 : 0;

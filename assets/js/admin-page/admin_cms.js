@@ -4,6 +4,8 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
   // =========================================================
   // 1. UNIVERSAL MODAL UTILITIES
   // =========================================================
@@ -192,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // Use XMLHttpRequest for actual progress tracking!
           const xhr = new XMLHttpRequest();
           xhr.open("POST", "actions/admin/upload_media.php", true);
+          xhr.setRequestHeader("X-CSRF-Token", csrfToken);
 
           // Track Upload Progress
           xhr.upload.addEventListener("progress", (event) => {
@@ -362,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               fetch("actions/admin/set_primary_media.php", {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
                   body: JSON.stringify({ id: mediaId, slot_assignment: slot })
               })
               .then(res => res.json())
@@ -387,9 +390,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   deleteBtn.innerHTML = "...";
                   deleteBtn.disabled = true;
 
-                  fetch("actions/admin/delete_media.php", {
+                   fetch("actions/admin/delete_media.php", {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
                       body: JSON.stringify({ id: mediaId })
                   })
                   .then(res => res.json())
@@ -428,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
               fetch("actions/admin/delete_media.php", {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
                   body: JSON.stringify({ ids: ids })
               })
               .then(res => res.json())

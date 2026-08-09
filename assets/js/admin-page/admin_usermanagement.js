@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
-  
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
     // --- 1. Tab Switching & Search ---
     const tabs = document.querySelectorAll(".um-tab");
     const tables = document.querySelectorAll(".um-table");
@@ -109,7 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         fetch('actions/admin/manage_staff.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify(payload)
         })
         .then(res => res.json())
@@ -122,9 +124,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".btn-delete-staff").forEach(btn => {
         btn.addEventListener('click', function() {
             if (confirm("Are you sure you want to permanently delete this staff member?")) {
-                fetch('actions/admin/manage_staff.php', {
+                  fetch('actions/admin/manage_staff.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({ action: 'delete', user_id: this.getAttribute('data-id') })
                 })
                 .then(res => res.json())
@@ -175,7 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 fetch('actions/admin/suspend_user.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({ user_id: userId, action: newStatus })
                 })
                 .then(res => res.json())

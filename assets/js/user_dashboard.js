@@ -4,6 +4,7 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
   // =========================================================
   // UNIVERSAL MODAL UTILITIES (Replaces alert and confirm)
@@ -141,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
               fetch('actions/user/request_cancel.php', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                   body: JSON.stringify({ booking_id: bookingId, reason: 'Unpaid Auto-Cancel' })
               })
               .then(res => res.json())
@@ -195,11 +196,11 @@ document.addEventListener("DOMContentLoaded", () => {
       this.innerText = "Processing...";
       this.disabled = true;
 
-      fetch("actions/user/request_cancel.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, reason: reason }),
-      })
+      fetch('actions/user/request_cancel.php', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                  body: JSON.stringify({ booking_id: bookingId, reason: 'Unpaid Auto-Cancel' }) 
+              })
       .then((response) => response.json())
       .then((data) => {
         if (data.success) showAlertModal("Success", data.message, "success", true);
@@ -272,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           fetch('actions/user/request_reschedule.php', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
               body: JSON.stringify({ booking_id: bookingId, new_start_date: newStart, new_end_date: newEnd, reason: reason })
           })
           .then(res => res.json())
@@ -409,7 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       fetch("actions/user/save_settings.php", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
           body: JSON.stringify(payload),
       })
       .then(res => res.json())
@@ -469,7 +470,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           fetch("actions/user/pay_existing.php", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
               body: JSON.stringify({ booking_id: bookingId })
           })
           .then(res => res.json())

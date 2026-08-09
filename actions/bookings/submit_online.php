@@ -7,6 +7,16 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     exit();
 }
 
+// ==========================================
+// CSRF PROTECTION GUARD (TEXT)
+// ==========================================
+$client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
+    http_response_code(403);
+    echo "Error: CSRF validation failed. Unauthorized request.";
+    exit;
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     try {
