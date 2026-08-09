@@ -20,6 +20,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $session_id = session_id();
 
     try {
+        // =========================================================================
+        // HYGIENE FIX: OPPORTUNISTIC CLEANUP
+        // Automatically delete all expired locks from the database before proceeding
+        // =========================================================================
+        $conn->query("DELETE FROM booking_locks WHERE expires_at < NOW()");
+        // =========================================================================
+
         if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
             $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
         } else {
@@ -39,7 +46,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($chk_maint->get_result()->num_rows > 0) throw new Exception("These dates are currently under maintenance.");
 
         // 2. Check existing bookings
-        // THE FIX: For Event Halls, only block if Confirmed. For others, block if Pending or Confirmed.
         if ($room_type === 'Event Hall') {
             $chk_booking = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Confirmed', 'Completed') AND (start_date <= ? AND end_date >= ?)");
         } else {
