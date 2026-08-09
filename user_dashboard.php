@@ -78,6 +78,7 @@ while ($row = $bookings_result->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
     <title>Dashboard | SEVILLA360</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -228,14 +229,18 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         if ($is_pending_inquiry) {
                                             $status_text = 'Inquiry Sent';
                                         } elseif ($b['booking_status'] === 'Confirmed') {
-                                            if ($b['payment_status'] === 'Partial') {
+                                            if ($b['payment_status'] === 'Paid') {
+                                                $badge_class = 'badge-paid';
+                                                $status_text = 'Fully Paid';
+                                                $filter_data = 'Paid';
+                                            } elseif ($b['payment_status'] === 'Partial') {
                                                 $badge_class = 'badge-partial';
                                                 $status_text = 'Partially Paid';
                                                 $filter_data = 'Partially Paid';
                                             } else {
-                                                $badge_class = 'badge-paid';
-                                                $status_text = 'Fully Paid';
-                                                $filter_data = 'Paid';
+                                                $badge_class = 'badge-pending'; 
+                                                $status_text = 'Unpaid';
+                                                $filter_data = 'Pending';
                                             }
                                         } elseif ($b['booking_status'] === 'Cancelled') {
                                             $badge_class = 'badge-cancelled';
@@ -267,7 +272,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         </td>
                                         <td class="action-cell">
 
-                                            <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && $b['payment_status'] === 'Partial')): ?>
+                                            <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial']))): ?>
                                             <?php if (!$is_pending_inquiry): ?>
                                             <button class="btn-action btn-green btn-pay-now"
                                                 data-id="<?php echo $b['id']; ?>">Pay Now</button>

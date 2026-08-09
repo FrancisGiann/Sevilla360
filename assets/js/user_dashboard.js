@@ -317,8 +317,21 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById('ud-title').innerText = `Booking #${data.id}`;
             
             const badge = document.getElementById('ud-status-badge');
-            badge.innerText = data.booking_status;
-            badge.className = 'badge ' + (data.booking_status === 'Confirmed' ? 'badge-paid' : (data.booking_status === 'Cancelled' ? 'badge-cancelled' : 'badge-pending'));
+            let badgeClass = 'badge-pending';
+            let badgeText = data.booking_status;
+
+            if (data.booking_status === 'Confirmed') {
+                if (data.payment_status === 'Paid') { badgeClass = 'badge-paid'; badgeText = 'Fully Paid'; }
+                else if (data.payment_status === 'Partial') { badgeClass = 'badge-partial'; badgeText = 'Partially Paid'; }
+                else { badgeClass = 'badge-pending'; badgeText = 'Unpaid'; }
+            } else if (data.booking_status === 'Cancelled') {
+                badgeClass = 'badge-cancelled'; badgeText = 'Cancelled';
+            } else if (data.booking_status === 'Pending') {
+                badgeText = 'Pending';
+            }
+
+            badge.innerText = badgeText;
+            badge.className = 'badge ' + badgeClass; 
 
             document.getElementById('ud-customer-name').innerText = `${data.first_name} ${data.last_name}`;
             document.getElementById('ud-venue').innerText = `${data.venue_name} (${data.venue_category})`;
