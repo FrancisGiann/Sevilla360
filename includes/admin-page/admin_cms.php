@@ -19,6 +19,7 @@ $venues_query = $conn->query("
 // 2. Setup Base Arrays
 $website_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-about' => ['title' => 'Homepage - About/Welcome Photo', 'badge' => 'Homepage', 'type' => 'standard'],
     'home-eventhall' => ['title' => 'Homepage - Event Hall Preview', 'badge' => 'Homepage', 'type' => 'standard'],
     'home-villa' => ['title' => 'Homepage - Villa Preview', 'badge' => 'Homepage', 'type' => 'standard'],
     'home-hotel' => ['title' => 'Homepage - Hotel Preview', 'badge' => 'Homepage', 'type' => 'standard']
@@ -277,6 +278,8 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
                     <optgroup label="System & Gallery">
                         <option value="home-hero" data-type="standard" style="display:none;">Landing Page - Hero Banner
                         </option>
+                        <option value="home-about" data-type="standard" style="display:none;">Homepage - About/Welcome
+                            Photo</option>
                         <option value="home-eventhall" data-type="standard" style="display:none;">Homepage - Event Hall
                             Preview</option>
                         <option value="home-villa" data-type="standard" style="display:none;">Homepage - Villa Preview

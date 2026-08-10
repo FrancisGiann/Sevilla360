@@ -52,7 +52,7 @@ include 'includes/header.php';
         <span class="idx-welcome-divider"></span>
         <div class="idx-welcome-grid">
             <div class="idx-welcome-img-wrap reveal">
-                <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                <img src="<?php echo get_cms_image('home-about', 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
                     alt="Stone courtyard with tropical greenery at M.I. Sevilla Resort">
                 <div class="idx-welcome-badge">
                     <strong>18</strong>
