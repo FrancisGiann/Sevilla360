@@ -1,6 +1,21 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
+
+require_once 'config/db_connect.php';
+
+// Fetch CMS images so auth page can reuse the homepage hero background
+$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
+$cms_images = [];
+if ($cms_query) {
+    while ($row = $cms_query->fetch_assoc()) {
+        $cms_images[$row['slot_assignment']] = $row['file_path'];
+    }
+}
+
+function get_cms_image($slot_name, $default_url, $cms_images) {
+    return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -12,12 +27,13 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
     <title>Authentication - SEVILLA360</title>
 
     <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/auth.css">
+    <link rel="stylesheet" href="assets/css/auth.css?v=<?= time(); ?>">
 </head>
 
-<body class="bg-beige">
+<body>
 
-    <div class="auth-page">
+    <div class="auth-page"
+        style="background: linear-gradient(rgba(42,37,34,0.6), rgba(42,37,34,0.6)), url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>') center/cover no-repeat;">
 
         <!-- BACK BUTTON TO HOMEPAGE -->
         <a href="index.php" class="back-home-btn">&larr; Back to Home</a>

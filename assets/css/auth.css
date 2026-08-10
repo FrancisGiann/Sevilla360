@@ -9,7 +9,12 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
+  background-attachment: fixed; /* subtle parallax on scroll */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
+
 
 .auth-header {
   text-align: center;
@@ -27,7 +32,7 @@
 
 .auth-tagline {
   font-family: var(--font-body);
-  color: var(--color-dark-light);
+  color: rgba(255, 255, 255, 0.85);
   text-transform: uppercase;
   letter-spacing: 2px;
   font-size: 0.85rem;
@@ -222,7 +227,7 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: var(--color-dark-light);
+  color: rgba(255, 255, 255, 0.85);
   display: inline-flex;
   align-items: center;
   transition: var(--transition-smooth);
@@ -235,6 +240,10 @@
 }
 
 @media (max-width: 768px) {
+  .auth-page {
+    background-attachment: scroll; /* fixed can jitter/scroll-jank on mobile */
+  }
+
   .back-home-btn {
     position: relative;
     top: 0;
