@@ -1,162 +1,199 @@
 <?php
 $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
-$extra_css = 'assets/css/style.css?v=' . time(); 
+$extra_css = 'assets/css/index.css?v=' . time();
 $active_page = 'home';
 
 require_once 'config/db_connect.php';
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
-// 1. FETCH CMS IMAGES
+
+// Fetch CMS images (same slots the old homepage used, so anything already
+// uploaded via Admin > Media CMS keeps working)
 $cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
 $cms_images = [];
 if ($cms_query) {
-while($row = $cms_query->fetch_assoc()) {
-$cms_images[$row['slot_assignment']] = $row['file_path'];
+    while ($row = $cms_query->fetch_assoc()) {
+        $cms_images[$row['slot_assignment']] = $row['file_path'];
+    }
 }
-}
-
-// 2. FALLBACK HELPER FUNCTION
-// This function checks if the Admin uploaded an image for a specific slot.
-// If they didn't, it uses the default Unsplash image so the website never looks broken.
 function get_cms_image($slot_name, $default_url, $cms_images) {
-return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+    return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
 }
-
 
 include 'includes/header.php';
 ?>
 
-<!-- Hero Section -->
-<!-- NOTICE: We moved the background image from style.css to an inline style so PHP can change it! -->
-<header class="hero"
-    style="background: url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>') center/cover no-repeat;">
-    <div class="hero-content reveal">
-        <h1>Where Every Event Becomes A Memory</h1>
-        <div class="hero-buttons">
-            <a href="booking.php" class="btn btn-primary">Book Your Stay</a>
-            <a href="#explore" class="btn btn-outline">Explore Resort</a>
-        </div>
-    </div>
-</header>
+<main class="idx-page">
 
-<!-- Welcome Section -->
-<section id="about" class="bg-white">
-    <div class="container split-layout reveal">
-        <div class="split-image">
-            <img src="assets/img/Logo.png" alt=" M.I. Sevilla Resort Welcome">
+    <!-- ===================== HERO ===================== -->
+    <header class="idx-hero"
+        style="background-image: url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>');">
+        <div class="idx-hero-content reveal">
+            <span class="idx-hero-script">M.I. Sevilla</span>
+            <span class="idx-hero-rule"></span>
+            <h1 class="idx-hero-title">
+                Where Every Event
+                <span class="idx-italic">Becomes A Memory</span>
+            </h1>
+            <p class="idx-hero-sub">
+                A private sanctuary of gardens, water and light — crafted for celebrations that
+                deserve to be remembered.
+            </p>
+            <div class="idx-hero-buttons">
+                <a href="booking.php" class="idx-btn idx-btn-gold">Book Your Stay</a>
+                <a href="#experiences" class="idx-btn idx-btn-outline-light">Explore Resort</a>
+            </div>
         </div>
-        <div class="split-text">
-            <div class="script-heading">Welcome</div>
-            <h2>To M.I. Sevilla Resort</h2>
-            <p>Discover a sanctuary of elegance and tranquility. Inspired by warm Scandinavian minimalism, our
-                spaces are meticulously crafted to provide an atmosphere of relaxed luxury. Whether you are hosting
-                a grand celebration or seeking a private escape, Sevilla360 ensures your journey is seamless from
-                the moment you book.</p>
-            <a href="#story" class="btn btn-primary">Our Story</a>
-        </div>
-    </div>
-</section>
+        <span class="idx-hero-scroll"></span>
+    </header>
 
-<!-- Events Highlight Section -->
-<section id="events" class="bg-beige">
-    <div class="container">
-        <div class="text-center reveal">
-            <h2>Curated Experiences</h2>
-            <p>Tailored venues for your most cherished milestones.</p>
+    <!-- ===================== WELCOME ===================== -->
+    <section class="idx-welcome" id="about">
+        <span class="idx-welcome-divider"></span>
+        <div class="idx-welcome-grid">
+            <div class="idx-welcome-img-wrap reveal">
+                <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                    alt="Stone courtyard with tropical greenery at M.I. Sevilla Resort">
+                <div class="idx-welcome-badge">
+                    <strong>18</strong>
+                    <span>Years of Hosting</span>
+                </div>
+            </div>
+
+            <div class="idx-welcome-text reveal" style="transition-delay: 0.1s;">
+                <span class="idx-script">Welcome</span>
+                <h2>M.I. Sevilla Resort</h2>
+                <span class="idx-rule-gold"></span>
+                <p>
+                    Tucked between quiet gardens and open sky, M.I. Sevilla Resort &amp; Events Place
+                    was built around a single belief — that a place can shape the way a moment is
+                    remembered. Our halls, villas and rooms are tended with the same care given to
+                    the people who fill them.
+                </p>
+                <p>
+                    From intimate gatherings to grand celebrations, every detail is composed with
+                    restraint, warmth and an eye for the unhurried.
+                </p>
+                <a href="#experiences" class="idx-welcome-cta">
+                    Our Story
+                    <span class="idx-cta-line"></span>
+                </a>
+            </div>
         </div>
-        <div class="grid-3">
-            <div class="event-card reveal" style="transition-delay: 0.1s;">
-                <div class="event-card-img">
+    </section>
+
+    <!-- ===================== EXPERIENCES ===================== -->
+    <section class="idx-experiences" id="experiences">
+        <div class="idx-experiences-head reveal">
+            <span class="idx-script">Curated</span>
+            <h2>Experiences</h2>
+            <span class="idx-rule-gold"></span>
+        </div>
+
+        <div class="idx-experiences-grid">
+            <article class="idx-exp-card reveal" style="transition-delay: 0.1s;">
+                <div class="idx-exp-img-wrap">
                     <img src="https://images.unsplash.com/photo-1517457373958-b7bdd4587205?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
                         alt="Meetings & Conferences">
+                    <span class="idx-exp-num">01</span>
                 </div>
-                <div class="event-card-content">
-                    <h3>Meetings & Conferences</h3>
-                    <p>Sophisticated spaces equipped for executive focus.</p>
-                </div>
-            </div>
-            <div class="event-card reveal" style="transition-delay: 0.2s;">
-                <div class="event-card-img">
+                <h3>Meetings &amp; Conferences</h3>
+                <span class="idx-exp-rule"></span>
+                <p>Considered spaces for focused work — natural light, quiet acoustics and service
+                    that anticipates.</p>
+            </article>
+
+            <article class="idx-exp-card reveal" style="transition-delay: 0.2s;">
+                <div class="idx-exp-img-wrap">
                     <img src="https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
                         alt="Weddings">
+                    <span class="idx-exp-num">02</span>
                 </div>
-                <div class="event-card-content">
-                    <h3>Weddings</h3>
-                    <p>Breathtaking backdrops for your perfect day.</p>
-                </div>
-            </div>
-            <div class="event-card reveal" style="transition-delay: 0.3s;">
-                <div class="event-card-img">
+                <h3>Weddings</h3>
+                <span class="idx-exp-rule"></span>
+                <p>Garden ceremonies that drift into candlelit evenings, held together by an
+                    unhurried elegance.</p>
+            </article>
+
+            <article class="idx-exp-card reveal" style="transition-delay: 0.3s;">
+                <div class="idx-exp-img-wrap">
                     <img src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
                         alt="Debut">
+                    <span class="idx-exp-num">03</span>
                 </div>
-                <div class="event-card-content">
-                    <h3>Debut</h3>
-                    <p>Elegant halls for unforgettable coming-of-age celebrations.</p>
-                </div>
-            </div>
+                <h3>Debut</h3>
+                <span class="idx-exp-rule"></span>
+                <p>A ballroom of gold and glass — a coming of age staged with quiet grandeur.</p>
+            </article>
         </div>
-    </div>
-</section>
+    </section>
 
-<!-- Booking Preview Section -->
-<section id="accommodations" class="bg-white">
-    <div class="container">
-        <div class="text-center reveal" style="margin-bottom: 4rem;">
-            <h2>Explore & Reserve</h2>
-            <p>Find the perfect space for your stay or event.</p>
-        </div>
+    <!-- ===================== EXPLORE & RESERVE ===================== -->
+    <section id="accommodations">
 
-        <div class="booking-row reveal">
-            <div class="booking-img-wrapper">
-                <!-- DYNAMIC EVENT HALL IMAGE -->
+        <!-- Row 1: Event Hall -->
+        <div class="idx-reserve-row reveal">
+            <div class="idx-reserve-grid">
                 <img src="<?php echo get_cms_image('home-eventhall', 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
-                    alt="The Grand Event Hall">
-            </div>
-            <div class="booking-info">
-                <h3>The Grand Event Hall</h3>
-                <p>A masterpiece of architectural design, our Event Hall offers expansive capacities,
-                    state-of-the-art acoustics, and a neutral palette ready to be transformed by your unique vision.
-                    Ideal for galas, grand debuts, and luxurious weddings.</p>
-                <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php?cat=Event Hall" class="btn btn-secondary">Explore 360°</a>
+                    alt="Grand event hall with chandeliers and vaulted ceiling">
+                <div class="idx-reserve-text">
+                    <span class="idx-eyebrow">Venue</span>
+                    <h3>The Grand Event Hall</h3>
+                    <p>Vaulted ceilings, arched light and a floor that carries five hundred guests
+                        without ever feeling crowded. The hall is the heart of the estate.</p>
+                    <div class="idx-reserve-buttons">
+                        <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                        <a href="showroom.php?cat=Event Hall" class="idx-btn idx-btn-outline-dark">Explore 360°</a>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="booking-row reveal">
-            <div class="booking-img-wrapper">
-                <!-- DYNAMIC VILLA IMAGE -->
+        <!-- Row 2: Villa (dark band) -->
+        <div class="idx-reserve-row idx-reserve-row-dark reveal">
+            <div class="idx-reserve-inner">
+                <div class="idx-reserve-text">
+                    <span class="idx-eyebrow">Stay</span>
+                    <h3>Private Resort Villa</h3>
+                    <p>A house of your own — plunge pool, shaded terrace, and the kind of quiet
+                        that only comes with distance from everything else.</p>
+                    <div class="idx-reserve-buttons">
+                        <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                        <a href="showroom.php?cat=Resort Villa" class="idx-btn idx-btn-outline-light">Explore 360°</a>
+                    </div>
+                </div>
                 <img src="<?php echo get_cms_image('home-villa', 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
-                    alt="Private Resort Villa">
-            </div>
-            <div class="booking-info">
-                <h3>Private Resort Villa</h3>
-                <p>Experience exclusivity in our Private Villas. Featuring a private pool, sunlit lounging areas,
-                    and minimalist Scandinavian interiors, it is the ultimate retreat for families and VIP guests
-                    seeking privacy and bespoke service.</p>
-                <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php?cat=Resort Villa" class="btn btn-secondary">Explore 360°</a>
+                    alt="Private resort villa with plunge pool at golden hour">
             </div>
         </div>
 
-        <div class="booking-row reveal">
-            <div class="booking-img-wrapper">
-                <!-- DYNAMIC HOTEL ROOM IMAGE -->
+        <!-- Row 3: Hotel Rooms (centered overlay) -->
+        <div class="idx-reserve-centered reveal">
+            <div class="idx-reserve-centered-imgwrap">
                 <img src="<?php echo get_cms_image('home-hotel', 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
-                    alt="Premium Hotel Rooms">
+                    alt="Premium hotel room with linen bedding and soft light">
             </div>
-            <div class="booking-info">
+            <div class="idx-reserve-centered-card">
+                <span class="idx-eyebrow">Rooms</span>
                 <h3>Premium Hotel Rooms</h3>
-                <p>Rest in absolute comfort. Our premium rooms blend warm beige tones with plush, tactile fabrics,
-                    creating a calming oasis to unwind after a day of celebration or intensive meetings.</p>
-                <a href="booking.php" class="btn btn-primary">Check Availability</a>
-                <a href="showroom.php?cat=Hotel Room" class="btn btn-secondary">Explore 360°</a>
+                <span class="idx-rule-gold"></span>
+                <p>Linen, timber and morning light. Rooms designed for the hours between the
+                    celebration and the next one.</p>
+                <div class="idx-reserve-buttons idx-center-mobile">
+                    <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                    <a href="showroom.php?cat=Hotel Room" class="idx-btn idx-btn-outline-dark">Explore 360°</a>
+                </div>
             </div>
         </div>
+    </section>
 
-    </div>
-</section>
+</main>
 
-<?php 
-include 'includes/footer.php'; 
-?>
+<?php include 'includes/footer.php'; ?>
+
+<!-- Nav hamburger/dropdown behavior + scroll-reveal engine (shared sitewide) -->
+<script src="assets/js/index.js?v=<?php echo time(); ?>"></script>
+
+</body>
+
+</html>

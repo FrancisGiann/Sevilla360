@@ -41,7 +41,7 @@
 .auth-card {
   background-color: var(--color-white);
   padding: 3rem;
-  border-radius: 8px;
+  border-radius: 0; /* Changed to 0 for luxury feel */
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--color-gold);
   width: 100%;
@@ -100,7 +100,7 @@
   width: 100%;
   padding: 14px 16px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 0; /* Changed to 0 */
   font-family: var(--font-body);
   font-size: 0.95rem;
   background-color: #f5f5f5;

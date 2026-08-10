@@ -9,10 +9,10 @@
 /* --- Variables --- */
 :root {
   --color-white: #ffffff;
-  --color-beige: #fdf2e2;
-  --color-gold: #d6a870;
+  --color-beige: #fdf2e2;      /* Matches the new homepage paper color */
+  --color-gold: #d6a870;       /* Matches the new homepage gold */
   --color-gold-hover: #c4965e;
-  --color-dark: #2a2522;
+  --color-dark: #2a2522;       /* Matches the new homepage ink color */
   --color-dark-light: #4a4440;
 
   --font-heading: "Playfair Display", serif;
@@ -23,8 +23,9 @@
   --transition-smooth: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
   --transition-snappy: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
-  --shadow-soft: 0 10px 30px rgba(42, 37, 34, 0.05);
-  --shadow-hover: 0 20px 40px rgba(42, 37, 34, 0.12);
+  /* Update shadows to match the softer Lovable design */
+  --shadow-soft: 0 30px 70px -35px rgba(42, 37, 34, 0.2);
+  --shadow-hover: 0 45px 90px -40px rgba(42, 37, 34, 0.3);
 }
 
 /* --- Resets & Base --- */
@@ -178,53 +179,43 @@ section {
 }
 
 
-/* --- Buttons --- */
+/* --- Buttons (Updated to match Lovable Design) --- */
 .btn {
-  display: inline-block;
-  padding: 14px 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 2.2rem;
   font-family: var(--font-body);
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   font-weight: 500;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: var(--transition-smooth);
+  transition: all 0.5s ease;
   border: 1px solid transparent;
+  border-radius: 0; /* Removes old rounded corners */
+  cursor: pointer;
 }
 
 .btn-primary {
-  background-color: var(--color-gold);
+  background: var(--color-gold);
   color: var(--color-white);
-}
-
-.btn-primary:hover {
-  background-color: var(--color-gold-hover);
-  transform: translateY(-3px);
   box-shadow: var(--shadow-soft);
 }
 
-.btn-outline {
-  background-color: transparent;
-  color: var(--color-white);
-  border-color: var(--color-white);
+.btn-primary:hover {
+  background: var(--color-gold-hover);
+  transform: translateY(-2px);
 }
 
-.btn-outline:hover {
-  background-color: var(--color-white);
+.btn-outline, .btn-secondary {
+  background: transparent;
+  border-color: rgba(214, 168, 112, 0.45); /* Minimal gold outline */
   color: var(--color-dark);
-  transform: translateY(-3px);
 }
 
-.btn-secondary {
-  background-color: transparent;
-  color: var(--color-black);
-  border-color: var(--color-gold);
-}
-
-.btn-secondary:hover {
-  background-color: var(--color-gold);
-  transform: translateY(-3px);
+.btn-outline:hover, .btn-secondary:hover {
+  background: rgba(42, 37, 34, 0.05);
+  transform: translateY(-2px);
 }
 /* ==========================================================================
    NEW: User Account Dropdown Menu
@@ -1158,4 +1149,175 @@ section {
   .navbar-brand {
     font-size: 1.5rem;
   }
+}
+
+/* ==========================================================================
+   GLOBAL FOOTER (Matches New Homepage Design)
+   ========================================================================== */
+.idx-footer {
+  background: var(--color-gold);
+  color: #2a2522;
+}
+.idx-footer-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+}
+.idx-footer-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 1fr);
+  gap: 3rem;
+}
+.idx-footer-brand span {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+.idx-footer-brand p {
+  margin-top: 1.25rem;
+  max-width: 20rem;
+  font-size: 0.85rem;
+  line-height: 1.9;
+  font-weight: 300;
+  color: rgba(42, 37, 34, 0.78);
+}
+.idx-footer-col h4 {
+  font-size: 0.65rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  margin: 0 0 1.5rem 0;
+}
+.idx-footer-col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.idx-footer-col li { margin-bottom: 0.75rem; }
+.idx-footer-col a {
+  font-size: 0.85rem;
+  font-weight: 300;
+  color: rgba(42, 37, 34, 0.82);
+  transition: opacity 0.3s ease;
+  text-decoration: none;
+}
+.idx-footer-col a:hover { opacity: 0.6; }
+.idx-footer-bottom {
+  margin-top: 4rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid rgba(42, 37, 34, 0.2);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(42, 37, 34, 0.65);
+}
+@media (min-width: 768px) {
+  .idx-footer-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ==========================================================================
+   DASHBOARD OVERRIDES (Admin & User) - LOVABLE MINIMAL LUXURY
+   ========================================================================== */
+
+/* 1. Sharp Corners for Cards, Inputs, and Modals */
+.admin-layout input, .admin-layout select, .admin-layout textarea,
+.admin-layout .stat-card, .admin-layout .chart-card, .admin-layout .widget-card,
+.admin-layout .table-card, .admin-layout .booking-card, .admin-layout .checkout-summary,
+.admin-layout .cms-card, .admin-layout .sidebar, .admin-layout .legend-box,
+.dashboard-layout input, .dashboard-layout select, .dashboard-layout textarea,
+.dashboard-layout .stat-card, .dashboard-layout .settings-card, 
+.dashboard-layout .history-container, .modal-box, .admin-modal, .modal-content {
+  border-radius: 0 !important;
+}
+
+/* 2. Global Button Styling (Wide tracking, uppercase, small font) */
+:is(.admin-layout, .dashboard-layout, .modal-overlay) .btn,
+:is(.admin-layout, .dashboard-layout, .modal-overlay) button[class*="btn-"],
+:is(.admin-layout, .dashboard-layout) .filter-pill,
+:is(.admin-layout, .dashboard-layout) .cms-pill,
+.fc-button-primary {
+  border-radius: 0 !important;
+  font-family: var(--font-body) !important;
+  font-size: 0.7rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.28em !important;
+  text-transform: uppercase !important;
+  box-shadow: none !important;
+  transition: all 0.4s ease !important;
+}
+
+/* 3. Primary Dark "Ink" Buttons (Save, Confirm, Export) */
+.btn-quick-action:not(.outline),
+.save-btn,
+.btn-confirm-walkin,
+.btn-export-csv,
+.btn-primary-dash,
+.btn-modal-primary {
+  background-color: var(--color-dark) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--color-dark) !important;
+}
+.btn-quick-action:not(.outline):hover,
+.save-btn:hover,
+.btn-confirm-walkin:hover,
+.btn-export-csv:hover,
+.btn-primary-dash:hover,
+.btn-modal-primary:hover {
+  background-color: #ffffff !important;
+  color: var(--color-dark) !important;
+}
+
+/* 4. Secondary Outline Buttons (Back, Edit, Reschedule) */
+.btn-back,
+.btn-quick-action.outline,
+.btn-outline-dash,
+.btn-modal-outline,
+.btn-replace,
+.btn-edit-venue,
+.fc-button-primary {
+  background-color: transparent !important;
+  color: var(--color-dark) !important;
+  border: 1px solid rgba(42, 37, 34, 0.4) !important;
+}
+.btn-back:hover,
+.btn-quick-action.outline:hover,
+.btn-outline-dash:hover,
+.btn-modal-outline:hover,
+.btn-replace:hover,
+.btn-edit-venue:hover,
+.fc-button-primary:hover {
+  background-color: rgba(42, 37, 34, 0.05) !important;
+  border-color: var(--color-dark) !important;
+}
+
+/* 5. Table Action Buttons (Tightened tracking so tables don't break) */
+.action-cells .btn-action,
+.um-actions button,
+.history-table .btn-action {
+  padding: 10px 14px !important;
+  letter-spacing: 0.15em !important; /* Slightly tighter to fit in tables */
+  font-size: 0.65rem !important;
+}
+
+/* 6. Status Badges & Pills (Editorial look) */
+.badge,
+.status-badge,
+.v-badge,
+.um-pill {
+  border-radius: 0 !important;
+  font-family: var(--font-body) !important;
+  font-size: 0.65rem !important;
+  letter-spacing: 0.15em !important;
+  text-transform: uppercase !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border: 1px solid transparent !important;
+}
+
+/* 7. Make the active tab underline sharper */
+.tab-btn::after,
+.um-tab.active::after,
+.venue-filter-btn::after {
+  border-radius: 0 !important;
+  height: 1px !important;
 }

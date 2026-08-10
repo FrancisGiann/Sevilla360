@@ -5,8 +5,6 @@ require_once 'config/db_connect.php';
 
 // =========================================================================
 // DATABASE HYGIENE: Auto-Cancel Expired Unpaid Bookings
-// Automatically cancels any 'Pending' booking that hasn't been paid within 30 minutes.
-// NOTE: We exclude Event Halls because they require Admin Approval first!
 // =========================================================================
 $cleanup_stmt = $conn->prepare("
     UPDATE bookings b
@@ -24,8 +22,7 @@ $cleanup_stmt->close();
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
 
-// UPDATED: Added `special_req` to the fetch query!
-$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone, special_req FROM customers WHERE user_id = ?");
+$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone, special_req, dob FROM customers WHERE user_id = ?");
 $stmt_cust->bind_param("i", $user_id);
 $stmt_cust->execute();
 $customer_res = $stmt_cust->get_result();
@@ -36,7 +33,7 @@ if ($customer_res->num_rows === 0) {
 $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
 
-// 2. Fetch all bookings for THIS customer PLUS exact hotel room types
+// 2. Fetch all bookings
 $stmt_bookings = $conn->prepare("
     SELECT 
         b.*, 
@@ -88,7 +85,7 @@ while ($row = $bookings_result->fetch_assoc()) {
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
 </head>
 
@@ -137,8 +134,6 @@ while ($row = $bookings_result->fetch_assoc()) {
             <header class="dashboard-topbar">
                 <div class="topbar-right">
                     <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> Back to Home</a>
-                    <button class="icon-btn" aria-label="Notifications"><i class="fa-regular fa-bell"></i></button>
-                    <button class="icon-btn" aria-label="Profile"><i class="fa-regular fa-circle-user"></i></button>
                 </div>
             </header>
 
@@ -213,7 +208,6 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         $total_amt = floatval($b['total_amount']);
                                         $amount_paid = floatval($b['amount_paid']);
                                         $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
-
                                         $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $b['booking_status'] === 'Pending');
 
                                         $display_amount = '₱' . number_format($total_amt, 2);
@@ -221,7 +215,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
                                         }
 
-                                        // Badge & Filtering Logic
+                                        // Badge Logic
                                         $badge_class = 'badge-pending'; 
                                         $status_text = 'Pending Payment';
                                         $filter_data = 'Pending';
@@ -248,7 +242,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             $filter_data = 'Cancelled';
                                         }
 
-                                        // OVERRIDE TEXT IF A REQUEST IS PENDING!
+                                        // OVERRIDE TEXT IF A REQUEST IS PENDING
                                         if ($b['cancel_status'] === 'Pending') {
                                             $status_text = 'Cancel Requested';
                                             $badge_class = 'badge-cancelled'; 
@@ -256,9 +250,15 @@ while ($row = $bookings_result->fetch_assoc()) {
                                             $status_text = 'Resched Requested';
                                             $badge_class = 'badge-reschedule';  
                                         }
+
+                                        $display_id = !empty($b['reference_no']) ? htmlspecialchars($b['reference_no']) : '#' . $b['id'];
                                     ?>
                                     <tr data-status="<?php echo $filter_data; ?>">
-                                        <td class="fw-500">#<?php echo $b['id']; ?></td>
+
+                                        <td
+                                            style="font-family: monospace; letter-spacing: 1px; color: var(--color-gold); font-weight: 600;">
+                                            <?php echo $display_id; ?>
+                                        </td>
                                         <td><?php echo htmlspecialchars($b['venue_name']); ?></td>
                                         <td><?php echo $date_str; ?></td>
                                         <td
@@ -270,44 +270,46 @@ while ($row = $bookings_result->fetch_assoc()) {
                                                 <?php echo ($b['cancel_status'] === 'Pending') ? 'Cancel Requested' : $status_text; ?>
                                             </span>
                                         </td>
-                                        <td class="action-cell">
+                                        <td>
+                                            <div class="action-cell">
+                                                <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial']))): ?>
+                                                <?php if (!$is_pending_inquiry): ?>
+                                                <button class="btn-action btn-pay btn-pay-now"
+                                                    data-id="<?php echo $b['id']; ?>">Pay Now</button>
+                                                <?php endif; ?>
+                                                <?php endif; ?>
 
-                                            <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial']))): ?>
-                                            <?php if (!$is_pending_inquiry): ?>
-                                            <button class="btn-action btn-green btn-pay-now"
-                                                data-id="<?php echo $b['id']; ?>">Pay Now</button>
-                                            <?php endif; ?>
-                                            <?php endif; ?>
+                                                <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
+                                                <?php if ($b['booking_status'] === 'Confirmed'): ?>
+                                                <button class="btn-action btn-outline-action btn-reschedule"
+                                                    data-id="<?php echo $b['id']; ?>"
+                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                    data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
+                                                    data-date="<?php echo $date_str; ?>">Reschedule</button>
+                                                <?php endif; ?>
 
-                                            <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
-                                            <?php if ($b['booking_status'] === 'Confirmed'): ?>
-                                            <button class="btn-action btn-blue btn-reschedule"
-                                                data-id="<?php echo $b['id']; ?>"
-                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
-                                                data-date="<?php echo $date_str; ?>">
-                                                Reschedule
-                                            </button>
-                                            <?php endif; ?>
+                                                <button class="btn-action btn-danger-outline btn-cancel"
+                                                    data-id="<?php echo $b['id']; ?>"
+                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                    data-date="<?php echo $date_str; ?>"
+                                                    data-paid="<?php echo $amount_paid; ?>">
+                                                    <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
+                                                </button>
+                                                <?php endif; ?>
 
-                                            <button class="btn-action btn-red btn-cancel"
-                                                data-id="<?php echo $b['id']; ?>"
-                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                data-date="<?php echo $date_str; ?>"
-                                                data-paid="<?php echo $amount_paid; ?>">
-                                                <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
-                                            </button>
-                                            <?php endif; ?>
-
-                                            <button class="btn-action btn-outline btn-details"
-                                                data-id="<?php echo $b['id']; ?>"
-                                                data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                data-date="<?php echo $date_str; ?>"
-                                                data-paid="<?php echo $amount_paid; ?>"
-                                                data-status="<?php echo $status_text; ?>"
-                                                data-tid="<?php echo !empty($b['transaction_id']) ? htmlspecialchars($b['transaction_id']) : 'N/A'; ?>">
-                                                View Details
-                                            </button>
+                                                <!-- Dynamic View Details Button -->
+                                                <button class="btn-action btn-outline-action btn-details"
+                                                    data-id="<?php echo $b['id']; ?>"
+                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
+                                                    data-date="<?php echo $date_str; ?>"
+                                                    data-paid="<?php echo $amount_paid; ?>"
+                                                    data-status="<?php echo $status_text; ?>"
+                                                    data-tid="<?php echo !empty($b['transaction_id']) ? htmlspecialchars($b['transaction_id']) : 'N/A'; ?>"
+                                                    title="View Booking Invoice">
+                                                    <i class="fa-solid fa-file-invoice"></i>
+                                                    <span class="vd-text">View Details</span>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -317,112 +319,92 @@ while ($row = $bookings_result->fetch_assoc()) {
                         </div>
                     </div>
                     <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
-                        complete or 'Refresh Status' to sync with PayMongo.</p>
+                        complete.</p>
                 </div>
 
-            </div>
-
-            <!-- ================= TAB: SETTINGS (UPDATED WITH IDs) ================= -->
-            <div id="tab-settings" class="tab-pane">
-                <div class="content-header">
-                    <div class="header-titles">
-                        <h1 class="page-title">ACCOUNT SETTINGS</h1>
-                        <p class="page-subtitle">MANAGE YOUR PROFILE AND PREFERENCES</p>
+                <!-- ================= TAB: SETTINGS ================= -->
+                <div id="tab-settings" class="tab-pane">
+                    <div class="content-header">
+                        <div class="header-titles">
+                            <h1 class="page-title">ACCOUNT SETTINGS</h1>
+                            <p class="page-subtitle">MANAGE YOUR PROFILE AND PREFERENCES</p>
+                        </div>
                     </div>
-                </div>
 
-                <div class="settings-container">
-                    <!-- Profile Form (Updated with DOB) -->
-                    <div class="settings-card">
-                        <h3 class="settings-title">Personal Information</h3>
-                        <form class="settings-form">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label>First Name</label>
-                                    <input type="text" id="set-fname" class="form-control"
-                                        value="<?php echo htmlspecialchars($customer['first_name']); ?>">
+                    <div class="settings-container">
+                        <!-- Profile Form -->
+                        <div class="settings-card">
+                            <h3 class="settings-title">Personal Information</h3>
+                            <form class="settings-form">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>First Name</label>
+                                        <input type="text" id="set-fname" class="form-control"
+                                            value="<?php echo htmlspecialchars($customer['first_name']); ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Last Name</label>
+                                        <input type="text" id="set-lname" class="form-control"
+                                            value="<?php echo htmlspecialchars($customer['last_name']); ?>">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email Address</label>
+                                        <input type="email" class="form-control"
+                                            value="<?php echo htmlspecialchars($customer['email']); ?>" readonly
+                                            disabled>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Phone Number</label>
+                                        <input type="tel" id="set-phone" class="form-control"
+                                            value="<?php echo htmlspecialchars($customer['phone']); ?>">
+                                    </div>
+                                    <div class="form-group full-width">
+                                        <label>Date of Birth</label>
+                                        <input type="date" id="set-dob" class="form-control" style="max-width: 50%;"
+                                            value="<?php echo isset($customer['dob']) ? $customer['dob'] : ''; ?>">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>Last Name</label>
-                                    <input type="text" id="set-lname" class="form-control"
-                                        value="<?php echo htmlspecialchars($customer['last_name']); ?>">
-                                </div>
-                                <div class="form-group">
-                                    <label>Email Address</label>
-                                    <input type="email" class="form-control"
-                                        value="<?php echo htmlspecialchars($customer['email']); ?>" readonly disabled>
-                                </div>
-                                <div class="form-group">
-                                    <label>Phone Number</label>
-                                    <input type="tel" id="set-phone" class="form-control"
-                                        value="<?php echo htmlspecialchars($customer['phone']); ?>">
-                                </div>
-                                <!-- NEW: Date of Birth -->
+                                <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
+                            </form>
+                        </div>
+
+                        <!-- Preferences -->
+                        <div class="settings-card">
+                            <h3 class="settings-title">Guest Preferences</h3>
+                            <form class="settings-form">
                                 <div class="form-group full-width">
-                                    <label>Date of Birth</label>
-                                    <input type="date" id="set-dob" class="form-control" style="max-width: 50%;"
-                                        value="<?php echo isset($customer['dob']) ? $customer['dob'] : ''; ?>">
-                                    <small style="color: #888; margin-top: 5px;">We use this to send you a special treat
-                                        if you stay with us on your birthday!</small>
+                                    <label>Dietary Requirements / Special Requests</label>
+                                    <textarea id="set-prefs" class="form-control"
+                                        rows="3"><?php echo isset($customer['special_req']) ? htmlspecialchars($customer['special_req']) : ''; ?></textarea>
                                 </div>
-                            </div>
-                            <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
-                        </form>
-                    </div>
+                                <button type="button" id="btn-save-prefs" class="btn btn-save">Save Preferences</button>
+                            </form>
+                        </div>
 
-                    <!-- Preferences -->
-                    <div class="settings-card">
-                        <h3 class="settings-title">Guest Preferences</h3>
-                        <form class="settings-form">
-                            <div class="form-group full-width">
-                                <label>Dietary Requirements / Special Requests</label>
-                                <textarea id="set-prefs" class="form-control" rows="3"
-                                    placeholder="e.g., Vegetarian, Peanut Allergy, Ground floor preferred..."><?php echo isset($customer['special_req']) ? htmlspecialchars($customer['special_req']) : ''; ?></textarea>
-                            </div>
-                            <button type="button" id="btn-save-prefs" class="btn btn-save">Save Preferences</button>
-                        </form>
-                    </div>
-
-                    <!-- Security -->
-                    <div class="settings-card">
-                        <h3 class="settings-title">Security</h3>
-                        <form class="settings-form">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label>Current Password</label>
-                                    <input type="password" id="set-old-pass" class="form-control"
-                                        placeholder="••••••••">
+                        <!-- Security -->
+                        <div class="settings-card">
+                            <h3 class="settings-title">Security</h3>
+                            <form class="settings-form">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label>Current Password</label>
+                                        <input type="password" id="set-old-pass" class="form-control"
+                                            placeholder="••••••••">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>New Password</label>
+                                        <input type="password" id="set-new-pass" class="form-control"
+                                            placeholder="Enter new password">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label>New Password</label>
-                                    <input type="password" id="set-new-pass" class="form-control"
-                                        placeholder="Enter new password">
-                                </div>
-                            </div>
-                            <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
-                                Password</button>
-                        </form>
-                    </div>
-
-                    <!-- NEW: Danger Zone -->
-                    <div class="settings-card" style="border-top-color: #ef4444;">
-                        <h3 class="settings-title" style="color: #dc2626;">Danger Zone</h3>
-                        <div class="form-group">
-                            <p style="font-size: 0.95rem; color: var(--color-dark); margin-top: 0; line-height: 1.5;">
-                                Permanently delete your SEVILLA360 account and erase all personal data.
-                                <br><small style="color: #888;">Note: You cannot delete your account if you have an
-                                    active or pending reservation.</small>
-                            </p>
-                            <button type="button" class="btn btn-outline-dark"
-                                style="color: #dc2626; border-color: #dc2626; margin-top: 10px;"
-                                onclick="alert('For security and audit purposes, please contact frontdesk@sevilla360.com to process full data deletion.');">
-                                Request Account Deletion
-                            </button>
+                                <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
+                                    Password</button>
+                            </form>
                         </div>
                     </div>
                 </div>
-            </div>
 
+            </div>
         </main>
     </div>
 
@@ -430,80 +412,121 @@ while ($row = $bookings_result->fetch_assoc()) {
 
     <!-- Cancel Modal -->
     <div class="modal-overlay" id="modal-cancel">
-        <div class="modal-box">
-            <h2 class="modal-title">Cancel Reservation?</h2>
+        <div class="modal-box cancel-modal-box">
+            <h2 class="cancel-modal-title">Cancel Reservation?</h2>
 
-            <div class="modal-summary">
-                <p><span>Customer Name:</span>
-                    <?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></p>
-                <p><span>Venue Type:</span> <span id="cancel-venue">Event Hall</span></p>
-                <p><span>Date:</span> <span id="cancel-date">--</span></p>
+            <h3 class="cancel-modal-subtitle">Booking Summary</h3>
 
-                <div id="cancel-refund-info" style="display: none;">
-                    <p><span>Total Paid by Guest:</span> <span id="cancel-paid">₱0</span></p>
-                    <p class="fee-note"><i class="fa-solid fa-circle-info"></i> Non-refundable Service Fee: ₱461</p>
-                    <p class="refund-amount"><span>Refund Amount:</span> <span id="cancel-refund-total">₱0</span></p>
+            <div class="cancel-summary-grid">
+                <span class="cancel-label">Customer Name:</span>
+                <span
+                    class="cancel-value"><?php echo htmlspecialchars($customer['first_name'] . ' ' . $customer['last_name']); ?></span>
+
+                <span class="cancel-label">Venue Type:</span>
+                <span class="cancel-value" id="cancel-venue">--</span>
+
+                <span class="cancel-label">Date:</span>
+                <span class="cancel-value" id="cancel-date">--</span>
+            </div>
+
+            <!-- Refund Info (Shows only if paid) -->
+            <div id="cancel-refund-info-wrapper" style="display: none;">
+                <div class="cancel-summary-grid">
+                    <span class="cancel-label">Total Paid by Guest:</span>
+                    <span class="cancel-value" id="cancel-paid">₱0</span>
+
+                    <span class="cancel-label tooltip-wrapper">
+                        <div class="tooltip-container">
+                            <i class="fa-regular fa-circle-question"></i>
+                            <div class="tooltip-text">As per our Terms and Conditions, the transaction fee processed by
+                                our payment gateway (PayMongo) is non-refundable. This fee is deducted from the total
+                                amount to cover the cost of the initial digital transaction.</div>
+                        </div>
+                        Non-refundable Service Fee:
+                    </span>
+                    <span class="cancel-value">₱461</span>
                 </div>
             </div>
 
-            <div class="form-group">
-                <label>Reason:</label>
-                <textarea class="form-control" rows="3"
+            <!-- Unpaid Note (Shows only if unpaid) -->
+            <div id="cancel-unpaid-info"
+                style="display: none; background: rgba(136, 160, 150, 0.1); padding: 12px; border-radius: 6px; margin: 15px 0;">
+                <p style="border: none; padding: 0; margin: 0; color: #557567; font-size: 0.9rem; text-align: center;">
+                    <i class="fa-solid fa-check-circle"></i> No payments have been made. You will not be charged.
+                </p>
+            </div>
+
+            <!-- FIXED Reason Input -->
+            <div class="cancel-reason-block">
+                <span class="cancel-label" style="font-weight: 600;">Reason:</span>
+                <textarea class="cancel-textarea" rows="3"
                     placeholder="Please tell us why you are cancelling..."></textarea>
             </div>
 
-            <div class="checkbox-group" id="cancel-checkbox-group" style="display: none;">
-                <input type="checkbox" id="confirm-fee">
-                <label for="confirm-fee">
-                    I understand that the service fee is non-refundable.<br>
-                    <small>Note: Refunds may take 5-10 business days to reflect in your account.</small>
-                </label>
+            <!-- Bottom Refund Section (Shows only if paid) -->
+            <div id="cancel-refund-bottom" style="display: none;">
+                <div class="cancel-summary-grid" style="margin-top: 15px; align-items: center;">
+                    <span class="cancel-label" style="font-size: 1.1rem; color: var(--color-dark);">Refund
+                        Amount:</span>
+                    <span class="cancel-value" id="cancel-refund-total"
+                        style="font-size: 1.1rem; font-weight: 600; color: var(--color-dark);">₱0</span>
+                </div>
+
+                <div class="cancel-checkbox-group-ui">
+                    <input type="checkbox" id="confirm-fee">
+                    <label for="confirm-fee">
+                        <span class="check-title">I understand that the service fee is non-refundable</span>
+                        <span class="check-desc">Note: Refunds may take 5-10 business days to reflect in your account
+                            depending on your provider.</span>
+                    </label>
+                </div>
             </div>
 
-            <div class="modal-actions">
-                <button class="btn-modal btn-go-back close-modal">Go back</button>
-                <button class="btn-modal btn-confirm-red">Confirm Cancellation</button>
+            <div class="cancel-modal-actions">
+                <button class="btn-cancel-back close-modal">Go back</button>
+                <button class="btn-cancel-confirm btn-confirm-red">Confirm Cancellation</button>
             </div>
         </div>
     </div>
 
-    <!-- Reschedule Modal -->
+    <!-- Reschedule Modal (Upgraded to Luxury Style) -->
     <div class="modal-overlay" id="modal-reschedule">
-        <div class="modal-box" style="max-width: 550px; max-height: 85vh; overflow-y: auto;">
-            <h2 class="modal-title">Reschedule Request</h2>
+        <div class="modal-box cancel-modal-box" style="max-height: 90vh; overflow-y: auto;">
+            <h2 class="cancel-modal-title">Reschedule Request</h2>
 
-            <div class="modal-summary">
-                <p><span>Venue:</span> <span id="reschedule-venue">--</span></p>
-                <p><span>Original Date:</span> <span id="reschedule-date">--</span></p>
+            <div class="cancel-summary-grid">
+                <span class="cancel-label">Venue:</span> <span class="cancel-value" id="reschedule-venue">--</span>
+                <span class="cancel-label">Original Date:</span> <span class="cancel-value"
+                    id="reschedule-date">--</span>
             </div>
 
-            <!-- DYNAMIC CALENDAR INJECTION -->
             <div style="margin-top: 15px;">
-                <label style="display: block; margin-bottom: 10px; font-weight: 500; font-size: 0.95rem;">Select New
-                    Dates:</label>
-                <?php
-                    $calendarId = 'cal-ui-user-resched';
-                    include 'includes/partials/booking_calendar.php';
-                ?>
+                <label
+                    style="display: block; margin-bottom: 10px; font-weight: 500; font-family: var(--font-body); color: var(--color-dark);">Select
+                    New Dates:</label>
+                <?php $calendarId = 'cal-ui-user-resched'; include 'includes/partials/booking_calendar.php'; ?>
             </div>
 
-            <div class="form-group" style="margin-top: 15px;">
-                <label style="font-weight: 500;">Reason:</label>
-                <textarea id="reschedule-reason" class="form-control" rows="2"
+            <!-- FIXED Reason Input -->
+            <div class="cancel-reason-block">
+                <span class="cancel-label" style="font-weight: 600;">Reason:</span>
+                <textarea id="reschedule-reason" class="cancel-textarea" rows="2"
                     placeholder="Why do you need to change dates?"></textarea>
             </div>
 
-            <div class="checkbox-group">
+            <!-- RESTORED CHECKBOX -->
+            <div class="cancel-checkbox-group-ui" style="margin-bottom: 25px;">
                 <input type="checkbox" id="confirm-reschedule">
                 <label for="confirm-reschedule">
-                    I understand that my reschedule request is subject to availability and requires staff approval.<br>
-                    <small>Submitting this request does not guarantee an automatic change.</small>
+                    <span class="check-title">I understand that my reschedule request is subject to availability and
+                        requires staff approval.</span>
+                    <span class="check-desc">Submitting this request does not guarantee an automatic change.</span>
                 </label>
             </div>
 
-            <div class="modal-actions">
-                <button class="btn-modal btn-go-back close-modal">Go back</button>
-                <button class="btn-modal btn-confirm-red" id="btn-submit-resched">Submit Request</button>
+            <div class="cancel-modal-actions">
+                <button class="btn-cancel-back close-modal">Go back</button>
+                <button class="btn-cancel-confirm btn-confirm-red" id="btn-submit-resched">Submit Request</button>
             </div>
         </div>
     </div>
@@ -515,39 +538,26 @@ while ($row = $bookings_result->fetch_assoc()) {
             <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
 
             <div class="modal-summary details-summary">
-                <p><span>Customer Name:</span> <span id="ud-customer-name">--</span></p>
                 <p><span>Venue:</span> <span id="ud-venue">--</span></p>
                 <p><span>Dates:</span> <span id="ud-dates">--</span></p>
                 <p><span>Guests:</span> <span id="ud-guests">--</span></p>
-                <p id="ud-specific-row" style="display:none;">
-                    <span id="ud-specific-label">Specifics:</span>
-                    <span id="ud-specific-value">--</span>
-                </p>
-                <p id="ud-cancel-row" style="display:none;">
-                    <span>Cancellation Reason:</span>
-                    <span id="ud-cancel-reason" style="color: #c27c7c;">--</span>
-                </p>
 
-                <!-- Dynamic Add-ons -->
                 <div id="ud-addons-container"
                     style="display: none; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
                     <strong style="display:block; margin-bottom:5px; color: var(--color-dark);">Add-ons:</strong>
                     <div id="ud-addons-list"></div>
                 </div>
 
-                <!-- Financials -->
                 <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
                     <p><span>Base Amount:</span> <span id="ud-base-amt">₱0.00</span></p>
                     <p><span>Add-ons Amount:</span> <span id="ud-addons-amt">₱0.00</span></p>
-                    <p><span>Extra Pax Amount:</span> <span id="ud-extrapax-amt">₱0.00</span></p>
                     <p style="font-weight: bold; font-size: 1.1rem; color: var(--color-gold); margin-top: 5px;">
                         <span>Total Amount:</span> <span id="ud-total-amt">₱0.00</span>
                     </p>
                 </div>
 
                 <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
-                    <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
-                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #4ade80;">₱0.00</span></p>
+                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #557567;">₱0.00</span></p>
                     <p><span>Transaction ID:</span> <span id="ud-tid">--</span></p>
                 </div>
             </div>
@@ -558,36 +568,16 @@ while ($row = $bookings_result->fetch_assoc()) {
         </div>
     </div>
 
-    <!-- Universal Confirm Modal -->
-    <div class="modal-overlay" id="uniConfirmModal" style="z-index: 9999;">
-        <div class="modal-box" style="max-width: 400px; text-align: center; padding: 30px;">
-            <i class="fa-solid fa-circle-question"
-                style="font-size: 3rem; color: var(--color-gold); margin-bottom: 15px;"></i>
-            <h3 class="modal-title" style="margin-bottom: 10px; font-size: 1.5rem;">Confirm Action</h3>
-            <p id="uc-message" style="color: var(--color-dark-light); font-size: 0.95rem; margin-bottom: 25px;">Are you
-                sure?</p>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn-modal btn-go-back" id="uc-btn-no"
-                    style="flex: 1; background: transparent; border: 1px solid rgba(42, 37, 34, 0.2); color: var(--color-dark);">No,
-                    Cancel</button>
-                <button class="btn-modal btn-confirm-red" id="uc-btn-yes"
-                    style="flex: 1; background-color: var(--color-gold); border-color: var(--color-gold);">Yes,
-                    Proceed</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Universal Alert Modal -->
+    <!-- Alert Modal -->
     <div class="modal-overlay" id="uniAlertModal" style="z-index: 10000;">
         <div class="modal-box" style="max-width: 400px; text-align: center; padding: 30px;">
-            <i id="ua-icon" class="fa-solid fa-circle-info"
-                style="font-size: 3rem; color: var(--color-gold); margin-bottom: 15px;"></i>
-            <h3 class="modal-title" id="ua-title" style="margin-bottom: 10px; font-size: 1.5rem;">Notice</h3>
+            <i id="ua-icon" class="fa-solid fa-circle-info modal-icon-warning" style="color: var(--color-gold);"></i>
+            <h3 class="modal-title" id="ua-title">Notice</h3>
             <p id="ua-message" style="color: var(--color-dark-light); font-size: 0.95rem; margin-bottom: 25px;">Message
                 goes here.</p>
             <div style="display: flex; gap: 10px;">
                 <button class="btn-modal btn-confirm-red" id="ua-btn-ok"
-                    style="flex: 1; background-color: var(--color-gold); border-color: var(--color-gold);">OK</button>
+                    style="flex: 1; background-color: var(--color-dark); border-color: var(--color-dark);">OK</button>
             </div>
         </div>
     </div>

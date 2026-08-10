@@ -120,35 +120,56 @@
   gap: 15px;
 }
 
+/* Base style for both buttons to match the new global theme */
 .details-box .btn-mock {
   width: 100%;
   padding: 16px 0;
-  border: none;
-  border-radius: 6px;
   font-family: var(--font-body), sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 0.7rem;          /* Smaller, elegant font */
+  font-weight: 500;
+  letter-spacing: 0.28em;     /* Wide tracking */
+  text-transform: uppercase;
+  border-radius: 0;           /* Sharp, square corners */
   cursor: pointer;
-  transition: all 0.3s ease;
-  background-color: #a07748 !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 15px rgba(160, 119, 72, 0.35);
+  transition: all 0.5s ease;
   display: flex;
   justify-content: center;
   align-items: center;
   text-decoration: none;
 }
 
-.details-box .btn-mock:hover {
-  background-color: #2a2522 !important;
+/* Primary Button: "BOOK VENUE" */
+.details-box .btn-book {
+  background-color: var(--border-dark) !important; /* Dark ink color */
+  color: #ffffff !important;
+  border: 1px solid var(--border-dark) !important;
+  box-shadow: 0 10px 30px rgba(42, 37, 34, 0.15);
+}
+
+.details-box .btn-book:hover {
+  background-color: #ffffff !important;
+  color: var(--border-dark) !important;
+  border-color: #ffffff !important;
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(42, 37, 34, 0.4);
+}
+
+/* Secondary Button: "VIEW PHOTOS" */
+.details-box .btn-photos {
+  background-color: transparent !important;
+  color: var(--border-dark) !important;
+  border: 1px solid rgba(42, 37, 34, 0.4) !important; /* Subtle dark outline */
+}
+
+.details-box .btn-photos:hover {
+  background-color: rgba(42, 37, 34, 0.05) !important;
+  border-color: var(--border-dark) !important;
+  transform: translateY(-2px);
 }
 
 .details-box .btn-mock:disabled {
-  background-color: #eaeaea !important;
-  color: #a0a0a0 !important;
+  background-color: transparent !important;
+  color: rgba(42, 37, 34, 0.4) !important;
+  border: 1px solid rgba(42, 37, 34, 0.2) !important;
   box-shadow: none;
   cursor: not-allowed;
   transform: none;

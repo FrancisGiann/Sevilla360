@@ -1,32 +1,48 @@
 <!-- Footer -->
-<footer class="footer">
-    <div class="container">
-        <div class="footer-grid">
-            <div class="footer-col">
-                <h4 style="font-family: var(--font-heading);">SEVILLA360</h4>
-                <p>Experience minimal luxury and warm scandinavian comfort in every stay.</p>
+<footer class="idx-footer">
+    <div class="idx-footer-inner">
+        <div class="idx-footer-grid">
+            <div class="idx-footer-brand">
+                <span>Sevilla360</span>
+                <p>M.I. Sevilla Resort &amp; Events Place — a private estate for weddings,
+                    celebrations and quiet stays.</p>
             </div>
-            <div class="footer-col">
+
+            <nav class="idx-footer-col">
                 <h4>Quick Links</h4>
-                <a href="index.php#accommodations">Accommodations</a>
-                <a href="showroom.php">Virtual Showroom</a>
-                <a href="index.php#events">Event Spaces</a>
-            </div>
-            <div class="footer-col">
+                <ul>
+                    <li><a href="index.php">Home</a></li>
+                    <li><a href="index.php#about">About</a></li>
+                    <li><a href="index.php#experiences">Experiences</a></li>
+                    <li><a href="index.php#accommodations">Venues</a></li>
+                    <li><a href="showroom.php">Virtual Showroom</a></li>
+                </ul>
+            </nav>
+
+            <nav class="idx-footer-col">
                 <h4>Support</h4>
-                <a href="#">Contact Us</a>
-                <a href="#">FAQ</a>
-                <a href="#">Booking Policy</a>
-            </div>
-            <div class="footer-col">
+                <ul>
+                    <li><a href="#">Contact Us</a></li>
+                    <li><a href="#">Booking Policy</a></li>
+                    <li><a href="#">FAQs</a></li>
+                    <li><a href="#">Privacy</a></li>
+                    <li><a href="#">Terms</a></li>
+                </ul>
+            </nav>
+
+            <nav class="idx-footer-col">
                 <h4>Connect</h4>
-                <a href="#">Instagram</a>
-                <a href="#">Facebook</a>
-                <a href="#">Twitter</a>
-            </div>
+                <ul>
+                    <li><a href="#">Facebook</a></li>
+                    <li><a href="#">Instagram</a></li>
+                    <li><a href="#">TikTok</a></li>
+                    <li><a href="#">Email Us</a></li>
+                </ul>
+            </nav>
         </div>
-        <div class="footer-bottom">
-            <p>&copy; <?php echo date("Y"); ?> SEVILLA360. All rights reserved.</p>
+
+        <div class="idx-footer-bottom">
+            &copy; <?php echo date("Y"); ?> M.I. Sevilla Resort &amp; Events Place. All rights reserved.
         </div>
     </div>
 </footer>

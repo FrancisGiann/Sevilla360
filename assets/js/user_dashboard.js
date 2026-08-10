@@ -4,56 +4,71 @@
  */
 
 document.addEventListener("DOMContentLoaded", () => {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
   // =========================================================
-  // UNIVERSAL MODAL UTILITIES (Replaces alert and confirm)
+  // UNIVERSAL MODAL UTILITIES (Bulletproof)
   // =========================================================
   const uniConfirmModal = document.getElementById("uniConfirmModal");
   const uniAlertModal = document.getElementById("uniAlertModal");
   let pendingCallback = null;
 
   function showConfirmModal(message, callback) {
-      document.getElementById("uc-message").innerText = message;
+      const msgEl = document.getElementById("uc-message");
+      if (msgEl) msgEl.innerText = message;
+      
       pendingCallback = callback;
       document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-      uniConfirmModal.classList.add("active");
+      
+      if (uniConfirmModal) uniConfirmModal.classList.add("active");
+      else alert(message); // Fallback if modal is missing from PHP
   }
 
   document.getElementById("uc-btn-no")?.addEventListener("click", () => {
-      uniConfirmModal.classList.remove("active");
+      if (uniConfirmModal) uniConfirmModal.classList.remove("active");
       pendingCallback = null; 
   });
 
   document.getElementById("uc-btn-yes")?.addEventListener("click", () => {
-      uniConfirmModal.classList.remove("active");
+      if (uniConfirmModal) uniConfirmModal.classList.remove("active");
       if (pendingCallback) { pendingCallback(); pendingCallback = null; }
   });
 
   function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-      document.getElementById("ua-title").innerText = title;
-      document.getElementById("ua-message").innerText = message;
-      
+      const titleEl = document.getElementById("ua-title");
+      const msgEl = document.getElementById("ua-message");
       const icon = document.getElementById("ua-icon");
-      if (type === "success") {
-          icon.className = "fa-solid fa-circle-check"; icon.style.color = "#4ade80"; 
-      } else if (type === "error") {
-          icon.className = "fa-solid fa-triangle-exclamation"; icon.style.color = "#e06666"; 
-      } else {
-          icon.className = "fa-solid fa-circle-info"; icon.style.color = "var(--color-gold)"; 
+
+      if (titleEl) titleEl.innerText = title;
+      if (msgEl) msgEl.innerText = message;
+      
+      if (icon) {
+          if (type === "success") {
+              icon.className = "fa-solid fa-circle-check"; icon.style.color = "#4ade80"; 
+          } else if (type === "error") {
+              icon.className = "fa-solid fa-triangle-exclamation"; icon.style.color = "#e06666"; 
+          } else {
+              icon.className = "fa-solid fa-circle-info"; icon.style.color = "var(--color-gold)"; 
+          }
       }
 
       document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-      uniAlertModal.classList.add("active");
-
-      const okBtn = document.getElementById("ua-btn-ok");
-      const newOkBtn = okBtn.cloneNode(true); 
-      okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-
-      newOkBtn.addEventListener("click", () => {
+      
+      if (uniAlertModal) {
+          uniAlertModal.classList.add("active");
+          const okBtn = document.getElementById("ua-btn-ok");
+          if (okBtn) {
+              const newOkBtn = okBtn.cloneNode(true); 
+              okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+              newOkBtn.addEventListener("click", () => {
+                  if (reloadOnClose) window.location.reload();
+                  else uniAlertModal.classList.remove("active");
+              });
+          }
+      } else {
+          alert(`${title}\n${message}`);
           if (reloadOnClose) window.location.reload();
-          else uniAlertModal.classList.remove("active");
-      });
+      }
   }
 
   // --- 1. Tab Switching Logic ---
@@ -62,18 +77,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   navItems.forEach((item) => {
     item.addEventListener("click", (e) => {
+      if (item.classList.contains('sign-out')) return; // Allow logout link to work naturally
       e.preventDefault();
       navItems.forEach((nav) => nav.classList.remove("active"));
       tabPanes.forEach((pane) => pane.classList.remove("active"));
       item.classList.add("active");
       const targetTab = item.getAttribute("data-tab");
-      document.getElementById(`tab-${targetTab}`).classList.add("active");
+      const pane = document.getElementById(`tab-${targetTab}`);
+      if (pane) pane.classList.add("active");
     });
   });
 
   // --- 2. Table Filtering ---
   const filterPills = document.querySelectorAll(".filter-pill");
-  const tableRows = document.querySelectorAll("#bookingsTable tbody tr");
+  const tableRows = document.querySelectorAll("#bookingsTable tbody tr[data-status]");
 
   filterPills.forEach((pill) => {
     pill.addEventListener("click", (e) => {
@@ -98,16 +115,20 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   function openModal(modalId) {
-    modals[modalId].classList.add("active");
-    document.body.style.overflow = "hidden"; 
+    if (modals[modalId]) {
+        modals[modalId].classList.add("active");
+        document.body.style.overflow = "hidden"; 
+    }
   }
 
   function closeModal() {
-    Object.values(modals).forEach((modal) => modal.classList.remove("active"));
+    Object.values(modals).forEach((modal) => {
+        if(modal) modal.classList.remove("active");
+    });
     document.body.style.overflow = "";
 
     const checkboxGrp = document.getElementById("cancel-checkbox-group");
-    const refundInfo = document.getElementById("cancel-refund-info");
+    const refundInfo = document.getElementById("cancel-refund-info-wrapper");
     if (checkboxGrp) checkboxGrp.style.display = "none";
     if (refundInfo) refundInfo.style.display = "none";
 
@@ -120,10 +141,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
 
   Object.values(modals).forEach((modal) => {
-    modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    if(modal) {
+        modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+    }
   });
 
-  // --- 4. Bind Action Buttons ---
+  // --- 4. ACTION BUTTONS ---
 
   // A. Cancel Button
   document.querySelectorAll(".btn-cancel").forEach((btn) => {
@@ -134,49 +157,37 @@ document.addEventListener("DOMContentLoaded", () => {
       const paidStr = btn.getAttribute("data-paid");
       const amountPaid = parseFloat(paidStr) || 0;
 
+      const cancelVenueEl = document.getElementById("cancel-venue");
+      const cancelDateEl = document.getElementById("cancel-date");
+      if (cancelVenueEl) cancelVenueEl.textContent = venue;
+      if (cancelDateEl) cancelDateEl.textContent = date;
+
+      const refundInfoTop = document.getElementById("cancel-refund-info-wrapper");
+      const refundInfoBottom = document.getElementById("cancel-refund-bottom");
+      const unpaidInfo = document.getElementById("cancel-unpaid-info");
+      const confirmBtn = document.querySelector("#modal-cancel .btn-confirm-red");
+
       if (amountPaid === 0) {
-          showConfirmModal(`Are you sure you want to cancel your reservation for ${venue} on ${date}?`, () => {
-              const originalText = btn.innerText;
-              btn.innerText = "Cancelling...";
-              btn.disabled = true;
-
-              fetch('actions/user/request_cancel.php', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                  body: JSON.stringify({ booking_id: bookingId, reason: 'Unpaid Auto-Cancel' })
-              })
-              .then(res => res.json())
-              .then(data => {
-                  if (data.success) showAlertModal("Cancelled", "Reservation instantly cancelled.", "success", true);
-                  else {
-                      showAlertModal("Error", data.message, "error");
-                      btn.innerText = originalText;
-                      btn.disabled = false;
-                  }
-              });
-          });
+          if (refundInfoTop) refundInfoTop.style.display = "none";
+          if (refundInfoBottom) refundInfoBottom.style.display = "none";
+          if (unpaidInfo) unpaidInfo.style.display = "block";
       } else {
-          document.getElementById("cancel-venue").textContent = venue;
-          document.getElementById("cancel-date").textContent = date;
-
-          const refundInfo = document.getElementById("cancel-refund-info");
-          const checkboxGrp = document.getElementById("cancel-checkbox-group");
-
           let fee = 461;
           let refundAmt = amountPaid - fee;
           if (refundAmt < 0) refundAmt = 0;
 
-          document.getElementById("cancel-paid").textContent = `₱${amountPaid.toLocaleString()}`;
-          document.getElementById("cancel-refund-total").textContent = `₱${refundAmt.toLocaleString()}`;
+          const cancelPaidEl = document.getElementById("cancel-paid");
+          const cancelRefundTotalEl = document.getElementById("cancel-refund-total");
+          if(cancelPaidEl) cancelPaidEl.textContent = `₱${amountPaid.toLocaleString()}`;
+          if(cancelRefundTotalEl) cancelRefundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
 
-          refundInfo.style.display = "block";
-          checkboxGrp.style.display = "flex";
-
-          const confirmBtn = document.querySelector("#modal-cancel .btn-confirm-red");
-          if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
-
-          openModal("cancel");
+          if (refundInfoTop) refundInfoTop.style.display = "block";
+          if (refundInfoBottom) refundInfoBottom.style.display = "block";
+          if (unpaidInfo) unpaidInfo.style.display = "none";
       }
+
+      if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
+      openModal("cancel");
     });
   });
 
@@ -186,8 +197,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const bookingId = this.getAttribute("data-id");
       const reasonInput = document.querySelector("#modal-cancel textarea");
       const reason = reasonInput ? reasonInput.value.trim() : "";
-      const isRefundable = document.getElementById("cancel-refund-info").style.display === "block";
-      const isChecked = document.getElementById("confirm-fee").checked;
+      
+      const refundBottom = document.getElementById("cancel-refund-bottom");
+      const isRefundable = refundBottom ? (refundBottom.style.display === "block") : false;
+      
+      const confirmFee = document.getElementById("confirm-fee");
+      const isChecked = confirmFee ? confirmFee.checked : false;
 
       if (reason === "") return showAlertModal("Missing Info", "Please provide a reason for the cancellation.", "error");
       if (isRefundable && !isChecked) return showAlertModal("Required", "Please acknowledge the non-refundable service fee by checking the box.", "error");
@@ -197,10 +212,10 @@ document.addEventListener("DOMContentLoaded", () => {
       this.disabled = true;
 
       fetch('actions/user/request_cancel.php', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                  body: JSON.stringify({ booking_id: bookingId, reason: 'Unpaid Auto-Cancel' }) 
-              })
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+          body: JSON.stringify({ booking_id: bookingId, reason: reason }) 
+      })
       .then((response) => response.json())
       .then((data) => {
         if (data.success) showAlertModal("Success", data.message, "success", true);
@@ -231,8 +246,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const originalDate = btn.getAttribute("data-date");
       const venueType = btn.getAttribute("data-type") || "Hotel Room"; 
 
-      document.getElementById("reschedule-venue").textContent = venueName;
-      document.getElementById("reschedule-date").textContent = originalDate;
+      const rv = document.getElementById("reschedule-venue");
+      const rd = document.getElementById("reschedule-date");
+      if(rv) rv.textContent = venueName;
+      if(rd) rd.textContent = originalDate;
       
       const submitBtn = document.getElementById("btn-submit-resched");
       if (submitBtn) submitBtn.setAttribute("data-id", bookingId);
@@ -297,15 +314,23 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".btn-details").forEach((btn) => {
     btn.addEventListener("click", function(e) {
         const bookingId = this.getAttribute('data-id');
-        const originalText = this.innerText;
+        const originalHTML = this.innerHTML; 
         
-        this.innerText = "Loading...";
+        this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span class="vd-text" style="margin-left:5px;">Loading...</span>';
         this.disabled = true;
 
         fetch(`actions/user/get_my_booking_details.php?id=${bookingId}`)
-        .then(response => response.json())
+        .then(async (response) => {
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            const text = await response.text();
+            try { return JSON.parse(text); } 
+            catch (err) {
+                console.error("CRITICAL PHP ERROR IN JSON:", text);
+                throw new Error("Invalid Server Response.");
+            }
+        })
         .then(res => {
-            this.innerText = originalText;
+            this.innerHTML = originalHTML; 
             this.disabled = false;
 
             if (!res.success) return showAlertModal("Error", "Error loading details: " + res.message, "error");
@@ -314,9 +339,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const specifics = res.data.specifics;
             const addons = res.data.addons;
 
-            document.getElementById('ud-title').innerText = `Booking #${data.id}`;
+            const displayId = data.reference_no ? data.reference_no : '#' + data.id;
+            const titleEl = document.getElementById('ud-title');
+            if(titleEl) titleEl.innerText = `Booking ${displayId}`;
             
-            const badge = document.getElementById('ud-status-badge');
             let badgeClass = 'badge-pending';
             let badgeText = data.booking_status;
 
@@ -330,23 +356,30 @@ document.addEventListener("DOMContentLoaded", () => {
                 badgeText = 'Pending';
             }
 
-            badge.innerText = badgeText;
-            badge.className = 'badge ' + badgeClass; 
+            const badge = document.getElementById('ud-status-badge');
+            if(badge) {
+                badge.innerText = badgeText;
+                badge.className = 'badge ' + badgeClass; 
+            }
 
-            document.getElementById('ud-customer-name').innerText = `${data.first_name} ${data.last_name}`;
-            document.getElementById('ud-venue').innerText = `${data.venue_name} (${data.venue_category})`;
-            document.getElementById('ud-guests').innerText = data.guests_count;
+            const nameEl = document.getElementById('ud-customer-name');
+            const venueEl = document.getElementById('ud-venue');
+            const guestsEl = document.getElementById('ud-guests');
+            if(nameEl) nameEl.innerText = `${data.first_name} ${data.last_name}`;
+            if(venueEl) venueEl.innerText = `${data.venue_name} (${data.venue_category})`;
+            if(guestsEl) guestsEl.innerText = data.guests_count;
 
             const opts = { month: "short", day: "numeric", year: "numeric" };
             const sDate = new Date(data.start_date).toLocaleDateString("en-US", opts);
             const eDate = new Date(data.end_date).toLocaleDateString("en-US", opts);
-            document.getElementById('ud-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
+            const datesEl = document.getElementById('ud-dates');
+            if(datesEl) datesEl.innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
 
             const specRow = document.getElementById('ud-specific-row');
             const specLabel = document.getElementById('ud-specific-label');
             const specValue = document.getElementById('ud-specific-value');
             
-            if (specifics) {
+            if (specifics && specRow) {
                 specRow.style.display = 'flex';
                 if (data.venue_category === 'Event Hall') {
                     specLabel.innerText = "Event Details:";
@@ -355,61 +388,64 @@ document.addEventListener("DOMContentLoaded", () => {
                     specLabel.innerText = "Stay Type:";
                     specValue.innerText = specifics.stay_type;
                 }
-            } else specRow.style.display = 'none';
+            } else if(specRow) {
+                specRow.style.display = 'none';
+            }
 
-            // Cancellation reason (only relevant if booking is Cancelled)
             const cancelRow = document.getElementById('ud-cancel-row');
             const cancelReasonEl = document.getElementById('ud-cancel-reason');
             const cancellation = res.data.cancellation;
 
-            if (data.booking_status === 'Cancelled' && cancellation && cancellation.reason) {
-            cancelReasonEl.innerText = cancellation.reason;
-            cancelRow.style.display = 'flex';
-            } else {
-            cancelRow.style.display = 'none';
-}
+            if (data.booking_status === 'Cancelled' && cancellation && cancellation.reason && cancelRow) {
+                cancelReasonEl.innerText = cancellation.reason;
+                cancelRow.style.display = 'flex';
+            } else if(cancelRow) {
+                cancelRow.style.display = 'none';
+            }
 
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
-            addonsList.innerHTML = ''; 
-            if (addons && addons.length > 0) {
+            if (addonsList) addonsList.innerHTML = ''; 
+            
+            if (addons && addons.length > 0 && addonsContainer && addonsList) {
                 addonsContainer.style.display = 'block';
                 addons.forEach(addon => {
                     addonsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${addon.name} (x${addon.quantity})</span> <span style="color:var(--color-dark-light);">₱${parseFloat(addon.total_price).toLocaleString()}</span></p>`;
                 });
-            } else addonsContainer.style.display = 'none';
+            } else if(addonsContainer) {
+                addonsContainer.style.display = 'none';
+            }
 
             const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             const isPendingEvent = data.venue_category === 'Event Hall' && data.booking_status === 'Pending';
 
             if (isPendingEvent) {
-                document.getElementById('ud-base-amt').innerText = "TBA";
-                document.getElementById('ud-addons-amt').innerText = "TBA";
-                document.getElementById('ud-extrapax-amt').innerText = "TBA";
-                document.getElementById('ud-total-amt').innerText = "To Be Arranged";
-                document.getElementById('ud-scheme').innerText = "To Be Arranged";
+                if(document.getElementById('ud-base-amt')) document.getElementById('ud-base-amt').innerText = "TBA";
+                if(document.getElementById('ud-addons-amt')) document.getElementById('ud-addons-amt').innerText = "TBA";
+                if(document.getElementById('ud-extrapax-amt')) document.getElementById('ud-extrapax-amt').innerText = "TBA";
+                if(document.getElementById('ud-total-amt')) document.getElementById('ud-total-amt').innerText = "To Be Arranged";
+                if(document.getElementById('ud-scheme')) document.getElementById('ud-scheme').innerText = "To Be Arranged";
             } else {
-                document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
-                document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
-                document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
-                document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
+                if(document.getElementById('ud-base-amt')) document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
+                if(document.getElementById('ud-addons-amt')) document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
+                if(document.getElementById('ud-extrapax-amt')) document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
+                if(document.getElementById('ud-total-amt')) document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
                 
-                // SMART UX FIX: Show (Balance Settled) if they paid their partial scheme!
                 let schemeText = data.payment_scheme;
                 if (data.payment_scheme !== '100% Full' && data.payment_status === 'Paid') {
                     schemeText = `${data.payment_scheme} (Balance Settled)`;
                 }
-                document.getElementById('ud-scheme').innerText = schemeText;
+                if(document.getElementById('ud-scheme')) document.getElementById('ud-scheme').innerText = schemeText;
             }
             
-            document.getElementById('ud-paid-amt').innerText = formatCash(data.amount_paid);
-            document.getElementById('ud-tid').innerText = res.data.transaction_id || "--";
+            if(document.getElementById('ud-paid-amt')) document.getElementById('ud-paid-amt').innerText = formatCash(data.amount_paid);
+            if(document.getElementById('ud-tid')) document.getElementById('ud-tid').innerText = res.data.transaction_id || "--";
 
             openModal("details");
         })
         .catch(err => {
-            showAlertModal("Network Error", "Network error fetching details.", "error");
-            this.innerText = originalText;
+            showAlertModal("Error", "Network error fetching details.", "error");
+            this.innerHTML = originalHTML; 
             this.disabled = false;
         });
     });
@@ -478,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const bookingId = this.getAttribute('data-id');
           const originalText = this.innerText;
 
-          this.innerText = "Connecting...";
+          this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
           this.disabled = true;
 
           fetch("actions/user/pay_existing.php", {
@@ -491,13 +527,13 @@ document.addEventListener("DOMContentLoaded", () => {
               if (data.success) window.location.href = data.checkout_url;
               else {
                   showAlertModal("Payment Error", data.message, "error");
-                  this.innerText = originalText;
+                  this.innerHTML = originalText;
                   this.disabled = false;
               }
           })
           .catch(err => {
               showAlertModal("Network Error", "Network error occurred.", "error");
-              this.innerText = originalText;
+              this.innerHTML = originalText;
               this.disabled = false;
           });
       });
