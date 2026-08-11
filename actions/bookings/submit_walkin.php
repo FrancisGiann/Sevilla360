@@ -64,6 +64,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
+
+        // FIX: Add all Custom Line Items to $true_total BEFORE calculating downpayment!
+        if (isset($_POST['custom_line_items'])) {
+            $line_items_data = json_decode($_POST['custom_line_items'], true);
+            if (is_array($line_items_data)) {
+                foreach ($line_items_data as $item) {
+                    $true_total += floatval($item['amount']);
+                }
+            }
+        }
         // =========================================================================
 
         // Calculate Downpayment using True Total

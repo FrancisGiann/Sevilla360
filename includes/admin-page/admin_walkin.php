@@ -116,6 +116,24 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
             <input type="text" id="transaction-id" placeholder="Enter transaction or reference number">
         </div>
 
+        <!-- NEW: DYNAMIC LINE ITEM BUILDER FOR WALK-INS -->
+        <div class="form-group"
+            style="margin-top: 25px; padding: 20px; background: #fdf2e2; border-left: 4px solid var(--color-gold); border-radius: 4px;">
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #e5d5c5; padding-bottom:10px; margin-bottom:15px;">
+                <div>
+                    <h4 style="margin:0; font-size:1.1rem; color:var(--color-dark);">Custom Line Items</h4>
+                    <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: #666;">Add negotiated fees (Catering, A/V,
+                        etc.)</p>
+                </div>
+                <button type="button" class="btn-action" id="wi-btn-add-item"
+                    style="background: var(--color-dark); color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.85rem;"><i
+                        class="fa-solid fa-plus"></i> Add Item</button>
+            </div>
+
+            <!-- JS will inject dynamic rows here -->
+            <div id="wi-line-items" style="max-height: 250px; overflow-y: auto; padding-right: 5px;"></div>
+        </div>
         <!-- Booking Summary Box -->
         <div class="checkout-summary">
             <h4 class="summary-title">Booking Summary</h4>

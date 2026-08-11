@@ -29,11 +29,11 @@
             </select>
         </div>
     </div>
-
     <div class="form-group">
         <label>Event Type</label>
-        <div class="radio-group" id="event-type-group">
-            <label><input type="radio" name="event-type" value="0" data-text="Plain Hall" checked> Plain Hall</label>
+        <div class="radio-group-inline mt-10" id="event-type-group">
+            <label><input type="radio" name="event-type" value="0" data-text="Plain Hall" checked> Plain
+                Hall</label>
             <label><input type="radio" name="event-type" value="0" data-text="Wedding"> Wedding</label>
             <label><input type="radio" name="event-type" value="0" data-text="Birthday"> Birthday</label>
             <label><input type="radio" name="event-type" value="0" id="event-others-radio" data-text="Custom Event">

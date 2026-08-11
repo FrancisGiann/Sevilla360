@@ -1,6 +1,7 @@
 /**
  * ==========================================================================
  * SEVILLA360 - Admin Walk-In Booking Controller
+ * Features Smart-Sync Line Items for Admin Negotiation
  * ==========================================================================
  */
 
@@ -86,8 +87,11 @@ class AdminWalkinController {
             radio.addEventListener("change", (e) => {
                 const othersInput = this.getEl("event-type-others");
                 if (othersInput) othersInput.classList.toggle("hidden", e.target.id !== "event-others-radio");
+                this.calculateSummary(); // Trigger update for summary
             });
         });
+        
+        this.getEl("event-type-others")?.addEventListener("input", () => this.calculateSummary());
 
         document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
             radio.addEventListener("change", (e) => {
@@ -118,6 +122,28 @@ class AdminWalkinController {
             radio.addEventListener('change', (e) => {
                 const transWrapper = this.getEl("transaction-wrapper");
                 if (transWrapper) transWrapper.classList.toggle('hidden', e.target.value === 'cash');
+            });
+        });
+
+        // =========================================================================
+        // MANUAL LINE ITEM BUILDER (For purely custom additions)
+        // =========================================================================
+        const lineItemsContainer = document.getElementById("wi-line-items");
+        document.getElementById("wi-btn-add-item")?.addEventListener("click", () => {
+            const row = document.createElement("div");
+            row.className = "wi-row";
+            row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
+            row.innerHTML = `
+                <input type="text" class="wi-item-name" placeholder="Item Description (e.g. Live Band)" style="flex: 2; padding:10px; border:1px solid #ccc; border-radius:4px;">
+                <input type="number" class="wi-item-cost" step="0.01" placeholder="Amount (₱)" style="flex: 1; padding:10px; border:1px solid #ccc; border-radius:4px;">
+                <button type="button" class="btn-action wi-remove-row" style="flex: 0 0 45px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; padding: 0;"><i class="fa-solid fa-trash"></i></button>
+            `;
+            lineItemsContainer.appendChild(row);
+
+            row.querySelector(".wi-item-cost").addEventListener("input", () => this.calculateSummary());
+            row.querySelector(".wi-remove-row").addEventListener("click", () => {
+                row.remove();
+                this.calculateSummary();
             });
         });
     }
@@ -202,12 +228,9 @@ class AdminWalkinController {
         this.calculateSummary();
     }
 
-    // ==========================================
-    // ADMIN FIX: INSTANT DATE LOCKING (NO MODALS)
-    // ==========================================
     requestDateConfirmation(startDate, endDate, calendarInstance) {
         this.state.activeCalendar = calendarInstance;
-        this.state.isDatesLocked = true; // Instantly flags as locked for the calculation engine
+        this.state.isDatesLocked = true; 
         
         if (this.state.activeCalendar) {
             this.state.activeCalendar.updateDateDisplay();
@@ -226,7 +249,6 @@ class AdminWalkinController {
         calendarInstance.updateDateDisplay();
         this.calculateSummary();
     }
-    // ==========================================
 
     appendSummaryRow(label, amount) {
         this.state.summary.html += `<div class="summary-row"><span>${label}</span><span>${this.formatCurrency(amount)}</span></div>`;
@@ -247,6 +269,51 @@ class AdminWalkinController {
         return extraFee;
     }
 
+    // =========================================================================
+    // SMART SYNC HELPER: Converts UI Toggles to Editable Line Items
+    // =========================================================================
+    syncSystemLineItem(id, name, amount) {
+        const container = document.getElementById("wi-line-items");
+        if (!container) return;
+        
+        let row = container.querySelector(`.wi-row[data-system="${id}"]`);
+
+        // If the feature was untoggled (amount 0), remove it from the Line Items box
+        if (amount <= 0) {
+            if (row) row.remove();
+            return;
+        }
+
+        // Create it if it doesn't exist
+        if (!row) {
+            row = document.createElement("div");
+            row.className = "wi-row";
+            row.setAttribute("data-system", id);
+            row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
+            row.innerHTML = `
+                <input type="text" class="wi-item-name" value="${name}" style="flex: 2; padding:10px; border:1px solid #ccc; border-radius:4px;" readonly>
+                <input type="number" class="wi-item-cost" value="${amount.toFixed(2)}" step="0.01" placeholder="Amount (₱)" style="flex: 1; padding:10px; border:1px solid #ccc; border-radius:4px;">
+                <button type="button" class="btn-action" style="flex: 0 0 45px; background: #e0e0e0; color: #666; border: none; border-radius: 4px; cursor: help; padding: 0;" title="System generated item. Uncheck the option above to remove."><i class="fa-solid fa-lock"></i></button>
+            `;
+            container.appendChild(row);
+
+            // Flag as "Admin Edited" if they manually change the price box!
+            row.querySelector(".wi-item-cost").addEventListener("input", () => {
+                row.setAttribute("data-edited", "true");
+                this.calculateSummary(); // Triggers a recalculation to update grand total
+            });
+        } 
+        else {
+            // Update the name and price ONLY IF the Admin hasn't manually overridden it
+            if (row.getAttribute("data-edited") !== "true") {
+                row.querySelector(".wi-item-name").value = name;
+                row.querySelector(".wi-item-cost").value = amount.toFixed(2);
+            }
+        }
+    }
+    // =========================================================================
+
+
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
@@ -256,6 +323,11 @@ class AdminWalkinController {
             this.getEl('summary-breakdown').innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select dates to calculate.</i></div>';
             this.getEl('summary-total-val').textContent = "₱0.00";
             this.getEl('summary-due-val').textContent = "₱0.00";
+            
+            // Clear auto-generated line items if no dates selected
+            this.syncSystemLineItem('catering', '', 0);
+            this.syncSystemLineItem('rooms', '', 0);
+            this.syncSystemLineItem('av', '', 0);
             return;
         }
 
@@ -265,6 +337,20 @@ class AdminWalkinController {
             case 'tab-villa': this.calcVillaMath(); break;
         }
 
+        // =====================================================================
+        // NEW POS LOGIC: Loop through the Line Item Builder to get Final Add-ons
+        // (This catches both System-synced items AND purely Manual items)
+        // =====================================================================
+        document.querySelectorAll(".wi-row").forEach(row => {
+            const name = row.querySelector(".wi-item-name").value || "Custom Item";
+            const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;
+            if (cost > 0) {
+                this.state.summary.total += cost;
+                this.appendSummaryRow(name, cost);
+            }
+        });
+
+        // Calculate Amount Due based on Scheme
         const schemePct = this.safeFloat(this.getEl("payment-scheme")?.value) || 1;
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
@@ -292,29 +378,50 @@ class AdminWalkinController {
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
-        const guestsInput = this.getEl('event-guests');
-
+        
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
 
-        if (this.getEl('check-catering')?.checked) {
-            const guests = parseInt(guestsInput?.value) || 0;
-            const tierPrice = this.safeFloat(document.querySelector('input[name="catering-tier"]:checked')?.value);
-            const cateringTotal = tierPrice * guests * days;
-            if (cateringTotal > 0) { this.state.summary.total += cateringTotal; this.appendSummaryRow(`Catering (${guests} pax)`, cateringTotal); }
+        // Fetch Event Type for Summary Sidebar
+        const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
+        let evTypeText = 'Plain Hall';
+        if (evTypeRadio) {
+            if (evTypeRadio.id === 'event-others-radio') evTypeText = this.getEl('event-type-others')?.value || 'Custom Event';
+            else evTypeText = evTypeRadio.dataset.text || 'Plain Hall';
         }
+        this.appendSummaryRow('Event Type', `<span style="font-weight:normal; color:#888;">${evTypeText}</span>`);
 
+        // --- SYNC ADDONS TO LINE ITEM BUILDER ---
+        
+        let cateringTotal = 0; let cateringName = '';
+        if (this.getEl('check-catering')?.checked) {
+            const guestsInput = this.getEl('event-guests');
+            const guests = parseInt(guestsInput?.value) || 0;
+            const activeTier = document.querySelector('input[name="catering-tier"]:checked');
+            const tierPrice = this.safeFloat(activeTier?.value);
+            
+            cateringTotal = tierPrice * guests * days;
+            const tierName = activeTier?.parentElement.querySelector('h4')?.innerText || 'Catering';
+            cateringName = `Catering: ${tierName} (${guests} pax)`;
+        }
+        this.syncSystemLineItem('catering', cateringName, cateringTotal);
+
+        let roomTotal = 0; let roomName = '';
         if (this.getEl('check-rooms')?.checked) {
             const dltQty = parseInt(this.getEl('qty-deluxe')?.textContent) || 0;
             const vipQty = parseInt(this.getEl('qty-vip')?.textContent) || 0;
-            const roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
-            if (roomTotal > 0) { this.state.summary.total += roomTotal; this.appendSummaryRow(`Reserved Rooms (x${days} nights)`, roomTotal); }
+            roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
+            
+            let parts = [];
+            if(dltQty > 0) parts.push(`Deluxe Room (x${dltQty})`);
+            if(vipQty > 0) parts.push(`VIP Suite (x${vipQty})`);
+            roomName = `Reserved Rooms: ${parts.join(', ')}`;
         }
+        this.syncSystemLineItem('rooms', roomName, roomTotal);
 
-        if (this.getEl('check-av')?.checked) {
-            this.state.summary.total += 5000; 
-            this.appendSummaryRow('Premium A/V Setup', 5000);
-        }
+        let avTotal = 0;
+        if (this.getEl('check-av')?.checked) avTotal = 5000;
+        this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
     }
 
     calcVillaMath() {
@@ -378,7 +485,6 @@ class AdminWalkinController {
             return;
         }
 
-        // VALIDATION UPDATED: Just checks if they picked a date on the calendar!
         if (!this.state.activeCalendar || !this.state.activeCalendar.startDate) {
             alert("Please select dates on the calendar first!");
             return;
@@ -412,6 +518,8 @@ class AdminWalkinController {
         formData.append("end_date", this.state.activeCalendar.endDate ? this.formatSafeDate(this.state.activeCalendar.endDate) : this.formatSafeDate(this.state.activeCalendar.startDate));
         formData.append("guests", context.guests || 0);
         formData.append("base_amount", context.baseAmt || 0);
+        
+        // SENDS THE ABSOLUTE GRAND TOTAL (Base + ALL Line Items)
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
         formData.append("payment_method", paymentMethod);
@@ -439,43 +547,18 @@ class AdminWalkinController {
         }
 
         // =========================================================
-        // CAPTURE CUSTOM HTML ADD-ONS AS LINE ITEMS FOR EVENT HALL
+        // FINAL PAYLOAD: Grabs everything currently visible in the Line Items box!
         // =========================================================
-        if (context.roomType === 'Event Hall') {
-            let customLineItems = [];
-
-            // 1. Catering
-            const checkCatering = document.getElementById('check-catering');
-            if (checkCatering && checkCatering.checked) {
-                const activeTier = document.querySelector('input[name="catering-tier"]:checked');
-                if (activeTier) {
-                    const tierName = activeTier.parentElement.querySelector('h4').innerText;
-                    const tierPrice = parseFloat(activeTier.value) || 0;
-                    const guestCount = parseInt(context.guests) || 0;
-                    const totalCatering = tierPrice * guestCount;
-                    customLineItems.push({
-                        name: `Catering: ${tierName} (${guestCount} pax)`,
-                        amount: totalCatering
-                    });
-                }
+        let customLineItems = [];
+        document.querySelectorAll(".wi-row").forEach(row => {
+            const name = row.querySelector(".wi-item-name").value.trim();
+            const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;
+            if (name !== "" && cost > 0) {
+                customLineItems.push({ name: name, amount: cost });
             }
+        });
 
-            // 2. Hotel Rooms
-            const checkRooms = document.getElementById('check-rooms');
-            if (checkRooms && checkRooms.checked) {
-                const deluxeQty = parseInt(document.getElementById('qty-deluxe')?.innerText) || 0;
-                const vipQty = parseInt(document.getElementById('qty-vip')?.innerText) || 0;
-                
-                if (deluxeQty > 0) customLineItems.push({ name: `Reserved Deluxe Room (x${deluxeQty})`, amount: (deluxeQty * 4500) });
-                if (vipQty > 0) customLineItems.push({ name: `Reserved VIP Suite (x${vipQty})`, amount: (vipQty * 8500) });
-            }
-
-            // 3. A/V Setup
-            const checkAv = document.getElementById('check-av');
-            if (checkAv && checkAv.checked) {
-                customLineItems.push({ name: `Premium A/V Setup`, amount: 5000 });
-            }
-
+        if (customLineItems.length > 0) {
             formData.append('custom_line_items', JSON.stringify(customLineItems));
         }
         // =========================================================
