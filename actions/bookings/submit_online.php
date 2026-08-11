@@ -83,56 +83,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_cat->execute();
         $venue_category = $stmt_cat->get_result()->fetch_assoc()['category'];
 
-        // Calculate Nights/Days
-        $start_dt = new DateTime($sDate);
-        $end_dt = new DateTime($eDate);
-        $nights = $start_dt->diff($end_dt)->days;
-        if ($nights === 0) $nights = 1; 
+        // =========================================================================
+        // SHARED PRICING LOGIC
+        // =========================================================================
+        require_once '../../includes/pricing.php';
+        $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
 
-        $true_total = 0;
-        $base_amount = 0;
+        $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
+        $base_amount = $pricing['base_amount'];
+        $true_total = $pricing['true_total'];
 
-        if ($venue_category === 'Hotel Room') {
-            $stmt = $conn->prepare("SELECT nightly_rate, base_capacity, extra_pax_rate FROM hotel_rooms WHERE venue_id = ?");
-            $stmt->bind_param("i", $venue_id);
-            $stmt->execute();
-            $room = $stmt->get_result()->fetch_assoc();
-
-            $base_amount = floatval($room['nightly_rate']);
-            $true_total = $base_amount * $nights;
-            
-            if ($guests > $room['base_capacity']) {
-                $extra_pax = $guests - $room['base_capacity'];
-                $true_total += ($extra_pax * floatval($room['extra_pax_rate']) * $nights);
-            }
-        } 
-        elseif ($venue_category === 'Resort Villa') {
-            $stmt = $conn->prepare("SELECT day_rate, base_capacity, extra_pax_rate FROM villas WHERE venue_id = ?");
-            $stmt->bind_param("i", $venue_id);
-            $stmt->execute();
-            $villa = $stmt->get_result()->fetch_assoc();
-
-            $base_amount = floatval($villa['day_rate']);
-            $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
-            
-            $stay_upgrade = ($stay_type === 'Overnight') ? (3000 * $nights) : 0;
-            $true_total = ($base_amount * $nights) + $stay_upgrade;
-
-            if ($guests > $villa['base_capacity']) {
-                $extra_pax = $guests - $villa['base_capacity'];
-                $true_total += ($extra_pax * floatval($villa['extra_pax_rate']) * $nights);
-            }
-        } 
-        elseif ($venue_category === 'Event Hall') {
-            $stmt = $conn->prepare("SELECT base_rate FROM event_halls WHERE venue_id = ?");
-            $stmt->bind_param("i", $venue_id);
-            $stmt->execute();
-            $hall = $stmt->get_result()->fetch_assoc();
-
-            $base_amount = floatval($hall['base_rate']);
-            $true_total = $base_amount * $nights; // FIX: Keep the real math!
+        // Online Event Halls strictly act as inquiries ($0 upfront)
+        if ($venue_category === 'Event Hall') {
+            $true_total = 0; 
             $scheme = 'To Be Arranged'; 
         }
+        // =========================================================================
+
 
         // 3. Save Booking
         $stmt_book = $conn->prepare("
