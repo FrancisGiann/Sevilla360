@@ -37,18 +37,6 @@ $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
                 </option>
                 <?php endforeach; ?>
             </select>
-
-            <!-- NEW: Dynamic Capacity Display Box -->
-            <div id="event-capacity-info"
-                style="display:none; margin-top:10px; background:#f9f9f9; padding:10px 15px; border-left:3px solid var(--color-gold); font-size:0.85rem; color:#555; border-radius:4px;">
-                <strong style="color: var(--color-dark);">Max Capacities:</strong>
-                <span style="margin-left: 10px;"><i class="fa-solid fa-users-rectangle"></i> Theater: <span id="cap-t"
-                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
-                <span style="margin-left: 10px;"><i class="fa-solid fa-chalkboard-user"></i> Classroom: <span id="cap-c"
-                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
-                <span style="margin-left: 10px;"><i class="fa-solid fa-utensils"></i> Banquet: <span id="cap-b"
-                        style="font-weight:600; color:var(--color-gold);">0</span></span>
-            </div>
         </div>
 
         <div class="form-group">

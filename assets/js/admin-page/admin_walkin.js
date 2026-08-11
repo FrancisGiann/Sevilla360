@@ -77,14 +77,25 @@ class AdminWalkinController {
             const opt = e.target.options[e.target.selectedIndex];
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
 
-             // NEW: Show dynamic capacities!
-            const capInfo = this.getEl('event-capacity-info');
-            if (capInfo && opt.dataset.theater) {
-                capInfo.style.display = 'block';
-                this.getEl('cap-t').innerText = opt.dataset.theater;
-                this.getEl('cap-c').innerText = opt.dataset.classroom;
-                this.getEl('cap-b').innerText = opt.dataset.banquet;
+            // =========================================================
+            // NEW: DYNAMICALLY UPDATE EVENT STYLE DROPDOWN CAPACITIES
+            // =========================================================
+            const styleSelect = this.getEl('event-style');
+            if (styleSelect && opt.dataset.theater) {
+                // Update the text of the existing options to include the specific room capacities
+                styleSelect.options[0].text = `Theater Style (${opt.dataset.theater} pax)`;
+                styleSelect.options[1].text = `Classroom Style (${opt.dataset.classroom} pax)`;
+                styleSelect.options[2].text = `Banquet Type (${opt.dataset.banquet} pax)`;
+                
+                // Also update the max attribute on the guest input so they can't overbook!
+                // (Defaults to the highest capacity, which is usually Theater)
+                const guestInput = this.getEl('event-guests');
+                if (guestInput) {
+                    const maxCap = Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet);
+                    guestInput.setAttribute('max', maxCap);
+                }
             }
+            // =========================================================
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
