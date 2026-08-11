@@ -2,42 +2,45 @@
 session_start();
 require '../../config/db_connect.php';
 
-// 1. Security Check: Only Super Admins can change system settings
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
-    echo "Error: Unauthorized access.";
-    exit();
+    echo "Error: Unauthorized access."; exit();
 }
-// ==========================================
-// CSRF PROTECTION GUARD (TEXT)
-// ==========================================
+
 $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     http_response_code(403);
-    echo "Error|CSRF validation failed. Unauthorized request.";
-    exit;
+    echo "Error|CSRF validation failed."; exit;
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
-    // 2. Checkboxes in HTML only send data if they are checked. 
-    // If they are missing from $_POST, it means they are 'false' (unchecked).
+    // Checkboxes
     $maintenance_mode = isset($_POST['maintenance_mode']) ? 'true' : 'false';
     $allow_walkins = isset($_POST['allow_walkins']) ? 'true' : 'false';
 
-    // 3. Update Maintenance Mode
-    // We use "ON DUPLICATE KEY UPDATE" so it creates the setting if it doesn't exist, or updates it if it does.
-    $stmt1 = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('maintenance_mode', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-    $stmt1->bind_param("ss", $maintenance_mode, $maintenance_mode);
-    $stmt1->execute();
-    $stmt1->close();
+    // Build our settings array
+    $settings = [
+        'maintenance_mode' => $maintenance_mode,
+        'allow_walkins' => $allow_walkins,
+        'event_style_classic' => floatval($_POST['event_style_classic'] ?? 5000),
+        'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
+        'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),
+        'catering_silver' => floatval($_POST['catering_silver'] ?? 750),
+        'catering_gold' => floatval($_POST['catering_gold'] ?? 1200),
+        'catering_platinum' => floatval($_POST['catering_platinum'] ?? 1800),
+        'av_setup' => floatval($_POST['av_setup'] ?? 5000),
+    ];
 
-    // 4. Update Allow Walk-ins
-    $stmt2 = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES ('allow_walkins', ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-    $stmt2->bind_param("ss", $allow_walkins, $allow_walkins);
-    $stmt2->execute();
-    $stmt2->close();
-
-    // 5. Tell Javascript it was successful
+    // Upsert into database
+    $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+    
+    foreach ($settings as $key => $val) {
+        $str_val = (string)$val;
+        $stmt->bind_param("sss", $key, $str_val, $str_val);
+        $stmt->execute();
+    }
+    $stmt->close();
+    
     echo "Success";
 }
 $conn->close();
