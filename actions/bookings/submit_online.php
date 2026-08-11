@@ -223,7 +223,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // TRIGGER PAYMONGO IF AMOUNT IS GREATER THAN ZERO
         if ($amount_due > 0) {
             // NOTE: Make sure you changed this to $_ENV['PAYMONGO_SECRET_KEY'] as discussed earlier!
-            $paymongo_sk = 'sk_test_xcJMk42B2XeNY1TzgksSXgPh'; 
+            $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY'];
             
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
             $domain = $_SERVER['HTTP_HOST'];
