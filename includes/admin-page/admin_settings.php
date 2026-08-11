@@ -18,7 +18,7 @@ $venues_query = $conn->query("
     SELECT 
         v.*, 
         hr.room_type, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
-        eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate,
+        eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate, eh.capacity_theater, eh.capacity_classroom, eh.capacity_banquet,
         vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra
     FROM venues v
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
@@ -201,7 +201,55 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         </label>
                     </div>
 
-                    <div class="panel-footer">
+                    <!-- NEW: GLOBAL EVENT PRICING CONFIGURATION -->
+                    <hr class="panel-divider">
+                    <div class="preference-item" style="display: block;">
+                        <div class="preference-info" style="margin-bottom: 20px;">
+                            <h4 style="color: var(--color-gold);">Global Event Pricing Configuration</h4>
+                            <p>Set the base prices for event modifiers, add-ons, and catering. These prices will
+                                automatically apply to all new online and walk-in bookings.</p>
+                        </div>
+
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Style: Classic Elegance (₱)</label>
+                                <input type="number" name="event_style_classic" class="form-control"
+                                    value="<?php echo $current_settings['event_style_classic'] ?? 5000; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Premium A/V Setup (₱)</label>
+                                <input type="number" name="av_setup" class="form-control"
+                                    value="<?php echo $current_settings['av_setup'] ?? 5000; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Type: Wedding Surcharge (₱)</label>
+                                <input type="number" name="event_type_wedding" class="form-control"
+                                    value="<?php echo $current_settings['event_type_wedding'] ?? 10000; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Type: Birthday Surcharge (₱)</label>
+                                <input type="number" name="event_type_birthday" class="form-control"
+                                    value="<?php echo $current_settings['event_type_birthday'] ?? 5000; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Catering: Silver (₱/head)</label>
+                                <input type="number" name="catering_silver" class="form-control"
+                                    value="<?php echo $current_settings['catering_silver'] ?? 750; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Catering: Gold (₱/head)</label>
+                                <input type="number" name="catering_gold" class="form-control"
+                                    value="<?php echo $current_settings['catering_gold'] ?? 1200; ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
+                                <label>Catering: Platinum (₱/head)</label>
+                                <input type="number" name="catering_platinum" class="form-control"
+                                    value="<?php echo $current_settings['catering_platinum'] ?? 1800; ?>">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-footer" style="margin-top: 25px;">
                         <button type="button" id="btn-save-prefs" class="btn btn-primary save-btn">Save Changes</button>
                     </div>
                 </form>
@@ -302,6 +350,18 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
                         <label>Base Rate (₱/Day)</label>
                         <input type="number" id="vm-eh-rate" name="base_rate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
+                        <label>Theater Capacity</label>
+                        <input type="number" id="vm-eh-theater" name="capacity_theater" class="form-control">
+                    </div>
+                    <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
+                        <label>Classroom Capacity</label>
+                        <input type="number" id="vm-eh-classroom" name="capacity_classroom" class="form-control">
+                    </div>
+                    <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
+                        <label>Banquet Capacity</label>
+                        <input type="number" id="vm-eh-banquet" name="capacity_banquet" class="form-control">
                     </div>
 
                     <!-- Hotel Room Specific -->

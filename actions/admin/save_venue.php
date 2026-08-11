@@ -46,10 +46,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Insert into specific child tables
             if ($category === 'Event Hall') {
                 $rate = floatval($_POST['base_rate']);
-                $stmt_ch = $conn->prepare("INSERT INTO event_halls (venue_id, base_capacity, max_capacity, base_rate) VALUES (?, ?, ?, ?)");
-                $stmt_ch->bind_param("iiid", $new_venue_id, $base_cap, $max_cap, $rate);
+                $c_t = intval($_POST['capacity_theater']);
+                $c_c = intval($_POST['capacity_classroom']);
+                $c_b = intval($_POST['capacity_banquet']);
+                
+                $stmt_ch = $conn->prepare("INSERT INTO event_halls (venue_id, base_capacity, max_capacity, base_rate, capacity_theater, capacity_classroom, capacity_banquet) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt_ch->bind_param("iiidiii", $new_venue_id, $base_cap, $max_cap, $rate, $c_t, $c_c, $c_b);
                 $stmt_ch->execute();
-            } 
+            }
             elseif ($category === 'Hotel Room') {
                 $type = trim($_POST['room_type']);
                 $rate = floatval($_POST['nightly_rate']);
@@ -78,10 +82,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             if ($category === 'Event Hall') {
                 $rate = floatval($_POST['base_rate']);
-                $stmt_ch = $conn->prepare("UPDATE event_halls SET base_capacity=?, max_capacity=?, base_rate=? WHERE venue_id=?");
-                $stmt_ch->bind_param("iidi", $base_cap, $max_cap, $rate, $venue_id);
+                $c_t = intval($_POST['capacity_theater']);
+                $c_c = intval($_POST['capacity_classroom']);
+                $c_b = intval($_POST['capacity_banquet']);
+                
+                $stmt_ch = $conn->prepare("UPDATE event_halls SET base_capacity=?, max_capacity=?, base_rate=?, capacity_theater=?, capacity_classroom=?, capacity_banquet=? WHERE venue_id=?");
+                $stmt_ch->bind_param("iidiiii", $base_cap, $max_cap, $rate, $c_t, $c_c, $c_b, $venue_id);
                 $stmt_ch->execute();
-            } 
+            }
             elseif ($category === 'Hotel Room') {
                 $type = trim($_POST['room_type']);
                 $rate = floatval($_POST['nightly_rate']);

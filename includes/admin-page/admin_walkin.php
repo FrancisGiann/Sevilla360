@@ -2,7 +2,7 @@
 require_once 'config/db_connect.php';
 
 // fetch event halls
-$halls_query = $conn->query("SELECT v.id, v.name, e.base_rate FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
+$halls_query = $conn->query("SELECT v.id, v.name, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
 $event_halls = $halls_query->fetch_all(MYSQLI_ASSOC);
 
 // Fetch Hotel Rooms (Grouped by Type AND Name)

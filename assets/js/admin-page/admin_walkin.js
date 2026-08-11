@@ -76,6 +76,15 @@ class AdminWalkinController {
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
+
+             // NEW: Show dynamic capacities!
+            const capInfo = this.getEl('event-capacity-info');
+            if (capInfo && opt.dataset.theater) {
+                capInfo.style.display = 'block';
+                this.getEl('cap-t').innerText = opt.dataset.theater;
+                this.getEl('cap-c').innerText = opt.dataset.classroom;
+                this.getEl('cap-b').innerText = opt.dataset.banquet;
+            }
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
@@ -382,17 +391,36 @@ class AdminWalkinController {
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
 
-        // Fetch Event Type for Summary Sidebar
+        // --- NEW: EVENT TYPE UPGRADE FEE ---
         const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
         let evTypeText = 'Plain Hall';
         if (evTypeRadio) {
             if (evTypeRadio.id === 'event-others-radio') evTypeText = this.getEl('event-type-others')?.value || 'Custom Event';
             else evTypeText = evTypeRadio.dataset.text || 'Plain Hall';
+            
+            const typePrice = this.safeFloat(evTypeRadio.value);
+            if (typePrice > 0) {
+                this.state.summary.total += typePrice;
+                this.syncSystemLineItem('type', `Event Type: ${evTypeText}`, typePrice);
+            } else {
+                this.syncSystemLineItem('type', '', 0); // Clear it if 0
+            }
         }
-        this.appendSummaryRow('Event Type', `<span style="font-weight:normal; color:#888;">${evTypeText}</span>`);
+        
+        // --- NEW: EVENT STYLE UPGRADE FEE ---
+        const styleSelect = this.getEl('event-style');
+        if (styleSelect) {
+            const stylePrice = this.safeFloat(styleSelect.value);
+            const styleText = styleSelect.options[styleSelect.selectedIndex].text.split('(+')[0].trim();
+            if (stylePrice > 0) {
+                this.state.summary.total += stylePrice;
+                this.syncSystemLineItem('style', `Event Style: ${styleText}`, stylePrice);
+            } else {
+                this.syncSystemLineItem('style', '', 0); // Clear it if 0
+            }
+        }
 
         // --- SYNC ADDONS TO LINE ITEM BUILDER ---
-        
         let cateringTotal = 0; let cateringName = '';
         if (this.getEl('check-catering')?.checked) {
             const guestsInput = this.getEl('event-guests');
@@ -420,9 +448,13 @@ class AdminWalkinController {
         this.syncSystemLineItem('rooms', roomName, roomTotal);
 
         let avTotal = 0;
-        if (this.getEl('check-av')?.checked) avTotal = 5000;
+        const avCheckbox = this.getEl('check-av');
+        if (avCheckbox?.checked) {
+            avTotal = this.safeFloat(avCheckbox.value); // DYNAMIC VALUE!
+        }
         this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
     }
+
 
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;

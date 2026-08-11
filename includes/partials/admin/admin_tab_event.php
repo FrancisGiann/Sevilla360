@@ -1,3 +1,17 @@
+<?php
+if (!isset($sys_settings)) {
+    $sys_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
+    $sys_settings = [];
+    if ($sys_query) {
+        while($r = $sys_query->fetch_assoc()) {
+            $sys_settings[$r['setting_key']] = $r['setting_value'];
+        }
+    }
+}
+$type_wed = $sys_settings['event_type_wedding'] ?? 10000;
+$type_bday = $sys_settings['event_type_birthday'] ?? 5000;
+?>
+
 <!-- ADMIN EVENT HALL TAB -->
 <div class="tab-content active" id="tab-event">
     <div class="dynamic-img-wrapper">
@@ -6,36 +20,56 @@
             alt="Event Hall">
     </div>
 
-    <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWN & EVENT TYPE -->
     <div class="form-row">
-        <div class="form-group">
+        <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWN (WITH CAPACITIES) -->
+        <div class="form-group" style="width: 100%;">
             <label>Select Venue Space</label>
             <select id="event-venue">
                 <option value="" disabled selected>Select an Event Hall...</option>
                 <?php foreach($event_halls as $hall): ?>
                 <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>"
-                    data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall">
+                    data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall"
+                    data-theater="<?php echo $hall['capacity_theater'] ?? 0; ?>"
+                    data-classroom="<?php echo $hall['capacity_classroom'] ?? 0; ?>"
+                    data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>">
                     <?php echo htmlspecialchars($hall['name']); ?> (Base Rate:
                     ₱<?php echo number_format($hall['base_rate']); ?>)
                 </option>
                 <?php endforeach; ?>
             </select>
+
+            <!-- NEW: Dynamic Capacity Display Box -->
+            <div id="event-capacity-info"
+                style="display:none; margin-top:10px; background:#f9f9f9; padding:10px 15px; border-left:3px solid var(--color-gold); font-size:0.85rem; color:#555; border-radius:4px;">
+                <strong style="color: var(--color-dark);">Max Capacities:</strong>
+                <span style="margin-left: 10px;"><i class="fa-solid fa-users-rectangle"></i> Theater: <span id="cap-t"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
+                <span style="margin-left: 10px;"><i class="fa-solid fa-chalkboard-user"></i> Classroom: <span id="cap-c"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
+                <span style="margin-left: 10px;"><i class="fa-solid fa-utensils"></i> Banquet: <span id="cap-b"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span>
+            </div>
         </div>
+
         <div class="form-group">
-            <label>Estimated Event Style</label>
+            <label>Event Setup / Seating Style</label>
             <select id="event-style">
-                <option value="0">Minimalist (Standard Setup)</option>
-                <option value="0">Classic Elegance Setup</option>
+                <option value="0">Theater Style</option>
+                <option value="0">Classroom Style</option>
+                <option value="0">Banquet Type</option>
             </select>
         </div>
     </div>
+
     <div class="form-group">
         <label>Event Type</label>
         <div class="radio-group-inline mt-10" id="event-type-group">
             <label><input type="radio" name="event-type" value="0" data-text="Plain Hall" checked> Plain
                 Hall</label>
-            <label><input type="radio" name="event-type" value="0" data-text="Wedding"> Wedding</label>
-            <label><input type="radio" name="event-type" value="0" data-text="Birthday"> Birthday</label>
+            <label><input type="radio" name="event-type" value="<?php echo $type_wed; ?>" data-text="Wedding">
+                Wedding</label>
+            <label><input type="radio" name="event-type" value="<?php echo $type_bday; ?>" data-text="Birthday">
+                Birthday</label>
             <label><input type="radio" name="event-type" value="0" id="event-others-radio" data-text="Custom Event">
                 Others</label>
         </div>
@@ -43,7 +77,6 @@
             placeholder="Please specify event type (e.g. Corporate Seminar)...">
     </div>
 
-    <!-- 2. WHEN: CALENDAR UI -->
     <div style="margin-top: 2rem; margin-bottom: 2rem;">
         <label class="small-label">SELECT EVENT DATES</label>
         <?php
@@ -52,12 +85,10 @@
         ?>
     </div>
 
-    <!-- 3. WHO & EXTRAS: GUESTS AND ADD-ONS -->
     <div class="form-group">
         <label>Number of Guests</label>
         <input type="number" id="event-guests" min="10" placeholder="e.g. 100">
     </div>
 
-    <!-- ADD-ONS -->
     <?php include 'includes/partials/addons_section.php'; ?>
 </div>

@@ -189,6 +189,9 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-base-cap").value = venueData.eh_base;
         document.getElementById("vm-max-cap").value = venueData.eh_max;
         document.getElementById("vm-eh-rate").value = venueData.base_rate;
+        document.getElementById("vm-eh-theater").value = venueData.capacity_theater || 0;
+        document.getElementById("vm-eh-classroom").value = venueData.capacity_classroom || 0;
+        document.getElementById("vm-eh-banquet").value = venueData.capacity_banquet || 0;
       } else if (venueData.category === "Hotel Room") {
         document.getElementById("vm-base-cap").value = venueData.hr_base;
         document.getElementById("vm-max-cap").value = venueData.hr_max;

@@ -88,6 +88,15 @@ class BookingController {
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
+            
+             // NEW: Show dynamic capacities!
+            const capInfo = this.getEl('event-capacity-info');
+            if (capInfo && opt.dataset.theater) {
+                capInfo.style.display = 'block';
+                this.getEl('cap-t').innerText = opt.dataset.theater;
+                this.getEl('cap-c').innerText = opt.dataset.classroom;
+                this.getEl('cap-b').innerText = opt.dataset.banquet;
+            }
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
@@ -515,31 +524,74 @@ class BookingController {
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
-        const guestsInput = this.getEl('event-guests');
-        if (this.getEl('sum-ev-guests')) this.getEl('sum-ev-guests').innerText = guestsInput?.value || "--";
-
+        
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
 
-        if (this.getEl('check-catering')?.checked) {
-            const guests = parseInt(guestsInput?.value) || 0;
-            const tierPrice = this.safeFloat(document.querySelector('input[name="catering-tier"]:checked')?.value);
-            const cateringTotal = tierPrice * guests * days;
-            if (cateringTotal > 0) { this.state.summary.total += cateringTotal; this.appendSummaryRow(`Catering (${guests} pax)`, cateringTotal); }
+        // --- NEW: EVENT TYPE UPGRADE FEE ---
+        const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
+        let evTypeText = 'Plain Hall';
+        if (evTypeRadio) {
+            if (evTypeRadio.id === 'event-others-radio') evTypeText = this.getEl('event-type-others')?.value || 'Custom Event';
+            else evTypeText = evTypeRadio.dataset.text || 'Plain Hall';
+            
+            const typePrice = this.safeFloat(evTypeRadio.value);
+            if (typePrice > 0) {
+                this.state.summary.total += typePrice;
+                this.syncSystemLineItem('type', `Event Type: ${evTypeText}`, typePrice);
+            } else {
+                this.syncSystemLineItem('type', '', 0); // Clear it if 0
+            }
+        }
+        
+        // --- NEW: EVENT STYLE UPGRADE FEE ---
+        const styleSelect = this.getEl('event-style');
+        if (styleSelect) {
+            const stylePrice = this.safeFloat(styleSelect.value);
+            const styleText = styleSelect.options[styleSelect.selectedIndex].text.split('(+')[0].trim();
+            if (stylePrice > 0) {
+                this.state.summary.total += stylePrice;
+                this.syncSystemLineItem('style', `Event Style: ${styleText}`, stylePrice);
+            } else {
+                this.syncSystemLineItem('style', '', 0); // Clear it if 0
+            }
         }
 
+        // --- SYNC ADDONS TO LINE ITEM BUILDER ---
+        let cateringTotal = 0; let cateringName = '';
+        if (this.getEl('check-catering')?.checked) {
+            const guestsInput = this.getEl('event-guests');
+            const guests = parseInt(guestsInput?.value) || 0;
+            const activeTier = document.querySelector('input[name="catering-tier"]:checked');
+            const tierPrice = this.safeFloat(activeTier?.value);
+            
+            cateringTotal = tierPrice * guests * days;
+            const tierName = activeTier?.parentElement.querySelector('h4')?.innerText || 'Catering';
+            cateringName = `Catering: ${tierName} (${guests} pax)`;
+        }
+        this.syncSystemLineItem('catering', cateringName, cateringTotal);
+
+        let roomTotal = 0; let roomName = '';
         if (this.getEl('check-rooms')?.checked) {
             const dltQty = parseInt(this.getEl('qty-deluxe')?.textContent) || 0;
             const vipQty = parseInt(this.getEl('qty-vip')?.textContent) || 0;
-            const roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
-            if (roomTotal > 0) { this.state.summary.total += roomTotal; this.appendSummaryRow(`Reserved Rooms (x${days} nights)`, roomTotal); }
+            roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
+            
+            let parts = [];
+            if(dltQty > 0) parts.push(`Deluxe Room (x${dltQty})`);
+            if(vipQty > 0) parts.push(`VIP Suite (x${vipQty})`);
+            roomName = `Reserved Rooms: ${parts.join(', ')}`;
         }
+        this.syncSystemLineItem('rooms', roomName, roomTotal);
 
-        if (this.getEl('check-av')?.checked) {
-            this.state.summary.total += 5000; 
-            this.appendSummaryRow('Premium A/V Setup', 5000);
+        let avTotal = 0;
+        const avCheckbox = this.getEl('check-av');
+        if (avCheckbox?.checked) {
+            avTotal = this.safeFloat(avCheckbox.value); // DYNAMIC VALUE!
         }
+        this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
     }
+
 
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;

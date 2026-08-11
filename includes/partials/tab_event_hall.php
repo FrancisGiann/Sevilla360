@@ -1,3 +1,18 @@
+<?php
+// Fetch system settings safely for dynamic pricing
+if (!isset($sys_settings)) {
+    $sys_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
+    $sys_settings = [];
+    if ($sys_query) {
+        while($r = $sys_query->fetch_assoc()) {
+            $sys_settings[$r['setting_key']] = $r['setting_value'];
+        }
+    }
+}
+$type_wed = $sys_settings['event_type_wedding'] ?? 10000;
+$type_bday = $sys_settings['event_type_birthday'] ?? 5000;
+?>
+
 <!-- EVENT HALL TAB -->
 <div class="tab-content active" id="tab-event-hall">
     <h2 class="section-title">Event Inquiry & Date Reservation</h2>
@@ -15,7 +30,7 @@
                 yet).</li>
             <li><strong>Consultation:</strong> We will call you within 24 hours to discuss menus, themes, and exact
                 guest counts.</li>
-            <li><strong>Downpayment:</strong> Once details are finalized, you can pay your 50% downpayment via your User
+            <li><strong>Downpayment:</strong> Once details are finalized, you can pay your downpayment via your User
                 Dashboard.</li>
         </ol>
     </div>
@@ -26,26 +41,43 @@
             alt="Event Hall">
     </div>
 
-    <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWN & EVENT TYPE -->
     <div class="form-row">
-        <div class="form-group">
+        <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWN (WITH CAPACITIES) -->
+        <div class="form-group" style="width: 100%;">
             <label>Select Venue Space</label>
             <select id="event-venue">
                 <option value="" disabled selected>Select an Event Hall...</option>
                 <?php foreach($event_halls as $hall): ?>
                 <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>"
-                    data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall">
+                    data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall"
+                    data-theater="<?php echo $hall['capacity_theater'] ?? 0; ?>"
+                    data-classroom="<?php echo $hall['capacity_classroom'] ?? 0; ?>"
+                    data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>">
                     <?php echo htmlspecialchars($hall['name']); ?> (Base Rate:
                     ₱<?php echo number_format($hall['base_rate']); ?>)
                 </option>
                 <?php endforeach; ?>
             </select>
+
+            <!-- NEW: Dynamic Capacity Display Box -->
+            <div id="event-capacity-info"
+                style="display:none; margin-top:10px; background:#f9f9f9; padding:10px 15px; border-left:3px solid var(--color-gold); font-size:0.85rem; color:#555; border-radius:4px;">
+                <strong style="color: var(--color-dark);">Max Capacities:</strong>
+                <span style="margin-left: 10px;"><i class="fa-solid fa-users-rectangle"></i> Theater: <span id="cap-t"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
+                <span style="margin-left: 10px;"><i class="fa-solid fa-chalkboard-user"></i> Classroom: <span id="cap-c"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span> |
+                <span style="margin-left: 10px;"><i class="fa-solid fa-utensils"></i> Banquet: <span id="cap-b"
+                        style="font-weight:600; color:var(--color-gold);">0</span></span>
+            </div>
         </div>
+
         <div class="form-group">
-            <label>Estimated Event Style</label>
+            <label>Event Setup / Seating Style</label>
             <select id="event-style">
-                <option value="0">Minimalist (Standard Setup)</option>
-                <option value="0">Classic Elegance Setup</option>
+                <option value="0">Theater Style</option>
+                <option value="0">Classroom Style</option>
+                <option value="0">Banquet Type</option>
             </select>
         </div>
     </div>
@@ -54,8 +86,11 @@
         <label>What are you celebrating?</label>
         <div class="radio-group" id="event-type-group">
             <label><input type="radio" name="event-type" value="0" data-text="Plain Hall" checked> Plain Hall</label>
-            <label><input type="radio" name="event-type" value="0" data-text="Wedding"> Wedding</label>
-            <label><input type="radio" name="event-type" value="0" data-text="Birthday"> Birthday</label>
+            <!-- The customer doesn't see the price, but the system calculates it! -->
+            <label><input type="radio" name="event-type" value="<?php echo $type_wed; ?>" data-text="Wedding">
+                Wedding</label>
+            <label><input type="radio" name="event-type" value="<?php echo $type_bday; ?>" data-text="Birthday">
+                Birthday</label>
             <label><input type="radio" name="event-type" value="0" id="event-others-radio" data-text="Custom Event">
                 Others</label>
         </div>
@@ -63,30 +98,24 @@
             placeholder="Please specify your event type (e.g. Corporate Seminar)...">
     </div>
 
-    <!-- 2. WHEN: CALENDAR UI -->
     <div style="margin-top: 2rem; margin-bottom: 2rem;">
         <label class="small-label">SELECT INQUIRY DATES</label>
         <?php
         $calendarId = 'cal-ui-event';
         include 'includes/partials/booking_calendar.php';
         ?>
-        <!-- NEW: Availability Warning -->
         <p style="color: #c27c7c; font-size: 0.85rem; margin-top: 10px; font-weight: 500;">
             <i>* Note: Dates are subject to availability. Multiple inquiries may be received for the same date. The slot
                 is awarded to the first finalized contract.</i>
         </p>
     </div>
 
-    <!-- 3. WHO & EXTRAS: GUESTS AND ADD-ONS -->
     <div class="form-group">
         <label>Estimated Number of Guests</label>
         <input type="number" id="event-guests" min="10" placeholder="e.g. 100">
-        <small style="display:block; margin-top:5px; color:#888;">Don't worry, you can adjust this later during
-            consultation.</small>
+        <small style="display:block; margin-top:5px; color:#888;">Note: Maximum capacity varies depending on your chosen
+            Event Setup Style.</small>
     </div>
 
-    <!-- ADD-ONS -->
     <?php include 'includes/partials/addons_section.php'; ?>
-
-    <!-- PAYMENT SCHEME COMPLETELY REMOVED FROM HERE! -->
 </div>
