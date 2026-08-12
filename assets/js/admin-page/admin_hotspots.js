@@ -10,9 +10,13 @@ document.addEventListener("DOMContentLoaded", () => {
     let pendingPoint = null;
     let raycastEnabled = false;
 
-    // NEW: Variables to track visual pins on the screen
+    // Variables to track visual pins on the screen
     let tempSpot = null; 
     let renderedSpots = [];
+
+    // Variables to differentiate dragging vs clicking
+    let isDraggingPano = false;
+    let mouseDownPos = { x: 0, y: 0 };
 
     const panoContainer = document.getElementById("hotspot-pano-container");
     const loadingEl = document.getElementById("hotspot-loading");
@@ -84,7 +88,22 @@ document.addEventListener("DOMContentLoaded", () => {
         viewer.add(pano);
         viewer.setPanorama(pano);
 
-        panoContainer.addEventListener("click", handlePanoClick);
+        // Differentiate between a "Drag to look" and a "Click to place pin"
+        panoContainer.addEventListener("mousedown", (e) => {
+            mouseDownPos = { x: e.clientX, y: e.clientY };
+            isDraggingPano = false;
+        });
+
+        panoContainer.addEventListener("mousemove", (e) => {
+            if (Math.abs(e.clientX - mouseDownPos.x) > 5 || Math.abs(e.clientY - mouseDownPos.y) > 5) {
+                isDraggingPano = true;
+            }
+        });
+
+        panoContainer.addEventListener("mouseup", (e) => {
+            if (isDraggingPano) return; // Don't place a pin if they were just looking around
+            handlePanoClick(e);
+        });
     }
 
     function handlePanoClick(event) {
@@ -101,20 +120,30 @@ document.addEventListener("DOMContentLoaded", () => {
         const intersects = raycaster.intersectObject(currentPanoMesh, true);
 
         if (intersects.length > 0) {
-            pendingPoint = intersects[0].point;
+            pendingPoint = intersects[0].point.clone();
+            pendingPoint.x = -pendingPoint.x;
             
-            // FIX: Visually place a temporary pin where they clicked
-            if (!tempSpot) {
-                tempSpot = new PANOLENS.Infospot(300);
-                currentPanoMesh.add(tempSpot);
-            }
+            if (tempSpot) currentPanoMesh.remove(tempSpot);
+            
+            const isNav = typeSelect.value === 'nav';
+            const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
+            
+            // Start with safe default, then manually force your transparent PNG over it
+            tempSpot = new PANOLENS.Infospot(350, PANOLENS.DataImage.Info);
+            new THREE.TextureLoader().load(iconUrl, (texture) => {
+                tempSpot.material.map = texture;
+                tempSpot.material.transparent = true; // FORCE TRANSPARENCY
+                tempSpot.material.needsUpdate = true;
+            });
+
+            currentPanoMesh.add(tempSpot);
             tempSpot.position.copy(pendingPoint);
             tempSpot.show();
 
             formWrapper.classList.remove("hidden");
             document.getElementById("hs-title").value = '';
             document.getElementById("hs-description").value = '';
-            typeSelect.value = 'info';
+            
             toggleTypeFields();
         }
     }
@@ -124,9 +153,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const isNav = typeSelect.value === 'nav';
         descWrapper.classList.toggle('hidden', isNav);
         targetWrapper.classList.toggle('hidden', !isNav);
+
+        if (tempSpot && currentPanoMesh) {
+            const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
+            new THREE.TextureLoader().load(iconUrl, (texture) => {
+                tempSpot.material.map = texture;
+                tempSpot.material.transparent = true;
+                tempSpot.material.needsUpdate = true;
+            });
+        }
     }
 
-    // FIX: Remove temporary pin if they click cancel
+    // Remove temporary pin if they click cancel
     document.getElementById("btn-cancel-hotspot")?.addEventListener("click", () => {
         formWrapper.classList.add("hidden");
         pendingPoint = null;
@@ -157,10 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
             headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
             body: JSON.stringify(payload)
         })
-        .then(res => {
-            if (!res.ok) throw new Error("HTTP Status " + res.status);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
             if (data.success) {
                 formWrapper.classList.add("hidden");
@@ -173,10 +208,6 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
                 alert("Database Error: " + data.message);
             }
-        })
-        .catch(err => {
-            console.error("Save Fetch Error:", err);
-            alert("Network Error: Make sure your PHP file is named exactly 'save_hotspot.php' (singular) inside actions/admin/. Check console for details.");
         });
     });
 
@@ -184,14 +215,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!mediaId) return;
 
         fetch(`actions/admin/get_hotspots.php?media_id=${mediaId}`)
-        .then(res => {
-            if (!res.ok) throw new Error("HTTP Status " + res.status);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(data => {
             listEl.innerHTML = '';
 
-            // FIX: Clear old visual pins from the screen before drawing new ones
+            // Clear old visual pins from the screen before drawing new ones
             if (currentPanoMesh) {
                 renderedSpots.forEach(spot => currentPanoMesh.remove(spot));
             }
@@ -203,7 +231,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             data.hotspots.forEach(h => {
-                // 1. Add to text list
                 listEl.insertAdjacentHTML('beforeend', `
                 <div class="hotspot-list-item" data-id="${h.id}">
                     <div class="hs-info">
@@ -216,15 +243,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 `);
 
-                // 2. FIX: Actually draw the saved pins on the 360 viewer for the admin!
+                // Draw the saved pins using your custom PNG icons
                 if (currentPanoMesh) {
-                    const spot = new PANOLENS.Infospot(300);
+                    const isNav = h.type === 'nav';
+                    const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
+
+                    const spot = new PANOLENS.Infospot(350, iconUrl);
                     spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
                     spot.addHoverText(h.title);
-                    
-                    // Color code the pins: Nav = Red, Info = Green
-                    if (h.type === 'nav') spot.material.color.setHex(0xe06666); 
-                    else spot.material.color.setHex(0x4ade80);
 
                     currentPanoMesh.add(spot);
                     renderedSpots.push(spot);
@@ -242,12 +268,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) loadExistingHotspots(currentMediaId);
-                        else alert("Error: " + data.message);
-                    })
-                    .catch(err => alert("Network Error: Make sure your file is named delete_hotspot.php"));
+                    });
                 });
             });
-        })
-        .catch(err => console.error("Load Fetch Error:", err));
+        });
     }
 });

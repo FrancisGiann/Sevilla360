@@ -1,7 +1,7 @@
 <?php
 $page_title = 'Virtual Showroom | SEVILLA360';
 $extra_css = 'assets/css/showroom.css?v=' . time();
-$extra_js = 'assets/js/showroom.js?v= ' . time();
+$extra_js = 'assets/js/showroom.js?v=' . time();
 $active_page = 'showroom';
 
 require_once 'config/db_connect.php';
