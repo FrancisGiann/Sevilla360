@@ -418,7 +418,13 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 <div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
     <div class="cms-modal-content" style="max-width: 1000px; padding: 2rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-            <h3 class="cms-modal-title" style="margin:0;" id="hotspot-modal-title">Place Hotspots</h3>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h3 class="cms-modal-title" style="margin:0;" id="hotspot-modal-title">Place Hotspots</h3>
+                <!-- NEW: Admin View Switcher -->
+                <select id="hs-admin-view-selector"
+                    style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold; background: var(--color-gold); color: white; display: none; cursor: pointer; outline: none;">
+                </select>
+            </div>
             <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal">Close</button>
         </div>
 

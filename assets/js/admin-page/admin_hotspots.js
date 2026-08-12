@@ -1,23 +1,28 @@
+/**
+ * ==========================================================================
+ * SEVILLA360 - Admin Hotspots Controller
+ * ==========================================================================
+ */
 document.addEventListener("DOMContentLoaded", () => {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
     const hotspotModal = document.getElementById("hotspotModal");
     if (!hotspotModal) return;
 
+    // ============================================================
+    // STATE
+    // ============================================================
     let viewer = null;
     let currentPanoMesh = null;
     let currentMediaId = null;
     let currentSlot = null;
+    let currentPhotosArray = []; // NEW: Keep track of all photos for this room
     let pendingPoint = null;
+    let pendingSpot = null;
     let raycastEnabled = false;
 
-    // Variables to track visual pins on the screen
-    let tempSpot = null; 
-    let renderedSpots = [];
-
-    // Variables to differentiate dragging vs clicking
-    let isDraggingPano = false;
-    let mouseDownPos = { x: 0, y: 0 };
-
+    // ============================================================
+    // DOM ELEMENTS
+    // ============================================================
     const panoContainer = document.getElementById("hotspot-pano-container");
     const loadingEl = document.getElementById("hotspot-loading");
     const formWrapper = document.getElementById("hotspot-form-wrapper");
@@ -26,251 +31,411 @@ document.addEventListener("DOMContentLoaded", () => {
     const descWrapper = document.getElementById("hs-desc-wrapper");
     const targetWrapper = document.getElementById("hs-target-wrapper");
     const targetSelect = document.getElementById("hs-target-index");
+    
+    // NEW: The Admin View Switcher Dropdown
+    const adminViewSelector = document.getElementById("hs-admin-view-selector");
 
-    document.querySelectorAll(".btn-place-hotspots").forEach(btn => {
+    // ============================================================
+    // CUSTOM HOTSPOT ICONS
+    // ============================================================
+    const HOTSPOT_INFO_ICON = "assets/img/hotspot-info.png";
+    const HOTSPOT_ARROW_ICON = "assets/img/hotspot-arrow.png";
+
+    // ============================================================
+    // CREATE CUSTOM INFOSPOT
+    // ============================================================
+    function createHotspotSpot(type, position) {
+        const icon = type === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
+        const spot = new PANOLENS.Infospot(350, icon);
+
+        if (position) {
+            spot.position.copy(position);
+        }
+
+        if (spot.material) {
+            spot.material.transparent = true;
+            spot.material.alphaTest = 0.5;
+            spot.material.depthWrite = false;
+            spot.material.needsUpdate = true;
+        }
+
+        if (spot.material && spot.material.map) {
+            spot.material.map.needsUpdate = true;
+        }
+
+        return spot;
+    }
+
+    // ============================================================
+    // CHANGE TEMPORARY PIN ICON
+    // ============================================================
+    function updateTemporarySpotIcon() {
+        if (!pendingSpot) return;
+
+        const selectedType = typeSelect?.value || "info";
+        const icon = selectedType === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
+        const loader = new THREE.TextureLoader();
+
+        loader.load(icon, (texture) => {
+            texture.needsUpdate = true;
+
+            if (!pendingSpot.material) return;
+
+            if (pendingSpot.material.map) {
+                pendingSpot.material.map.dispose();
+            }
+
+            pendingSpot.material.map = texture;
+            pendingSpot.material.transparent = true;
+            pendingSpot.material.alphaTest = 0.5;
+            pendingSpot.material.depthWrite = false;
+            pendingSpot.material.needsUpdate = true;
+        });
+    }
+
+    // ============================================================
+    // REMOVE TEMPORARY PIN
+    // ============================================================
+    function removeTemporarySpot() {
+        if (pendingSpot && currentPanoMesh) {
+            currentPanoMesh.remove(pendingSpot);
+            if (pendingSpot.material) {
+                if (pendingSpot.material.map) pendingSpot.material.map.dispose();
+                pendingSpot.material.dispose();
+            }
+        }
+        pendingSpot = null;
+    }
+
+    // ============================================================
+    // PLACE / OPEN HOTSPOT MODAL
+    // ============================================================
+    document.querySelectorAll(".btn-place-hotspots").forEach((btn) => {
         btn.addEventListener("click", () => {
-            currentMediaId = btn.getAttribute("data-media-id");
             currentSlot = btn.getAttribute("data-slot");
+            currentPhotosArray = (window.panoDataOrdered && window.panoDataOrdered[currentSlot]) || [];
 
-            const photos = (window.panoDataOrdered && window.panoDataOrdered[currentSlot]) || [];
-            if (photos.length === 0) return alert("No panorama found for this slot.");
+            if (currentPhotosArray.length === 0) {
+                alert("No panorama found for this slot.");
+                return;
+            }
 
-            document.getElementById("hotspot-modal-title").innerText = "Place Hotspots — " + currentSlot.replace('venue_', '').replace(/_/g, ' ');
+            // Sync the ID perfectly to the first photo
+            currentMediaId = currentPhotosArray[0].id;
 
-            targetSelect.innerHTML = '';
-            photos.forEach((p, idx) => {
+            document.getElementById("hotspot-modal-title").innerText =
+                "Place Hotspots — " + currentSlot.replace("venue_", "").replace(/_/g, " ");
+
+            // Populate Walk-To target dropdown
+            targetSelect.innerHTML = "";
+            currentPhotosArray.forEach((p, idx) => {
                 const opt = document.createElement("option");
                 opt.value = idx;
                 opt.innerText = `View ${idx + 1}`;
                 targetSelect.appendChild(opt);
             });
 
+            // NEW: Populate the Admin View Switcher
+            if (adminViewSelector) {
+                adminViewSelector.innerHTML = "";
+                currentPhotosArray.forEach((p, idx) => {
+                    const opt = document.createElement("option");
+                    opt.value = idx;
+                    opt.innerText = `Editing: View ${idx + 1}`;
+                    adminViewSelector.appendChild(opt);
+                });
+                
+                // Only show the dropdown if there is more than 1 image
+                adminViewSelector.style.display = currentPhotosArray.length > 1 ? "inline-block" : "none";
+                adminViewSelector.value = 0; // Reset to first view
+            }
+
+            // Open modal
             hotspotModal.classList.add("active");
             formWrapper.classList.add("hidden");
             loadingEl.style.display = "flex";
 
-            initViewer(photos[0].file_path);
-            loadExistingHotspots(currentMediaId);
+            // Clear any old temporary pin
+            pendingPoint = null;
+            pendingSpot = null;
+            raycastEnabled = false;
+
+            // Initialize viewer
+            initViewer(currentPhotosArray[0].file_path);
         });
     });
 
+    // ============================================================
+    // NEW: ADMIN VIEW SWITCHER LOGIC
+    // ============================================================
+    adminViewSelector?.addEventListener("change", (e) => {
+        const selectedIndex = parseInt(e.target.value, 10);
+        const selectedPhoto = currentPhotosArray[selectedIndex];
+
+        if (!selectedPhoto) return;
+
+        // Clean up unsaved pins
+        formWrapper.classList.add("hidden");
+        removeTemporarySpot();
+        pendingPoint = null;
+        raycastEnabled = false;
+
+        // Sync the ID perfectly to the newly selected photo
+        currentMediaId = selectedPhoto.id;
+
+        // Show loading screen and initialize the new viewer
+        loadingEl.style.display = "flex";
+        initViewer(selectedPhoto.file_path);
+    });
+
+    // ============================================================
+    // CLOSE MODAL
+    // ============================================================
     document.getElementById("btnCloseHotspotModal")?.addEventListener("click", () => {
         hotspotModal.classList.remove("active");
         formWrapper.classList.add("hidden");
+        
+        removeTemporarySpot();
+        pendingPoint = null;
+        raycastEnabled = false;
+
         if (viewer) {
             viewer.dispose();
             viewer = null;
         }
+        currentPanoMesh = null;
     });
 
+    // ============================================================
+    // INITIALIZE PANOLENS VIEWER
+    // ============================================================
     function initViewer(imageUrl) {
         if (viewer) {
             viewer.dispose();
-            panoContainer.innerHTML = '';
+            viewer = null;
+            panoContainer.innerHTML = "";
         }
+
+        currentPanoMesh = null;
+        pendingPoint = null;
+        pendingSpot = null;
+        raycastEnabled = false;
 
         viewer = new PANOLENS.Viewer({
             container: panoContainer,
             controlBar: false,
-            autoRotate: false,
+            autoRotate: false
         });
 
         const pano = new PANOLENS.ImagePanorama(imageUrl);
+
         pano.addEventListener("load", () => {
             loadingEl.style.display = "none";
             currentPanoMesh = pano;
             raycastEnabled = true;
 
-            // Re-draw saved hotspots after panorama loads
+            // Load saved hotspots for this specific view
             loadExistingHotspots(currentMediaId);
         });
 
         viewer.add(pano);
         viewer.setPanorama(pano);
 
-        // Differentiate between a "Drag to look" and a "Click to place pin"
-        panoContainer.addEventListener("mousedown", (e) => {
-            mouseDownPos = { x: e.clientX, y: e.clientY };
-            isDraggingPano = false;
-        });
-
-        panoContainer.addEventListener("mousemove", (e) => {
-            if (Math.abs(e.clientX - mouseDownPos.x) > 5 || Math.abs(e.clientY - mouseDownPos.y) > 5) {
-                isDraggingPano = true;
-            }
-        });
-
-        panoContainer.addEventListener("mouseup", (e) => {
-            if (isDraggingPano) return; // Don't place a pin if they were just looking around
-            handlePanoClick(e);
-        });
+        panoContainer.onclick = handlePanoClick;
     }
 
+    // ============================================================
+    // CLICK PANORAMA
+    // ============================================================
     function handlePanoClick(event) {
         if (!raycastEnabled || !viewer || !currentPanoMesh) return;
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
         const rect = panoContainer.getBoundingClientRect();
-
+        const mouse = new THREE.Vector2();
+        
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
+        const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, viewer.camera);
         const intersects = raycaster.intersectObject(currentPanoMesh, true);
 
-        if (intersects.length > 0) {
-            pendingPoint = intersects[0].point.clone();
-            pendingPoint.x = -pendingPoint.x;
-            
-            if (tempSpot) currentPanoMesh.remove(tempSpot);
-            
-            const isNav = typeSelect.value === 'nav';
-            const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
-            
-            // Start with safe default, then manually force your transparent PNG over it
-            tempSpot = new PANOLENS.Infospot(350, PANOLENS.DataImage.Info);
-            new THREE.TextureLoader().load(iconUrl, (texture) => {
-                tempSpot.material.map = texture;
-                tempSpot.material.transparent = true; // FORCE TRANSPARENCY
-                tempSpot.material.needsUpdate = true;
-            });
+        if (intersects.length === 0) return;
 
-            currentPanoMesh.add(tempSpot);
-            tempSpot.position.copy(pendingPoint);
-            tempSpot.show();
+        pendingPoint = intersects[0].point.clone();
+        
+        // Fix for mirrored coordinate bug
+        pendingPoint.x = -pendingPoint.x;
 
-            formWrapper.classList.remove("hidden");
-            document.getElementById("hs-title").value = '';
-            document.getElementById("hs-description").value = '';
-            
-            toggleTypeFields();
+        const selectedType = typeSelect?.value || "info";
+
+        if (pendingSpot) {
+            pendingSpot.position.copy(pendingPoint);
+            updateTemporarySpotIcon();
+        } else {
+            pendingSpot = createHotspotSpot(selectedType, pendingPoint);
+            currentPanoMesh.add(pendingSpot);
         }
+
+        const wasHidden = formWrapper.classList.contains("hidden");
+        formWrapper.classList.remove("hidden");
+
+        if (wasHidden) {
+            document.getElementById("hs-title").value = "";
+            document.getElementById("hs-description").value = "";
+        }
+
+        toggleTypeFields();
     }
 
-    typeSelect?.addEventListener("change", toggleTypeFields);
+    // ============================================================
+    // DROPDOWN CHANGE
+    // ============================================================
+    typeSelect?.addEventListener("change", () => {
+        toggleTypeFields();
+        updateTemporarySpotIcon();
+    });
+
     function toggleTypeFields() {
-        const isNav = typeSelect.value === 'nav';
-        descWrapper.classList.toggle('hidden', isNav);
-        targetWrapper.classList.toggle('hidden', !isNav);
-
-        if (tempSpot && currentPanoMesh) {
-            const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
-            new THREE.TextureLoader().load(iconUrl, (texture) => {
-                tempSpot.material.map = texture;
-                tempSpot.material.transparent = true;
-                tempSpot.material.needsUpdate = true;
-            });
-        }
+        const isNav = typeSelect.value === "nav";
+        descWrapper.classList.toggle("hidden", isNav);
+        targetWrapper.classList.toggle("hidden", !isNav);
     }
 
-    // Remove temporary pin if they click cancel
+    // ============================================================
+    // CANCEL HOTSPOT
+    // ============================================================
     document.getElementById("btn-cancel-hotspot")?.addEventListener("click", () => {
         formWrapper.classList.add("hidden");
         pendingPoint = null;
-        if (tempSpot && currentPanoMesh) {
-            currentPanoMesh.remove(tempSpot);
-            tempSpot = null;
-        }
+        removeTemporarySpot();
     });
 
+    // ============================================================
+    // SAVE HOTSPOT
+    // ============================================================
     document.getElementById("btn-save-hotspot")?.addEventListener("click", () => {
         const title = document.getElementById("hs-title").value.trim();
-        if (!title) return alert("Please enter a title/label for this hotspot.");
-        if (!pendingPoint) return alert("No position captured — click on the panorama first.");
+
+        if (!title) {
+            alert("Please enter a title/label for this hotspot.");
+            return;
+        }
+
+        if (!pendingPoint) {
+            alert("No position captured — click on the panorama first.");
+            return;
+        }
+
+        const selectedType = typeSelect.value;
 
         const payload = {
             media_id: currentMediaId,
-            type: typeSelect.value,
+            type: selectedType,
             title: title,
             description: document.getElementById("hs-description").value.trim(),
             x: pendingPoint.x,
             y: pendingPoint.y,
             z: pendingPoint.z,
-            target_pano_index: typeSelect.value === 'nav' ? targetSelect.value : null
+            target_pano_index: selectedType === "nav" ? targetSelect.value : null
         };
 
         fetch("actions/admin/save_hotspot.php", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfToken
+            },
             body: JSON.stringify(payload)
         })
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => res.json())
+        .then((data) => {
             if (data.success) {
                 formWrapper.classList.add("hidden");
                 pendingPoint = null;
-                if (tempSpot && currentPanoMesh) {
-                    currentPanoMesh.remove(tempSpot);
-                    tempSpot = null;
-                }
+                removeTemporarySpot();
                 loadExistingHotspots(currentMediaId);
             } else {
-                alert("Database Error: " + data.message);
+                alert("Error: " + data.message);
             }
+        })
+        .catch(() => {
+            alert("Network error saving hotspot.");
         });
     });
 
+    // ============================================================
+    // LOAD EXISTING HOTSPOTS
+    // ============================================================
     function loadExistingHotspots(mediaId) {
-        if (!mediaId) return;
-
         fetch(`actions/admin/get_hotspots.php?media_id=${mediaId}`)
-        .then(res => res.json())
-        .then(data => {
-            listEl.innerHTML = '';
-
-            // Clear old visual pins from the screen before drawing new ones
-            if (currentPanoMesh) {
-                renderedSpots.forEach(spot => currentPanoMesh.remove(spot));
-            }
-            renderedSpots = [];
+        .then((res) => res.json())
+        .then((data) => {
+            listEl.innerHTML = "";
 
             if (!data.success || data.hotspots.length === 0) {
                 listEl.innerHTML = '<p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>';
                 return;
             }
 
-            data.hotspots.forEach(h => {
-                listEl.insertAdjacentHTML('beforeend', `
-                <div class="hotspot-list-item" data-id="${h.id}">
-                    <div class="hs-info">
-                        <span class="hs-type-badge ${h.type}">${h.type}</span>
-                        <strong>${h.title}</strong>
+            data.hotspots.forEach((h) => {
+                listEl.insertAdjacentHTML(
+                    "beforeend",
+                    `
+                    <div class="hotspot-list-item" data-id="${h.id}">
+                        <div class="hs-info">
+                            <span class="hs-type-badge ${h.type}">
+                                ${h.type}
+                            </span>
+                            <strong>
+                                ${h.title}
+                            </strong>
+                        </div>
+                        <button class="btn-delete-hotspot" data-id="${h.id}" title="Delete">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
                     </div>
-                    <button class="btn-delete-hotspot" data-id="${h.id}" title="Delete">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </div>
-                `);
+                    `
+                );
 
-                // Draw the saved pins using your custom PNG icons
                 if (currentPanoMesh) {
-                    const isNav = h.type === 'nav';
-                    const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
-
-                    const spot = new PANOLENS.Infospot(350, iconUrl);
-                    spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
+                    const spot = createHotspotSpot(h.type, {
+                        x: parseFloat(h.position_x),
+                        y: parseFloat(h.position_y),
+                        z: parseFloat(h.position_z)
+                    });
+                    
                     spot.addHoverText(h.title);
-
                     currentPanoMesh.add(spot);
-                    renderedSpots.push(spot);
                 }
             });
 
-            document.querySelectorAll(".btn-delete-hotspot").forEach(btn => {
-                btn.addEventListener("click", function() {
+            document.querySelectorAll(".btn-delete-hotspot").forEach((btn) => {
+                btn.addEventListener("click", function () {
                     if (!confirm("Delete this hotspot?")) return;
+
                     fetch("actions/admin/delete_hotspot.php", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-Token": csrfToken
+                        },
                         body: JSON.stringify({ id: this.getAttribute("data-id") })
                     })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) loadExistingHotspots(currentMediaId);
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (data.success) {
+                            // Reload the current view so the pin disappears from 3D space
+                            initViewer(currentPhotosArray[adminViewSelector.value].file_path);
+                        } else {
+                            alert("Error: " + data.message);
+                        }
                     });
                 });
             });
+        })
+        .catch((error) => {
+            console.error("Error loading hotspots:", error);
         });
     }
 });
