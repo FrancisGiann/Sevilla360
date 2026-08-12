@@ -124,16 +124,10 @@ document.addEventListener("DOMContentLoaded", () => {
             currentMediaId = currentPhotosArray[0].id;
 
             document.getElementById("hotspot-modal-title").innerText =
-                "Place Hotspots — " + currentSlot.replace("venue_", "").replace(/_/g, " ");
+                "Place Hotspots — " + currentSlot.replace(/^venue_/, "").replace(/_360$/, "").replace(/_/g, " ");
 
-            // Populate Walk-To target dropdown
-            targetSelect.innerHTML = "";
-            currentPhotosArray.forEach((p, idx) => {
-                const opt = document.createElement("option");
-                opt.value = idx;
-                opt.innerText = `View ${idx + 1}`;
-                targetSelect.appendChild(opt);
-            });
+            // Populate Walk-To target dropdown (excluding the current view, set to 0 by default)
+            refreshTargetDropdown(0);
 
             // NEW: Populate the Admin View Switcher
             if (adminViewSelector) {
@@ -166,6 +160,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ============================================================
+    // REFRESH WALK-TO TARGET DROPDOWN (excludes the currently editing view)
+    // ============================================================
+    function refreshTargetDropdown(currentViewIndex) {
+        targetSelect.innerHTML = "";
+        currentPhotosArray.forEach((p, idx) => {
+            if (idx === currentViewIndex) return; // Skip the current view
+            const opt = document.createElement("option");
+            opt.value = idx;
+            opt.innerText = `View ${idx + 1}`;
+            targetSelect.appendChild(opt);
+        });
+    }
+
+    // ============================================================
     // NEW: ADMIN VIEW SWITCHER LOGIC
     // ============================================================
     adminViewSelector?.addEventListener("change", (e) => {
@@ -182,6 +190,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Sync the ID perfectly to the newly selected photo
         currentMediaId = selectedPhoto.id;
+
+        // Rebuild Walk-To dropdown excluding the newly active view
+        refreshTargetDropdown(selectedIndex);
 
         // Show loading screen and initialize the new viewer
         loadingEl.style.display = "flex";

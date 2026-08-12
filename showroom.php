@@ -18,7 +18,7 @@ $venues_query = $conn->query("
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
     WHERE v.status != 'Inactive'
-    GROUP BY v.name, hr.room_type
+    GROUP BY v.id, v.category, v.name, hr.room_type
 ");
 
 $showroom_data = [];
@@ -62,8 +62,8 @@ if ($media_query) {
     while ($m = $media_query->fetch_assoc()) {
         $slot = $m['slot_assignment'];
 
-        if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
-            $base_id = str_replace(['venue_', '_360'], '', $slot);
+        if ($m['media_type'] === '360' && preg_match('/^venue_.+_360$/', $slot)) {
+            $base_id = preg_replace('/^venue_(.+)_360$/', '$1', $slot);
             if (isset($showroom_data[$base_id])) {
                 if (!isset($showroom_data[$base_id]['pano_urls'])) {
                     $showroom_data[$base_id]['pano_urls'] = [];
@@ -74,8 +74,8 @@ if ($media_query) {
                 $pano_index_map[$base_id][$m['id']] = $current_index;
             }
         }
-        elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
-            $base_id = str_replace('venue_', '', $slot);
+        elseif ($m['media_type'] === 'standard' && preg_match('/^venue_/', $slot) && strpos($slot, '_std') === false) {
+            $base_id = preg_replace('/^venue_/', '', $slot);
             if (isset($showroom_data[$base_id])) {
                 $showroom_data[$base_id]['gallery'][] = $m['file_path'];
             }

@@ -11,6 +11,7 @@ $venues_query = $conn->query("
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     WHERE v.status != 'Inactive'
     GROUP BY 
+        v.id,
         v.category, 
         v.name,
         hr.room_type
@@ -160,7 +161,10 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
             $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
             $has_img = $photo_count > 0;
-            $first_photo = $has_img ? $photos_array[0]['file_path'] : '';
+            // Use ASC-ordered array for thumbnail and Hotspots button ID so it
+            // matches what panoDataOrdered[slot][0] resolves to in the JS editor.
+            $ordered_photos_array = isset($pano_venue_photos_ordered[$slot_key]) ? $pano_venue_photos_ordered[$slot_key] : $photos_array;
+            $first_photo = $has_img ? $ordered_photos_array[0]['file_path'] : '';
         ?>
         <div class="cms-card" data-type="360">
             <div class="cms-img-wrapper"
@@ -191,7 +195,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                     <?php if ($has_img): ?>
                     <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
-                    <button class="btn-outline btn-place-hotspots" data-media-id="<?php echo $photos_array[0]['id']; ?>"
+                    <button class="btn-outline btn-place-hotspots" data-media-id="<?php echo $ordered_photos_array[0]['id']; ?>"
                         data-slot="<?php echo $slot_key; ?>"
                         style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">
                         <i class="fa-solid fa-map-pin"></i> Hotspots</button>
