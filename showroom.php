@@ -53,26 +53,64 @@ if ($venues_query) {
 }
 
 // 2. Fetch Media from CMS and attach to the correct showroom venue
-$media_query = $conn->query("SELECT slot_assignment, file_path, media_type FROM media_cms");
-if ($media_query) {
-while($m = $media_query->fetch_assoc()) {
-$slot = $m['slot_assignment'];
+// ORDER BY id ASC keeps pano_urls order deterministic, matching admin hotspot indexing.
+$media_query = $conn->query("SELECT id, slot_assignment, file_path, media_type FROM media_cms ORDER BY id ASC");
 
-// If it's a 360 image (e.g., venue_deluxe_room_360)
+$pano_index_map = []; // [ base_id => [ media_id => pano_url_index ] ]
+
+if ($media_query) {
+    while ($m = $media_query->fetch_assoc()) {
+        $slot = $m['slot_assignment'];
+
         if ($m['media_type'] === '360' && strpos($slot, '_360') !== false) {
             $base_id = str_replace(['venue_', '_360'], '', $slot);
             if (isset($showroom_data[$base_id])) {
                 if (!isset($showroom_data[$base_id]['pano_urls'])) {
                     $showroom_data[$base_id]['pano_urls'] = [];
+                    $pano_index_map[$base_id] = [];
                 }
+                $current_index = count($showroom_data[$base_id]['pano_urls']);
                 $showroom_data[$base_id]['pano_urls'][] = $m['file_path'];
+                $pano_index_map[$base_id][$m['id']] = $current_index;
             }
         }
-// If it's a standard gallery image (e.g., venue_deluxe_room)
         elseif ($m['media_type'] === 'standard' && strpos($slot, 'venue_') === 0 && strpos($slot, '_std') === false) {
             $base_id = str_replace('venue_', '', $slot);
-        if (isset($showroom_data[$base_id])) {
-            $showroom_data[$base_id]['gallery'][] = $m['file_path'];
+            if (isset($showroom_data[$base_id])) {
+                $showroom_data[$base_id]['gallery'][] = $m['file_path'];
+            }
+        }
+    }
+}
+
+// 3. Fetch hotspots and group by venue + pano index
+$hotspots_query = $conn->query("
+    SELECT id, media_id, type, title, description, position_x, position_y, position_z, target_pano_index 
+    FROM showroom_hotspots
+");
+if ($hotspots_query) {
+    while ($h = $hotspots_query->fetch_assoc()) {
+        $media_id = $h['media_id'];
+        foreach ($pano_index_map as $base_id => $media_to_index) {
+            if (isset($media_to_index[$media_id])) {
+                $pano_index = $media_to_index[$media_id];
+                if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'])) {
+                    $showroom_data[$base_id]['hotspots_by_pano_index'] = [];
+                }
+                if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index])) {
+                    $showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index] = [];
+                }
+                $showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index][] = [
+                    'id' => $h['id'],
+                    'type' => $h['type'],
+                    'title' => $h['title'],
+                    'description' => $h['description'],
+                    'position_x' => $h['position_x'],
+                    'position_y' => $h['position_y'],
+                    'position_z' => $h['position_z'],
+                    'target_pano_index' => $h['target_pano_index'],
+                ];
+                break;
             }
         }
     }

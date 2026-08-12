@@ -340,6 +340,34 @@
   border-color: var(--color-dark);
 }
 
+/* ==========================================================================
+   Hotspot Placement Tool
+   ========================================================================== */
+#hotspot-pano-container canvas { cursor: crosshair !important; }
+
+.hotspot-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #faf9f7;
+  border: 1px solid rgba(42, 37, 34, 0.08);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.hotspot-list-item .hs-info { display: flex; flex-direction: column; gap: 2px; }
+.hotspot-list-item .hs-type-badge {
+  font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; padding: 2px 8px; border-radius: 10px; width: fit-content;
+}
+.hs-type-badge.info { background: #dbeafe; color: #1e40af; }
+.hs-type-badge.nav { background: #dcfce7; color: #166534; }
+.hotspot-list-item .btn-delete-hotspot {
+  background: none; border: none; color: #c75c5c; cursor: pointer; font-size: 0.9rem; padding: 4px;
+}
+.hotspot-list-item .btn-delete-hotspot:hover { opacity: 0.7; }
+.btn-place-hotspots:hover { background: var(--color-gold) !important; color: var(--color-white) !important; }
+
 /* Animations & Responsive */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }

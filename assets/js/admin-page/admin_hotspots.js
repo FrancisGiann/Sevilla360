@@ -10,6 +10,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let pendingPoint = null;
     let raycastEnabled = false;
 
+    // NEW: Variables to track visual pins on the screen
+    let tempSpot = null; 
+    let renderedSpots = [];
+
     const panoContainer = document.getElementById("hotspot-pano-container");
     const loadingEl = document.getElementById("hotspot-loading");
     const formWrapper = document.getElementById("hotspot-form-wrapper");
@@ -72,6 +76,9 @@ document.addEventListener("DOMContentLoaded", () => {
             loadingEl.style.display = "none";
             currentPanoMesh = pano;
             raycastEnabled = true;
+
+            // Re-draw saved hotspots after panorama loads
+            loadExistingHotspots(currentMediaId);
         });
 
         viewer.add(pano);
@@ -95,6 +102,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (intersects.length > 0) {
             pendingPoint = intersects[0].point;
+            
+            // FIX: Visually place a temporary pin where they clicked
+            if (!tempSpot) {
+                tempSpot = new PANOLENS.Infospot(300);
+                currentPanoMesh.add(tempSpot);
+            }
+            tempSpot.position.copy(pendingPoint);
+            tempSpot.show();
+
             formWrapper.classList.remove("hidden");
             document.getElementById("hs-title").value = '';
             document.getElementById("hs-description").value = '';
@@ -110,9 +126,14 @@ document.addEventListener("DOMContentLoaded", () => {
         targetWrapper.classList.toggle('hidden', !isNav);
     }
 
+    // FIX: Remove temporary pin if they click cancel
     document.getElementById("btn-cancel-hotspot")?.addEventListener("click", () => {
         formWrapper.classList.add("hidden");
         pendingPoint = null;
+        if (tempSpot && currentPanoMesh) {
+            currentPanoMesh.remove(tempSpot);
+            tempSpot = null;
+        }
     });
 
     document.getElementById("btn-save-hotspot")?.addEventListener("click", () => {
@@ -136,40 +157,78 @@ document.addEventListener("DOMContentLoaded", () => {
             headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
             body: JSON.stringify(payload)
         })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error("HTTP Status " + res.status);
+            return res.json();
+        })
         .then(data => {
             if (data.success) {
                 formWrapper.classList.add("hidden");
                 pendingPoint = null;
+                if (tempSpot && currentPanoMesh) {
+                    currentPanoMesh.remove(tempSpot);
+                    tempSpot = null;
+                }
                 loadExistingHotspots(currentMediaId);
             } else {
-                alert("Error: " + data.message);
+                alert("Database Error: " + data.message);
             }
         })
-        .catch(() => alert("Network error saving hotspot."));
+        .catch(err => {
+            console.error("Save Fetch Error:", err);
+            alert("Network Error: Make sure your PHP file is named exactly 'save_hotspot.php' (singular) inside actions/admin/. Check console for details.");
+        });
     });
 
     function loadExistingHotspots(mediaId) {
+        if (!mediaId) return;
+
         fetch(`actions/admin/get_hotspots.php?media_id=${mediaId}`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error("HTTP Status " + res.status);
+            return res.json();
+        })
         .then(data => {
             listEl.innerHTML = '';
+
+            // FIX: Clear old visual pins from the screen before drawing new ones
+            if (currentPanoMesh) {
+                renderedSpots.forEach(spot => currentPanoMesh.remove(spot));
+            }
+            renderedSpots = [];
+
             if (!data.success || data.hotspots.length === 0) {
                 listEl.innerHTML = '<p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>';
                 return;
             }
+
             data.hotspots.forEach(h => {
+                // 1. Add to text list
                 listEl.insertAdjacentHTML('beforeend', `
-                    <div class="hotspot-list-item" data-id="${h.id}">
-                        <div class="hs-info">
-                            <span class="hs-type-badge ${h.type}">${h.type}</span>
-                            <strong>${h.title}</strong>
-                        </div>
-                        <button class="btn-delete-hotspot" data-id="${h.id}" title="Delete">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
+                <div class="hotspot-list-item" data-id="${h.id}">
+                    <div class="hs-info">
+                        <span class="hs-type-badge ${h.type}">${h.type}</span>
+                        <strong>${h.title}</strong>
                     </div>
+                    <button class="btn-delete-hotspot" data-id="${h.id}" title="Delete">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
                 `);
+
+                // 2. FIX: Actually draw the saved pins on the 360 viewer for the admin!
+                if (currentPanoMesh) {
+                    const spot = new PANOLENS.Infospot(300);
+                    spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
+                    spot.addHoverText(h.title);
+                    
+                    // Color code the pins: Nav = Red, Info = Green
+                    if (h.type === 'nav') spot.material.color.setHex(0xe06666); 
+                    else spot.material.color.setHex(0x4ade80);
+
+                    currentPanoMesh.add(spot);
+                    renderedSpots.push(spot);
+                }
             });
 
             document.querySelectorAll(".btn-delete-hotspot").forEach(btn => {
@@ -184,9 +243,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     .then(data => {
                         if (data.success) loadExistingHotspots(currentMediaId);
                         else alert("Error: " + data.message);
-                    });
+                    })
+                    .catch(err => alert("Network Error: Make sure your file is named delete_hotspot.php"));
                 });
             });
-        });
+        })
+        .catch(err => console.error("Load Fetch Error:", err));
     }
 });

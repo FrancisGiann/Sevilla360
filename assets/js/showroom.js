@@ -168,6 +168,51 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-close-info")?.addEventListener("click", () => infoModal.classList.remove("active"));
   window.addEventListener("click", (e) => { if (e.target === infoModal) infoModal.classList.remove("active"); });
 
+
+  function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef) {
+      if (!hotspotsArray || hotspotsArray.length === 0) return;
+
+      hotspotsArray.forEach(h => {
+          const isNav = h.type === 'nav';
+          const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
+
+          const spot = new PANOLENS.Infospot(350, iconUrl);
+          spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
+
+          if (isNav) {
+              spot.addEventListener('click', () => {
+                  const idx = parseInt(h.target_pano_index);
+                  if (panoramasRef[idx]) viewerRef.setPanorama(panoramasRef[idx]);
+              });
+          } else {
+              spot.addHoverText(h.title, -100);
+              spot.addEventListener('click', () => showHotspotInfoModal(h.title, h.description));
+          }
+
+          pano.add(spot);
+      });
+  }
+
+  function showHotspotInfoModal(title, description) {
+      let modal = document.getElementById('hotspot-info-modal');
+      if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'hotspot-info-modal';
+          modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:99999;';
+          modal.innerHTML = `
+              <div style="background:#fff; padding:30px; border-radius:8px; max-width:400px; width:90%;">
+                  <h3 id="hs-modal-title" style="margin-top:0; color:var(--color-gold); font-family:var(--font-heading);"></h3>
+                  <p id="hs-modal-desc" style="color:#555; line-height:1.5;"></p>
+                  <button id="hs-modal-close" style="margin-top:15px; padding:10px 20px; background:var(--color-dark); color:#fff; border:none; border-radius:4px; cursor:pointer;">Close</button>
+              </div>`;
+          document.body.appendChild(modal);
+          modal.querySelector('#hs-modal-close').addEventListener('click', () => modal.remove());
+          modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+      }
+      modal.querySelector('#hs-modal-title').innerText = title;
+      modal.querySelector('#hs-modal-desc').innerText = description || '';
+  }
+
   // --- 7. Main Room Loading Logic ---
   function loadRoom(roomId) {
     currentRoomId = roomId; 
@@ -243,7 +288,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         panoUrls.forEach((url, index) => {
             const pano = new PANOLENS.ImagePanorama(url);
-            
+
+            const hotspotsForThisPano = (room.hotspots_by_pano_index && room.hotspots_by_pano_index[index]) || [];
+            attachHotspots(pano, hotspotsForThisPano, viewer, panoramas);
+
             pano.addEventListener("load", function () {
                 loadedCount++;
                 if (index === 0 && panoLoadingOverlay) {

@@ -220,7 +220,21 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
     <script src="assets/js/admin-page/admin_usermanagement.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <!-- Three.js version required by Panolens -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/105/three.min.js"></script>
+    <!-- Polyfill for Panolens Node.js bug -->
+    <script>
+    window.process = {
+        env: {
+            NODE_ENV: 'production'
+        }
+    };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
+
+    <!-- CMS Scripts -->
     <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
+    <script src="assets/js/admin-page/admin_hotspots.js?v=<?= time() ?>"></script>
     <?php endif; ?>
 </body>
 

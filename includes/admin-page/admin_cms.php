@@ -90,10 +90,26 @@ if ($result && $result->num_rows > 0) {
         }
     }
 }
+
+// NEW: separate ASC-ordered dataset specifically for hotspot placement,
+// so "View 1/2/3" numbering always matches showroom.php's pano_urls order.
+$pano_asc_query = $conn->query("
+    SELECT id, slot_assignment, file_path 
+    FROM media_cms 
+    WHERE media_type = '360' AND slot_assignment LIKE '%\\_360'
+    ORDER BY id ASC
+");
+$pano_venue_photos_ordered = [];
+if ($pano_asc_query) {
+    while ($row = $pano_asc_query->fetch_assoc()) {
+        $pano_venue_photos_ordered[$row['slot_assignment']][] = $row;
+    }
+}
 ?>
 
 <script>
 window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, $pano_venue_photos)); ?>;
+window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 </script>
 
 <div class="cms-container">
@@ -175,6 +191,10 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
                     <?php if ($has_img): ?>
                     <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
+                    <button class="btn-outline btn-place-hotspots" data-media-id="<?php echo $photos_array[0]['id']; ?>"
+                        data-slot="<?php echo $slot_key; ?>"
+                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">
+                        <i class="fa-solid fa-map-pin"></i> Hotspots</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -390,6 +410,79 @@ window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, 
             here.</p>
         <div style="display: flex; gap: 10px;">
             <button class="btn btn-primary" id="ua-btn-ok" style="flex: 1;">OK</button>
+        </div>
+    </div>
+</div>
+
+<!-- 6. HOTSPOT PLACEMENT MODAL -->
+<div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
+    <div class="cms-modal-content" style="max-width: 1000px; padding: 2rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+            <h3 class="cms-modal-title" style="margin:0;" id="hotspot-modal-title">Place Hotspots</h3>
+            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal">Close</button>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--color-dark-light); margin-bottom: 1rem;">
+            Click anywhere on the 360&deg; preview to drop a hotspot at that exact point. Drag to look around first if
+            you need to.
+        </p>
+
+        <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+            <div style="flex: 2; position: relative;">
+                <div id="hotspot-pano-container"
+                    style="width: 100%; height: 480px; background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: crosshair;">
+                </div>
+                <div id="hotspot-loading"
+                    style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,0.5); border-radius:8px;">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:8px;"></i> Loading panorama...
+                </div>
+            </div>
+
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 1.5rem;">
+                <div id="hotspot-form-wrapper" class="hidden">
+                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem;">New Hotspot</h4>
+
+                    <div class="cms-form-group">
+                        <label>Type</label>
+                        <select id="hs-type">
+                            <option value="info">Info (shows description)</option>
+                            <option value="nav">Navigation (walk to another view)</option>
+                        </select>
+                    </div>
+
+                    <div class="cms-form-group">
+                        <label>Title / Label</label>
+                        <input type="text" id="hs-title" placeholder="e.g. Poolside Entrance"
+                            style="width:100%; padding:10px; border:1px solid rgba(42,37,34,0.15); border-radius:4px;">
+                    </div>
+
+                    <div class="cms-form-group" id="hs-desc-wrapper">
+                        <label>Description</label>
+                        <textarea id="hs-description" rows="3" placeholder="Shown when guest clicks the info marker"
+                            style="width:100%; padding:10px; border:1px solid rgba(42,37,34,0.15); border-radius:4px; resize:vertical;"></textarea>
+                    </div>
+
+                    <div class="cms-form-group hidden" id="hs-target-wrapper">
+                        <label>Walk To</label>
+                        <select id="hs-target-index" style="width:100%; padding:10px;"></select>
+                    </div>
+
+                    <div style="display:flex; gap:10px; margin-top: 0.5rem;">
+                        <button type="button" class="btn cms-btn-outline" id="btn-cancel-hotspot"
+                            style="flex:1;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1;">Save
+                            Pin</button>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem;">Existing Hotspots</h4>
+                    <div id="hotspot-list"
+                        style="display:flex; flex-direction:column; gap:8px; max-height: 260px; overflow-y:auto;">
+                        <p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
