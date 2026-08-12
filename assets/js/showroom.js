@@ -172,6 +172,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef) {
       if (!hotspotsArray || hotspotsArray.length === 0) return;
 
+      const spots = [];
+
       hotspotsArray.forEach(h => {
           const isNav = h.type === 'nav';
           const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
@@ -190,6 +192,15 @@ document.addEventListener("DOMContentLoaded", () => {
           }
 
           pano.add(spot);
+          spots.push(spot);
+      });
+
+      pano.addEventListener('enter', () => {
+          spots.forEach(s => s.show());
+      });
+
+      pano.addEventListener('leave', () => {
+          spots.forEach(s => s.hide());
       });
   }
 
@@ -295,6 +306,20 @@ document.addEventListener("DOMContentLoaded", () => {
             pano.addEventListener("load", function () {
                 loadedCount++;
                 if (index === 0 && panoLoadingOverlay) {
+                    
+                    // --- AUTO-RELOAD HACK ---
+                    // If this is the very first time this room is loaded, we auto-trigger 
+                    // the reload button. Since the images are now cached, the second load 
+                    // happens instantly and perfectly bypasses all Panolens timing bugs!
+                    if (!room.hasAutoReloaded) {
+                        room.hasAutoReloaded = true;
+                        const btn = document.getElementById("btn-reload-pano");
+                        if (btn) {
+                            btn.click();
+                            return; // Stop here, don't hide the overlay! Let the reload take over.
+                        }
+                    }
+
                     valTitle.textContent = room.title;
                     panoLoadingOverlay.style.display = "none";
                     
