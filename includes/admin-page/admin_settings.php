@@ -211,11 +211,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         </div>
 
                         <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Style: Classic Elegance (₱)</label>
-                                <input type="number" name="event_style_classic" class="form-control"
-                                    value="<?php echo $current_settings['event_style_classic'] ?? 5000; ?>">
-                            </div>
+
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label>Premium A/V Setup (₱)</label>
                                 <input type="number" name="av_setup" class="form-control"

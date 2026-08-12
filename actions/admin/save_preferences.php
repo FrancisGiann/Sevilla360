@@ -22,7 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $settings = [
         'maintenance_mode' => $maintenance_mode,
         'allow_walkins' => $allow_walkins,
-        'event_style_classic' => floatval($_POST['event_style_classic'] ?? 5000),
+
         'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
         'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),
         'catering_silver' => floatval($_POST['catering_silver'] ?? 750),
