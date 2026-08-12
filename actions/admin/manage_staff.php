@@ -62,6 +62,19 @@ try {
             // EDIT EXISTING
             $user_id = intval($data['user_id']);
             
+            // Superadmin Safeguard for Demotion
+            $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
+            $check->bind_param("i", $user_id);
+            $check->execute();
+            $current_role = $check->get_result()->fetch_assoc()['role'];
+            
+            if ($current_role === 'superadmin' && $role !== 'superadmin') {
+                $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'superadmin'")->fetch_assoc()['c'];
+                if ($count <= 1) {
+                    throw new Exception("Action blocked: System must have at least one superadmin.");
+                }
+            }
+
             // Update User
             if (!empty($password)) {
                 $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -85,6 +98,19 @@ try {
     elseif ($action === 'delete') {
         $user_id = intval($data['user_id']);
         if ($user_id === $_SESSION['user_id']) throw new Exception("You cannot delete yourself.");
+
+        // Superadmin Safeguard for Deletion
+        $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
+        $check->bind_param("i", $user_id);
+        $check->execute();
+        $target_role = $check->get_result()->fetch_assoc()['role'];
+
+        if ($target_role === 'superadmin') {
+            $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'superadmin'")->fetch_assoc()['c'];
+            if ($count <= 1) {
+                throw new Exception("Deletion blocked: System must have at least one superadmin.");
+            }
+        }
 
         $stmt = $conn->prepare("DELETE FROM users WHERE id = ?"); // Cascade deletes staff table
         $stmt->bind_param("i", $user_id);

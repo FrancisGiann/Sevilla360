@@ -26,6 +26,7 @@
             <button class="tab-btn" data-filter="action_req" style="color: #e06666; font-weight: 600;">Action
                 Required</button>
             <button class="tab-btn" data-filter="partial">Balances Due</button>
+            <button class="tab-btn" data-filter="pending">Pending</button>
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
         </div>
@@ -63,15 +64,13 @@
                 Showing <span id="pag-total-rows" style="font-weight: 600; color: var(--color-dark);">0</span> total
                 bookings
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <button id="btn-prev-page" class="btn-action btn-outline"
-                    style="padding: 6px 12px; border: 1px solid #ccc; background: white; cursor: pointer;"
-                    disabled>&laquo; Prev</button>
-                <span style="font-size: 0.9rem; font-weight: 600; color: var(--color-dark);">Page <span
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-size: 0.9rem; font-weight: 600; color: var(--color-dark); margin-right: 10px;">Page <span
                         id="pag-current-page" style="color: var(--color-gold);">1</span> of <span
                         id="pag-total-pages">1</span></span>
-                <button id="btn-next-page" class="btn-action btn-outline"
-                    style="padding: 6px 12px; border: 1px solid #ccc; background: white; cursor: pointer;" disabled>Next
+                <button id="btn-prev-page" class="btn-outline" style="padding: 6px 14px; font-size: 0.9rem; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;" disabled>
+                    &laquo; Prev</button>
+                <button id="btn-next-page" class="btn-outline" style="padding: 6px 14px; font-size: 0.9rem; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;" disabled>Next
                     &raquo;</button>
             </div>
         </div>
@@ -157,6 +156,8 @@
                 <span class="label">Guests:</span> <span class="value" id="vd-guests">--</span>
                 <span class="label" id="vd-specific-label" style="display:none;">Specifics:</span>
                 <span class="value" id="vd-specific-value" style="display:none;">--</span>
+                <span class="label" id="vd-transaction-label" style="display:none;">Transaction Ref:</span>
+                <span class="value" id="vd-transaction-value" style="display:none; font-family: monospace;">--</span>
             </div>
 
             <!-- Add-ons & Line Items Container -->

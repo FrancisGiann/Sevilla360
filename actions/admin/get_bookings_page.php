@@ -47,6 +47,8 @@ if ($statusFilter === 'action_req') {
     $where_clauses[] = "b.booking_status = 'Confirmed'";
 } elseif ($statusFilter === 'cancelled') {
     $where_clauses[] = "b.booking_status = 'Cancelled'";
+} elseif ($statusFilter === 'pending') {
+    $where_clauses[] = "b.booking_status = 'Pending'";
 }
 
 $where_sql = implode(' AND ', $where_clauses);

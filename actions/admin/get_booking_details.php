@@ -50,11 +50,19 @@ try {
     $st_li->execute();
     $line_items = $st_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
+    // Fetch Transaction Reference (latest)
+    $st_tx = $conn->prepare("SELECT transaction_id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+    $st_tx->bind_param("i", $booking_id);
+    $st_tx->execute();
+    $tx_res = $st_tx->get_result()->fetch_assoc();
+    $transaction_id = $tx_res ? $tx_res['transaction_id'] : null;
+
     echo json_encode(['success' => true, 'data' => [
         'booking' => $booking, 
         'specifics' => $specifics, 
         'addons' => $addons,
-        'line_items' => $line_items
+        'line_items' => $line_items,
+        'transaction_id' => $transaction_id
     ]]);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

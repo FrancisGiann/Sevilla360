@@ -272,7 +272,7 @@ while ($row = $bookings_result->fetch_assoc()) {
                                         </td>
                                         <td>
                                             <div class="action-cell">
-                                                <?php if ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial']))): ?>
+                                                <?php if ($b['cancel_status'] !== 'Pending' && ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial'])))): ?>
                                                 <?php if (!$is_pending_inquiry): ?>
                                                 <button class="btn-action btn-pay btn-pay-now"
                                                     data-id="<?php echo $b['id']; ?>">Pay Now</button>

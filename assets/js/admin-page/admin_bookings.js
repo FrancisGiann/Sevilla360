@@ -168,6 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (b.booking_status === 'Confirmed') {
                 if (b.payment_status === 'Paid') { badgeClass = 'status-paid'; statusText = 'Fully Paid'; } 
                 else if (b.payment_status === 'Partial') { badgeClass = 'status-partial'; statusText = 'Partially Paid'; } 
+                else if (b.payment_status === 'Refunded') { badgeClass = 'status-refunded'; statusText = 'Refunded'; }
                 else { badgeClass = 'status-pending'; statusText = 'Unpaid'; }
             } else if (b.booking_status === 'Cancelled') {
                 badgeClass = 'status-refunded'; statusText = 'Cancelled';
@@ -188,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } 
             else if (b.booking_status === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-reason="${b.cancel_reason || ''}">Refund Req</button>`;
+                    actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-ref="${b.reference_no}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-reason="${b.cancel_reason || ''}">Refund Req</button>`;
                 } else if (b.resched_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
                 } else {
@@ -369,12 +370,13 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll('.open-refund').forEach(btn => {
           btn.addEventListener('click', function() {
             const bookingId = this.getAttribute('data-id');
+            const referenceId = this.getAttribute('data-ref') || bookingId;
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
             let refundAmt = totalPaid - 461;
             if (refundAmt < 0) refundAmt = 0; 
       
             const titleEl = document.querySelector('#refundModal .modal-main-title');
-            if(titleEl) titleEl.innerText = `Process Refund - Booking #${bookingId}`;
+            if(titleEl) titleEl.innerText = `Process Refund - Booking #${referenceId}`;
       
             const spans = document.querySelectorAll('#refundModal .summary-grid .value');
             if (spans.length >= 5) {
@@ -657,6 +659,17 @@ document.addEventListener("DOMContentLoaded", () => {
                       specLabel.style.display = 'none';
                       specValue.style.display = 'none';
                   }
+
+                  const txLabel = document.getElementById('vd-transaction-label');
+                  const txValue = document.getElementById('vd-transaction-value');
+                  if (res.data.transaction_id) {
+                      txLabel.style.display = 'block';
+                      txValue.style.display = 'block';
+                      txValue.innerText = res.data.transaction_id;
+                  } else {
+                      txLabel.style.display = 'none';
+                      txValue.style.display = 'none';
+                  }
       
                   const addonsContainer = document.getElementById('vd-addons-container');
                   const addonsList = document.getElementById('vd-addons-list');
@@ -693,7 +706,14 @@ document.addEventListener("DOMContentLoaded", () => {
                       document.getElementById('vd-addons-amt').innerText = formatCash(data.addons_amount);
                       document.getElementById('vd-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
                       document.getElementById('vd-total-amt').innerText = formatCash(data.total_amount);
-                      document.getElementById('vd-scheme').innerText = data.payment_scheme;
+                      
+                      if (data.payment_status === 'Paid') {
+                          document.getElementById('vd-scheme').innerText = "100% Fully Paid";
+                      } else if (data.payment_status === 'Refunded') {
+                          document.getElementById('vd-scheme').innerText = "Refunded / Cancelled";
+                      } else {
+                          document.getElementById('vd-scheme').innerText = data.payment_scheme;
+                      }
                   }
                   
                   document.getElementById('vd-paid-amt').innerText = formatCash(data.amount_paid);
