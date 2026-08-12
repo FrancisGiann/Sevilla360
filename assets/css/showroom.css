@@ -3,10 +3,12 @@
    ========================================================================== */
 
 :root {
-  --bg-viewer: #fbe4cd;
-  --bg-details: #deb47e;
-  --btn-brown: #a07748;
-  --border-dark: #2a2522;
+  /* Inherits global variables from style.css, overriding only what's specific to the viewer */
+  --bg-viewer: #f4f0ec; /* Very light, neutral warm gray/beige */
+  --bg-details: var(--color-beige, #fdf2e2);
+  --btn-brown: var(--color-gold, #d6a870);
+  --btn-brown-gradient: linear-gradient(135deg, #e4c194 0%, #c4965e 100%);
+  --border-dark: var(--color-dark, #2a2522);
 }
 
 .showroom-wrapper {
@@ -45,6 +47,21 @@
   border-top-right-radius: 8px;
   border-bottom-right-radius: 8px;
   overflow-y: auto;
+}
+
+/* Custom Scrollbar for details panel */
+.details-box::-webkit-scrollbar {
+  width: 6px;
+}
+.details-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+.details-box::-webkit-scrollbar-thumb {
+  background: rgba(42, 37, 34, 0.2);
+  border-radius: 10px;
+}
+.details-box::-webkit-scrollbar-thumb:hover {
+  background: rgba(42, 37, 34, 0.4);
 }
 
 .details-left,
@@ -140,17 +157,17 @@
 
 /* Primary Button: "BOOK VENUE" */
 .details-box .btn-book {
-  background-color: var(--border-dark) !important; /* Dark ink color */
+  background: var(--btn-brown-gradient) !important;
   color: #ffffff !important;
-  border: 1px solid var(--border-dark) !important;
-  box-shadow: 0 10px 30px rgba(42, 37, 34, 0.15);
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(196, 150, 94, 0.3);
 }
 
 .details-box .btn-book:hover {
-  background-color: #ffffff !important;
-  color: var(--border-dark) !important;
-  border-color: #ffffff !important;
+  background: linear-gradient(135deg, #c4965e 0%, #b3854d 100%) !important;
+  color: #ffffff !important;
   transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(196, 150, 94, 0.4);
 }
 
 /* Secondary Button: "VIEW PHOTOS" */
@@ -161,7 +178,7 @@
 }
 
 .details-box .btn-photos:hover {
-  background-color: rgba(42, 37, 34, 0.05) !important;
+  background: rgba(42, 37, 34, 0.05) !important;
   border-color: var(--border-dark) !important;
   transform: translateY(-2px);
 }
@@ -241,8 +258,9 @@
 }
 
 .top-right-btn:hover {
-  background: var(--btn-brown);
+  background: var(--btn-brown-gradient);
   transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(196, 150, 94, 0.4);
 }
 
 /* Map Controls */
@@ -369,6 +387,8 @@
   cursor: pointer;
   transition: 0.2s ease;
 }
+
+
 
 .dropdown-item:hover {
   background: rgba(0, 0, 0, 0.05);

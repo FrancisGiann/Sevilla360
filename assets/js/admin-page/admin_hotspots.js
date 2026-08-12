@@ -140,7 +140,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 
                 // Only show the dropdown if there is more than 1 image
-                adminViewSelector.style.display = currentPhotosArray.length > 1 ? "inline-block" : "none";
+                const wrapper = document.getElementById("hs-admin-view-switcher-wrapper");
+                if (wrapper) {
+                    wrapper.style.display = currentPhotosArray.length > 1 ? "block" : "none";
+                }
+                adminViewSelector.style.display = "block"; // Keep the select itself visible within the wrapper
                 adminViewSelector.value = 0; // Reset to first view
             }
 

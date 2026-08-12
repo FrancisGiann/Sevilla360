@@ -147,8 +147,8 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                     <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
                     <span class="badge badge-gray"><?php echo $slot_info['badge']; ?></span>
                 </div>
-                <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard">
+                <div class="cms-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard" style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <?php echo $has_img ? 'Replace' : 'Upload'; ?>
                     </button>
                 </div>
@@ -188,16 +188,16 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                 <p class="cms-size">360 Virtual Tour Active</p>
                 <?php endif; ?>
 
-                <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360">
+                <div class="cms-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360" style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
                     <?php if ($has_img): ?>
-                    <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
-                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
-                    <button class="btn-outline btn-place-hotspots" data-media-id="<?php echo $ordered_photos_array[0]['id']; ?>"
+                    <button class="btn btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
+                        style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">Manage</button>
+                    <button class="btn btn-outline btn-place-hotspots" data-media-id="<?php echo $ordered_photos_array[0]['id']; ?>"
                         data-slot="<?php echo $slot_key; ?>"
-                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">
+                        style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <i class="fa-solid fa-map-pin"></i> Hotspots</button>
                     <?php endif; ?>
                 </div>
@@ -234,13 +234,13 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                 <p class="cms-size">Standard Photo Gallery</p>
                 <?php endif; ?>
 
-                <div class="cms-actions">
-                    <button class="btn-replace btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard">
+                <div class="cms-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard" style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
                     <?php if ($has_img): ?>
-                    <button class="btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
-                        style="padding: 6px 12px; font-size: 0.85rem; border: 1px solid var(--color-gold); color: var(--color-dark); border-radius: 4px; cursor: pointer; background: transparent;">Manage</button>
+                    <button class="btn btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
+                        style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">Manage</button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -424,10 +424,6 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <h3 class="cms-modal-title" style="margin:0;" id="hotspot-modal-title">Place Hotspots</h3>
-                <!-- NEW: Admin View Switcher -->
-                <select id="hs-admin-view-selector"
-                    style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold; background: var(--color-gold); color: white; display: none; cursor: pointer; outline: none;">
-                </select>
             </div>
             <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal">Close</button>
         </div>
@@ -448,9 +444,18 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                 </div>
             </div>
 
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 1.5rem;">
-                <div id="hotspot-form-wrapper" class="hidden">
-                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem;">New Hotspot</h4>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 1.5rem; height: 480px; overflow: hidden;">
+                
+                <!-- MOVED VIEW SWITCHER HERE -->
+                <div id="hs-admin-view-switcher-wrapper" style="display: none; background: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e9ecef; flex-shrink: 0;">
+                    <label style="font-size: 0.85rem; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Editing View:</label>
+                    <select id="hs-admin-view-selector"
+                        style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold; background: white; color: var(--color-dark); cursor: pointer; outline: none;">
+                    </select>
+                </div>
+
+                <div id="hotspot-form-wrapper" class="hidden" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.02); flex-shrink: 0; max-height: 300px; overflow-y: auto;">
+                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem; color: var(--color-dark);">New Hotspot</h4>
 
                     <div class="cms-form-group">
                         <label>Type</label>
@@ -468,7 +473,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
                     <div class="cms-form-group" id="hs-desc-wrapper">
                         <label>Description</label>
-                        <textarea id="hs-description" rows="3" placeholder="Shown when guest clicks the info marker"
+                        <textarea id="hs-description" rows="2" placeholder="Shown when guest clicks the info marker"
                             style="width:100%; padding:10px; border:1px solid rgba(42,37,34,0.15); border-radius:4px; resize:vertical;"></textarea>
                     </div>
 
@@ -478,17 +483,17 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                     </div>
 
                     <div style="display:flex; gap:10px; margin-top: 0.5rem;">
-                        <button type="button" class="btn cms-btn-outline" id="btn-cancel-hotspot"
-                            style="flex:1;">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1;">Save
+                        <button type="button" class="btn btn-outline" id="btn-cancel-hotspot"
+                            style="flex:1; padding: 8px;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1; padding: 8px;">Save
                             Pin</button>
                     </div>
                 </div>
 
-                <div>
-                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem;">Existing Hotspots</h4>
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fdfdfd; border-radius: 8px; border: 1px solid #eee;">
+                    <h4 style="margin: 0; padding: 12px 15px; font-size: 1rem; border-bottom: 1px solid #eee; background: white;">Existing Hotspots</h4>
                     <div id="hotspot-list"
-                        style="display:flex; flex-direction:column; gap:8px; max-height: 260px; overflow-y:auto;">
+                        style="display:flex; flex-direction:column; gap:8px; padding: 10px 15px; overflow-y:auto; flex: 1;">
                         <p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>
                     </div>
                 </div>
