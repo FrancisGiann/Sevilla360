@@ -48,6 +48,7 @@
 </footer>
 
 <!-- Global Scripts (Nav Menu etc) -->
+<script src="assets/js/global_modals.js?v=<?php echo time(); ?>"></script>
 <script src="assets/js/index.js?v=<?php echo time(); ?>"></script>
 <script src="assets/js/calendar.js?v=<?php echo time(); ?>"></script>
 

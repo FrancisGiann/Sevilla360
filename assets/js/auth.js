@@ -101,9 +101,9 @@ document.addEventListener("DOMContentLoaded", () => {
               .then(data => {
                   // NO MORE DEV MODE LEAKS!
                   if (data === "Success") {
-                      alert("A new verification code has been sent to your email inbox!");
+                      showAlert("Notice", "A new verification code has been sent to your email inbox!");
                   } else {
-                      alert(data); // Shows the error (e.g. "Account already verified")
+                      showAlert("Notice", data); // Shows the error (e.g. "Account already verified")
                   }
               });
 

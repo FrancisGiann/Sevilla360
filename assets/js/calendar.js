@@ -136,7 +136,7 @@ class SevillaCalendar {
               this.render();
             } else {
               if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
-                alert("Selection contains unavailable or booked dates.");
+                showAlert("Notice", "Selection contains unavailable or booked dates.");
                 this.startDate = cellDate;
                 this.render();
               } else {

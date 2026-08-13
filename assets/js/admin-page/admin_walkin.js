@@ -178,7 +178,9 @@ class AdminWalkinController {
     bindModalsAndSubmission() {
         document.querySelector(".btn-confirm-walkin")?.addEventListener("click", () => this.submitWalkinBooking());
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
-            if(confirm("Are you sure you want to clear this booking form?")) window.location.reload();
+            showConfirm("Confirm Cancellation", "Are you sure you want to clear this booking form?").then(confirmed => {
+                if (confirmed) window.location.reload();
+            });
         });
     }
 
@@ -524,17 +526,17 @@ class AdminWalkinController {
         const guestPhone = this.getEl("guest-phone")?.value.trim();
 
         if (!guestName || !guestEmail || !guestPhone) {
-            alert("Please complete the Guest Information section.");
+            showAlert("Notice", "Please complete the Guest Information section.");
             return;
         }
 
         if (!this.state.activeCalendar || !this.state.activeCalendar.startDate) {
-            alert("Please select dates on the calendar first!");
+            showAlert("Notice", "Please select dates on the calendar first!");
             return;
         }
 
         const context = this.getTabContextData();
-        if (!context.roomName) { alert("Please ensure a valid specific room/venue is selected."); return; }
+        if (!context.roomName) { showAlert("Notice", "Please ensure a valid specific room/venue is selected."); return; }
 
         const schemeVal = this.getEl("payment-scheme")?.value;
         let schemeEnum = "100% Full";
@@ -545,7 +547,7 @@ class AdminWalkinController {
         const transactionId = this.getEl("transaction-id")?.value.trim() || "";
 
         if (paymentMethod !== 'cash' && !transactionId) {
-            alert("Please provide the Transaction/Reference ID for cashless payments.");
+            showAlert("Notice", "Please provide the Transaction/Reference ID for cashless payments.");
             return;
         }
 
@@ -619,13 +621,13 @@ class AdminWalkinController {
             const response = data.split("|");
 
             if (response[0] === "Success") {
-                alert("Walk-in Booking Successful! Reference No: " + response[1]);
+                showAlert("Notice", "Walk-in Booking Successful! Reference No: " + response[1]);
                 window.location.reload();
             } else {
                 throw new Error(response[1]);
             }
         } catch (error) {
-            alert("Error: " + error.message);
+            showAlert("Notice", "Error: " + error.message);
             btnConfirm.innerText = "CONFIRM WALK-IN BOOKING";
             btnConfirm.disabled = false;
         }

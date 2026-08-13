@@ -286,7 +286,7 @@ class BookingController {
 
             if (this.state.timeLimit <= 0) {
                 this.stopTimerAndReset();
-                alert("Your session has expired. Please refresh the page to restart your booking.");
+                showAlert("Notice", "Your session has expired. Please refresh the page to restart your booking.");
                 const proceedBtn = this.getEl("btn-proceed");
                 if(proceedBtn) { proceedBtn.disabled = true; proceedBtn.style.opacity = "0.5"; }
             }
@@ -340,7 +340,7 @@ class BookingController {
         confirmBtn.addEventListener("click", async () => {
             const lockData = this.getTabContextData();
             if (!lockData.roomName) {
-                alert("Please select a specific venue/room from the dropdown first!");
+                showAlert("Notice", "Please select a specific venue/room from the dropdown first!");
                 return;
             }
 
@@ -376,7 +376,7 @@ class BookingController {
                     throw new Error(response[1]);
                 }
             } catch (err) {
-                alert("Error: " + err.message);
+                showAlert("Notice", "Error: " + err.message);
                 dateModal.classList.remove("active");
                 calendarInstance.clearSelection();
             } finally {
@@ -669,25 +669,25 @@ class BookingController {
     // =========================================================================
     async submitOnlineBooking() {
         if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
-            alert("Please select dates on the calendar and confirm them first!");
+            showAlert("Notice", "Please select dates on the calendar and confirm them first!");
             return;
         }
         if (!this.getEl('terms-check')?.checked) {
-            alert("Please agree to the Terms & Conditions before proceeding.");
+            showAlert("Notice", "Please agree to the Terms & Conditions before proceeding.");
             return;
         }
 
         // REQUIRE PHONE NUMBER
         const phoneInput = document.getElementById("contact-phone");
         if (!phoneInput || phoneInput.value.trim() === "") {
-            alert("Please provide a contact number so our team can call you!");
+            showAlert("Notice", "Please provide a contact number so our team can call you!");
             return;
         }
 
         const btn = this.getEl("btn-proceed");
         const context = this.getTabContextData();
         
-        if (!context.roomName) { alert("Please ensure a valid room/venue is selected."); return; }
+        if (!context.roomName) { showAlert("Notice", "Please ensure a valid room/venue is selected."); return; }
 
         let schemeEnum = '100% Full';
         if (this.state.activeTabId === 'event-hall') {
@@ -785,13 +785,13 @@ class BookingController {
             } 
             // OTHERWISE GO TO DASHBOARD
             else if (response[0] === 'Success') {
-                alert("Success! Redirecting to Dashboard.");
+                showAlert("Notice", "Success! Redirecting to Dashboard.");
                 window.location.href = "user_dashboard.php"; 
             } else {
                 throw new Error(response[1]);
             }
         } catch (error) {
-            alert("Error: " + error.message);
+            showAlert("Notice", "Error: " + error.message);
             btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "PROCEED TO PAYMENT";
             btn.disabled = false;
         }

@@ -20,61 +20,26 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     
     // =========================================================
-    // 1. UNIVERSAL MODAL UTILITIES (Replaces alert and confirm)
+    // 1. MODAL BRIDGES to Global Modals
     // =========================================================
-    const modalOverlay = document.getElementById("modalOverlay");
-    const uniConfirmModal = document.getElementById("uniConfirmModal");
-    const uniAlertModal = document.getElementById("uniAlertModal");
-    
-    let pendingCallback = null;
-    let fallbackModalId = null;
-  
     function showConfirmModal(message, callback, sourceModalId = null) {
-        document.getElementById("uc-message").innerText = message;
-        pendingCallback = callback;
-        fallbackModalId = sourceModalId;
-  
-        document.querySelectorAll('.admin-modal').forEach(m => m.classList.remove('active'));
-        modalOverlay.classList.add("active");
-        uniConfirmModal.classList.add("active");
-    }
-  
-    document.getElementById("uc-btn-no")?.addEventListener("click", () => {
-        uniConfirmModal.classList.remove("active");
-        if (fallbackModalId) document.getElementById(fallbackModalId).classList.add("active");
-        else modalOverlay.classList.remove("active");
-        pendingCallback = null; 
-    });
-  
-    document.getElementById("uc-btn-yes")?.addEventListener("click", () => {
-        uniConfirmModal.classList.remove("active");
-        if (fallbackModalId) document.getElementById(fallbackModalId).classList.add("active");
-        if (pendingCallback) { pendingCallback(); pendingCallback = null; }
-    });
-  
-    function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-        document.getElementById("ua-title").innerText = title;
-        document.getElementById("ua-message").innerText = message;
-        
-        const icon = document.getElementById("ua-icon");
-        if (type === "success") { icon.className = "fa-solid fa-circle-check modal-icon-warning"; icon.style.color = "#4ade80"; } 
-        else if (type === "error") { icon.className = "fa-solid fa-triangle-exclamation modal-icon-warning"; icon.style.color = "#e06666"; } 
-        else { icon.className = "fa-solid fa-circle-info modal-icon-warning"; icon.style.color = "var(--color-gold)"; }
-  
-        document.querySelectorAll('.admin-modal').forEach(m => m.classList.remove('active'));
-        modalOverlay.classList.add("active");
-        uniAlertModal.classList.add("active");
-  
-        const okBtn = document.getElementById("ua-btn-ok");
-        const newOkBtn = okBtn.cloneNode(true); 
-        okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-  
-        newOkBtn.addEventListener("click", () => {
-            if (reloadOnClose) window.location.reload();
-            else { uniAlertModal.classList.remove("active"); modalOverlay.classList.remove("active"); }
+        if(sourceModalId) {
+            const sm = document.getElementById(sourceModalId);
+            if(sm) sm.classList.remove("active");
+        }
+        window.showConfirm("Confirm Action", message).then(c => {
+            if(c && callback) callback();
+            if(!c && sourceModalId) {
+                const sm = document.getElementById(sourceModalId);
+                if(sm) sm.classList.add("active");
+            }
         });
     }
-  
+
+    function showAlertModal(title, message, type = "info", reloadOnClose = false) {
+        window.showAlert(title, message, type, reloadOnClose);
+    }
+
     // =========================================================
     // 2. SERVER-SIDE PAGINATION & FILTERING
     // =========================================================
@@ -277,6 +242,10 @@ document.addEventListener("DOMContentLoaded", () => {
       buttonElement.innerText = "Processing...";
       buttonElement.disabled = true;
       buttonElement.style.opacity = "0.7";
+      
+      if (typeof window.showGlobalLoader === "function") {
+          window.showGlobalLoader("Processing Request...");
+      }
   
       const payload = { booking_id: bookingId, action: action, ...extraData };
   
@@ -290,6 +259,8 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .then(response => response.json())
       .then(data => {
+        if (typeof window.hideGlobalLoader === "function") window.hideGlobalLoader();
+        
         if (data.success) {
           buttonElement.innerText = "Success!";
           buttonElement.style.backgroundColor = "#4ade80"; 
@@ -303,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       })
       .catch(error => {
+        if (typeof window.hideGlobalLoader === "function") window.hideGlobalLoader();
         showAlertModal("Network Error", "An error occurred while communicating with the server.", "error", false);
         buttonElement.innerText = originalText;
         buttonElement.disabled = false;

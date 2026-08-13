@@ -583,6 +583,15 @@ while ($row = $bookings_result->fetch_assoc()) {
     </div>
 
     <script src="assets/js/calendar.js?v=<?= time() ?>"></script>
+    
+    <!-- Flatpickr Core -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/vn.js"></script>
+    
+    <!-- Global Custom Modals -->
+    <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
+
+    <!-- Specific User Dashboard JS -->
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
 </body>
 

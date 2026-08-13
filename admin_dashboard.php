@@ -201,6 +201,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/calendar.js?v=1"></script>
     <!-- Notification Engine -->
     <script src="assets/js/admin-page/admin_notifications.js?v=<?= time() ?>"></script>
+    <!-- Global Custom Modals -->
+    <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>

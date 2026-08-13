@@ -56,14 +56,14 @@ try {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
-        $message = "Booking #$booking_id has been confirmed!";
+        $message = "Booking #$ref_no has been confirmed!";
         
     } 
     elseif ($action === 'cancel') {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
-        $message = "Booking #$booking_id has been cancelled!";
+        $message = "Booking #$ref_no has been cancelled!";
         
     } 
     elseif ($action === 'finalize_event_invoice') {
@@ -209,7 +209,7 @@ try {
         $stmt_req->bind_param("i", $booking_id);
         $stmt_req->execute();
         
-        $message = "Booking #$booking_id successfully rescheduled to $new_start!";
+        $message = "Booking #$ref_no successfully rescheduled to $new_start!";
         
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Approved</h2><p>Hello $c_name,</p><p>Good news! Your request to reschedule your booking at <strong>$v_name</strong> to <strong>$new_start</strong> has been approved.</p><p>You can view your updated itinerary on your dashboard.</p></div>";
@@ -258,7 +258,7 @@ try {
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         
-        $message = "Booking #$booking_id forcefully cancelled. 100% refund recorded.";
+        $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
 
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Booking Cancelled</h2><p>Hello $c_name,</p><p>Unfortunately, your booking for <strong>$v_name</strong> has been cancelled by the administration for the following reason:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #e06666;'><em>$reason</em></p><p>A 100% full refund of ₱".number_format($refund_amount, 2)." has been issued to your original payment method.</p></div>";

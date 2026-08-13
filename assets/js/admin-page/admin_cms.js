@@ -7,58 +7,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
   // =========================================================
-  // 1. UNIVERSAL MODAL UTILITIES
+  // 1. MODAL BRIDGES to Global Modals
   // =========================================================
-  const uniConfirmModal = document.getElementById("uniConfirmModal");
-  const uniAlertModal = document.getElementById("uniAlertModal");
-  let pendingCallback = null;
-
   function showConfirmModal(message, callback) {
-      document.getElementById("uc-message").innerText = message;
-      pendingCallback = callback;
-      uniConfirmModal.classList.add("active");
-  }
-
-  document.getElementById("uc-btn-no")?.addEventListener("click", () => {
-      uniConfirmModal.classList.remove("active");
-      pendingCallback = null; 
-  });
-
-  document.getElementById("uc-btn-yes")?.addEventListener("click", () => {
-      uniConfirmModal.classList.remove("active");
-      if (pendingCallback) {
-          pendingCallback(); 
-          pendingCallback = null; 
-      }
-  });
-
-  function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-      document.getElementById("ua-title").innerText = title;
-      document.getElementById("ua-message").innerText = message;
-      
-      const icon = document.getElementById("ua-icon");
-      if (type === "success") {
-          icon.className = "fa-solid fa-circle-check"; icon.style.color = "#4ade80"; 
-      } else if (type === "error") {
-          icon.className = "fa-solid fa-triangle-exclamation"; icon.style.color = "#e06666"; 
-      } else {
-          icon.className = "fa-solid fa-circle-info"; icon.style.color = "var(--color-gold)"; 
-      }
-
-      uniAlertModal.classList.add("active");
-
-      const okBtn = document.getElementById("ua-btn-ok");
-      const newOkBtn = okBtn.cloneNode(true); 
-      okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-
-      newOkBtn.addEventListener("click", () => {
-          if (reloadOnClose) window.location.reload();
-          else uniAlertModal.classList.remove("active");
+      window.showConfirm("Confirm Action", message).then(c => {
+          if(c && callback) callback();
       });
   }
 
-
-  // =========================================================
+  function showAlertModal(title, message, type = "info", reloadOnClose = false) {
+      window.showAlert(title, message, type, reloadOnClose);
+  }  // =========================================================
   // 2. DOM Elements
   // =========================================================
   const uploadModal = document.getElementById('uploadModal');

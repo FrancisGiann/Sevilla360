@@ -5,72 +5,18 @@
 
 document.addEventListener("DOMContentLoaded", () => {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-
   // =========================================================
-  // UNIVERSAL MODAL UTILITIES (Bulletproof)
+  // 1. MODAL BRIDGES to Global Modals
   // =========================================================
-  const uniConfirmModal = document.getElementById("uniConfirmModal");
-  const uniAlertModal = document.getElementById("uniAlertModal");
-  let pendingCallback = null;
-
   function showConfirmModal(message, callback) {
-      const msgEl = document.getElementById("uc-message");
-      if (msgEl) msgEl.innerText = message;
-      
-      pendingCallback = callback;
-      document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-      
-      if (uniConfirmModal) uniConfirmModal.classList.add("active");
-      else alert(message); // Fallback if modal is missing from PHP
+      window.showConfirm("Confirm Action", message).then(c => {
+          if(c && callback) callback();
+      });
   }
-
-  document.getElementById("uc-btn-no")?.addEventListener("click", () => {
-      if (uniConfirmModal) uniConfirmModal.classList.remove("active");
-      pendingCallback = null; 
-  });
-
-  document.getElementById("uc-btn-yes")?.addEventListener("click", () => {
-      if (uniConfirmModal) uniConfirmModal.classList.remove("active");
-      if (pendingCallback) { pendingCallback(); pendingCallback = null; }
-  });
 
   function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-      const titleEl = document.getElementById("ua-title");
-      const msgEl = document.getElementById("ua-message");
-      const icon = document.getElementById("ua-icon");
-
-      if (titleEl) titleEl.innerText = title;
-      if (msgEl) msgEl.innerText = message;
-      
-      if (icon) {
-          if (type === "success") {
-              icon.className = "fa-solid fa-circle-check"; icon.style.color = "#4ade80"; 
-          } else if (type === "error") {
-              icon.className = "fa-solid fa-triangle-exclamation"; icon.style.color = "#e06666"; 
-          } else {
-              icon.className = "fa-solid fa-circle-info"; icon.style.color = "var(--color-gold)"; 
-          }
-      }
-
-      document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
-      
-      if (uniAlertModal) {
-          uniAlertModal.classList.add("active");
-          const okBtn = document.getElementById("ua-btn-ok");
-          if (okBtn) {
-              const newOkBtn = okBtn.cloneNode(true); 
-              okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-              newOkBtn.addEventListener("click", () => {
-                  if (reloadOnClose) window.location.reload();
-                  else uniAlertModal.classList.remove("active");
-              });
-          }
-      } else {
-          alert(`${title}\n${message}`);
-          if (reloadOnClose) window.location.reload();
-      }
+      window.showAlert(title, message, type, reloadOnClose);
   }
-
   // --- 1. Tab Switching Logic ---
   const navItems = document.querySelectorAll(".nav-item");
   const tabPanes = document.querySelectorAll(".tab-pane");
@@ -204,8 +150,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const confirmFee = document.getElementById("confirm-fee");
       const isChecked = confirmFee ? confirmFee.checked : false;
 
-      if (reason === "") return showAlertModal("Missing Info", "Please provide a reason for the cancellation.", "error");
-      if (isRefundable && !isChecked) return showAlertModal("Required", "Please acknowledge the non-refundable service fee by checking the box.", "error");
+      if (reason === "") return showAlert("Missing Info", "Please provide a reason for the cancellation.", "error");
+      if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the non-refundable service fee by checking the box.", "error");
 
       const originalText = this.innerText;
       this.innerText = "Processing...";
@@ -218,15 +164,15 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .then((response) => response.json())
       .then((data) => {
-        if (data.success) showAlertModal("Success", data.message, "success", true);
+        if (data.success) showAlert("Success", data.message, "success", true);
         else {
-          showAlertModal("Error", data.message, "error");
+          showAlert("Error", data.message, "error");
           this.innerText = originalText;
           this.disabled = false;
         }
       })
       .catch((error) => {
-        showAlertModal("Network Error", "Network error occurred.", "error");
+        showAlert("Network Error", "Network error occurred.", "error");
         this.innerText = originalText;
         this.disabled = false;
       });
@@ -276,9 +222,9 @@ document.addEventListener("DOMContentLoaded", () => {
           const reason = document.getElementById("reschedule-reason")?.value.trim() || "";
           const isChecked = document.getElementById("confirm-reschedule")?.checked;
 
-          if (!userReschedCalendar || !userReschedCalendar.startDate) return showAlertModal("Missing Data", "Please select your new dates on the calendar.", "error");
-          if (reason === "") return showAlertModal("Missing Info", "Please provide a reason for rescheduling.", "error");
-          if (!isChecked) return showAlertModal("Required", "Please acknowledge the reschedule policy by checking the box.", "error");
+          if (!userReschedCalendar || !userReschedCalendar.startDate) return showAlert("Missing Data", "Please select your new dates on the calendar.", "error");
+          if (reason === "") return showAlert("Missing Info", "Please provide a reason for rescheduling.", "error");
+          if (!isChecked) return showAlert("Required", "Please acknowledge the reschedule policy by checking the box.", "error");
 
           const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
           const newStart = formatLocal(userReschedCalendar.startDate);
@@ -295,15 +241,15 @@ document.addEventListener("DOMContentLoaded", () => {
           })
           .then(res => res.json())
           .then(data => {
-              if (data.success) showAlertModal("Success", data.message, "success", true);
+              if (data.success) showAlert("Success", data.message, "success", true);
               else {
-                  showAlertModal("Error", data.message, "error");
+                  showAlert("Error", data.message, "error");
                   this.innerText = originalText;
                   this.disabled = false;
               }
           })
           .catch(err => {
-              showAlertModal("Network Error", "Network error occurred.", "error");
+              showAlert("Network Error", "Network error occurred.", "error");
               this.innerText = originalText;
               this.disabled = false;
           });
@@ -333,7 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
             this.innerHTML = originalHTML; 
             this.disabled = false;
 
-            if (!res.success) return showAlertModal("Error", "Error loading details: " + res.message, "error");
+            if (!res.success) return showAlert("Error", "Error loading details: " + res.message, "error");
 
             const data = res.data.booking;
             const specifics = res.data.specifics;
@@ -444,7 +390,7 @@ document.addEventListener("DOMContentLoaded", () => {
             openModal("details");
         })
         .catch(err => {
-            showAlertModal("Error", "Network error fetching details.", "error");
+            showAlert("Error", "Network error fetching details.", "error");
             this.innerHTML = originalHTML; 
             this.disabled = false;
         });
@@ -465,19 +411,19 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(res => res.json())
       .then(data => {
           if (data.success) {
-              showAlertModal("Success", data.message, "success", payload.action === 'update_profile');
+              showAlert("Success", data.message, "success", payload.action === 'update_profile');
               if (payload.action === 'update_password') {
                   document.getElementById('set-old-pass').value = '';
                   document.getElementById('set-new-pass').value = '';
               }
           } else {
-              showAlertModal("Error", data.message, "error");
+              showAlert("Error", data.message, "error");
           }
           buttonElement.innerText = originalText;
           buttonElement.disabled = false;
       })
       .catch(err => {
-          showAlertModal("Network Error", "Network error occurred.", "error");
+          showAlert("Network Error", "Network error occurred.", "error");
           buttonElement.innerText = originalText;
           buttonElement.disabled = false;
       });
@@ -526,13 +472,13 @@ document.addEventListener("DOMContentLoaded", () => {
           .then(data => {
               if (data.success) window.location.href = data.checkout_url;
               else {
-                  showAlertModal("Payment Error", data.message, "error");
+                  showAlert("Payment Error", data.message, "error");
                   this.innerHTML = originalText;
                   this.disabled = false;
               }
           })
           .catch(err => {
-              showAlertModal("Network Error", "Network error occurred.", "error");
+              showAlert("Network Error", "Network error occurred.", "error");
               this.innerHTML = originalText;
               this.disabled = false;
           });

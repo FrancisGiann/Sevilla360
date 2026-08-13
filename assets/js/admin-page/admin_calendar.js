@@ -27,10 +27,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 const bookingId = info.event.id;
                 
                 // We use SweetAlert-style confirmation to redirect them to manage it
-                if (confirm(`Do you want to manage Booking #${bookingId}?\n\nGuest: ${info.event.title}\nStatus: ${info.event.extendedProps.status}`)) {
-                    // Redirects to Bookings page, putting the ID in the search bar!
-                    window.location.href = `admin_dashboard.php?page=bookings&search=${bookingId}`;
-                }
+                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingId}?\n\nGuest: ${info.event.title}\nStatus: ${info.event.extendedProps.status}`).then(confirmed => {
+                    if (confirmed) window.location.href = `admin_dashboard.php?page=bookings&search=${bookingId}`;
+                });
             }
         });
 

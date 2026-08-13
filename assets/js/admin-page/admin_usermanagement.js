@@ -116,24 +116,26 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .then(res => res.json())
         .then(data => {
-            if (data.success) { alert(data.message); window.location.reload(); }
-            else { alert("Error: " + data.message); btn.innerText = origText; btn.disabled = false; }
+            if (data.success) { showAlert("Notice", data.message); window.location.reload(); }
+            else { showAlert("Notice", "Error: " + data.message); btn.innerText = origText; btn.disabled = false; }
         });
     });
 
     document.querySelectorAll(".btn-delete-staff").forEach(btn => {
         btn.addEventListener('click', function() {
-            if (confirm("Are you sure you want to permanently delete this staff member?")) {
-                  fetch('actions/admin/manage_staff.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                    body: JSON.stringify({ action: 'delete', user_id: this.getAttribute('data-id') })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if(data.success) window.location.reload(); else alert("Error: " + data.message);
-                });
-            }
+            showConfirm("Confirm Deletion", "Are you sure you want to permanently delete this staff member?").then(confirmed => {
+                if (confirmed) {
+                    fetch('actions/admin/manage_staff.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                        body: JSON.stringify({ action: 'delete', user_id: btn.getAttribute('data-id') })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.success) window.location.reload(); else showAlert("Notice", "Error: " + data.message);
+                    });
+                }
+            });
         });
     });
   
@@ -170,10 +172,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const newStatus = this.getAttribute('data-action');
             const actionText = newStatus === 'suspended' ? 'suspend' : 're-activate';
 
-            if (confirm(`Are you sure you want to ${actionText} this customer's account?`)) {
-                const origText = this.innerText;
-                this.innerText = 'Processing...';
-                this.disabled = true;
+            showConfirm("Confirm Action", `Are you sure you want to ${actionText} this customer's account?`).then(confirmed => {
+                if (confirmed) {
+                    const origText = btn.innerText;
+                    btn.innerText = 'Processing...';
+                    btn.disabled = true;
 
                 fetch('actions/admin/suspend_user.php', {
                     method: 'POST',
@@ -185,12 +188,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (data.success) {
                         window.location.reload();
                     } else {
-                        alert("Error: " + data.message);
+                        showAlert("Notice", "Error: " + data.message);
                         this.innerText = origText;
                         this.disabled = false;
                     }
                 });
-            }
+                }
+            });
         });
     });
 });

@@ -83,11 +83,11 @@ document.addEventListener("DOMContentLoaded", () => {
             showToast();
             isFormDirty = false;
           } else {
-            alert(data);
+            showAlert("Notice", data);
           }
       })
       .catch(error => {
-          alert("System error. Could not save settings.");
+          showAlert("Notice", "System error. Could not save settings.");
           console.error(error);
       });
     });
@@ -172,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".btn-edit-venue").forEach((btn) => {
     btn.addEventListener("click", function () {
       const venueData = window.allVenuesData.find((v) => v.id === this.getAttribute("data-id"));
-      if (!venueData) return alert("Error loading venue data.");
+      if (!venueData) return showAlert("Notice", "Error loading venue data.");
 
       document.getElementById("vm-title").innerText = "Edit Venue";
       document.getElementById("vm-id").value = venueData.id;
@@ -232,17 +232,17 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(res => res.json())
       .then(data => {
           if (data.success) {
-            alert(data.message);
+            showAlert("Notice", data.message);
             window.location.reload();
           } else {
-            alert("Error: " + data.message);
+            showAlert("Notice", "Error: " + data.message);
             submitBtn.innerText = originalText;
             submitBtn.disabled = false;
           }
       })
       .catch(err => {
           console.error(err);
-          alert("Network error.");
+          showAlert("Notice", "Network error.");
           submitBtn.innerText = originalText;
           submitBtn.disabled = false;
       });

@@ -110,13 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.addEventListener('fullscreenchange', () => setTimeout(() => viewer.onWindowResize(), 100));
 
-  // Switch between multiple panoramas
-  document.getElementById("btn-switch-pano")?.addEventListener("click", () => {
-      if (activePanoramas.length > 1) {
-          currentPanoIndex = (currentPanoIndex + 1) % activePanoramas.length;
-          viewer.setPanorama(activePanoramas[currentPanoIndex]);
-      }
-  });
+
 
   // Hard Reload (Memory Flush)
   document.getElementById("btn-reload-pano")?.addEventListener("click", () => {
@@ -279,7 +273,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 360 Engine Routing
     const panoUrls = room.pano_urls || [];
-    const btnSwitch = document.getElementById("btn-switch-pano");
     const btnInfo = document.getElementById("btn-info"); 
 
     if (panoUrls.length > 0) {
@@ -287,7 +280,6 @@ document.addEventListener("DOMContentLoaded", () => {
       no360Wrapper.style.display = "none";
       panoContainer.style.visibility = "visible";
       if (viewerControls) viewerControls.style.display = "flex"; 
-      if (btnSwitch) btnSwitch.style.display = (panoUrls.length > 1) ? "block" : "none";
       if (btnInfo) btnInfo.style.display = "flex";
 
       if (!panoCache[roomId]) {

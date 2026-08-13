@@ -121,9 +121,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-schedule-maint").addEventListener("click", async (e) => {
         const btn = e.target;
         
-        if (!specificVenueSelect.value) return alert("Please select a specific Unit/Venue first.");
-        if (!maintCalendar.startDate) return alert("Please select dates from the Availability Calendar.");
-        if (!selectType.value) return alert("Please select a Maintenance Type.");
+        if (!specificVenueSelect.value) return showAlert("Notice", "Please select a specific Unit/Venue first.");
+        if (!maintCalendar.startDate) return showAlert("Notice", "Please select dates from the Availability Calendar.");
+        if (!selectType.value) return showAlert("Notice", "Please select a Maintenance Type.");
 
         const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
@@ -150,13 +150,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = data.split("|");
 
             if (response[0] === "Success") {
-                alert("Maintenance successfully scheduled!");
+                showAlert("Notice", "Maintenance successfully scheduled!");
                 window.location.reload();
             } else {
                 throw new Error(response[1]);
             }
         } catch (error) {
-            alert("Error: " + error.message);
+            showAlert("Notice", "Error: " + error.message);
             btn.innerText = "SCHEDULE MAINTENANCE";
             btn.disabled = false;
         }
@@ -168,7 +168,8 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", async (e) => {
             const maintId = e.target.getAttribute("data-id");
 
-            if (!confirm("Are you sure you want to cancel and delete this maintenance block? This will free up the dates on the calendar immediately.")) {
+            const confirmed = await showConfirm("Cancel Maintenance", "Are you sure you want to cancel and delete this maintenance block? This will free up the dates on the calendar immediately.");
+            if (!confirmed) {
                 return;
             }
 
@@ -188,13 +189,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = await res.json();
                 
                 if (data.success) {
-                    alert("Maintenance successfully deleted!");
+                    showAlert("Notice", "Maintenance successfully deleted!");
                     window.location.reload();
                 } else {
                     throw new Error(data.message);
                 }
             } catch (error) {
-                alert("Error: " + error.message);
+                showAlert("Notice", "Error: " + error.message);
                 e.target.innerText = "Cancel / Delete";
                 e.target.disabled = false;
             }
@@ -207,7 +208,8 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", async (e) => {
             const maintId = e.target.getAttribute("data-id");
 
-            if (!confirm("Mark this maintenance as completed? This will instantly free up the room for new bookings today, while keeping the historical record intact.")) {
+            const confirmed = await showConfirm("Complete Maintenance", "Mark this maintenance as completed? This will instantly free up the room for new bookings today, while keeping the historical record intact.");
+            if (!confirmed) {
                 return;
             }
 
@@ -226,13 +228,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 const data = await res.json();
                 if (data.success) {
-                    alert("Maintenance marked as completed! Calendar has been updated.");
+                    showAlert("Notice", "Maintenance marked as completed! Calendar has been updated.");
                     window.location.reload();
                 } else {
                     throw new Error(data.message);
                 }
             } catch (error) {
-                alert("Error: " + error.message);
+                showAlert("Notice", "Error: " + error.message);
                 e.target.innerText = "Mark Done";
                 e.target.disabled = false;
             }

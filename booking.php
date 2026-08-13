@@ -31,6 +31,8 @@ $villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate FROM
 $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 ?>
 
+
+
 <!-- Main Booking Section -->
 <section class="booking-section">
     <div class="container booking-grid">

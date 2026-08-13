@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
             currentPhotosArray = (window.panoDataOrdered && window.panoDataOrdered[currentSlot]) || [];
 
             if (currentPhotosArray.length === 0) {
-                alert("No panorama found for this slot.");
+                showAlert("Notice", "No panorama found for this slot.");
                 return;
             }
 
@@ -333,12 +333,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const title = document.getElementById("hs-title").value.trim();
 
         if (!title) {
-            alert("Please enter a title/label for this hotspot.");
+            showAlert("Notice", "Please enter a title/label for this hotspot.");
             return;
         }
 
         if (!pendingPoint) {
-            alert("No position captured — click on the panorama first.");
+            showAlert("Notice", "No position captured — click on the panorama first.");
             return;
         }
 
@@ -371,11 +371,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 removeTemporarySpot();
                 loadExistingHotspots(currentMediaId);
             } else {
-                alert("Error: " + data.message);
+                showAlert("Notice", "Error: " + data.message);
             }
         })
         .catch(() => {
-            alert("Network error saving hotspot.");
+            showAlert("Notice", "Network error saving hotspot.");
         });
     });
 
@@ -427,24 +427,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
             document.querySelectorAll(".btn-delete-hotspot").forEach((btn) => {
                 btn.addEventListener("click", function () {
-                    if (!confirm("Delete this hotspot?")) return;
+                    showConfirm("Confirm Deletion", "Delete this hotspot?").then(confirmed => {
+                        if (!confirmed) return;
 
-                    fetch("actions/admin/delete_hotspot.php", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "X-CSRF-Token": csrfToken
-                        },
-                        body: JSON.stringify({ id: this.getAttribute("data-id") })
-                    })
-                    .then((res) => res.json())
-                    .then((data) => {
-                        if (data.success) {
-                            // Reload the current view so the pin disappears from 3D space
-                            initViewer(currentPhotosArray[adminViewSelector.value].file_path);
-                        } else {
-                            alert("Error: " + data.message);
-                        }
+                        fetch("actions/admin/delete_hotspot.php", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "X-CSRF-Token": csrfToken
+                            },
+                            body: JSON.stringify({ id: btn.getAttribute("data-id") })
+                        })
+                        .then((res) => res.json())
+                        .then((data) => {
+                            if (data.success) {
+                                initViewer(currentPhotosArray[adminViewSelector.value].file_path);
+                            } else {
+                                showAlert("Notice", "Error: " + data.message);
+                            }
+                        });
                     });
                 });
             });

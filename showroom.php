@@ -153,10 +153,6 @@ window.process = {
 
             <div class="viewer-controls ui-360" id="viewer-controls">
 
-                <button id="btn-switch-pano" title="Switch 360 View"
-                    style="display:none; background: var(--color-gold); color: white;">
-                    <i class="fa-solid fa-person-walking-arrow-right"></i>
-                </button>
                 <button id="btn-reload-pano" title="Reload 360"><i class="fa-solid fa-rotate-right"></i></button>
                 <button id="btn-zoom-in" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
                 <button id="btn-zoom-out" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
