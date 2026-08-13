@@ -190,9 +190,11 @@
                     style="color: #4ade80;">₱0.00</span>
             </div>
 
-            <div class="modal-actions" style="margin-top: 30px;">
+            <div class="modal-actions" style="margin-top: 30px; display: flex; gap: 10px;">
                 <button class="btn-modal btn-modal-cancel close-modal"
-                    style="width: 100%; background: transparent; color: var(--color-dark); border: 1px solid #ccc;">Close</button>
+                    style="flex: 1; background: transparent; color: var(--color-dark); border: 1px solid #ccc;">Close</button>
+                <button class="btn-modal" id="btn-admin-print" style="flex: 1; background: var(--color-gold);"><i class="fa-solid fa-print"></i> Print</button>
+                <button class="btn-modal" id="btn-admin-resend" style="flex: 1; background: var(--color-dark);"><i class="fa-solid fa-envelope"></i> Resend Email</button>
             </div>
         </div>
 

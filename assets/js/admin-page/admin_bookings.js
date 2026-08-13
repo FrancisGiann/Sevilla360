@@ -22,6 +22,52 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     // 1. MODAL BRIDGES to Global Modals
     // =========================================================
+    window.currentAdminBookingId = null;
+
+    const btnAdminPrint = document.getElementById('btn-admin-print');
+    if (btnAdminPrint) {
+        btnAdminPrint.addEventListener('click', () => {
+            if (window.currentAdminBookingId) {
+                window.open(`print_receipt.php?booking_id=${window.currentAdminBookingId}`, '_blank');
+            }
+        });
+    }
+
+    const btnAdminResend = document.getElementById('btn-admin-resend');
+    if (btnAdminResend) {
+        btnAdminResend.addEventListener('click', () => {
+            if (!window.currentAdminBookingId) return;
+            
+            showConfirmModal("Are you sure you want to resend the email receipt to the customer?", () => {
+                const originalText = btnAdminResend.innerHTML;
+                btnAdminResend.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+                btnAdminResend.disabled = true;
+
+                fetch('actions/admin/resend_receipt.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                    body: JSON.stringify({ booking_id: window.currentAdminBookingId })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    btnAdminResend.innerHTML = originalText;
+                    btnAdminResend.disabled = false;
+                    
+                    if (data.success) {
+                        showAlertModal("Success", "Receipt email has been resent to the customer.", "success");
+                    } else {
+                        showAlertModal("Error", data.message || "Failed to resend receipt.", "error");
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    btnAdminResend.innerHTML = originalText;
+                    btnAdminResend.disabled = false;
+                    showAlertModal("Error", "Network or server error.", "error");
+                });
+            }, 'bookingDetailsModal');
+        });
+    }
     function showConfirmModal(message, callback, sourceModalId = null) {
         if(sourceModalId) {
             const sm = document.getElementById(sourceModalId);
@@ -596,6 +642,8 @@ document.addEventListener("DOMContentLoaded", () => {
                   const specifics = res.data.specifics;
                   const addons = res.data.addons;
                   const lineItems = res.data.line_items; 
+                  
+                  window.currentAdminBookingId = data.id;
       
                   document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
                   

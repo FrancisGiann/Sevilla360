@@ -13,6 +13,17 @@ document.addEventListener("DOMContentLoaded", () => {
           if(c && callback) callback();
       });
   }
+  
+  window.currentViewBookingId = null;
+
+  const btnPrintReceipt = document.getElementById('btn-print-receipt');
+  if (btnPrintReceipt) {
+      btnPrintReceipt.addEventListener('click', () => {
+          if (window.currentViewBookingId) {
+              window.open(`print_receipt.php?booking_id=${window.currentViewBookingId}`, '_blank');
+          }
+      });
+  }
 
   function showAlertModal(title, message, type = "info", reloadOnClose = false) {
       window.showAlert(title, message, type, reloadOnClose);
@@ -370,6 +381,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = res.data.booking;
             const specifics = res.data.specifics;
             const addons = res.data.addons;
+            
+            window.currentViewBookingId = data.id;
 
             const displayId = data.reference_no ? data.reference_no : '#' + data.id;
             const titleEl = document.getElementById('ud-title');

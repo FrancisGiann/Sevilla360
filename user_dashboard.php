@@ -623,8 +623,9 @@ while ($row = $notifs_result->fetch_assoc()) {
                 </div>
             </div>
 
-            <div class="modal-actions center-actions">
-                <button class="btn-modal btn-go-back close-modal" style="width: 100%; max-width: 200px;">Close</button>
+            <div class="modal-actions center-actions" style="display: flex; gap: 10px; justify-content: center;">
+                <button class="btn-modal btn-go-back close-modal" style="width: 100%; max-width: 150px;">Close</button>
+                <button class="btn-modal btn-confirm" id="btn-print-receipt" style="width: 100%; max-width: 150px; background-color: var(--color-gold);"><i class="fa-solid fa-print"></i> Print Receipt</button>
             </div>
         </div>
     </div>
