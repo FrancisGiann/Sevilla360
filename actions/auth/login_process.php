@@ -40,6 +40,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         //Verify the typed password against the encrypted one in the database
         if (password_verify($password, $user['password_hash'])) {
             
+            // ROLE VALIDATION GUARD
+            $login_type = $_POST['login_type'] ?? 'customer';
+            
+            if ($login_type === 'admin' && $user['role'] === 'customer') {
+                echo "<script>
+                    alert('Unauthorized: Admin access required.');
+                    window.history.back();
+                </script>";
+                exit();
+            }
+            
+            if ($login_type === 'customer' && ($user['role'] === 'admin' || $user['role'] === 'staff')) {
+                echo "<script>
+                    alert('Please use the Administrator login portal.');
+                    window.location.href = '../../auth.php'; // Or handle UI toggle state 
+                </script>";
+                exit();
+            }
+            
             // =========================================================================
             // SECURITY FIX: SESSION FIXATION PREVENTION
             // Destroy the old, unauthenticated session ID and issue a brand new one

@@ -4,6 +4,16 @@ header('Content-Type: application/json'); // Force JSON output so JS never crash
 require '../../config/db_connect.php';
 
 try {
+    // 1. AUTOMATED CLEANUP: Cancel abandoned "Pending" online bookings older than 30 minutes
+    $conn->query("
+        UPDATE bookings 
+        SET booking_status = 'Cancelled' 
+        WHERE booking_status = 'Pending' 
+          AND payment_status = 'Unpaid' 
+          AND source = 'Online' 
+          AND created_at < NOW() - INTERVAL 30 MINUTE
+    ");
+
     // Safely accept both GET and POST requests
     $room_type = $_REQUEST['room_type'] ?? '';
     $room_name = $_REQUEST['room_name'] ?? '';

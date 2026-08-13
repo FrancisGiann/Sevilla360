@@ -55,6 +55,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <form id="form-login" action="actions/auth/login_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <input type="hidden" name="login_type" value="customer">
 
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
@@ -170,6 +171,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <form id="form-admin" action="actions/auth/login_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <input type="hidden" name="login_type" value="admin">
 
                     <div class="form-group">
                         <label>ADMIN EMAIL</label>
