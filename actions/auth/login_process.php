@@ -4,13 +4,29 @@ session_start();
 
 // Connect to the database
 require '../../config/db_connect.php';
+require_once '../../includes/rate_limit.php';
 
 // Check if the form was actually submitted
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // CSRF PROTECTION FOR FORMS
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        echo "<script>alert('Security token expired. Please refresh the page and try again.'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired. Please refresh the page and try again.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    
+    // HONEYPOT CHECK
+    if (!empty($_POST['website_url_honeypot'])) {
+        // Bot detected, pretend it succeeded or block silently
+        echo "<script>window.location.href = '../../auth.php';</script>";
+        exit();
+    }
+    
+    // RATE LIMITING CHECK
+    if (!check_rate_limit($conn, 'login_attempt', 5, 15)) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many login attempts. Please try again in 15 minutes.', 'type' => 'error'];
+        header("Location: ../../auth.php");
         exit();
     }
     
@@ -30,10 +46,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         // Check if the user is verified
         if ($user['is_verified'] == 0) {
-            echo "<script>
-                alert('Please verify your email address first!'); 
-                window.location.href = '../../auth.php?verify_email=" . urlencode($email) . "';
-            </script>";
+            $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'Please verify your email address first!', 'type' => 'warning'];
+            header("Location: ../../auth.php");
             exit();
         }
 
@@ -43,19 +57,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // ROLE VALIDATION GUARD
             $login_type = $_POST['login_type'] ?? 'customer';
             
-            if ($login_type === 'admin' && $user['role'] === 'customer') {
-                echo "<script>
-                    alert('Unauthorized: Admin access required.');
-                    window.history.back();
-                </script>";
+            if ($login_type === 'admin' && !in_array($user['role'], ['admin', 'staff'])) {
+                $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Unauthorized: Admin access required.', 'type' => 'error'];
+                header("Location: ../../auth.php");
                 exit();
             }
             
-            if ($login_type === 'customer' && ($user['role'] === 'admin' || $user['role'] === 'staff')) {
-                echo "<script>
-                    alert('Please use the Administrator login portal.');
-                    window.location.href = '../../auth.php'; // Or handle UI toggle state 
-                </script>";
+            if ($login_type === 'customer' && (in_array($user['role'], ['admin', 'staff']))) {
+                $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'Please use the Administrator login portal.', 'type' => 'info'];
+                header("Location: ../../auth.php");
                 exit();
             }
             
@@ -64,6 +74,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Destroy the old, unauthenticated session ID and issue a brand new one
             // =========================================================================
             session_regenerate_id(true);
+            
+            // Clear rate limits on successful login
+            clear_rate_limit($conn, 'login_attempt');
             
             // Success! Save user data into the Session
             $_SESSION['user_id'] = $user['id'];
@@ -111,11 +124,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         } else {
             // Password was wrong
-            echo "<script>alert('Incorrect password!'); window.history.back();</script>";
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Incorrect password!', 'type' => 'error'];
+            header("Location: ../../auth.php");
+            exit();
         }
     } else {
         // Email not found
-        echo "<script>alert('Email not found!'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Email not found!', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
     }
 
     $stmt->close();

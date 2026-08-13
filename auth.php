@@ -58,6 +58,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                     <input type="hidden" name="login_type" value="customer">
+                    
+                    <!-- HONEYPOT FIELD -->
+                    <div style="display:none; position:absolute; left:-9999px;">
+                        <label for="website_url_login">Leave this empty:</label>
+                        <input type="text" name="website_url_honeypot" id="website_url_login" value="" autocomplete="off">
+                    </div>
 
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>
@@ -90,6 +96,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <form id="form-register" action="actions/auth/register_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    
+                    <!-- HONEYPOT FIELD -->
+                    <div style="display:none; position:absolute; left:-9999px;">
+                        <label for="website_url_register">Leave this empty:</label>
+                        <input type="text" name="website_url_honeypot" id="website_url_register" value="" autocomplete="off">
+                    </div>
 
                     <div class="form-group">
                         <label>FIRST NAME</label>
@@ -175,6 +187,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                     <input type="hidden" name="login_type" value="admin">
 
+                    <!-- HONEYPOT FIELD -->
+                    <div style="display:none; position:absolute; left:-9999px;">
+                        <label for="website_url_admin">Leave this empty:</label>
+                        <input type="text" name="website_url_honeypot" id="website_url_admin" value="" autocomplete="off">
+                    </div>
+
                     <div class="form-group">
                         <label>ADMIN EMAIL</label>
                         <input type="email" name="email" class="form-control" placeholder="admin@sevilla360.com"
@@ -205,6 +223,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <form id="form-forgot" action="actions/auth/forgot_password_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
+                    <!-- HONEYPOT FIELD -->
+                    <div style="display:none; position:absolute; left:-9999px;">
+                        <label for="website_url_forgot">Leave this empty:</label>
+                        <input type="text" name="website_url_honeypot" id="website_url_forgot" value="" autocomplete="off">
+                    </div>
 
                     <div class="form-group">
                         <label>EMAIL ADDRESS</label>

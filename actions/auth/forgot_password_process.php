@@ -2,12 +2,27 @@
 session_start();
 require_once '../../config/db_connect.php';
 require_once '../../includes/mailer.php';
+require_once '../../includes/rate_limit.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // CSRF Check
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    
+    // HONEYPOT CHECK
+    if (!empty($_POST['website_url_honeypot'])) {
+        $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'If your email is in our system, you will receive a password reset link shortly.', 'type' => 'info'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    
+    // RATE LIMITING CHECK
+    if (!check_rate_limit($conn, 'forgot_password', 3, 60)) {
+        $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'If your email is in our system, you will receive a password reset link shortly.', 'type' => 'info'];
         header("Location: ../../auth.php");
         exit();
     }

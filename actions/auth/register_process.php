@@ -1,6 +1,7 @@
 <?php
 session_start();
 require '../../config/db_connect.php';
+require_once '../../includes/rate_limit.php';
 
 // =========================================================================
 // DATABASE HYGIENE: The "Piggyback" Auto-Delete
@@ -19,7 +20,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 // CSRF PROTECTION FOR FORMS
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        echo "<script>alert('Security token expired. Please refresh the page and try again.'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired. Please refresh the page and try again.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    
+    // HONEYPOT CHECK
+    if (!empty($_POST['website_url_honeypot'])) {
+        // Bot detected
+        echo "<script>window.location.href = '../../auth.php';</script>";
+        exit();
+    }
+    
+    // RATE LIMITING CHECK
+    if (!check_rate_limit($conn, 'register_attempt', 3, 60)) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many registration attempts. Please try again later.', 'type' => 'error'];
+        header("Location: ../../auth.php");
         exit();
     }
     
@@ -33,12 +49,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     //  Basic Validation
     if ($password !== $confirm_password) {
-        echo "<script>alert('Passwords do not match!'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Passwords do not match!', 'type' => 'error'];
+        header("Location: ../../auth.php");
         exit();
     }
 
     if (empty($first_name) || empty($last_name) || empty($email) || empty($password)) {
-        echo "<script>alert('Please fill in all required fields.'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Please fill in all required fields.', 'type' => 'error'];
+        header("Location: ../../auth.php");
         exit();
     }
 
@@ -51,12 +69,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($res_check->num_rows > 0) {
         $existing_user = $res_check->fetch_assoc();
         if ($existing_user['is_verified']) {
-            echo "<script>alert('Error: That email address is already registered. Please log in.'); window.history.back();</script>";
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Error: That email address is already registered. Please log in.', 'type' => 'error'];
+            header("Location: ../../auth.php");
             exit();
         } else {
-            // If they exist but aren't verified, we could delete and restart, or tell them to verify. 
-            // We will just block it to be safe and force them to wait 24 hours for auto-delete.
-            echo "<script>alert('An unverified account with this email exists. Please verify it or try again later.'); window.history.back();</script>";
+            $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'An unverified account with this email exists. Please verify it or try again later.', 'type' => 'warning'];
+            header("Location: ../../auth.php");
             exit();
         }
     }
@@ -142,13 +160,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             send_custom_email($email, "$first_name $last_name", $subject, $html_content);
             
             // Redirect to Verification Page silently
-            echo "<script>window.location.href = '../../auth.php?verify_email=" . urlencode($email) . "';</script>";
+            header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
 
         } catch (Exception $mail_e) {
             // If the email fails to send (e.g. invalid email address), rollback the account creation!
             $conn->query("DELETE FROM users WHERE id = $new_user_id");
-            echo "<script>alert('Failed to send verification email. Please check if your email address is valid.'); window.history.back();</script>";
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Failed to send verification email. Please check if your email address is valid.', 'type' => 'error'];
+            header("Location: ../../auth.php");
             exit();
         }
         // =========================================================================

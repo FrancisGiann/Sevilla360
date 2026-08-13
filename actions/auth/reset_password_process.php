@@ -1,11 +1,19 @@
 <?php
 session_start();
 require_once '../../config/db_connect.php';
+require_once '../../includes/rate_limit.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    
+    // RATE LIMITING CHECK
+    if (!check_rate_limit($conn, 'reset_password', 5, 15)) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many attempts. Please try again later.', 'type' => 'error'];
         header("Location: ../../auth.php");
         exit();
     }

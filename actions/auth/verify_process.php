@@ -4,9 +4,10 @@ require '../../config/db_connect.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
-// CSRF PROTECTION FOR FORMS
+// CSRF PROTECTION
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        echo "<script>alert('Security token expired. Please refresh the page and try again.'); window.history.back();</script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired. Please refresh the page and try again.', 'type' => 'error'];
+        header("Location: ../../auth.php");
         exit();
     }
     
@@ -25,10 +26,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 2. Check if the code has expired
         if ($current_time > $user['verification_expires_at']) {
-            echo "<script>
-                alert('This verification code has expired. Please request a new one.'); 
-                window.location.href = '../../auth.php?verify_email=" . urlencode($email) . "';
-            </script>";
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'This verification code has expired. Please request a new one.', 'type' => 'error'];
+            header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
         }
 
@@ -38,7 +37,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // 4. Update the user to verified and clear the code
             $update_stmt = $conn->prepare("UPDATE users SET is_verified = TRUE, verification_code = NULL, verification_expires_at = NULL WHERE id = ?");
             $update_stmt->bind_param("i", $user['id']);
-            $update_stmt->execute();
             
             // Protect against session fixation attacks
             session_regenerate_id(true);
@@ -58,25 +56,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $_SESSION['first_name'] = $customer_data['first_name'];
             }
             
-            echo "<script>
-                alert('Account verified successfully! Welcome to SEVILLA360.'); 
-                window.location.href = '../../index.php';
-            </script>";
-            exit();
+            if ($update_stmt->execute()) {
+                
+                $_SESSION['auth_alert'] = ['title' => 'Success', 'message' => 'Account verified successfully! Welcome to SEVILLA360.', 'type' => 'success'];
+                header("Location: ../../user_dashboard.php");
+                exit();
+            }
 
         } else {
             // Code was wrong
-            echo "<script>
-                alert('Invalid verification code. Please try again.'); 
-                window.location.href = '../../auth.php?verify_email=" . urlencode($email) . "';
-            </script>";
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Invalid verification code. Please try again.', 'type' => 'error'];
+            header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
         }
     } else {
-        echo "<script>
-            alert('Error: Account not found or already verified.'); 
-            window.location.href = '../../auth.php';
-        </script>";
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Error: Account not found or already verified.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
     }
 }
 ?>

@@ -148,6 +148,11 @@ class BookingController {
             });
         });
 
+        // RECALCULATE SUMMARY WHEN PAYMENT SCHEME CHANGES
+        document.querySelectorAll('input[name="hotel-payment"], input[name="villa-payment"]').forEach(radio => {
+            radio.addEventListener("change", () => this.calculateSummary());
+        });
+
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
 
@@ -485,11 +490,7 @@ class BookingController {
         if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
         if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
 
-        // 3. STOP HERE IF DATES ARE NOT LOCKED
-        if (!this.state.isDatesLocked) {
-            if (dueValEl) dueValEl.textContent = "₱0.00";
-            return;
-        }
+        // (Removed early return to allow live updates of scheme amounts before dates are locked)
 
         let activeRadioName = 'hotel-payment';
         let summaryTextId = 'sum-ht-payment'; 
@@ -512,7 +513,10 @@ class BookingController {
             if (pricingSection) pricingSection.style.display = "none"; // HIDES PRICING
 
         } else {
-            if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "block";
+            // Only show timer if dates are actually locked
+            if (this.getEl("timer-box")) {
+                this.getEl("timer-box").style.display = this.state.isDatesLocked ? "block" : "none";
+            }
             if (pricingSection) pricingSection.style.display = "block"; // SHOWS PRICING
 
             if (this.state.activeTabId === 'resort-villa') {

@@ -41,7 +41,7 @@ include 'includes/header.php';
             </p>
             <div class="idx-hero-buttons">
                 <a href="booking.php" class="idx-btn idx-btn-gold">Book Your Stay</a>
-                <a href="#experiences" class="idx-btn idx-btn-outline-light">Explore Resort</a>
+                <a href="showroom.php" class="idx-btn idx-btn-outline-light">Explore Resort</a>
             </div>
         </div>
         <span class="idx-hero-scroll"></span>
