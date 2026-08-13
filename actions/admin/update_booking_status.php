@@ -14,6 +14,7 @@ require_once '../../config/db_connect.php';
 // NEW: INCLUDE MAILER FOR NOTIFICATIONS
 // ==========================================
 require_once '../../includes/mailer.php'; 
+require_once '../../includes/notifications.php';
 
 // 2. Get POST JSON Data
 $rawData = file_get_contents('php://input');
@@ -34,7 +35,7 @@ try {
     // FETCH CUSTOMER DATA FOR EMAILS
     // ==========================================
     $stmt_info = $conn->prepare("
-        SELECT b.reference_no, c.email, c.first_name, c.last_name, v.name as venue_name 
+        SELECT b.reference_no, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id 
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
         JOIN venues v ON b.venue_id = v.id 
@@ -48,6 +49,7 @@ try {
     $c_name = ($b_info['first_name'] ?? '') . ' ' . ($b_info['last_name'] ?? '');
     $ref_no = $b_info['reference_no'] ?? '';
     $v_name = $b_info['venue_name'] ?? '';
+    $c_user_id = $b_info['user_id'] ?? null;
 
     // ==========================================
     // ACTIONS
@@ -113,6 +115,8 @@ try {
         } catch (Throwable $mail_e) {
             error_log("Failed to send invoice email: " . $mail_e->getMessage());
         }
+        
+        create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Please review it on your dashboard.");
 
         $message = "Invoice finalized and sent to customer!";
     }elseif ($action === 'add_payment') {
@@ -176,6 +180,8 @@ try {
             // Silently fail so the admin doesn't get an error popup if Gmail is slow
             error_log("Failed to send admin payment receipt: " . $mail_e->getMessage());
         }
+        
+        create_user_notification($conn, $c_user_id, "Payment Received", "A payment of ₱" . number_format($amount_to_add, 2) . " for your booking at $v_name has been confirmed.");
         // =========================================================
     }
     elseif ($action === 'reschedule') {
@@ -214,6 +220,8 @@ try {
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Approved</h2><p>Hello $c_name,</p><p>Good news! Your request to reschedule your booking at <strong>$v_name</strong> to <strong>$new_start</strong> has been approved.</p><p>You can view your updated itinerary on your dashboard.</p></div>";
         try { send_custom_email($c_email, $c_name, "Reschedule Approved - $ref_no", $html); } catch (Exception $e) {}
+        
+        create_user_notification($conn, $c_user_id, "Reschedule Approved", "Your request to reschedule $v_name to $new_start has been approved.");
     }
     elseif ($action === 'reject_reschedule') {
         $admin_reply = isset($data['admin_reply']) ? trim($data['admin_reply']) : "No reason provided.";
@@ -227,6 +235,8 @@ try {
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Update</h2><p>Hello $c_name,</p><p>Regarding your request to reschedule your booking at <strong>$v_name</strong>, the administration left the following note:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #d6a870;'><em>$admin_reply</em></p><p>Your original dates remain secured.</p></div>";
         try { send_custom_email($c_email, $c_name, "Reschedule Update - $ref_no", $html); } catch (Exception $e) {}
+        
+        create_user_notification($conn, $c_user_id, "Reschedule Rejected", "Your request to reschedule $v_name was declined. Please check your email for details.");
     }
     elseif ($action === 'refund') {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
@@ -242,6 +252,8 @@ try {
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Refund Processed</h2><p>Hello $c_name,</p><p>Your cancellation request for <strong>$v_name</strong> has been approved.</p><p>Your refund has been processed. Please allow 5-10 business days for the funds to reflect in your account.</p></div>";
         try { send_custom_email($c_email, $c_name, "Refund Processed - $ref_no", $html); } catch (Exception $e) {}
+        
+        create_user_notification($conn, $c_user_id, "Refund Processed", "Your refund for $v_name has been processed. Your booking is cancelled.");
     } 
     elseif ($action === 'admin_force_cancel') {
         if (!isset($data['reason'])) throw new Exception("Reason is required.");
@@ -263,6 +275,8 @@ try {
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Booking Cancelled</h2><p>Hello $c_name,</p><p>Unfortunately, your booking for <strong>$v_name</strong> has been cancelled by the administration for the following reason:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #e06666;'><em>$reason</em></p><p>A 100% full refund of ₱".number_format($refund_amount, 2)." has been issued to your original payment method.</p></div>";
         try { send_custom_email($c_email, $c_name, "Booking Cancelled - $ref_no", $html); } catch (Exception $e) {}
+        
+        create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name has been cancelled by the admin. Check your email for details.");
     }
     else {
         throw new Exception('Invalid action provided.');

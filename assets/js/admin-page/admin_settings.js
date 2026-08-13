@@ -36,6 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-save-profile")?.addEventListener("click", function() {
       const button = this;
       const name = document.getElementById("prof-name").value;
+      const phone = document.getElementById("prof-contact").value;
       const currPass = document.getElementById("prof-curr-pass").value;
       const newPass = document.getElementById("prof-new-pass").value;
       const confPass = document.getElementById("prof-conf-pass").value;
@@ -50,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
               "Content-Type": "application/json",
               "X-CSRF-Token": csrfToken
           },
-          body: JSON.stringify({ name, curr_pass: currPass, new_pass: newPass, conf_pass: confPass })
+          body: JSON.stringify({ name, phone, curr_pass: currPass, new_pass: newPass, conf_pass: confPass })
       })
       .then(res => res.json())
       .then(data => {

@@ -6,10 +6,30 @@ require_once __DIR__ . '/../config/env.php'; // Load env variables
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+function get_biz_info() {
+    global $conn;
+    $info = [
+        'biz_name' => 'Sevilla360',
+        'biz_tagline' => 'LUXURY RESORT & EVENTS',
+        'biz_policies' => '',
+        'biz_email' => 'reservations@sevilla360.com',
+        'biz_phone' => '+63 912 345 6789',
+        'biz_address' => '123 Resort Drive, Paradise City'
+    ];
+    $res = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'biz_%'");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $info[$row['setting_key']] = $row['setting_value'];
+        }
+    }
+    return $info;
+}
+
 function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_name, $amount_paid, $status) {
     global $conn;
     $smtp_email = $_ENV['SMTP_EMAIL']; 
     $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $biz = get_biz_info();
 
     // 1. Fetch Booking Details
     $stmt = $conn->prepare("
@@ -52,7 +72,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     $total_paid = floatval($booking['amount_paid']);
     $balance = $total_amt - $total_paid;
 
-    $subject = "Sevilla360: Your Booking Itinerary [$ref_no]";
+    $subject = "{$biz['biz_name']}: Your Booking Itinerary [$ref_no]";
 
     // Build the Itemized Breakdown HTML (Always show items, but hide total for inquiries)
     $breakdown_html = "";
@@ -82,15 +102,17 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
             <tr><td style='padding: 12px; border-bottom: 2px solid #2a2522; font-size: 18px;'><strong>BALANCE DUE:</strong></td><td style='padding: 12px; border-bottom: 2px solid #2a2522; text-align: right; font-size: 18px; color: #e06666;'><strong>₱" . number_format($balance, 2) . "</strong></td></tr>
         ";
         $header_title = "OFFICIAL BOOKING ITINERARY";
-        $header_desc = "Thank you for choosing Sevilla360. Please present this e-ticket at the front desk upon arrival.";
+        $header_desc = "Thank you for choosing {$biz['biz_name']}. Please present this e-ticket at the front desk upon arrival.";
     }
+
+    $biz_policies_html = nl2br(htmlspecialchars($biz['biz_policies']));
 
     $html_content = "
     <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
         <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
             <div style='background-color: #2a2522; padding: 30px; text-align: center;'>
-                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px;'>SEVILLA360</h1>
-                <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px;'>LUXURY RESORT & EVENTS</p>
+                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
+                <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_tagline']) . "</p>
             </div>
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>$header_title</h2>
@@ -110,10 +132,11 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
                     </table>
                 </div>
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>
-                    <strong>Resort Policies:</strong><br>
-                    • Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).<br>
-                    • Please bring a valid Government ID matching the name on this itinerary.<br>
-                    • Cancellations made less than 7 days before arrival are subject to fees.
+                    <strong>Policies:</strong><br>
+                    $biz_policies_html
+                </div>
+                <div style='margin-top: 20px; font-size: 12px; color: #aaa; text-align: center;'>
+                    " . htmlspecialchars($biz['biz_address']) . " | " . htmlspecialchars($biz['biz_phone']) . " | " . htmlspecialchars($biz['biz_email']) . "
                 </div>
             </div>
         </div>
@@ -131,7 +154,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = 587;
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
-        $mail->setFrom($smtp_email, 'Sevilla360 Reservations');
+        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Reservations');
         $mail->addAddress($customer_email, $customer_name); 
         $mail->isHTML(true);
         $mail->Subject = $subject;
@@ -149,6 +172,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 function send_custom_email($to_email, $to_name, $subject, $html_content) {
     $smtp_email = $_ENV['SMTP_EMAIL']; 
     $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $biz = get_biz_info();
     
     $mail = new PHPMailer(true);
     try {
@@ -163,7 +187,7 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
 
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
-        $mail->setFrom($smtp_email, 'Sevilla360 Accounts');
+        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
         $mail->addAddress($to_email, $to_name); 
         $mail->isHTML(true);
         $mail->Subject = $subject;
@@ -181,6 +205,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     global $conn;
     $smtp_email = $_ENV['SMTP_EMAIL']; 
     $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $biz = get_biz_info();
 
     // 1. Fetch Booking Details
     $stmt = $conn->prepare("
@@ -198,7 +223,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     $stmt_li->execute();
     $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    $subject = "Sevilla360: Your Final Event Invoice [$ref_no]";
+    $subject = "{$biz['biz_name']}: Your Final Event Invoice [$ref_no]";
     
     $check_in = date('F j, Y', strtotime($booking['start_date']));
     $check_out = date('F j, Y', strtotime($booking['end_date']));
@@ -225,8 +250,8 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
         <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
             <div style='background-color: #2a2522; padding: 30px; text-align: center;'>
-                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px;'>SEVILLA360</h1>
-                <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px;'>LUXURY RESORT & EVENTS</p>
+                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
+                <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_tagline']) . "</p>
             </div>
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0;'>Your Event Consultation is Complete!</h2>
@@ -261,9 +286,18 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                 <div style='text-align: center; margin-top: 30px;'>
                     <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>Pay Now to Secure Booking</a>
                 </div>
+                
+                <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>
+                    <strong>Policies:</strong><br>
+                    " . nl2br(htmlspecialchars($biz['biz_policies'])) . "
+                </div>
+                <div style='margin-top: 20px; font-size: 12px; color: #aaa; text-align: center;'>
+                    " . htmlspecialchars($biz['biz_address']) . " | " . htmlspecialchars($biz['biz_phone']) . " | " . htmlspecialchars($biz['biz_email']) . "
+                </div>
             </div>
         </div>
-    </div>";
+    </div>
+    ";
 
     $mail = new PHPMailer(true);
     try {
@@ -277,7 +311,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
         $mail->Port       = 587;
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
-        $mail->setFrom($smtp_email, 'Sevilla360 Events');
+        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
         $mail->addAddress($customer_email, $customer_name); 
         $mail->isHTML(true);
         $mail->Subject = $subject;

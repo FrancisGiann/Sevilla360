@@ -18,6 +18,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 $data = json_decode(file_get_contents('php://input'), true);
 
 $name = trim($data['name'] ?? '');
+$phone = trim($data['phone'] ?? '');
 $currPass = $data['curr_pass'] ?? '';
 $newPass = $data['new_pass'] ?? '';
 $confPass = $data['conf_pass'] ?? '';
@@ -31,9 +32,9 @@ if (empty($name)) {
 $conn->begin_transaction();
 
 try {
-    // 1. Update Full Name in staff table
-    $stmt_name = $conn->prepare("UPDATE staff SET full_name = ? WHERE user_id = ?");
-    $stmt_name->bind_param("si", $name, $uid);
+    // 1. Update Full Name and Phone in staff table
+    $stmt_name = $conn->prepare("UPDATE staff SET full_name = ?, phone = ? WHERE user_id = ?");
+    $stmt_name->bind_param("ssi", $name, $phone, $uid);
     $stmt_name->execute();
 
     // 2. Update Password if provided

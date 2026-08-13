@@ -68,6 +68,19 @@ while ($row = $bookings_result->fetch_assoc()) {
     if ($row['booking_status'] === 'Pending') $stat_pending++;
     if ($row['booking_status'] === 'Confirmed') $stat_confirmed++;
 }
+
+// 3. Fetch Notifications
+$stmt_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+$stmt_notifs->bind_param("i", $user_id);
+$stmt_notifs->execute();
+$notifs_result = $stmt_notifs->get_result();
+
+$notifications = [];
+$unread_count = 0;
+while ($row = $notifs_result->fetch_assoc()) {
+    $notifications[] = $row;
+    if ($row['is_read'] == 0) $unread_count++;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,7 +145,42 @@ while ($row = $bookings_result->fetch_assoc()) {
         <main class="dashboard-main">
 
             <header class="dashboard-topbar">
-                <div class="topbar-right">
+                <div class="topbar-right" style="display: flex; gap: 15px; align-items: center;">
+                    <!-- Notification Bell -->
+                    <div class="notification-container" style="position: relative;">
+                        <button id="btn-notifications" style="background:none; border:none; color:var(--color-dark); font-size:1.2rem; cursor:pointer; position:relative;">
+                            <i class="fa-regular fa-bell"></i>
+                            <?php if($unread_count > 0): ?>
+                                <span id="notif-badge" style="position:absolute; top:-5px; right:-5px; background:var(--color-gold); color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                                    <?php echo $unread_count; ?>
+                                </span>
+                            <?php endif; ?>
+                        </button>
+                        
+                        <!-- Dropdown -->
+                        <div id="notif-dropdown" style="display:none; position:absolute; right:0; top:35px; width:320px; background:#fff; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.1); border:1px solid #eee; z-index:100; overflow:hidden;">
+                            <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
+                                <h4 style="margin:0; font-size:14px; color:var(--color-dark);">Notifications</h4>
+                                <?php if($unread_count > 0): ?>
+                                    <button id="btn-mark-read" style="background:none; border:none; color:var(--color-gold); font-size:12px; cursor:pointer; font-weight:600;">Mark all as read</button>
+                                <?php endif; ?>
+                            </div>
+                            <div style="max-height:300px; overflow-y:auto; padding:0;">
+                                <?php if(empty($notifications)): ?>
+                                    <div style="padding:20px; text-align:center; color:#888; font-size:13px;">No notifications yet.</div>
+                                <?php else: ?>
+                                    <?php foreach($notifications as $n): ?>
+                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" style="padding:12px 15px; border-bottom:1px solid #f9f9f9; <?php echo $n['is_read'] ? 'opacity:0.7;' : 'background:#fdfcf9;'; ?>">
+                                            <h5 style="margin:0 0 5px 0; font-size:13px; color:var(--color-dark);"><?php echo htmlspecialchars($n['title']); ?></h5>
+                                            <p style="margin:0 0 5px 0; font-size:12px; color:#666; line-height:1.4;"><?php echo htmlspecialchars($n['message']); ?></p>
+                                            <span style="font-size:10px; color:#aaa;"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
                     <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> Back to Home</a>
                 </div>
             </header>

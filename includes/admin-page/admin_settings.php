@@ -65,12 +65,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                 <?php
                     // Fetch user info
                     $uid = $_SESSION['user_id'];
-                    $stmt_u = $conn->prepare("SELECT u.email, s.full_name FROM users u LEFT JOIN staff s ON u.id = s.user_id WHERE u.id = ?");
+                    $stmt_u = $conn->prepare("SELECT u.email, s.full_name, s.phone FROM users u LEFT JOIN staff s ON u.id = s.user_id WHERE u.id = ?");
                     $stmt_u->bind_param("i", $uid);
                     $stmt_u->execute();
                     $u_res = $stmt_u->get_result()->fetch_assoc();
                     $admin_name = htmlspecialchars($u_res['full_name'] ?? 'Admin User');
                     $admin_email = htmlspecialchars($u_res['email'] ?? '');
+                    $admin_phone = htmlspecialchars($u_res['phone'] ?? '');
                 ?>
                 <form class="settings-form" id="form-profile-security" onsubmit="return false;">
                     <div class="form-grid">
@@ -82,9 +83,9 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                             <label>Email Address</label>
                             <input type="email" class="form-control" id="prof-email" placeholder="admin@sevilla360.com" value="<?php echo $admin_email; ?>" readonly style="background-color: #f1f1f1; cursor: not-allowed;">
                         </div>
-                        <div class="form-group" style="display: none;">
+                        <div class="form-group">
                             <label>Contact Number</label>
-                            <input type="text" class="form-control" id="prof-contact" placeholder="+1 234 567 890">
+                            <input type="text" class="form-control" id="prof-contact" placeholder="+63 912 345 6789" value="<?php echo $admin_phone; ?>">
                         </div>
                     </div>
 
@@ -211,7 +212,48 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         </label>
                     </div>
 
-                    <!-- NEW: GLOBAL EVENT PRICING CONFIGURATION -->
+                    <!-- NEW: BUSINESS INFORMATION CONFIGURATION -->
+                    <hr class="panel-divider">
+                    <div class="preference-item" style="display: block;">
+                        <div class="preference-info" style="margin-bottom: 20px;">
+                            <h4 style="color: var(--color-gold);">Business Information</h4>
+                            <p>Configure the public business details used in email receipts, invoices, and automated notifications.</p>
+                        </div>
+
+                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Business Name</label>
+                                <input type="text" name="biz_name" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_name'] ?? 'Sevilla360'); ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Tagline / Slogan</label>
+                                <input type="text" name="biz_tagline" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_tagline'] ?? 'LUXURY RESORT & EVENTS'); ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Contact Email</label>
+                                <input type="email" name="biz_email" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_email'] ?? 'reservations@sevilla360.com'); ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label>Contact Phone</label>
+                                <input type="text" name="biz_phone" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_phone'] ?? '+63 912 345 6789'); ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
+                                <label>Business Address</label>
+                                <input type="text" name="biz_address" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_address'] ?? '123 Resort Drive, Paradise City'); ?>">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
+                                <label>Resort Policies (Shown at bottom of emails)</label>
+                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Cancellations made less than 7 days before arrival are subject to fees."); ?></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GLOBAL EVENT PRICING CONFIGURATION -->
                     <hr class="panel-divider">
                     <div class="preference-item" style="display: block;">
                         <div class="preference-info" style="margin-bottom: 20px;">

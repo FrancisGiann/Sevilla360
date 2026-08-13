@@ -17,6 +17,51 @@ document.addEventListener("DOMContentLoaded", () => {
   function showAlertModal(title, message, type = "info", reloadOnClose = false) {
       window.showAlert(title, message, type, reloadOnClose);
   }
+
+  // --- 0. Notification Bell ---
+  const btnNotifs = document.getElementById('btn-notifications');
+  const notifDropdown = document.getElementById('notif-dropdown');
+  const btnMarkRead = document.getElementById('btn-mark-read');
+  const notifBadge = document.getElementById('notif-badge');
+
+  if (btnNotifs && notifDropdown) {
+      // Toggle dropdown
+      btnNotifs.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isVisible = notifDropdown.style.display === 'block';
+          notifDropdown.style.display = isVisible ? 'none' : 'block';
+      });
+
+      // Close when clicking outside
+      document.addEventListener('click', (e) => {
+          if (!btnNotifs.contains(e.target) && !notifDropdown.contains(e.target)) {
+              notifDropdown.style.display = 'none';
+          }
+      });
+  }
+
+  if (btnMarkRead) {
+      btnMarkRead.addEventListener('click', () => {
+          fetch('actions/user/mark_notifications_read.php')
+          .then(res => res.json())
+          .then(data => {
+              if(data.success) {
+                  // Hide badge
+                  if(notifBadge) notifBadge.style.display = 'none';
+                  // Remove unread styling
+                  document.querySelectorAll('.notif-item.unread').forEach(item => {
+                      item.classList.remove('unread');
+                      item.style.background = 'none';
+                      item.style.opacity = '0.7';
+                  });
+                  // Remove button
+                  btnMarkRead.remove();
+              }
+          })
+          .catch(err => console.error(err));
+      });
+  }
+  
   // --- 1. Tab Switching Logic ---
   const navItems = document.querySelectorAll(".nav-item");
   const tabPanes = document.querySelectorAll(".tab-pane");

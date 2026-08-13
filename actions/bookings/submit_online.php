@@ -268,7 +268,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // IF AMOUNT IS 0 (EVENT INQUIRY), SEND EMAIL AND SUCCESS
         try {
             require_once '../../includes/mailer.php';
+            require_once '../../includes/notifications.php';
             send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'], 0, 'Inquiry Sent (Pending)');
+            create_user_notification($conn, $_SESSION['user_id'], "Booking Submitted", "Your inquiry for " . $_POST['room_name'] . " has been sent successfully. An admin will review it shortly.");
         } catch (Exception $mail_e) {
             // Log silently
         }

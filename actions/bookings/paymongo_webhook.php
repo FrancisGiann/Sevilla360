@@ -126,8 +126,10 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)
         try {
             require_once '../../includes/mailer.php';
+            require_once '../../includes/notifications.php';
+            
             // We need to fetch the customer name and email again since we committed
-            $stmt_cust = $conn->prepare("SELECT c.email, c.first_name, c.last_name, v.name as venue_name FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id WHERE b.reference_no = ?");
+            $stmt_cust = $conn->prepare("SELECT c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id WHERE b.reference_no = ?");
             $stmt_cust->bind_param("s", $reference_no);
             $stmt_cust->execute();
             $c_data = $stmt_cust->get_result()->fetch_assoc();
@@ -136,6 +138,10 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             $email_status = ($status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Downpayment)';
             
             send_booking_receipt($c_data['email'], $customer_name, $reference_no, $c_data['venue_name'], $new_amount, $email_status);
+            
+            if (!empty($c_data['user_id'])) {
+                create_user_notification($conn, $c_data['user_id'], "Payment Successful", "Your online payment of ₱" . number_format($amount_paid, 2) . " for " . $c_data['venue_name'] . " has been successfully processed.");
+            }
         } catch (Exception $mail_e) {
             file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
         }

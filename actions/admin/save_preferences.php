@@ -29,6 +29,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'catering_gold' => floatval($_POST['catering_gold'] ?? 1200),
         'catering_platinum' => floatval($_POST['catering_platinum'] ?? 1800),
         'av_setup' => floatval($_POST['av_setup'] ?? 5000),
+        
+        // Business Information
+        'biz_name' => trim($_POST['biz_name'] ?? 'Sevilla360'),
+        'biz_tagline' => trim($_POST['biz_tagline'] ?? 'LUXURY RESORT & EVENTS'),
+        'biz_email' => trim($_POST['biz_email'] ?? 'reservations@sevilla360.com'),
+        'biz_phone' => trim($_POST['biz_phone'] ?? '+63 912 345 6789'),
+        'biz_address' => trim($_POST['biz_address'] ?? '123 Resort Drive, Paradise City'),
+        'biz_policies' => trim($_POST['biz_policies'] ?? ''),
     ];
 
     // Upsert into database
