@@ -319,4 +319,62 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
         $mail->send();
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
 }
+// -------------------------------------------------------------
+// STANDALONE FUNCTION: Password Reset Email
+// -------------------------------------------------------------
+function send_password_reset_email($to_email, $to_name, $reset_link) {
+    global $conn;
+    $smtp_email = $_ENV['SMTP_EMAIL']; 
+    $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $biz = get_biz_info();
+    
+    $subject = "{$biz['biz_name']}: Password Reset Request";
+    
+    $html_content = "
+    <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
+        <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
+            <div style='background-color: #2a2522; padding: 30px; text-align: center;'>
+                <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
+            </div>
+            <div style='padding: 40px;'>
+                <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>PASSWORD RESET REQUEST</h2>
+                <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>" . htmlspecialchars($to_name) . "</strong>,</p>
+                <p style='color: #555; font-size: 15px; line-height: 1.6;'>We received a request to reset your password. If you didn't make this request, you can safely ignore this email.</p>
+                
+                <div style='text-align: center; margin: 40px 0;'>
+                    <a href='" . htmlspecialchars($reset_link) . "' style='background-color: #d6a870; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px; display: inline-block;'>RESET PASSWORD</a>
+                </div>
+                
+                <p style='color: #888; font-size: 13px; line-height: 1.5;'><em>Note: This link will expire in 1 hour.</em></p>
+                
+                <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #aaa; text-align: center;'>
+                    " . htmlspecialchars($biz['biz_address']) . " | " . htmlspecialchars($biz['biz_phone']) . " | " . htmlspecialchars($biz['biz_email']) . "
+                </div>
+            </div>
+        </div>
+    </div>
+    ";
+    
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->CharSet = 'UTF-8';
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $smtp_email;
+        $mail->Password   = $smtp_password;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
+        $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
+
+        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
+        $mail->addAddress($to_email, $to_name); 
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body    = $html_content;
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+}
 ?>

@@ -28,6 +28,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/auth.css?v=<?= time(); ?>">
+    <!-- FontAwesome for global alerts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
 <body>
@@ -195,6 +197,28 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 </div>
             </div>
 
+            <!-- VIEW 5: FORGOT PASSWORD -->
+            <div id="view-forgot-password" class="auth-view">
+                <h2 class="auth-title">Reset Password</h2>
+                <p class="auth-subtitle">Enter your email to receive a reset link</p>
+
+                <form id="form-forgot" action="actions/auth/forgot_password_process.php" method="POST">
+                    <!-- CSRF TOKEN INJECTED HERE -->
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+
+                    <div class="form-group">
+                        <label>EMAIL ADDRESS</label>
+                        <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-full">SEND RESET LINK</button>
+                </form>
+
+                <div class="auth-footer">
+                    <a id="link-back-login-from-forgot" style="cursor: pointer;">&larr; Back to Login</a>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -238,8 +262,22 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
         </div>
     </div>
 
-    <!-- Link to the logic script -->
+    <!-- Scripts -->
+    <script src="assets/js/global_modals.js?v=<?= time(); ?>"></script>
     <script src="assets/js/auth.js?v=<?= time(); ?>"></script>
+    
+    <?php if (isset($_SESSION['auth_alert'])): ?>
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                showAlert(
+                    "<?php echo addslashes($_SESSION['auth_alert']['title']); ?>",
+                    "<?php echo addslashes($_SESSION['auth_alert']['message']); ?>",
+                    "<?php echo addslashes($_SESSION['auth_alert']['type']); ?>"
+                );
+            });
+        </script>
+        <?php unset($_SESSION['auth_alert']); ?>
+    <?php endif; ?>
 </body>
 
 </html>

@@ -6,8 +6,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const viewRegister = document.getElementById("view-user-register");
   const viewTerms = document.getElementById("view-terms");
   const viewAdmin = document.getElementById("view-admin-login");
+  const viewForgot = document.getElementById("view-forgot-password");
 
-  const allViews = [viewLogin, viewRegister, viewTerms, viewAdmin];
+  const allViews = [viewLogin, viewRegister, viewTerms, viewAdmin, viewForgot];
 
   // --- Trigger Elements ---
   const linkGotoRegister = document.getElementById("link-goto-register");
@@ -17,6 +18,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const linkGotoTerms = document.getElementById("link-goto-terms");
   const btnAgreeTerms = document.getElementById("btn-agree-terms");
   const agreeCheckbox = document.getElementById("agree-checkbox");
+  
+  const linkForgot = document.querySelector(".forgot-link");
+  const linkBackLoginForgot = document.getElementById("link-back-login-from-forgot");
 
   // --- Switch View Function ---
   function switchView(targetView) {
@@ -32,6 +36,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnGotoAdmin) btnGotoAdmin.addEventListener("click", () => switchView(viewAdmin));
   if(linkBackLogin) linkBackLogin.addEventListener("click", () => switchView(viewLogin));
   if(linkGotoTerms) linkGotoTerms.addEventListener("click", () => switchView(viewTerms));
+  if(linkForgot) linkForgot.addEventListener("click", (e) => { e.preventDefault(); switchView(viewForgot); });
+  if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(viewLogin));
 
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {
