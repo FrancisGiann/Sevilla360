@@ -33,21 +33,46 @@ document.addEventListener("DOMContentLoaded", () => {
     toastTimeout = setTimeout(() => toast.classList.remove("show"), 3000);
   }
 
-  // Visual simulation for static profile save button
-  document.querySelectorAll("#panel-profile .save-btn").forEach((button) => {
-    button.addEventListener("click", () => {
+  document.getElementById("btn-save-profile")?.addEventListener("click", function() {
+      const button = this;
+      const name = document.getElementById("prof-name").value;
+      const currPass = document.getElementById("prof-curr-pass").value;
+      const newPass = document.getElementById("prof-new-pass").value;
+      const confPass = document.getElementById("prof-conf-pass").value;
+
       const originalText = button.innerHTML;
       button.innerHTML = "Saving...";
-      button.style.opacity = "0.8";
-      button.style.pointerEvents = "none";
+      button.disabled = true;
 
-      setTimeout(() => {
-        button.innerHTML = originalText;
-        button.style.opacity = "1";
-        button.style.pointerEvents = "auto";
-        showToast();
-      }, 600);
-    });
+      fetch("actions/admin/save_profile.php", {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": csrfToken
+          },
+          body: JSON.stringify({ name, curr_pass: currPass, new_pass: newPass, conf_pass: confPass })
+      })
+      .then(res => res.json())
+      .then(data => {
+          button.innerHTML = originalText;
+          button.disabled = false;
+          if (data.success) {
+              if (window.showAlert) window.showAlert("Success", data.message);
+              else showToast();
+              
+              document.getElementById("prof-curr-pass").value = "";
+              document.getElementById("prof-new-pass").value = "";
+              document.getElementById("prof-conf-pass").value = "";
+          } else {
+              if (window.showAlert) window.showAlert("Notice", data.message);
+              else alert(data.message);
+          }
+      })
+      .catch(err => {
+          button.innerHTML = originalText;
+          button.disabled = false;
+          if (window.showAlert) window.showAlert("Notice", "Failed to save profile.");
+      });
   });
 
   // =========================================================

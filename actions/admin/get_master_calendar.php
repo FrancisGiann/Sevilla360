@@ -3,7 +3,7 @@ session_start();
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'superadmin'])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['error' => 'Unauthorized']);
     exit;
 }
@@ -13,7 +13,7 @@ try {
 
     // 1. Fetch CUSTOMER Bookings (Ignore dummy SYSTEM MAINTENANCE)
     $query_bookings = "
-        SELECT b.id, b.start_date, b.end_date, b.booking_status, 
+        SELECT b.id, b.reference_no, b.start_date, b.end_date, b.booking_status, 
                v.name as venue_name, v.category, c.last_name
         FROM bookings b
         JOIN venues v ON b.venue_id = v.id
@@ -55,7 +55,8 @@ try {
             'extendedProps' => [
                 'type' => 'booking',
                 'status' => $row['booking_status'],
-                'category' => $row['category']
+                'category' => $row['category'],
+                'refNo' => $row['reference_no']
             ]
         ];
     }

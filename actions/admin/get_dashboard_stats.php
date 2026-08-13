@@ -4,7 +4,7 @@ session_start();
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'superadmin'])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized access']);
     exit;

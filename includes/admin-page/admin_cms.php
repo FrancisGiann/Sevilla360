@@ -420,83 +420,86 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
 <!-- 6. HOTSPOT PLACEMENT MODAL -->
 <div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
-    <div class="cms-modal-content" style="max-width: 1000px; padding: 2rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <h3 class="cms-modal-title" style="margin:0;" id="hotspot-modal-title">Place Hotspots</h3>
+    <div class="cms-modal-content" style="max-width: 1100px; width: 95vw; padding: 0; overflow: hidden; border-radius: 12px;">
+
+        <!-- Modal Header -->
+        <div style="display:flex; justify-content:space-between; align-items:center; padding: 1.25rem 1.75rem; border-bottom: 1px solid rgba(42,37,34,0.1); background: var(--color-white);">
+            <div>
+                <h3 class="cms-modal-title" style="margin:0; font-size: 1.2rem;" id="hotspot-modal-title">Place Hotspots</h3>
+                <p style="margin: 3px 0 0; font-size: 0.82rem; color: var(--color-dark-light);">Click anywhere on the 360° preview to drop a pin. Drag to look around first.</p>
             </div>
-            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal">Close</button>
+            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal" style="padding: 8px 18px; font-size: 0.875rem;">✕ Close</button>
         </div>
 
-        <p style="font-size: 0.85rem; color: var(--color-dark-light); margin-bottom: 1rem;">
-            Click anywhere on the 360&deg; preview to drop a hotspot at that exact point. Drag to look around first if
-            you need to.
-        </p>
+        <!-- Modal Body -->
+        <div style="display: flex; height: 580px; padding: 1.25rem; gap: 1.25rem; background: #f5f4f1;">
 
-        <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
-            <div style="flex: 2; position: relative;">
-                <div id="hotspot-pano-container"
-                    style="width: 100%; height: 480px; background: #1a1a1a; border-radius: 8px; overflow: hidden; cursor: crosshair;">
-                </div>
-                <div id="hotspot-loading"
-                    style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,0.5); border-radius:8px;">
-                    <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:8px;"></i> Loading panorama...
+            <!-- LEFT: Panorama Viewer -->
+            <div style="flex: 2; position: relative; background: #111; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+                <div id="hotspot-pano-container" style="width: 100%; height: 100%; cursor: crosshair;"></div>
+                <div id="hotspot-loading" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,0.7); gap: 10px; border-radius: 10px;">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; color: var(--color-gold);"></i>
+                    <span style="font-size: 0.85rem; opacity: 0.8;">Loading panorama...</span>
                 </div>
             </div>
 
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 1.5rem; height: 480px; overflow: hidden;">
-                
-                <!-- MOVED VIEW SWITCHER HERE -->
-                <div id="hs-admin-view-switcher-wrapper" style="display: none; background: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #e9ecef; flex-shrink: 0;">
-                    <label style="font-size: 0.85rem; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Editing View:</label>
-                    <select id="hs-admin-view-selector"
-                        style="width: 100%; padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; font-weight: bold; background: white; color: var(--color-dark); cursor: pointer; outline: none;">
+            <!-- RIGHT: Single scrollable sidebar -->
+            <div style="flex: 1; min-width: 300px; max-width: 340px; display: flex; flex-direction: column; overflow-y: auto; background: white; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+
+                <!-- View Switcher (hidden by default) -->
+                <div id="hs-admin-view-switcher-wrapper" style="display: none; padding: 14px 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">
+                    <label style="font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 7px;">Editing View</label>
+                    <select id="hs-admin-view-selector" style="width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid rgba(42,37,34,0.15); font-family: var(--font-body); font-size: 0.9rem; background: white; color: var(--color-dark); cursor: pointer; outline: none;">
                     </select>
                 </div>
 
-                <div id="hotspot-form-wrapper" class="hidden" style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 10px rgba(0,0,0,0.02); flex-shrink: 0; max-height: 300px; overflow-y: auto;">
-                    <h4 style="margin: 0 0 0.75rem; font-size: 1rem; color: var(--color-dark);">New Hotspot</h4>
+                <!-- New Hotspot Form (hidden until a pin is clicked) -->
+                <div id="hotspot-form-wrapper" class="hidden" style="padding: 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+                        <div style="width: 4px; height: 18px; background: var(--color-gold); border-radius: 2px;"></div>
+                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);">New Hotspot</h4>
+                    </div>
 
-                    <div class="cms-form-group">
-                        <label>Type</label>
-                        <select id="hs-type">
-                            <option value="info">Info (shows description)</option>
-                            <option value="nav">Navigation (walk to another view)</option>
+                    <div style="margin-bottom: 12px;">
+                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Type</label>
+                        <select id="hs-type" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;">
+                            <option value="info">Info — shows description</option>
+                            <option value="nav">Navigation — walk to view</option>
                         </select>
                     </div>
 
-                    <div class="cms-form-group">
-                        <label>Title / Label</label>
-                        <input type="text" id="hs-title" placeholder="e.g. Poolside Entrance"
-                            style="width:100%; padding:10px; border:1px solid rgba(42,37,34,0.15); border-radius:4px;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Title</label>
+                        <input type="text" id="hs-title" placeholder="e.g. Poolside Entrance" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; outline: none; box-sizing: border-box;">
                     </div>
 
-                    <div class="cms-form-group" id="hs-desc-wrapper">
-                        <label>Description</label>
-                        <textarea id="hs-description" rows="2" placeholder="Shown when guest clicks the info marker"
-                            style="width:100%; padding:10px; border:1px solid rgba(42,37,34,0.15); border-radius:4px; resize:vertical;"></textarea>
+                    <div id="hs-desc-wrapper" style="margin-bottom: 12px;">
+                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Description</label>
+                        <textarea id="hs-description" rows="3" placeholder="Shown when guest clicks the pin" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; resize: none; outline: none; box-sizing: border-box;"></textarea>
                     </div>
 
-                    <div class="cms-form-group hidden" id="hs-target-wrapper">
-                        <label>Walk To</label>
-                        <select id="hs-target-index" style="width:100%; padding:10px;"></select>
+                    <div class="hidden" id="hs-target-wrapper" style="margin-bottom: 12px;">
+                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Walk To</label>
+                        <select id="hs-target-index" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;"></select>
                     </div>
 
-                    <div style="display:flex; gap:10px; margin-top: 0.5rem;">
-                        <button type="button" class="btn btn-outline" id="btn-cancel-hotspot"
-                            style="flex:1; padding: 8px;">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1; padding: 8px;">Save
-                            Pin</button>
+                    <div style="display:flex; gap:8px; margin-top: 4px;">
+                        <button type="button" class="btn btn-outline" id="btn-cancel-hotspot" style="flex:1; padding: 9px; font-size: 0.85rem;">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1; padding: 9px; font-size: 0.85rem;">Save Pin</button>
                     </div>
                 </div>
 
-                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #fdfdfd; border-radius: 8px; border: 1px solid #eee;">
-                    <h4 style="margin: 0; padding: 12px 15px; font-size: 1rem; border-bottom: 1px solid #eee; background: white;">Existing Hotspots</h4>
-                    <div id="hotspot-list"
-                        style="display:flex; flex-direction:column; gap:8px; padding: 10px 15px; overflow-y:auto; flex: 1;">
-                        <p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>
+                <!-- Existing Hotspots List -->
+                <div style="padding: 14px 16px; flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <div style="width: 4px; height: 18px; background: var(--color-dark); border-radius: 2px;"></div>
+                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);">Placed Hotspots</h4>
+                    </div>
+                    <div id="hotspot-list" style="display:flex; flex-direction:column; gap:8px;">
+                        <p style="font-size:0.82rem; color:#aaa; text-align: center; padding: 20px 0;">No hotspots placed yet.</p>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>

@@ -158,6 +158,9 @@ document.addEventListener("DOMContentLoaded", () => {
             pendingSpot = null;
             raycastEnabled = false;
 
+            // Load the existing hotspots list immediately (independent of 3D viewer)
+            loadExistingHotspots(currentMediaId);
+
             // Initialize viewer
             initViewer(currentPhotosArray[0].file_path);
         });
@@ -194,6 +197,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Sync the ID perfectly to the newly selected photo
         currentMediaId = selectedPhoto.id;
+
+        // Immediately reload the list for the newly selected view
+        loadExistingHotspots(currentMediaId);
 
         // Rebuild Walk-To dropdown excluding the newly active view
         refreshTargetDropdown(selectedIndex);
@@ -414,14 +420,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 );
 
                 if (currentPanoMesh) {
-                    const spot = createHotspotSpot(h.type, {
-                        x: parseFloat(h.position_x),
-                        y: parseFloat(h.position_y),
-                        z: parseFloat(h.position_z)
-                    });
-                    
-                    spot.addHoverText(h.title);
-                    currentPanoMesh.add(spot);
+                    try {
+                        const spot = createHotspotSpot(h.type, {
+                            x: parseFloat(h.position_x),
+                            y: parseFloat(h.position_y),
+                            z: parseFloat(h.position_z)
+                        });
+                        
+                        spot.addHoverText(h.title);
+                        currentPanoMesh.add(spot);
+                    } catch(err) {
+                        console.error("Failed to render a hotspot in 3D: ", err);
+                    }
                 }
             });
 

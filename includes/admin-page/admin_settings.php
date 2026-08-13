@@ -50,7 +50,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
         <div class="settings-sidebar">
             <button class="tab-link active" data-target="panel-profile">Profile & Security</button>
 
-            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
             <button class="tab-link" data-target="panel-venues">Manage Venues</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
             <?php endif; ?>
@@ -62,19 +62,29 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             <!-- PANEL 1: Profile & Security (Visible to all) -->
             <div class="settings-panel active" id="panel-profile">
                 <h2 class="panel-heading">Profile & Security</h2>
-                <form class="settings-form" onsubmit="return false;">
+                <?php
+                    // Fetch user info
+                    $uid = $_SESSION['user_id'];
+                    $stmt_u = $conn->prepare("SELECT u.email, s.full_name FROM users u LEFT JOIN staff s ON u.id = s.user_id WHERE u.id = ?");
+                    $stmt_u->bind_param("i", $uid);
+                    $stmt_u->execute();
+                    $u_res = $stmt_u->get_result()->fetch_assoc();
+                    $admin_name = htmlspecialchars($u_res['full_name'] ?? 'Admin User');
+                    $admin_email = htmlspecialchars($u_res['email'] ?? '');
+                ?>
+                <form class="settings-form" id="form-profile-security" onsubmit="return false;">
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Full Name</label>
-                            <input type="text" class="form-control" placeholder="John Doe" value="Admin User">
+                            <input type="text" class="form-control" id="prof-name" placeholder="John Doe" value="<?php echo $admin_name; ?>">
                         </div>
                         <div class="form-group">
                             <label>Email Address</label>
-                            <input type="email" class="form-control" placeholder="admin@sevilla360.com">
+                            <input type="email" class="form-control" id="prof-email" placeholder="admin@sevilla360.com" value="<?php echo $admin_email; ?>" readonly style="background-color: #f1f1f1; cursor: not-allowed;">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="display: none;">
                             <label>Contact Number</label>
-                            <input type="text" class="form-control" placeholder="+1 234 567 890">
+                            <input type="text" class="form-control" id="prof-contact" placeholder="+1 234 567 890">
                         </div>
                     </div>
 
@@ -84,25 +94,25 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <div class="form-grid">
                         <div class="form-group">
                             <label>Current Password</label>
-                            <input type="password" class="form-control" placeholder="Enter current password">
+                            <input type="password" class="form-control" id="prof-curr-pass" placeholder="Enter current password">
                         </div>
                         <div class="form-group">
                             <label>New Password</label>
-                            <input type="password" class="form-control" placeholder="Enter new password">
+                            <input type="password" class="form-control" id="prof-new-pass" placeholder="Enter new password">
                         </div>
                         <div class="form-group">
                             <label>Confirm Password</label>
-                            <input type="password" class="form-control" placeholder="Confirm new password">
+                            <input type="password" class="form-control" id="prof-conf-pass" placeholder="Confirm new password">
                         </div>
                     </div>
 
                     <div class="panel-footer">
-                        <button type="button" class="btn btn-primary save-btn">Save Changes</button>
+                        <button type="button" class="btn btn-primary" id="btn-save-profile">Save Changes</button>
                     </div>
                 </form>
             </div>
 
-            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
 
             <!-- PANEL 2: Manage Venues (Super Admin Only) -->
             <!-- PANEL 2: Manage Venues (Super Admin Only) -->

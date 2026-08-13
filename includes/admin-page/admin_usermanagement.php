@@ -1,5 +1,5 @@
 <?php
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>'; exit;
 }
 require_once 'config/db_connect.php';
@@ -171,7 +171,7 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
                     <label>Assign Role</label>
                     <select id="staff_role" required style="width: 100%; padding: 10px;">
                         <option value="admin">Admin</option>
-                        <option value="superadmin">Super Admin</option>
+                        <option value="staff">Staff</option>
                     </select>
                 </div>
                 <div style="flex: 1;">

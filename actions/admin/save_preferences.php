@@ -2,7 +2,7 @@
 session_start();
 require '../../config/db_connect.php';
 
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo "Error: Unauthorized access."; exit();
 }
 

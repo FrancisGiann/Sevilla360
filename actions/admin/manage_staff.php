@@ -4,7 +4,7 @@ session_start();
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
 }
 
@@ -68,10 +68,10 @@ try {
             $check->execute();
             $current_role = $check->get_result()->fetch_assoc()['role'];
             
-            if ($current_role === 'superadmin' && $role !== 'superadmin') {
-                $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'superadmin'")->fetch_assoc()['c'];
+            if ($current_role === 'admin' && $role !== 'admin') {
+                $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
                 if ($count <= 1) {
-                    throw new Exception("Action blocked: System must have at least one superadmin.");
+                    throw new Exception("Action blocked: System must have at least one admin.");
                 }
             }
 
@@ -105,10 +105,10 @@ try {
         $check->execute();
         $target_role = $check->get_result()->fetch_assoc()['role'];
 
-        if ($target_role === 'superadmin') {
-            $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'superadmin'")->fetch_assoc()['c'];
+        if ($target_role === 'admin') {
+            $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
             if ($count <= 1) {
-                throw new Exception("Deletion blocked: System must have at least one superadmin.");
+                throw new Exception("Deletion blocked: System must have at least one admin.");
             }
         }
 

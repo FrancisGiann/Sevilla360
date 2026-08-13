@@ -38,11 +38,11 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=<?= time() ?>">
     <?php elseif ($page === 'settings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= time() ?>">
-    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
-    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
-    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
     <?php endif; ?>
 </head>
@@ -54,7 +54,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
             <div class="sidebar-header">
                 <a href="index.php" class="navbar-brand">SEVILLA360</a>
                 <span class="admin-badge">
-                    <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') ? 'SUPER ADMIN' : 'ADMIN'; ?>
+                    <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') ? 'ADMIN' : 'STAFF'; ?>
                 </span>
             </div>
 
@@ -86,7 +86,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                                 class="fa-solid fa-screwdriver-wrench"></i> Maintenance</a>
                     </li>
 
-                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=usermanagement"
                             class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>"><i
@@ -181,13 +181,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                 elseif ($page === 'bookings') include 'includes/admin-page/admin_bookings.php';
                 elseif ($page === 'settings') include 'includes/admin-page/admin_settings.php'; 
                 elseif ($page === 'auditlog') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_auditlog.php';
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_auditlog.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } elseif ($page === 'usermanagement') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_usermanagement.php';
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_usermanagement.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } elseif ($page === 'cms') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin') include 'includes/admin-page/admin_cms.php';
+                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_cms.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } else {
                     include 'includes/admin-page/admin_overview.php';
@@ -217,11 +217,11 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin-page/admin_settings.js?v=<?= time() ?>"></script>
-    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="assets/js/admin-page/admin_auditlog.js?v=<?= time() ?>"></script>
-    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="assets/js/admin-page/admin_usermanagement.js?v=<?= time() ?>"></script>
-    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'superadmin'): ?>
+    <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <!-- Three.js version required by Panolens -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/105/three.min.js"></script>
     <!-- Polyfill for Panolens Node.js bug -->

@@ -3,6 +3,17 @@ $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = 'assets/css/booking.css?v=' . time(); 
 $extra_js = 'assets/js/booking.js?v=' . time();    
 $active_page = 'booking';              
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+if (!isset($_SESSION['user_id'])) {
+    header("Location: auth.php");
+    exit();
+}
+if (isset($_SESSION['role']) && ($_SESSION['role'] === 'staff' || $_SESSION['role'] === 'admin')) {
+    header("Location: admin_dashboard.php");
+    exit();
+}
 
 include 'includes/header.php';
 
@@ -75,7 +86,8 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 
                 <div class="summary-container" id="sum-hotel-rooms">
                     <p><strong>Service:</strong> <span class="sum-val">Hotel Room</span></p>
-                    <p><strong>Room Type:</strong> <span class="sum-val" id="sum-ht-type">Deluxe Room</span></p>
+                    <p><strong>Room Category:</strong> <span class="sum-val" id="sum-ht-type">--</span></p>
+                    <p><strong>Room:</strong> <span class="sum-val" id="sum-ht-room">--</span></p>
                     <p><strong>Dates:</strong> <span class="sum-val sum-dates-display">--</span></p>
                     <p><strong>Check-in:</strong> <span class="sum-val" style="color:var(--color-gold);">2:00 PM</span>
                     </p>

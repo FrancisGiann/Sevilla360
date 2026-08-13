@@ -16,7 +16,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 
 // check if the user has the required role to access the page
 if (isset($required_role) && $required_role === 'admin') {
-    if ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin') {
+    if ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin') {
         header("Location: index.php");
         exit();
     }

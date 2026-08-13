@@ -3,7 +3,7 @@ session_start();
 require '../../config/db_connect.php';
 
 // Security check
-if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin')) {
+if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
     echo "Error|Unauthorized access.";
     exit();
 }

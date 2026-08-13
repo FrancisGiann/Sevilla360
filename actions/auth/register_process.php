@@ -27,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $first_name = trim($_POST['first_name']);
     $last_name = trim($_POST['last_name']);
     $email = trim($_POST['email']);
-    $dob = $_POST['dob'];
+
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
 
@@ -93,8 +93,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             // If they are a Walk-in (user_id is NULL), link the new account!
             if ($existing_customer['user_id'] === null) {
-                $stmt_link = $conn->prepare("UPDATE customers SET user_id = ?, first_name = ?, last_name = ?, dob = ? WHERE id = ?");
-                $stmt_link->bind_param("isssi", $new_user_id, $first_name, $last_name, $dob, $existing_customer['id']);
+                $stmt_link = $conn->prepare("UPDATE customers SET user_id = ?, first_name = ?, last_name = ? WHERE id = ?");
+                $stmt_link->bind_param("issi", $new_user_id, $first_name, $last_name, $existing_customer['id']);
                 $stmt_link->execute();
                 $stmt_link->close();
             } else {
@@ -103,8 +103,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         } else {
             // Completely new customer! Insert them normally.
-            $stmt2 = $conn->prepare("INSERT INTO customers (user_id, first_name, last_name, email, dob) VALUES (?, ?, ?, ?, ?)");
-            $stmt2->bind_param("issss", $new_user_id, $first_name, $last_name, $email, $dob);
+            $stmt2 = $conn->prepare("INSERT INTO customers (user_id, first_name, last_name, email) VALUES (?, ?, ?, ?)");
+            $stmt2->bind_param("isss", $new_user_id, $first_name, $last_name, $email);
             $stmt2->execute();
             $stmt2->close();
         }

@@ -1,6 +1,6 @@
 <?php
 // Ensure this is only accessible by superadmins
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'superadmin') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>';
     exit;
 }
@@ -32,7 +32,7 @@ $logs = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
     <!-- Header & Controls -->
     <div class="audit-log-header">
         <div class="audit-titles">
-            <p>Super Admin Access Only - Track all staff activity.</p>
+            <p>Admin Access Only - Track all staff activity.</p>
         </div>
         <div class="audit-controls">
             <div class="input-wrapper">

@@ -103,10 +103,6 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
                     </div>
 
-                    <div class="form-group">
-                        <label>DATE OF BIRTH</label>
-                        <input type="date" name="dob" class="form-control" required>
-                    </div>
 
                     <div class="form-group">
                         <label>PASSWORD</label>

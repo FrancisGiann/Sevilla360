@@ -9,7 +9,7 @@ $active_page = isset($active_page) ? $active_page : '';
 // Check login status based on your existing session variables
 $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
-$isAdmin    = (($_SESSION['role'] ?? '') === 'admin' || ($_SESSION['role'] ?? '') === 'superadmin');
+$isAdmin    = (($_SESSION['role'] ?? '') === 'staff' || ($_SESSION['role'] ?? '') === 'admin');
 
 // Updated to point to your actual site pages and anchors!
 $nav = [

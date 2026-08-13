@@ -69,13 +69,19 @@ class AdminWalkinController {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
+                const label = document.getElementById("sum-ht-type");
+                if (label) label.innerText = opt.dataset.name || opt.text.split('(')[0].trim();
                 this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
             });
         }
 
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
+            const venueName = opt.text.split('(')[0].trim();
+            const label = document.getElementById("sum-ev-venue");
+            if (label) label.innerText = venueName;
+
+            if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
             // =========================================================
             // NEW: DYNAMICALLY UPDATE EVENT STYLE DROPDOWN CAPACITIES
@@ -100,7 +106,11 @@ class AdminWalkinController {
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', opt.text.split('(')[0].trim());
+            const villaName = opt.text.split('(')[0].trim();
+            const label = document.getElementById("sum-vl-type");
+            if (label) label.innerText = villaName;
+
+            if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
         });
 
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
@@ -341,18 +351,7 @@ class AdminWalkinController {
         this.state.summary.html = '';
         this.determineActiveTab();
 
-        if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
-            this.getEl('summary-breakdown').innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select dates to calculate.</i></div>';
-            this.getEl('summary-total-val').textContent = "₱0.00";
-            this.getEl('summary-due-val').textContent = "₱0.00";
-            
-            // Clear auto-generated line items if no dates selected
-            this.syncSystemLineItem('catering', '', 0);
-            this.syncSystemLineItem('rooms', '', 0);
-            this.syncSystemLineItem('av', '', 0);
-            return;
-        }
-
+        // 1. DO THE MATH (Dates locked or not, we show the base calculation)
         switch (this.state.activeTabId) {
             case 'tab-hotel': this.calcHotelMath(); break;
             case 'tab-event': this.calcEventMath(); break;
@@ -372,12 +371,20 @@ class AdminWalkinController {
             }
         });
 
+        // OUTPUT BREAKDOWN AND TOTAL IMMEDIATELY
+        this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row"><span>No items selected</span></div>';
+        this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
+
+        // 2. STOP HERE IF DATES ARE NOT LOCKED
+        if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
+            this.getEl('summary-due-val').textContent = "₱0.00";
+            return;
+        }
+
         // Calculate Amount Due based on Scheme
         const schemePct = this.safeFloat(this.getEl("payment-scheme")?.value) || 1;
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
-        this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row"><span>No items selected</span></div>';
-        this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
         this.getEl('summary-due-val').textContent = this.formatCurrency(this.state.summary.amountDue);
     }
 

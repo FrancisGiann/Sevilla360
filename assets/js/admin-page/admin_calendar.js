@@ -22,13 +22,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 return { html: `<div style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">${statusIcon}${arg.event.title}</div>` };
             },
 
-            // When Admin clicks a booking pill
+            // When Admin clicks an event pill
             eventClick: function(info) {
-                const bookingId = info.event.id;
-                
-                // We use SweetAlert-style confirmation to redirect them to manage it
-                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingId}?\n\nGuest: ${info.event.title}\nStatus: ${info.event.extendedProps.status}`).then(confirmed => {
-                    if (confirmed) window.location.href = `admin_dashboard.php?page=bookings&search=${bookingId}`;
+                const props = info.event.extendedProps;
+
+                if (props.type === 'maintenance') {
+                    showAlert("Maintenance Block", `Venue: ${info.event.title}\nType: ${props.task || 'N/A'}\nCategory: ${props.category}`);
+                    return;
+                }
+
+                const bookingRef = props.refNo;
+                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingRef}?\n\nGuest: ${info.event.title}\nStatus: ${props.status}`).then(confirmed => {
+                    if (confirmed) window.location.href = `admin_dashboard.php?page=bookings&search=${bookingRef}`;
                 });
             }
         });

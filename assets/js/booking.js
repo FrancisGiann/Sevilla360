@@ -79,15 +79,21 @@ class BookingController {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
-                this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
+                const roomLabel = document.getElementById("sum-ht-room");
+                if (roomLabel) roomLabel.innerText = opt.dataset.name || opt.text.split('(')[0].trim();
                 this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                this.calculateSummary();
             });
         }
 
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', opt.text.split('(')[0].trim());
+            const venueName = opt.text.split('(')[0].trim();
+            const label = document.getElementById("sum-ev-venue");
+            if (label) label.innerText = venueName;
+            
+            if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
             // =========================================================
             // NEW: DYNAMICALLY UPDATE EVENT STYLE DROPDOWN CAPACITIES
@@ -112,7 +118,11 @@ class BookingController {
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', opt.text.split('(')[0].trim());
+            const villaName = opt.text.split('(')[0].trim();
+            const label = document.getElementById("sum-vl-type");
+            if (label) label.innerText = villaName;
+
+            if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
         });
 
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
@@ -192,6 +202,19 @@ class BookingController {
     formatSafeDate(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
 
     determineActiveTab() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlTab = urlParams.get('tab');
+        if (urlTab) {
+            const btn = document.querySelector(`.tab-btn[data-tab="${urlTab}"]`);
+            if (btn) {
+                this.executeTabVisualSwitch(btn, urlTab);
+            }
+            // Clear the URL param so calculateSummary never re-triggers this
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState(null, '', cleanUrl);
+            return;
+        }
+        
         const activeBtn = document.querySelector('.tab-btn.active');
         if (activeBtn) this.state.activeTabId = activeBtn.getAttribute('data-tab');
     }
@@ -234,6 +257,9 @@ class BookingController {
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
+        
+        const label = this.getEl("sum-ht-type");
+        if (label) label.innerText = category;
     }
 
     handleTabSwitch(btn) {
@@ -255,6 +281,7 @@ class BookingController {
             return;
         }
         this.executeTabVisualSwitch(btn, target);
+        this.calculateSummary();
     }
 
     executeTabVisualSwitch(btn, target) {
@@ -267,7 +294,6 @@ class BookingController {
         this.getEl(`sum-${target}`)?.classList.add("active");
         
         this.state.activeTabId = target;
-        this.calculateSummary();
     }
 
     startTimer() {
@@ -439,7 +465,8 @@ class BookingController {
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
-        this.determineActiveTab();
+        // Do NOT call determineActiveTab() here — it reads the URL and causes re-switching
+        // activeTabId is maintained by handleTabSwitch and determineActiveTab (run once on init only)
 
         // 1. SAFELY GRAB DOM ELEMENTS
         const breakdownEl = this.getEl('summary-breakdown');
@@ -447,18 +474,21 @@ class BookingController {
         const dueValEl = this.getEl('summary-due-val');
         const pricingSection = this.getEl('pricing-section');
 
-        // 2. CHECK IF DATES ARE LOCKED
-        if (!this.state.isDatesLocked) {
-            if (breakdownEl) breakdownEl.innerHTML = '<div class="summary-row" style="color:#b5884e;"><i>Please select and lock dates to calculate.</i></div>';
-            if (totalValEl) totalValEl.textContent = "₱0.00";
-            if (dueValEl) dueValEl.textContent = "₱0.00";
-            return;
-        }
-
+        // 2. DO THE MATH (Dates locked or not, we show the base calculation)
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
             case 'event-hall': this.calcEventMath(); break;
             case 'resort-villa': this.calcVillaMath(); break;
+        }
+        
+        // OUTPUT BREAKDOWN AND TOTAL IMMEDIATELY
+        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
+        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
+
+        // 3. STOP HERE IF DATES ARE NOT LOCKED
+        if (!this.state.isDatesLocked) {
+            if (dueValEl) dueValEl.textContent = "₱0.00";
+            return;
         }
 
         let activeRadioName = 'hotel-payment';
@@ -468,7 +498,7 @@ class BookingController {
 
         const proceedBtn = this.getEl("btn-proceed");
 
-        // 3. BRANCHING LOGIC: EVENT INQUIRY VS NORMAL BOOKING
+        // 4. BRANCHING LOGIC: EVENT INQUIRY VS NORMAL BOOKING
         if (this.state.activeTabId === 'event-hall') {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
@@ -510,9 +540,6 @@ class BookingController {
             this.getEl(summaryTextId).innerText = schemeText; 
         }
 
-        // 4. SAFELY OUTPUT TO DOM
-        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
-        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
         if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
     }
 

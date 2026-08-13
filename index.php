@@ -142,7 +142,7 @@ include 'includes/header.php';
                     <p>Vaulted ceilings, arched light and a floor that carries five hundred guests
                         without ever feeling crowded. The hall is the heart of the estate.</p>
                     <div class="idx-reserve-buttons">
-                        <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                        <a href="booking.php?tab=event-hall" class="idx-btn idx-btn-gold">Check Availability</a>
                         <a href="showroom.php?cat=Event Hall" class="idx-btn idx-btn-outline-dark">Explore 360°</a>
                     </div>
                 </div>
@@ -158,7 +158,7 @@ include 'includes/header.php';
                     <p>A house of your own — plunge pool, shaded terrace, and the kind of quiet
                         that only comes with distance from everything else.</p>
                     <div class="idx-reserve-buttons">
-                        <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                        <a href="booking.php?tab=resort-villa" class="idx-btn idx-btn-gold">Check Availability</a>
                         <a href="showroom.php?cat=Resort Villa" class="idx-btn idx-btn-outline-light">Explore 360°</a>
                     </div>
                 </div>
@@ -180,7 +180,7 @@ include 'includes/header.php';
                 <p>Linen, timber and morning light. Rooms designed for the hours between the
                     celebration and the next one.</p>
                 <div class="idx-reserve-buttons idx-center-mobile">
-                    <a href="booking.php" class="idx-btn idx-btn-gold">Check Availability</a>
+                    <a href="booking.php?tab=hotel-rooms" class="idx-btn idx-btn-gold">Check Availability</a>
                     <a href="showroom.php?cat=Hotel Room" class="idx-btn idx-btn-outline-dark">Explore 360°</a>
                 </div>
             </div>

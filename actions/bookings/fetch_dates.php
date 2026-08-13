@@ -17,7 +17,7 @@ try {
     }
 
     // Find the Venue ID
-    if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
+    if ($room_type === 'Event Hall' || $room_type === 'Resort Villa' || $room_type === 'Hotel Room') {
         $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
     } else {
         $stmt = $conn->prepare("

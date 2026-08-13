@@ -65,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
                 $name_stmt->close();
 
-            } else if ($user['role'] === 'admin' || $user['role'] === 'superadmin') {
+            } else if ($user['role'] === 'staff' || $user['role'] === 'admin') {
                 $name_stmt = $conn->prepare("SELECT full_name FROM staff WHERE user_id = ?");
                 $name_stmt->bind_param("i", $user['id']);
                 $name_stmt->execute();
@@ -83,7 +83,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
             // Redirect based on their role
-            if ($user['role'] === 'admin' || $user['role'] === 'superadmin') {
+            if ($user['role'] === 'staff' || $user['role'] === 'admin') {
                 header("Location: ../../admin_dashboard.php");
             } else {
                 header("Location: ../../index.php");

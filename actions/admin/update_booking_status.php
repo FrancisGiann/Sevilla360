@@ -3,7 +3,7 @@ session_start();
 header('Content-Type: application/json');
 
 // 1. Auth Guard: Ensure only admins can execute this
-if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'superadmin')) {
+if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit;
 }
