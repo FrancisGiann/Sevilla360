@@ -61,6 +61,47 @@ document.addEventListener("DOMContentLoaded", () => {
           .catch(err => console.error(err));
       });
   }
+
+  // --- Individual Notification Clicks ---
+  const notifItems = document.querySelectorAll('.notif-item');
+  notifItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = item.getAttribute('data-id');
+          const title = item.getAttribute('data-title');
+          const message = item.getAttribute('data-message');
+          
+          // Show details in modal
+          showAlertModal(title, message, "info");
+          
+          // Hide dropdown
+          if (notifDropdown) notifDropdown.style.display = 'none';
+
+          // Mark as read if unread
+          if (item.classList.contains('unread')) {
+              fetch(`actions/user/mark_notifications_read.php?id=${id}`)
+              .then(res => res.json())
+              .then(data => {
+                  if (data.success) {
+                      item.classList.remove('unread');
+                      item.style.background = 'transparent';
+                      item.style.opacity = '0.7';
+                      
+                      // Update badge count
+                      if (notifBadge) {
+                          let count = parseInt(notifBadge.innerText);
+                          if (count > 1) {
+                              notifBadge.innerText = count - 1;
+                          } else {
+                              notifBadge.style.display = 'none';
+                              if(btnMarkRead) btnMarkRead.remove();
+                          }
+                      }
+                  }
+              }).catch(err => console.error(err));
+          }
+      });
+  });
   
   // --- 1. Tab Switching Logic ---
   const navItems = document.querySelectorAll(".nav-item");

@@ -169,11 +169,24 @@ while ($row = $notifs_result->fetch_assoc()) {
                                 <?php if(empty($notifications)): ?>
                                     <div style="padding:20px; text-align:center; color:#888; font-size:13px;">No notifications yet.</div>
                                 <?php else: ?>
-                                    <?php foreach($notifications as $n): ?>
-                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" style="padding:12px 15px; border-bottom:1px solid #f9f9f9; <?php echo $n['is_read'] ? 'opacity:0.7;' : 'background:#fdfcf9;'; ?>">
-                                            <h5 style="margin:0 0 5px 0; font-size:13px; color:var(--color-dark);"><?php echo htmlspecialchars($n['title']); ?></h5>
-                                            <p style="margin:0 0 5px 0; font-size:12px; color:#666; line-height:1.4;"><?php echo htmlspecialchars($n['message']); ?></p>
-                                            <span style="font-size:10px; color:#aaa;"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
+                                    <?php foreach($notifications as $n): 
+                                        $icon = 'fa-bell';
+                                        $color = '#d6a870';
+                                        $t = strtolower($n['title']);
+                                        if (strpos($t, 'payment') !== false) { $icon = 'fa-money-bill-wave'; $color = '#28a745'; }
+                                        elseif (strpos($t, 'cancel') !== false || strpos($t, 'reject') !== false) { $icon = 'fa-circle-xmark'; $color = '#dc3545'; }
+                                        elseif (strpos($t, 'reschedule') !== false) { $icon = 'fa-calendar-day'; $color = '#17a2b8'; }
+                                        elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false) { $icon = 'fa-calendar-check'; $color = '#d6a870'; }
+                                    ?>
+                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>" style="padding:12px 15px; border-bottom:1px solid #f9f9f9; cursor:pointer; display:flex; gap:12px; transition:background 0.2s; <?php echo $n['is_read'] ? 'opacity:0.7;' : 'background:#fdfcf9;'; ?>" onmouseover="this.style.background='#f4f4f4'" onmouseout="this.style.background='<?php echo $n['is_read'] ? 'transparent' : '#fdfcf9'; ?>'">
+                                            <div style="color: <?php echo $color; ?>; font-size:18px; margin-top:2px;">
+                                                <i class="fa-solid <?php echo $icon; ?>"></i>
+                                            </div>
+                                            <div>
+                                                <h5 style="margin:0 0 5px 0; font-size:13px; color:var(--color-dark);"><?php echo htmlspecialchars($n['title']); ?></h5>
+                                                <p style="margin:0 0 5px 0; font-size:12px; color:#666; line-height:1.4;"><?php echo htmlspecialchars($n['message']); ?></p>
+                                                <span style="font-size:10px; color:#aaa;"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
+                                            </div>
                                         </div>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
