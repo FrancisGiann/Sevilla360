@@ -91,7 +91,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             <!-- VIEW 2: USER REGISTRATION -->
             <div id="view-user-register" class="auth-view">
                 <h2 class="auth-title">Create Account</h2>
-                <p class="auth-subtitle">Book venues & manage reservations online</p>
+                <p class="auth-subtitle" id="register-subtitle">Book venues & manage reservations online</p>
+
+                <div class="step-indicator" id="register-step-indicator">
+                    <div class="step-segment active" id="step-seg-1"></div>
+                    <div class="step-segment" id="step-seg-2"></div>
+                </div>
 
                 <form id="form-register" action="actions/auth/register_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
@@ -103,50 +108,62 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <input type="text" name="website_url_honeypot" id="website_url_register" value="" autocomplete="off">
                     </div>
 
-                    <div class="form-group">
-                        <label>FIRST NAME</label>
-                        <input type="text" name="first_name" class="form-control" placeholder="Juan" required>
+                    <!-- STEP 1: Account Info -->
+                    <div id="register-step-1" class="register-step active">
+                        <div class="form-group">
+                            <label>EMAIL ADDRESS</label>
+                            <input type="email" id="reg-email" name="email" class="form-control" placeholder="you@example.com" required>
+                            <div class="error-msg" id="err-email" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>PASSWORD</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" required>
+                                <span class="password-toggle">SHOW</span>
+                            </div>
+                            <div class="error-msg" id="err-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>CONFIRM PASSWORD</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" required>
+                                <span class="password-toggle">SHOW</span>
+                            </div>
+                            <div class="error-msg" id="err-confirm-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                        </div>
+
+                        <button type="button" class="btn btn-primary btn-full" id="btn-next-step">CONTINUE &rarr;</button>
                     </div>
 
-                    <div class="form-group">
-                        <label>LAST NAME</label>
-                        <input type="text" name="last_name" class="form-control" placeholder="Dela Cruz" required>
-                    </div>
+                    <!-- STEP 2: Personal Info -->
+                    <div id="register-step-2" class="register-step">
+                        <div class="form-group">
+                            <label>FIRST NAME</label>
+                            <input type="text" name="first_name" class="form-control" placeholder="Juan" required>
+                        </div>
 
-                    <div class="form-group">
-                        <label>EMAIL ADDRESS</label>
-                        <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
-                    </div>
+                        <div class="form-group">
+                            <label>LAST NAME</label>
+                            <input type="text" name="last_name" class="form-control" placeholder="Dela Cruz" required>
+                        </div>
 
+                        <div class="terms-checkbox-group">
+                            <input type="checkbox" id="agree-checkbox" required>
+                            <label for="agree-checkbox">
+                                I agree to the <span class="terms-link" id="link-goto-terms" style="cursor: pointer;">Terms
+                                    of Service</span> and
+                                Privacy Policy.
+                            </label>
+                        </div>
 
-                    <div class="form-group">
-                        <label>PASSWORD</label>
-                        <div class="password-wrapper">
-                            <input type="password" name="password" class="form-control" placeholder="Create a password"
-                                required>
-                            <span class="password-toggle">SHOW</span>
+                        <button type="submit" class="btn btn-primary btn-full">CREATE ACCOUNT</button>
+                        
+                        <div style="text-align: center; margin-top: 15px;">
+                            <a id="btn-prev-step" style="cursor: pointer; color: #666; font-size: 0.9rem; font-weight: 500;">&larr; Back to previous step</a>
                         </div>
                     </div>
-
-                    <div class="form-group">
-                        <label>CONFIRM PASSWORD</label>
-                        <div class="password-wrapper">
-                            <input type="password" name="confirm_password" class="form-control"
-                                placeholder="Confirm your password" required>
-                            <span class="password-toggle">SHOW</span>
-                        </div>
-                    </div>
-
-                    <div class="terms-checkbox-group">
-                        <input type="checkbox" id="agree-checkbox" required>
-                        <label for="agree-checkbox">
-                            I agree to the <span class="terms-link" id="link-goto-terms" style="cursor: pointer;">Terms
-                                of Service</span> and
-                            Privacy Policy.
-                        </label>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary btn-full">CREATE ACCOUNT</button>
                 </form>
 
                 <div class="auth-footer">

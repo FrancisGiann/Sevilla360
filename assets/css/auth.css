@@ -253,3 +253,29 @@
     font-size: 0.75rem;
   }
 }
+/* Registration Step Logic */
+.register-step {
+  display: none;
+  animation: fadeIn 0.4s ease forwards;
+}
+
+.register-step.active {
+  display: block;
+}
+
+.step-indicator {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 25px;
+}
+
+.step-segment {
+  flex: 1;
+  height: 4px;
+  background-color: #eee;
+  transition: background-color 0.3s ease;
+}
+
+.step-segment.active {
+  background-color: var(--color-gold);
+}

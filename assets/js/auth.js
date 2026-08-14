@@ -28,6 +28,108 @@ document.addEventListener("DOMContentLoaded", () => {
       view.classList.remove("active");
     });
     targetView.classList.add("active");
+
+    // Reset registration to Step 1 if navigating away, UNLESS target is viewTerms
+    if (targetView !== viewRegister && targetView !== viewTerms) {
+        showRegisterStep(1);
+    }
+  }
+
+  // --- Progressive Registration Logic ---
+  const step1 = document.getElementById('register-step-1');
+  const step2 = document.getElementById('register-step-2');
+  const stepSeg1 = document.getElementById('step-seg-1');
+  const stepSeg2 = document.getElementById('step-seg-2');
+  const btnNext = document.getElementById('btn-next-step');
+  const btnPrev = document.getElementById('btn-prev-step');
+  const registerSubtitle = document.getElementById('register-subtitle');
+  
+  // Initialization: Hide Step 2 via JS so it degrades gracefully if JS fails
+  if (step2) step2.style.display = 'none';
+
+  function showRegisterStep(step) {
+      if(!step1 || !step2) return;
+      if (step === 1) {
+          step1.classList.add('active');
+          step1.style.display = 'block';
+          step2.classList.remove('active');
+          step2.style.display = 'none';
+          
+          // Restore required attributes for Step 1
+          const prevReqFields = step1.querySelectorAll('[data-was-required="true"]');
+          prevReqFields.forEach(f => f.setAttribute('required', 'required'));
+          
+          if(stepSeg1) stepSeg1.classList.add('active');
+          if(stepSeg2) stepSeg2.classList.remove('active');
+          if(registerSubtitle) registerSubtitle.innerText = 'Create your account';
+      } else {
+          step2.classList.add('active');
+          step2.style.display = 'block';
+          step1.classList.remove('active');
+          step1.style.display = 'none';
+          
+          // Remove required attributes from Step 1 so the form can submit while hidden
+          const reqFields = step1.querySelectorAll('[required]');
+          reqFields.forEach(f => {
+              f.removeAttribute('required');
+              f.dataset.wasRequired = 'true';
+          });
+          
+          if(stepSeg1) stepSeg1.classList.add('active');
+          if(stepSeg2) stepSeg2.classList.add('active');
+          if(registerSubtitle) registerSubtitle.innerText = 'Tell us about yourself';
+      }
+  }
+
+  if (btnNext) {
+      btnNext.addEventListener('click', () => {
+          let isValid = true;
+          
+          const email = document.getElementById('reg-email');
+          const pass = document.getElementById('reg-password');
+          const confPass = document.getElementById('reg-confirm-password');
+          
+          const errEmail = document.getElementById('err-email');
+          const errPass = document.getElementById('err-password');
+          const errConf = document.getElementById('err-confirm-password');
+          
+          errEmail.style.display = 'none';
+          errPass.style.display = 'none';
+          errConf.style.display = 'none';
+          
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!email.value || !emailRegex.test(email.value)) {
+              errEmail.innerText = 'Please enter a valid email address.';
+              errEmail.style.display = 'block';
+              isValid = false;
+          }
+          
+          if (!pass.value) {
+              errPass.innerText = 'Password is required.';
+              errPass.style.display = 'block';
+              isValid = false;
+          } else if (pass.value.length < 6) {
+              errPass.innerText = 'Password must be at least 6 characters.';
+              errPass.style.display = 'block';
+              isValid = false;
+          }
+          
+          if (pass.value !== confPass.value) {
+              errConf.innerText = 'Passwords do not match.';
+              errConf.style.display = 'block';
+              isValid = false;
+          }
+          
+          if (isValid) {
+              showRegisterStep(2);
+          }
+      });
+  }
+
+  if (btnPrev) {
+      btnPrev.addEventListener('click', () => {
+          showRegisterStep(1);
+      });
   }
 
   // --- Event Listeners for Navigation ---
@@ -42,6 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {
         switchView(viewRegister);
+        showRegisterStep(2); // Return to Step 2, where the Terms link lives
         if(agreeCheckbox) agreeCheckbox.checked = true;
       });
   }
