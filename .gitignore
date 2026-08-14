@@ -7,3 +7,5 @@ vendor/
 # Ignore error logs
 error_log
 *.log
+# Ignore backups directory
+storage/backups/

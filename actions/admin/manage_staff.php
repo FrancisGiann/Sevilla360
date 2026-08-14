@@ -2,7 +2,7 @@
 // actions/admin/manage_staff.php
 session_start();
 header('Content-Type: application/json');
-require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../config/db_connect.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;

@@ -1,7 +1,7 @@
 <?php
 session_start();
 header('Content-Type: application/json');
-require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../config/db_connect.php';
 
 // Security check
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
