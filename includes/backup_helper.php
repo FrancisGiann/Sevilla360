@@ -127,14 +127,17 @@ class BackupHelper {
         // Execute multi_query on the original content without the signature line
         $success = $conn->multi_query($restOfContent);
         
-        if ($success) {
-            // Free results to prevent out of sync errors
-            do {
-                if ($result = $conn->store_result()) {
-                    $result->free();
-                }
-            } while ($conn->more_results() && $conn->next_result());
-        }
+        // Drain ALL results to prevent "Commands out of sync" errors
+        // This must complete fully even if individual statements fail
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+            // Check for errors on this statement
+            if ($conn->errno) {
+                $success = false;
+            }
+        } while ($conn->more_results() && $conn->next_result());
 
         $conn->query("SET FOREIGN_KEY_CHECKS = 1;");
         return $success;
