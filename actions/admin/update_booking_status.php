@@ -218,8 +218,7 @@ try {
         $message = "Booking #$ref_no successfully rescheduled to $new_start!";
         
         // EMAIL NOTIFICATION
-        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Approved</h2><p>Hello $c_name,</p><p>Good news! Your request to reschedule your booking at <strong>$v_name</strong> to <strong>$new_start</strong> has been approved.</p><p>You can view your updated itinerary on your dashboard.</p></div>";
-        try { send_custom_email($c_email, $c_name, "Reschedule Approved - $ref_no", $html); } catch (Exception $e) {}
+        try { send_reschedule_approved_email($c_email, $c_name, $booking_id); } catch (Exception $e) {}
         
         create_user_notification($conn, $c_user_id, "Reschedule Approved", "Your request to reschedule $v_name to $new_start has been approved.");
     }
@@ -239,6 +238,12 @@ try {
         create_user_notification($conn, $c_user_id, "Reschedule Rejected", "Your request to reschedule $v_name was declined. Please check your email for details.");
     }
     elseif ($action === 'refund') {
+        $stmt_refund = $conn->prepare("SELECT refund_amount FROM cancellations WHERE booking_id = ? LIMIT 1");
+        $stmt_refund->bind_param("i", $booking_id);
+        $stmt_refund->execute();
+        $refund_row = $stmt_refund->get_result()->fetch_assoc();
+        $refund_amount = $refund_row ? floatval($refund_row['refund_amount']) : null;
+
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
@@ -250,8 +255,7 @@ try {
         $message = "Refund processed and booking cancelled!";
 
         // EMAIL NOTIFICATION
-        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Refund Processed</h2><p>Hello $c_name,</p><p>Your cancellation request for <strong>$v_name</strong> has been approved.</p><p>Your refund has been processed. Please allow 5-10 business days for the funds to reflect in your account.</p></div>";
-        try { send_custom_email($c_email, $c_name, "Refund Processed - $ref_no", $html); } catch (Exception $e) {}
+        try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'refund', $refund_amount); } catch (Exception $e) {}
         
         create_user_notification($conn, $c_user_id, "Refund Processed", "Your refund for $v_name has been processed. Your booking is cancelled.");
     } 
@@ -273,8 +277,7 @@ try {
         $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
 
         // EMAIL NOTIFICATION
-        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#e06666;'>Booking Cancelled</h2><p>Hello $c_name,</p><p>Unfortunately, your booking for <strong>$v_name</strong> has been cancelled by the administration for the following reason:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #e06666;'><em>$reason</em></p><p>A 100% full refund of ₱".number_format($refund_amount, 2)." has been issued to your original payment method.</p></div>";
-        try { send_custom_email($c_email, $c_name, "Booking Cancelled - $ref_no", $html); } catch (Exception $e) {}
+        try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'cancelled', $refund_amount, $reason); } catch (Exception $e) {}
         
         create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name has been cancelled by the admin. Check your email for details.");
     }

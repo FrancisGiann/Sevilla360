@@ -198,6 +198,157 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
 }
 
+/**
+ * Sends the branded notification used when a booking is cancelled or refunded.
+ * This deliberately mirrors the booking itinerary so customers can quickly
+ * identify the affected reservation and its final payment status.
+ */
+function send_booking_cancellation_email($customer_email, $customer_name, $booking_id, $type, $refund_amount = null, $reason = '') {
+    global $conn;
+
+    $stmt = $conn->prepare("
+        SELECT b.reference_no, b.start_date, b.end_date, b.guests_count, v.name AS venue_name
+        FROM bookings b
+        JOIN venues v ON b.venue_id = v.id
+        WHERE b.id = ?
+    ");
+    $stmt->bind_param("i", $booking_id);
+    $stmt->execute();
+    $booking = $stmt->get_result()->fetch_assoc();
+
+    if (!$booking) {
+        throw new Exception('Booking not found for cancellation email.');
+    }
+
+    $biz = get_biz_info();
+    $is_refund = $type === 'refund';
+    $subject_ref_no = $booking['reference_no'];
+    $ref_no = htmlspecialchars($booking['reference_no'], ENT_QUOTES, 'UTF-8');
+    $venue_name = htmlspecialchars($booking['venue_name'], ENT_QUOTES, 'UTF-8');
+    $name = htmlspecialchars(trim($customer_name), ENT_QUOTES, 'UTF-8');
+    $check_in = date('F j, Y', strtotime($booking['start_date']));
+    $check_out = date('F j, Y', strtotime($booking['end_date']));
+    $stay_dates = $check_in === $check_out ? $check_in : "$check_in – $check_out";
+    $refund_text = $refund_amount !== null ? '₱' . number_format((float)$refund_amount, 2) : null;
+    $reason_html = trim($reason) !== ''
+        ? "<div style='margin-top:20px; padding:16px; background:#fff7f7; border-left:4px solid #c05a5a; color:#5d4545; font-size:14px; line-height:1.6;'><strong>Reason for cancellation</strong><br>" . nl2br(htmlspecialchars(trim($reason), ENT_QUOTES, 'UTF-8')) . "</div>"
+        : '';
+
+    if ($is_refund) {
+        $title = 'REFUND PROCESSED';
+        $message = 'Your cancellation request has been approved and your booking has been cancelled.';
+        $payment_note = $refund_text
+            ? "A refund of <strong style='color:#2f7d5d;'>$refund_text</strong> has been processed to your original payment method. Please allow 5–10 business days for it to appear in your account."
+            : 'Your refund has been processed to your original payment method. Please allow 5–10 business days for it to appear in your account.';
+        $status = 'Refunded & Cancelled';
+        $status_color = '#2f7d5d';
+    } else {
+        $title = 'BOOKING CANCELLED';
+        $message = 'We regret to inform you that your booking has been cancelled by the administration.';
+        $payment_note = $refund_text
+            ? "A full refund of <strong style='color:#2f7d5d;'>$refund_text</strong> has been issued to your original payment method. Please allow 5–10 business days for it to appear in your account."
+            : 'If a refund applies to your reservation, it will be returned to your original payment method.';
+        $status = 'Cancelled';
+        $status_color = '#c05a5a';
+    }
+
+    $html_content = "
+    <div style='background-color:#f4f4f4; padding:40px 0; font-family:Helvetica, Arial, sans-serif;'>
+        <div style='max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);'>
+            <div style='background-color:#2a2522; padding:30px; text-align:center;'>
+                <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
+                <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
+            </div>
+            <div style='padding:40px;'>
+                <h2 style='color:#2a2522; margin:0; font-size:20px;'>$title</h2>
+                <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$name</strong>,<br>$message</p>
+                <div style='background:#faf9f7; border:1px solid #e5e5e5; border-radius:6px; padding:25px; margin-top:30px;'>
+                    <table style='width:100%; border-collapse:collapse; font-size:15px; color:#2a2522;'>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee; width:42%;'><strong>Reference No:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right; font-family:monospace; font-size:16px; color:#d6a870;'><strong>$ref_no</strong></td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$venue_name</td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Stay / Event Date:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$stay_dates</td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>
+                        <tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px; text-align:right; color:$status_color;'><strong>$status</strong></td></tr>
+                    </table>
+                </div>
+                $reason_html
+                <div style='margin-top:24px; padding:18px 20px; background:#f8f8f8; border-radius:6px; color:#555; font-size:14px; line-height:1.6;'>
+                    <strong style='color:#2a2522;'>Payment update</strong><br>$payment_note
+                </div>
+                <div style='margin-top:32px; border-top:1px solid #eee; padding-top:20px; font-size:12px; color:#aaa; text-align:center; line-height:1.6;'>
+                    " . htmlspecialchars($biz['biz_address'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_phone'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_email'], ENT_QUOTES, 'UTF-8') . "
+                </div>
+            </div>
+        </div>
+    </div>";
+
+    $subject = $is_refund
+        ? "{$biz['biz_name']}: Refund Processed [$subject_ref_no]"
+        : "{$biz['biz_name']}: Booking Cancelled [$subject_ref_no]";
+
+    return send_custom_email($customer_email, $customer_name, $subject, $html_content);
+}
+
+/** Sends the branded confirmation for an approved reschedule request. */
+function send_reschedule_approved_email($customer_email, $customer_name, $booking_id) {
+    global $conn;
+
+    $stmt = $conn->prepare("
+        SELECT b.reference_no, b.start_date, b.end_date, b.guests_count, v.name AS venue_name
+        FROM bookings b
+        JOIN venues v ON b.venue_id = v.id
+        WHERE b.id = ?
+    ");
+    $stmt->bind_param("i", $booking_id);
+    $stmt->execute();
+    $booking = $stmt->get_result()->fetch_assoc();
+
+    if (!$booking) {
+        throw new Exception('Booking not found for reschedule email.');
+    }
+
+    $biz = get_biz_info();
+    $ref_no = htmlspecialchars($booking['reference_no'], ENT_QUOTES, 'UTF-8');
+    $venue_name = htmlspecialchars($booking['venue_name'], ENT_QUOTES, 'UTF-8');
+    $name = htmlspecialchars(trim($customer_name), ENT_QUOTES, 'UTF-8');
+    $check_in = date('F j, Y', strtotime($booking['start_date']));
+    $check_out = date('F j, Y', strtotime($booking['end_date']));
+    $stay_dates = $check_in === $check_out ? $check_in : "$check_in – $check_out";
+
+    $html_content = "
+    <div style='background-color:#f4f4f4; padding:40px 0; font-family:Helvetica, Arial, sans-serif;'>
+        <div style='max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);'>
+            <div style='background-color:#2a2522; padding:30px; text-align:center;'>
+                <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
+                <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
+            </div>
+            <div style='padding:40px;'>
+                <h2 style='color:#2a2522; margin:0; font-size:20px;'>RESCHEDULE APPROVED</h2>
+                <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$name</strong>,<br>Good news—your request to reschedule your booking has been approved. Your reservation is now confirmed for the updated dates below.</p>
+                <div style='margin-top:26px; padding:18px 20px; background:#fffaf1; border-left:4px solid #d6a870; border-radius:4px; color:#51483d; font-size:14px; line-height:1.6;'>
+                    <strong style='color:#2a2522;'>Your updated stay / event date</strong><br><span style='font-size:17px; color:#a4783d;'><strong>$stay_dates</strong></span>
+                </div>
+                <div style='background:#faf9f7; border:1px solid #e5e5e5; border-radius:6px; padding:25px; margin-top:24px;'>
+                    <table style='width:100%; border-collapse:collapse; font-size:15px; color:#2a2522;'>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee; width:42%;'><strong>Reference No:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right; font-family:monospace; font-size:16px; color:#d6a870;'><strong>$ref_no</strong></td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$venue_name</td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Updated Date:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$stay_dates</td></tr>
+                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>
+                        <tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px; text-align:right; color:#2f7d5d;'><strong>Rescheduled & Confirmed</strong></td></tr>
+                    </table>
+                </div>
+                <p style='margin:24px 0 0; color:#666; font-size:14px; line-height:1.6;'>Please keep this email for your records and present your updated itinerary at check-in.</p>
+                <div style='margin-top:32px; border-top:1px solid #eee; padding-top:20px; font-size:12px; color:#aaa; text-align:center; line-height:1.6;'>
+                    " . htmlspecialchars($biz['biz_address'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_phone'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_email'], ENT_QUOTES, 'UTF-8') . "
+                </div>
+            </div>
+        </div>
+    </div>";
+
+    $subject = "{$biz['biz_name']}: Reschedule Approved [{$booking['reference_no']}]";
+    return send_custom_email($customer_email, $customer_name, $subject, $html_content);
+}
+
 // -------------------------------------------------------------
 // STANDALONE FUNCTION (Fixed from being nested!)
 // -------------------------------------------------------------
