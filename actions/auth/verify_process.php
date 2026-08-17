@@ -2,6 +2,7 @@
 session_start();
 require '../../config/db_connect.php';
 require_once '../../includes/notifications.php';
+require_once '../../includes/mailer.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
@@ -59,11 +60,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             
             if ($update_stmt->execute()) {
                 
-                // Create persistent Welcome Notification upon successful OTP verification
+                // 1. Create persistent In-App Welcome Notification upon successful OTP verification
                 $welcome_title = "Welcome to Sevilla360!";
                 $welcome_msg = "Your account has been successfully verified. Welcome to Sevilla360! You can now explore our virtual showroom and use the available booking features.";
 
-                // Duplicate Protection Check
+                // Duplicate Protection Check for In-App Notification
                 $check_notif = $conn->prepare("SELECT id FROM user_notifications WHERE user_id = ? AND title = ? LIMIT 1");
                 if ($check_notif) {
                     $check_notif->bind_param("is", $user['id'], $welcome_title);
@@ -77,6 +78,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         }
                     }
                     $check_notif->close();
+                }
+
+                // 2. Send Welcome Email Notification to the user's email inbox
+                try {
+                    $user_first_name = $_SESSION['first_name'] ?? 'Customer';
+                    send_welcome_email($email, $user_first_name);
+                } catch (Exception $email_e) {
+                    // Non-blocking error handling: email delivery failure does not disrupt login
                 }
                 
                 $_SESSION['auth_alert'] = ['title' => 'Success', 'message' => 'Account verified successfully! Welcome to SEVILLA360.', 'type' => 'success'];

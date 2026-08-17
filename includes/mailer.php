@@ -16,10 +16,12 @@ function get_biz_info() {
         'biz_phone' => '+63 912 345 6789',
         'biz_address' => '123 Resort Drive, Paradise City'
     ];
-    $res = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'biz_%'");
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $info[$row['setting_key']] = $row['setting_value'];
+    if ($conn && $conn instanceof mysqli) {
+        $res = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'biz_%'");
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $info[$row['setting_key']] = $row['setting_value'];
+            }
         }
     }
     return $info;
@@ -527,5 +529,33 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
         $mail->send();
         return true;
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+}
+
+/**
+ * Sends a welcome email notification when account registration/verification is successful.
+ */
+function send_welcome_email($to_email, $to_name) {
+    $biz = get_biz_info();
+    $subject = "Welcome to {$biz['biz_name']}!";
+    $first_name = htmlspecialchars(trim($to_name), ENT_QUOTES, 'UTF-8');
+    
+    $html_content = "
+    <div style='background-color:#f4f4f4; padding:40px 0; font-family:Helvetica, Arial, sans-serif;'>
+        <div style='max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);'>
+            <div style='background-color:#2a2522; padding:30px; text-align:center;'>
+                <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
+                <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
+            </div>
+            <div style='padding:40px;'>
+                <h2 style='color:#2a2522; margin-top:0; font-size:20px;'>WELCOME TO SEVILLA360!</h2>
+                <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$first_name</strong>,<br><br>Your account has been successfully verified! Welcome to Sevilla360. You can now explore our virtual 360° showroom, view venue pricing, and make online reservations for your events.</p>
+                <div style='margin-top:32px; border-top:1px solid #eee; padding-top:20px; font-size:12px; color:#aaa; text-align:center; line-height:1.6;'>
+                    " . htmlspecialchars($biz['biz_address'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_phone'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_email'], ENT_QUOTES, 'UTF-8') . "
+                </div>
+            </div>
+        </div>
+    </div>";
+
+    return send_custom_email($to_email, $to_name, $subject, $html_content);
 }
 ?>
