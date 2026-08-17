@@ -77,9 +77,15 @@ $notifs_result = $stmt_notifs->get_result();
 
 $notifications = [];
 $unread_count = 0;
+$latest_unread = null;
 while ($row = $notifs_result->fetch_assoc()) {
     $notifications[] = $row;
-    if ($row['is_read'] == 0) $unread_count++;
+    if ($row['is_read'] == 0) {
+        $unread_count++;
+        if ($latest_unread === null) {
+            $latest_unread = $row;
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -655,6 +661,25 @@ while ($row = $notifs_result->fetch_assoc()) {
 
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
+
+    <?php if (!empty($latest_unread)): ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                if (typeof playNotificationChime === 'function') {
+                    playNotificationChime();
+                }
+                showAlert(
+                    "<?php echo addslashes($latest_unread['title']); ?>",
+                    "<?php echo addslashes($latest_unread['message']); ?>",
+                    "info"
+                );
+                // Mark this auto-popped notification as read so it doesn't repeatedly auto-popup on future refreshes
+                fetch("actions/user/mark_notifications_read.php?id=<?php echo (int)$latest_unread['id']; ?>");
+            }, 500);
+        });
+    </script>
+    <?php endif; ?>
 </body>
 
 </html>

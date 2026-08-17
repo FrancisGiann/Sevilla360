@@ -239,4 +239,27 @@ document.addEventListener("DOMContentLoaded", () => {
           });
       }
 
+  // --- Form Submission Loading Spinners ---
+  const handleFormLoading = (formId, loadingText) => {
+      const form = document.getElementById(formId);
+      if (!form) return;
+      form.addEventListener("submit", function (e) {
+          const submitBtn = form.querySelector('button[type="submit"]');
+          if (submitBtn) {
+              if (submitBtn.disabled) {
+                  e.preventDefault();
+                  return false;
+              }
+              submitBtn.disabled = true;
+              submitBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px;"></i> ${loadingText}`;
+          }
+      });
+  };
+
+  handleFormLoading("form-login", "SIGNING IN...");
+  handleFormLoading("form-register", "CREATING ACCOUNT...");
+  handleFormLoading("form-verify", "VERIFYING ACCOUNT...");
+  handleFormLoading("form-admin", "LOGGING IN...");
+  handleFormLoading("form-forgot", "SENDING LINK...");
+
 });
