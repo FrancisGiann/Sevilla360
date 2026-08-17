@@ -156,7 +156,10 @@
 .btn-full {
   width: 100%;
   margin-bottom: 1rem;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .auth-footer {

@@ -251,7 +251,11 @@ document.addEventListener("DOMContentLoaded", () => {
                   return false;
               }
               submitBtn.disabled = true;
-              submitBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px;"></i> ${loadingText}`;
+              submitBtn.style.display = "inline-flex";
+              submitBtn.style.alignItems = "center";
+              submitBtn.style.justifyContent = "center";
+              submitBtn.style.gap = "8px";
+              submitBtn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin" style="font-size: 0.95rem; line-height: 1;"></i><span>${loadingText}</span>`;
           }
       });
   };
