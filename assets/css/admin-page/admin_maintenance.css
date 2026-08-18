@@ -50,13 +50,17 @@
 }
 
 .maint-calendar-wrapper {
-  margin-bottom: 20px;
+  margin-top: 25px;
+  margin-bottom: 25px;
 }
 
 .maint-calendar-label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+  color: var(--color-dark);
 }
 
 .maint-form-card {

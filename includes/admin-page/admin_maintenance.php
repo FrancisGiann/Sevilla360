@@ -47,16 +47,8 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
     </div>
 
     <div class="maintenance-grid">
-        <!-- Middle Main Area: Availability Calendar & Form -->
+        <!-- Middle Main Area: Form Inputs, Availability Calendar & Table -->
         <div class="maintenance-main">
-
-            <!-- Availability Calendar UI -->
-            <div class="maint-calendar-wrapper">
-                <?php
-                    $calendarId = 'cal-ui-maint';
-                    include 'includes/partials/booking_calendar.php';
-                ?>
-            </div>
 
             <!-- Maintenance Form Inputs -->
             <div class="booking-card form-section maint-form-card">
@@ -98,6 +90,15 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                         </div>
                     </label>
                 </div>
+            </div>
+
+            <!-- Availability Calendar UI -->
+            <div class="maint-calendar-wrapper">
+                <label class="maint-calendar-label">SELECT SCHEDULE DATES</label>
+                <?php
+                    $calendarId = 'cal-ui-maint';
+                    include 'includes/partials/booking_calendar.php';
+                ?>
             </div>
 
             <!-- Active & History Maintenance Table -->
