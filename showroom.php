@@ -116,6 +116,21 @@ if ($hotspots_query) {
     }
 }
 
+// 4. Group showroom venues into categories for UI rendering
+$grouped_showroom = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
+$first_available_category = '';
+$first_available_room = '';
+
+foreach($showroom_data as $id => $data) {
+    if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
+        $grouped_showroom[$data['category']][$id] = $data;
+        if (empty($first_available_category)) {
+            $first_available_category = $data['category'];
+            $first_available_room = $id;
+        }
+    }
+}
+
 include 'includes/header.php';
 ?>
 
@@ -211,22 +226,6 @@ window.process = {
             <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
 
             <!-- === Sleek Dropdown Pill Navigation === -->
-            <?php 
-                $grouped_showroom = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
-                $first_available_category = '';
-                $first_available_room = '';
-
-                foreach($showroom_data as $id => $data) {
-                    if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
-                        $grouped_showroom[$data['category']][$id] = $data;
-                        if (empty($first_available_category)) {
-                            $first_available_category = $data['category'];
-                            $first_available_room = $id;
-                        }
-                    }
-                }
-            ?>
-
             <div class="room-navigation-wrapper ui-360">
                 <div class="master-category-pills">
 
