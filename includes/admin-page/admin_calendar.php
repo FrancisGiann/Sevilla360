@@ -1,4 +1,5 @@
 <div class="calendar-page-container">
+    <!-- Master Schedule Header & Color Legend -->
     <div class="calendar-header-card">
         <div>
             <h3 class="cal-master-title">Master Schedule</h3>
@@ -23,6 +24,7 @@
         </div>
     </div>
 
+    <!-- FullCalendar Grid Container -->
     <div class="calendar-wrapper-card">
         <div id="full-master-calendar"></div>
     </div>

@@ -27,6 +27,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
 <div class="admin-maintenance-container admin-booking-container">
 
+    <!-- Top Section: Venue Selection & Category Tabs -->
     <div class="maintenance-venue-section">
         <label class="small-label maint-section-label">SELECT VENUE CATEGORY</label>
 
@@ -38,8 +39,10 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
     </div>
 
     <div class="maintenance-grid">
+        <!-- Middle Main Area: Availability Calendar & Form -->
         <div class="maintenance-main">
 
+            <!-- Availability Calendar UI -->
             <div class="maint-calendar-wrapper">
                 <?php
                     $calendarId = 'cal-ui-maint';
@@ -47,6 +50,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                 ?>
             </div>
 
+            <!-- Maintenance Form Inputs -->
             <div class="booking-card form-section maint-form-card">
 
                 <div class="form-group">
@@ -88,6 +92,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                 </div>
             </div>
 
+            <!-- Active & Upcoming Maintenance Table -->
             <div class="table-card maint-table-card">
                 <h3 class="card-title">Active & Upcoming Maintenance</h3>
                 <div class="table-responsive">
@@ -140,6 +145,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             </div>
         </div>
 
+        <!-- Right Sidebar: Maintenance Summary & Actions -->
         <div class="maintenance-sidebar">
             <div class="sticky-summary checkout-summary maint-summary-box">
                 <h3 class="summary-title">Maintenance Summary</h3>

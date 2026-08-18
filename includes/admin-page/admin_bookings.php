@@ -1,6 +1,7 @@
 <div class="admin-bookings-container">
     <p class="bookings-subtitle">MANAGE CUSTOMER RESERVATIONS</p>
 
+    <!-- Page Header & Search Controls -->
     <div class="bookings-page-header">
         <div class="top-controls">
             <div class="search-bar">
@@ -16,9 +17,11 @@
         </div>
     </div>
 
+    <!-- Table Card & History -->
     <div class="table-card">
         <h3 class="card-title">Booking History</h3>
 
+        <!-- Booking Status Filter Tabs -->
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
             <button class="tab-btn tab-action-req" data-filter="action_req">Action Required</button>
@@ -42,6 +45,7 @@
                     </tr>
                 </thead>
                 <tbody id="admin-bookings-tbody">
+                    <!-- Default loading state (populated dynamically by JavaScript) -->
                     <tr>
                         <td colspan="7" class="table-loading-td-padded">
                             <i class="fa-solid fa-circle-notch fa-spin spinner-icon-gold"></i><br>
@@ -52,6 +56,7 @@
             </table>
         </div>
 
+        <!-- Server-Side Pagination Controls -->
         <div class="pagination-controls pagination-wrapper">
             <div class="pagination-info">
                 Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> total bookings
@@ -64,8 +69,10 @@
         </div>
     </div>
 
+    <!-- Modals Overlay -->
     <div class="modal-overlay" id="modalOverlay">
 
+        <!-- Refund Modal -->
         <div class="admin-modal" id="refundModal">
             <h3 class="modal-main-title" id="modal-refund-title">Process Refund</h3>
             <h4 class="modal-subtitle">Transaction Summary</h4>
@@ -88,6 +95,7 @@
             </div>
         </div>
 
+        <!-- Reschedule Modal -->
         <div class="admin-modal" id="rescheduleModal">
             <h3 class="modal-main-title text-center">Reschedule Booking</h3>
             <h4 class="modal-subtitle">Booking Summary</h4>
@@ -98,6 +106,7 @@
                 <span class="label">Original Date:</span> <span class="value">--</span>
             </div>
 
+            <!-- Dynamic Availability Calendar -->
             <div class="date-picker-wrapper date-picker-wrapper-bordered">
                 <label class="form-label-bold">Select New Dates:</label>
                 <?php
@@ -112,12 +121,14 @@
             </div>
         </div>
 
+        <!-- View Details Modal -->
         <div class="admin-modal modal-view-details" id="viewDetailsModal">
             <div class="vd-header">
                 <h3 class="modal-main-title vd-title" id="vd-title">Booking Details</h3>
                 <span class="status-badge" id="vd-status-badge">--</span>
             </div>
 
+            <!-- Customer Information -->
             <h4 class="modal-subtitle vd-section-title">Customer Information</h4>
             <div class="summary-grid vd-summary-grid">
                 <span class="label">Name:</span> <span class="value" id="vd-customer-name">--</span>
@@ -125,6 +136,7 @@
                 <span class="label">Phone:</span> <span class="value" id="vd-customer-phone">--</span>
             </div>
 
+            <!-- Reservation Details -->
             <h4 class="modal-subtitle vd-section-title">Reservation Details</h4>
             <div class="summary-grid vd-summary-grid">
                 <span class="label">Venue:</span> <span class="value" id="vd-venue">--</span>
@@ -136,11 +148,13 @@
                 <span class="value hidden-element-mono" id="vd-transaction-value">--</span>
             </div>
 
+            <!-- Add-ons & Line Items Container -->
             <div id="vd-addons-container" class="hidden-element">
                 <h4 class="modal-subtitle vd-section-title">Add-ons & Line Items</h4>
                 <div class="summary-grid vd-addons-grid" id="vd-addons-list"></div>
             </div>
 
+            <!-- Financial Breakdown -->
             <h4 class="modal-subtitle vd-section-title">Financial Breakdown</h4>
             <div class="summary-grid vd-financials-grid">
                 <span class="label">Base Amount:</span> <span class="value" id="vd-base-amt">₱0.00</span>
@@ -165,6 +179,7 @@
             </div>
         </div>
 
+        <!-- Collect Payment Modal -->
         <div class="admin-modal modal-sm" id="paymentModal">
             <h3 class="modal-title">Collect Payment</h3>
             <div class="modal-body">
@@ -197,6 +212,7 @@
             </div>
         </div>
 
+        <!-- Approve Booking Modal -->
         <div class="admin-modal modal-sm" id="approveModal">
             <i class="fa-solid fa-circle-check modal-icon-warning icon-green"></i>
             <h3 class="modal-title">Approve Booking?</h3>
@@ -209,6 +225,7 @@
             </div>
         </div>
 
+        <!-- Decline/Cancel Booking Modal -->
         <div class="admin-modal modal-sm" id="declineModal">
             <i class="fa-solid fa-triangle-exclamation modal-icon-warning"></i>
             <h3 class="modal-title">Decline Booking?</h3>
@@ -222,6 +239,7 @@
             </div>
         </div>
 
+        <!-- Universal Confirm Modal -->
         <div class="admin-modal modal-sm" id="uniConfirmModal">
             <i class="fa-solid fa-circle-question modal-icon-warning text-gold-highlight"></i>
             <h3 class="modal-title">Confirm Action</h3>
@@ -234,6 +252,7 @@
             </div>
         </div>
 
+        <!-- Universal Alert Modal -->
         <div class="admin-modal modal-sm" id="uniAlertModal">
             <i class="fa-solid fa-circle-info modal-icon-warning" id="ua-icon"></i>
             <h3 class="modal-title" id="ua-title">Notice</h3>
@@ -245,6 +264,7 @@
             </div>
         </div>
 
+        <!-- Review Reschedule Request Modal -->
         <div class="admin-modal" id="reviewReschedModal">
             <h3 class="modal-main-title">Review Reschedule Request</h3>
 
@@ -272,6 +292,7 @@
             </div>
         </div>
 
+        <!-- Admin Override Cancel Modal -->
         <div class="admin-modal modal-sm" id="forceCancelModal">
             <i class="fa-solid fa-cloud-bolt modal-icon-warning text-red-danger"></i>
             <h3 class="modal-title">Admin Override Cancel</h3>
@@ -290,6 +311,7 @@
             </div>
         </div>
 
+        <!-- Event Hall Itemized Invoice / Edit Price Modal -->
         <div class="admin-modal modal-edit-price" id="editPriceModal">
             <h3 class="modal-main-title">Finalize Event Invoice</h3>
             <p class="ep-subtitle">

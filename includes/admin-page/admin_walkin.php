@@ -29,10 +29,12 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 ?>
 <div class="admin-booking-container">
 
+    <!-- Direct Walk-in Header -->
     <div class="walkin-header">
         <p class="walkin-subtitle">MANAGE DIRECT BOOKINGS AND RESERVATIONS</p>
     </div>
 
+    <!-- Section 1: Guest Information -->
     <section class="booking-card">
         <h3 class="card-title">1. Guest Information</h3>
         <div class="form-row">
@@ -59,20 +61,24 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
         </div>
     </section>
 
+    <!-- Section 2: Venue & Accommodation -->
     <section class="booking-card">
         <h3 class="card-title">2. Venue & Accommodation</h3>
 
+        <!-- Venue Category Tabs -->
         <div class="booking-tabs">
             <button class="tab-btn active" data-target="tab-event">Event Hall</button>
             <button class="tab-btn" data-target="tab-hotel">Hotel Rooms</button>
             <button class="tab-btn" data-target="tab-villa">Resort Villa</button>
         </div>
 
+        <!-- Venue Selection Partials -->
         <?php include 'includes/partials/admin/admin_tab_event.php'; ?>
         <?php include 'includes/partials/admin/admin_tab_hotel.php'; ?>
         <?php include 'includes/partials/admin/admin_tab_villa.php'; ?>
     </section>
 
+    <!-- Section 3: Payment & Checkout -->
     <section class="booking-card">
         <h3 class="card-title">3. Payment & Checkout</h3>
 
@@ -102,6 +108,7 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
             <input type="text" id="transaction-id" placeholder="Enter transaction or reference number">
         </div>
 
+        <!-- Dynamic Line Item Builder -->
         <div class="form-group custom-items-box">
             <div class="custom-items-header">
                 <div>
@@ -114,6 +121,7 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
             <div id="wi-line-items" class="custom-items-list"></div>
         </div>
 
+        <!-- Booking Summary Card -->
         <div class="checkout-summary">
             <h4 class="summary-title">Booking Summary</h4>
             <div class="summary-row">
@@ -143,4 +151,5 @@ $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
     </section>
 </div>
 
+<!-- Admin Walk-in Modals Partial -->
 <?php include 'includes/partials/admin-page/admin_walkin_modals.php'; ?>
