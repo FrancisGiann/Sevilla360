@@ -44,7 +44,7 @@
         </div>
     </div>
 
-    <!-- Charts Section (Revenue & Venue Distribution) -->
+    <!-- Charts Section (Revenue & Booking Pipeline) -->
     <div class="charts-grid-2">
         <div class="chart-card bar-card chart-card-relative">
             <h3>Revenue Trend <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><span class="admin-only-badge">(Admin Only)</span><?php endif; ?></h3>
@@ -52,92 +52,85 @@
                 <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?>
                     <div class="chart-restricted-placeholder">
                         <i class="fa-solid fa-lock-keyhole chart-restricted-icon"></i>
-                        <p class="chart-restricted-title">Financial Data Restricted</p>
-                        <p class="chart-restricted-sub">Revenue trend charts are visible to administrators only.</p>
+                        <p class="chart-restricted-text">Financial chart restricted to Admin accounts.</p>
                     </div>
                 <?php else: ?>
                     <canvas id="revenueChart"></canvas>
                 <?php endif; ?>
             </div>
         </div>
-
-        <div class="chart-card donut-card">
-            <h3>Venue Bookings Distribution</h3>
-            <div class="canvas-wrapper">
-                <canvas id="venueDistributionChart"></canvas>
-            </div>
+        <div class="chart-card">
+            <h3>Booking Pipeline</h3>
+            <div class="canvas-wrapper"><canvas id="statusChart"></canvas></div>
         </div>
     </div>
 
-    <!-- Today's Operations & Major Events Widgets -->
-    <div class="widgets-grid">
+    <!-- Operations Section: Today's Itinerary & Major Events Radar -->
+    <div class="operations-grid">
         <div class="widget-card">
             <div class="widget-header">
-                <h3>Today's Itinerary</h3>
-                <span class="view-all" id="btn-view-all-today">View All</span>
+                <h3><i class="fa-solid fa-bell widget-title-icon"></i> Today's Itinerary</h3>
+                <button class="view-all-text btn-open-modal" data-target="modal-today">View All</button>
             </div>
-            <div class="widget-list" id="widget-todays-list">
-                <p class="tba-text">Loading today's schedule...</p>
+            <div class="widget-list" id="widget-today-list">
+                <p class="widget-placeholder-text">Loading...</p>
             </div>
         </div>
 
         <div class="widget-card">
             <div class="widget-header">
-                <h3>Major Events Radar (30 Days)</h3>
-                <span class="view-all" id="btn-view-all-events">View All</span>
+                <h3><i class="fa-solid fa-calendar-star widget-title-icon"></i> Major Events Radar</h3>
+                <button class="view-all-text btn-open-modal" data-target="modal-events">View All</button>
             </div>
             <div class="widget-list" id="widget-events-list">
-                <p class="tba-text">Loading upcoming major events...</p>
+                <p class="widget-placeholder-text">Loading...</p>
             </div>
         </div>
     </div>
 
     <!-- Recent Bookings Table -->
-    <div class="table-card">
+    <div class="table-card recent-bookings-card">
         <div class="table-header">
             <h3>Recent Bookings</h3>
-            <a href="admin_dashboard.php?page=bookings" class="view-all-link">Manage All Bookings &rarr;</a>
+            <a href="admin_dashboard.php?page=bookings" class="view-all-text">Manage All</a>
         </div>
         <div class="table-responsive">
-            <table class="bookings-table">
+            <table class="admin-table">
                 <thead>
                     <tr>
-                        <th>BOOKING ID</th>
-                        <th>VENUE</th>
-                        <th>CUSTOMER</th>
-                        <th>DATE</th>
-                        <th>AMOUNT</th>
-                        <th>STATUS</th>
+                        <th>Booking ID</th>
+                        <th>Venue</th>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody id="recent-bookings-tbody">
                     <tr>
-                        <td colspan="6" class="tba-text">Loading recent bookings...</td>
+                        <td colspan="5" class="table-loading-td">Loading...</td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </div>
-
 </div>
 
-<!-- Overview Overlay Modals -->
-<div class="modal-overlay" id="overviewModalOverlay">
+<!-- Overview Modals Overlay -->
+<div class="overview-modal-overlay" id="overviewModalOverlay">
 
-    <!-- Today's Itinerary Full View Modal -->
-    <div class="admin-modal overview-modal" id="modalTodayFull">
-        <div class="maint-modal-header">
-            <h3 class="modal-main-title vd-title">Today's Itinerary & Operations</h3>
-            <button class="close-modal modal-close-btn">&times;</button>
+    <!-- Today's Itinerary Modal -->
+    <div class="overview-modal" id="modal-today">
+        <div class="modal-header">
+            <h3>Today's Complete Itinerary</h3>
+            <button class="close-overview-modal"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="table-responsive">
-            <table class="bookings-table">
+            <table class="admin-table">
                 <thead>
                     <tr>
-                        <th>TIME / TYPE</th>
-                        <th>UNIT / VENUE</th>
-                        <th>GUEST / DETAILS</th>
-                        <th>STATUS</th>
+                        <th>Guest</th>
+                        <th>Venue</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody id="modal-today-tbody"></tbody>
@@ -145,21 +138,19 @@
         </div>
     </div>
 
-    <!-- Major Events Radar Full View Modal -->
-    <div class="admin-modal overview-modal" id="modalEventsFull">
-        <div class="maint-modal-header">
-            <h3 class="modal-main-title vd-title">30-Day Major Events Radar</h3>
-            <button class="close-modal modal-close-btn">&times;</button>
+    <!-- Major Events Radar Modal -->
+    <div class="overview-modal" id="modal-events">
+        <div class="modal-header">
+            <h3>30-Day Events Radar</h3>
+            <button class="close-overview-modal"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="table-responsive">
-            <table class="bookings-table">
+            <table class="admin-table">
                 <thead>
                     <tr>
-                        <th>DATE</th>
-                        <th>EVENT NAME</th>
-                        <th>VENUE</th>
-                        <th>GUEST COUNT</th>
-                        <th>STATUS</th>
+                        <th>Date</th>
+                        <th>Event Details</th>
+                        <th>Venue</th>
                     </tr>
                 </thead>
                 <tbody id="modal-events-tbody"></tbody>
@@ -167,6 +158,7 @@
         </div>
     </div>
 
+    <!-- Maintenance Detail Modal -->
     <div class="overview-modal modal-maint-detail" id="modal-maintenance-detail">
         <div class="maint-modal-header">
             <h3 class="maint-modal-title">
@@ -199,6 +191,7 @@
         </div>
     </div>
 
+    <!-- In-Place Booking Details Modal -->
     <div class="overview-modal modal-overview-booking" id="overviewBookingModal">
         <div class="overview-booking-header">
             <div class="overview-booking-header-left">
