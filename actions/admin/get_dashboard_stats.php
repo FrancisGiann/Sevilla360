@@ -15,11 +15,11 @@ try {
     $is_staff = isset($_SESSION['role']) && $_SESSION['role'] === 'staff';
     $response['userRole'] = $_SESSION['role'] ?? 'staff';
 
-    // 1. MAINTENANCE ALERTS
+    // 1. MAINTENANCE ALERTS (Scheduled / Active only)
     $res = $conn->query("
         SELECT m.id, m.venue_id, v.name, m.maintenance_type, m.notes, m.start_date, m.end_date 
         FROM maintenance m JOIN venues v ON m.venue_id = v.id 
-        WHERE CURDATE() BETWEEN m.start_date AND m.end_date
+        WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND CURDATE() BETWEEN m.start_date AND m.end_date
     ");
     $response['maintenanceAlerts'] = $res->fetch_all(MYSQLI_ASSOC);
 
@@ -121,7 +121,7 @@ try {
                m.start_date, m.end_date, 'maintenance' AS item_type
         FROM maintenance m 
         JOIN venues v ON m.venue_id = v.id
-        WHERE CURDATE() BETWEEN m.start_date AND m.end_date
+        WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND CURDATE() BETWEEN m.start_date AND m.end_date
         ORDER BY m.start_date ASC
     ");
     while ($row = $res_m->fetch_assoc()) {
