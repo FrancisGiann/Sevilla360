@@ -102,12 +102,11 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
             <!-- Active & History Maintenance Table -->
             <div class="table-card maint-table-card">
-                <div class="table-header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <h3 class="card-title" style="margin:0;">Maintenance Records</h3>
-                    <div class="booking-tabs maint-table-tabs" id="maintTableSubTabs" style="margin:0;">
-                        <button class="tab-btn active" data-maint-view="active">Active & Upcoming</button>
-                        <button class="tab-btn" data-maint-view="history">Past / Completed History</button>
-                    </div>
+                <h3 class="card-title">Maintenance Records</h3>
+
+                <div class="booking-tabs maint-table-tabs" id="maintTableSubTabs">
+                    <button class="tab-btn active" data-maint-view="active">Active & Upcoming</button>
+                    <button class="tab-btn" data-maint-view="history">Past / Completed History</button>
                 </div>
 
                 <!-- Active & Upcoming Maintenance Table -->
