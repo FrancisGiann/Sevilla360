@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // Global Chart Configuration & Utilities
     const colors = { gold: "#d6a870", beige: "#fdf2e2", dark: "#2a2522", green: "#88a096", red: "#c27c7c", grid: "rgba(42, 37, 34, 0.05)" };
     Chart.defaults.font.family = "'Inter', sans-serif";
     Chart.defaults.color = "#4a4440";
@@ -10,6 +11,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
     }
 
+    // =========================================================
+    // 1. IN-PLACE OVERVIEW MODAL BRIDGES
+    // =========================================================
+
+    // --- Open In-Place Booking Details Modal ---
     window.openOverviewBookingModal = function(bookingId) {
         if (!bookingId) return;
 
@@ -127,26 +133,76 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     };
 
-    window.openOverviewMaintenanceModal = function(alert) {
-        if (!alert) return;
+    // --- Open In-Place Maintenance Details Modal ---
+    window.openOverviewMaintenanceModal = function(maint) {
+        if (!maint) return;
 
         const overlay = document.getElementById('overviewModalOverlay');
-        const modal = document.getElementById('modal-maintenance-detail');
+        const modal = document.getElementById('modalOverviewMaintenanceDetails');
         if (!overlay || !modal) return;
 
-        document.getElementById('md-venue').innerText = alert.name || 'Venue';
-        document.getElementById('md-type').innerText = alert.maintenance_type || 'General Maintenance';
+        document.getElementById('ov-md-ref').innerText = `MAINT-${maint.id}`;
+        document.getElementById('ov-md-venue').innerText = maint.venue_name;
+        document.getElementById('ov-md-type').innerText = maint.type || maint.maintenance_type || 'General Maintenance';
         
         const opts = { month: "short", day: "numeric", year: "numeric" };
-        const sDate = alert.start_date ? new Date(alert.start_date).toLocaleDateString("en-US", opts) : 'N/A';
-        const eDate = alert.end_date ? new Date(alert.end_date).toLocaleDateString("en-US", opts) : 'N/A';
-        document.getElementById('md-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
-        document.getElementById('md-notes').innerText = alert.notes || 'No extra notes provided.';
+        const sDate = new Date(maint.start_date).toLocaleDateString("en-US", opts);
+        const eDate = new Date(maint.end_date).toLocaleDateString("en-US", opts);
+        document.getElementById('ov-md-dates').innerText = (sDate === eDate) ? sDate : `${sDate} — ${eDate}`;
+
+        const isBlock = maint.is_blocking == 1 || maint.block_unit == 1;
+        document.getElementById('ov-md-block').innerText = isBlock ? "ON (Unit Blocked)" : "OFF (Note Only)";
+        document.getElementById('ov-md-block').className = "value " + (isBlock ? "text-balance-red" : "text-sub-muted");
+
+        document.getElementById('ov-md-notes').innerText = maint.notes || maint.custom_notes || "No description provided.";
 
         document.querySelectorAll('.overview-modal').forEach(m => m.classList.remove('active'));
         overlay.classList.add('active');
         modal.classList.add('active');
     };
+
+    // =========================================================
+    // 2. DASHBOARD DATA FETCHING & METRICS ENGINE
+    // =========================================================
+    function fetchDashboardStats() {
+        fetch('actions/admin/get_dashboard_stats.php')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) return;
+
+                // --- Update Key Performance Metrics ---
+                const revElem = document.getElementById('stat-monthly-revenue');
+                if (revElem && data.monthlyRevenue !== null && data.monthlyRevenue !== undefined) {
+                    revElem.innerText = currencyFormatter.format(data.monthlyRevenue);
+                }
+
+                document.getElementById('stat-action-req').innerText = data.actionRequiredCount || 0;
+                document.getElementById('stat-arrivals-today').innerText = data.arrivalsTodayCount || 0;
+                document.getElementById('stat-occupancy-rate').innerText = (data.occupancyRate || 0) + '%';
+
+                // --- Update Revenue & Distribution Charts ---
+                if (data.monthlyRevenue !== null && data.revenueTrend && window.revenueChartInstance) {
+                    window.revenueChartInstance.data.labels = data.revenueTrend.labels;
+                    window.revenueChartInstance.data.datasets[0].data = data.revenueTrend.data;
+                    window.revenueChartInstance.update();
+                }
+
+                if (data.venueDistribution && window.venueChartInstance) {
+                    window.venueChartInstance.data.labels = data.venueDistribution.labels;
+                    window.venueChartInstance.data.datasets[0].data = data.venueDistribution.data;
+                    window.venueChartInstance.update();
+                }
+
+                // =========================================================
+                // 3. WIDGETS & TABLES (Today's Operations & Major Events)
+                // =========================================================
+                renderTodaysOperations(data.todaysOperations || []);
+                renderUpcomingEvents(data.upcomingEvents || []);
+                renderRecentBookings(data.recentBookings || []);
+                renderMaintenanceAlerts(data.activeMaintenance || []);
+            })
+            .catch(err => console.error("Error loading dashboard stats:", err));
+    }
 
     window.addEventListener('SevillaDashboardData', (e) => {
         const data = e.detail;
