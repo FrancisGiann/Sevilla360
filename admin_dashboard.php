@@ -145,9 +145,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     ?>
                 </h2>
                 <div class="header-actions">
-                    <a href="index.php" class="btn-back"><i class="fa-solid fa-house"></i> Back to Home</a>
-
-                    <!-- NEW: FULL NOTIFICATION CENTER -->
+                    <!-- Notification Center -->
                     <div class="notification-center" id="notifCenter" style="position: relative; margin-right: 20px;">
 
                         <!-- The Bell Button -->
