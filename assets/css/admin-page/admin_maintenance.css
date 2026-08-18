@@ -552,3 +552,57 @@ textarea:focus {
   margin-bottom: 20px;
   border-bottom: 1px solid rgba(42, 37, 34, 0.08);
 }
+
+/* --- Maintenance Summary Action Buttons --- */
+.maint-summary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+.btn-confirm-maint {
+  width: 100%;
+  padding: 16px 20px;
+  background-color: var(--color-gold);
+  color: var(--color-white);
+  border: 1px solid var(--color-gold);
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(214, 168, 112, 0.25);
+  transition: all 0.3s ease;
+}
+
+.btn-confirm-maint:hover {
+  background-color: var(--color-gold-hover);
+  border-color: var(--color-gold-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(214, 168, 112, 0.35);
+}
+
+.btn-reset-maint {
+  width: 100%;
+  padding: 14px 20px;
+  background-color: transparent;
+  color: var(--color-dark-light);
+  border: 1px solid rgba(42, 37, 34, 0.2);
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-reset-maint:hover {
+  background-color: rgba(42, 37, 34, 0.05);
+  border-color: var(--color-dark);
+  color: var(--color-dark);
+}
