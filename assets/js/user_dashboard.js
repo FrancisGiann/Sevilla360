@@ -8,11 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
-  function showConfirmModal(message, callback) {
-      window.showConfirm("Confirm Action", message).then(c => {
-          if(c && callback) callback();
-      });
-  }
+
   
   window.currentViewBookingId = null;
 
@@ -25,9 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-      window.showAlert(title, message, type, reloadOnClose);
-  }
+
 
   // --- 0. Notification Bell ---
   const btnNotifs = document.getElementById('btn-notifications');
@@ -83,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const message = item.getAttribute('data-message');
           
           // Show details in modal
-          showAlertModal(title, message, "info");
+          showAlert(title, message, "info");
           
           // Hide dropdown
           if (notifDropdown) notifDropdown.style.display = 'none';

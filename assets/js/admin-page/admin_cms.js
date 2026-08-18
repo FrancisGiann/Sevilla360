@@ -9,15 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
-  function showConfirmModal(message, callback) {
-      window.showConfirm("Confirm Action", message).then(c => {
-          if(c && callback) callback();
-      });
-  }
-
-  function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-      window.showAlert(title, message, type, reloadOnClose);
-  }  // =========================================================
+  // =========================================================
   // 2. DOM Elements
   // =========================================================
   const uploadModal = document.getElementById('uploadModal');
@@ -120,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
           e.preventDefault();
 
           if (!fileInputEl.files || fileInputEl.files.length === 0) {
-              showAlertModal("Error", "Please select a file to upload.", "error", false);
+              showAlert("Error", "Please select a file to upload.", "error", false);
               return;
           }
 
@@ -128,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const isStrictSlot = slotDropdown.value.startsWith('home-');
 
           if (isStrictSlot && fileInputEl.files.length > 1) {
-              showAlertModal("Error", "You can only upload ONE image at a time for Homepage Previews.", "error", false);
+              showAlert("Error", "You can only upload ONE image at a time for Homepage Previews.", "error", false);
               return;
           }
 
@@ -171,26 +163,26 @@ document.addEventListener('DOMContentLoaded', () => {
                       const data = JSON.parse(xhr.responseText);
                       if (data.success) {
                           uploadModal.classList.remove('active');
-                          showAlertModal("Success", data.message, "success", true);
+                          showAlert("Success", data.message, "success", true);
                       } else {
-                          showAlertModal("Error", data.message, "error", false);
+                          showAlert("Error", data.message, "error", false);
                           submitBtn.innerText = originalText;
                           submitBtn.disabled = false;
                       }
                   } catch(e) {
-                      showAlertModal("Error", "Server returned an invalid response.", "error", false);
+                      showAlert("Error", "Server returned an invalid response.", "error", false);
                       submitBtn.innerText = originalText;
                       submitBtn.disabled = false;
                   }
               } else {
-                  showAlertModal("Error", "Server Error: " + xhr.status, "error", false);
+                  showAlert("Error", "Server Error: " + xhr.status, "error", false);
                   submitBtn.innerText = originalText;
                   submitBtn.disabled = false;
               }
           };
 
           xhr.onerror = function() {
-              showAlertModal("Network Error", "A network error occurred during upload.", "error", false);
+              showAlert("Network Error", "A network error occurred during upload.", "error", false);
               submitBtn.innerText = originalText;
               submitBtn.disabled = false;
           };
@@ -330,10 +322,10 @@ document.addEventListener('DOMContentLoaded', () => {
               .then(res => res.json())
               .then(data => {
                   if (data.success) {
-                      showAlertModal("Success", "Primary image updated successfully!", "success", false);
+                      showAlert("Success", "Primary image updated successfully!", "success", false);
                       window.needsCmsRefresh = true;
                   } else {
-                      showAlertModal("Error", data.message, "error", false);
+                      showAlert("Error", data.message, "error", false);
                   }
               });
               return;
@@ -342,7 +334,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // SINGLE DELETE CLICK
           const deleteBtn = e.target.closest('.btn-delete-media');
           if (deleteBtn) {
-              showConfirmModal("Are you sure you want to permanently delete this image?", () => {
+              showConfirm("Confirm Action", "Are you sure you want to permanently delete this image?").then(c => {
+                  if (!c) return;
                   const mediaId = deleteBtn.getAttribute('data-id');
                   const card = deleteBtn.closest('.mg-photo-card'); 
                   
@@ -365,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
                               document.getElementById('btnCloseGalleryModal').click();
                           }
                       } else {
-                          showAlertModal("Error", data.message, "error", false);
+                          showAlert("Error", data.message, "error", false);
                           deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
                           deleteBtn.disabled = false;
                       }
@@ -383,7 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
           const ids = Array.from(checks).map(c => c.value);
 
-          showConfirmModal(`Are you sure you want to permanently delete ${ids.length} selected image(s)?`, () => {
+          showConfirm("Confirm Action", `Are you sure you want to permanently delete ${ids.length} selected image(s)?`).then(c => {
+              if (!c) return;
               const originalHTML = btnBulkDelete.innerHTML;
               btnBulkDelete.innerHTML = "Deleting...";
               btnBulkDelete.disabled = true;
@@ -407,11 +401,11 @@ document.addEventListener('DOMContentLoaded', () => {
                           document.getElementById('btnCloseGalleryModal').click();
                       }
                   } else {
-                      showAlertModal("Error", data.message, "error", false);
+                      showAlert("Error", data.message, "error", false);
                   }
               })
               .catch(err => {
-                  showAlertModal("Error", "Network error.", "error", false);
+                  showAlert("Error", "Network error.", "error", false);
               })
               .finally(() => {
                   btnBulkDelete.innerHTML = originalHTML;

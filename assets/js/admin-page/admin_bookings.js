@@ -54,16 +54,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     btnAdminResend.disabled = false;
                     
                     if (data.success) {
-                        showAlertModal("Success", "Receipt email has been resent to the customer.", "success");
+                        showAlert("Success", "Receipt email has been resent to the customer.", "success");
                     } else {
-                        showAlertModal("Error", data.message || "Failed to resend receipt.", "error");
+                        showAlert("Error", data.message || "Failed to resend receipt.", "error");
                     }
                 })
                 .catch(err => {
                     console.error(err);
                     btnAdminResend.innerHTML = originalText;
                     btnAdminResend.disabled = false;
-                    showAlertModal("Error", "Network or server error.", "error");
+                    showAlert("Error", "Network or server error.", "error");
                 });
             }, 'bookingDetailsModal');
         });
@@ -82,9 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    function showAlertModal(title, message, type = "info", reloadOnClose = false) {
-        window.showAlert(title, message, type, reloadOnClose);
-    }
+
 
     // =========================================================
     // 2. SERVER-SIDE PAGINATION & FILTERING
@@ -311,9 +309,9 @@ document.addEventListener("DOMContentLoaded", () => {
           buttonElement.innerText = "Success!";
           buttonElement.style.backgroundColor = "#4ade80"; 
           buttonElement.style.borderColor = "#4ade80";
-          showAlertModal("Success!", data.message, "success", true);
+          showAlert("Success!", data.message, "success", true);
         } else {
-          showAlertModal("Error", data.message, "error", false);
+          showAlert("Error", data.message, "error", false);
           buttonElement.innerText = originalText;
           buttonElement.disabled = false;
           buttonElement.style.opacity = "1";
@@ -321,7 +319,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .catch(error => {
         if (typeof window.hideGlobalLoader === "function") window.hideGlobalLoader();
-        showAlertModal("Network Error", "An error occurred while communicating with the server.", "error", false);
+        showAlert("Network Error", "An error occurred while communicating with the server.", "error", false);
         buttonElement.innerText = originalText;
         buttonElement.disabled = false;
         buttonElement.style.opacity = "1";
@@ -460,7 +458,7 @@ document.addEventListener("DOMContentLoaded", () => {
             newBtn.setAttribute('data-id', bookingId);
             newBtn.addEventListener('click', function() {
               if (!rescheduleCalendar || !rescheduleCalendar.startDate) {
-                  return showAlertModal("Missing Data", "Please select the new dates from the calendar first!", "error", 'rescheduleModal');
+                  return showAlert("Missing Data", "Please select the new dates from the calendar first!", "error", 'rescheduleModal');
               }
               const formatLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
               const newStart = formatLocal(rescheduleCalendar.startDate);
@@ -508,8 +506,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     const method = pmtMethodSelect.value;
                     const transId = document.getElementById('pmt-trans-id').value.trim();
           
-                    if (isNaN(amount) || amount <= 0) return showAlertModal("Invalid Amount", "Please enter a valid payment amount.", "error", 'paymentModal');
-                    if (method !== 'Cash' && transId === '') return showAlertModal("Missing Data", "Please enter a Transaction ID for online/bank payments.", "error", 'paymentModal');
+                    if (isNaN(amount) || amount <= 0) return showAlert("Invalid Amount", "Please enter a valid payment amount.", "error", 'paymentModal');
+                    if (method !== 'Cash' && transId === '') return showAlert("Missing Data", "Please enter a Transaction ID for online/bank payments.", "error", 'paymentModal');
           
                     showConfirmModal(`Confirm receipt of ₱${amount.toLocaleString()} via ${method}?`, () => {
                         processBookingAction(this.getAttribute('data-id'), 'add_payment', this, { amount: amount, method: method, transaction_id: transId });
@@ -577,7 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         this.innerText = "Confirm Rejection";
                     } else {
                         const reason = document.getElementById('rr-reject-reason').value.trim();
-                        if (reason === "") return showAlertModal("Error", "Please provide a reason for rejecting this request.", "error", "reviewReschedModal");
+                        if (reason === "") return showAlert("Error", "Please provide a reason for rejecting this request.", "error", "reviewReschedModal");
               
                         showConfirmModal("Reject this request? The booking will remain on its original dates.", () => {
                             processBookingAction(this.getAttribute('data-id'), 'reject_reschedule', this, { admin_reply: reason });
@@ -609,7 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 newBtn.addEventListener('click', function() {
                     const reason = document.getElementById('fc-reason').value.trim();
-                    if (reason === "") return showAlertModal("Missing Data", "You must provide a reason (e.g. Typhoon) for the audit log.", "error", "forceCancelModal");
+                    if (reason === "") return showAlert("Missing Data", "You must provide a reason (e.g. Typhoon) for the audit log.", "error", "forceCancelModal");
               
                     showConfirmModal("Are you absolutely sure? This will instantly cancel the booking and process a full refund.", () => {
                         processBookingAction(this.getAttribute('data-id'), 'admin_force_cancel', this, { reason: reason, refund_amount: this.getAttribute('data-paid') });
@@ -636,7 +634,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   this.innerText = originalText;
                   this.disabled = false;
       
-                  if (!res.success) return showAlertModal("Error", "Error loading details: " + res.message, "error", false);
+                  if (!res.success) return showAlert("Error", "Error loading details: " + res.message, "error", false);
       
                   const data = res.data.booking;
                   const specifics = res.data.specifics;
@@ -745,7 +743,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   console.error(err);
                   this.innerText = originalText;
                   this.disabled = false;
-                  showAlertModal("Network Error", "Network error fetching details.", "error", false);
+                  showAlert("Network Error", "Network error fetching details.", "error", false);
               });
           });
         });
@@ -802,7 +800,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 .then(res => res.json())
                 .then(res => {
                     this.innerText = originalText;
-                    if (!res.success) return showAlertModal("Error", res.message, "error", false);
+                    if (!res.success) return showAlert("Error", res.message, "error", false);
       
                     const data = res.data.booking;
                     const specifics = res.data.specifics;
