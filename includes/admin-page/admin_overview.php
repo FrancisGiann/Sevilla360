@@ -1,6 +1,7 @@
-<!-- Dashboard Content -->
+<!-- Main Dashboard Overview Container -->
 <div class="dashboard-container">
 
+    <!-- Top Bar & Header Controls -->
     <div class="dashboard-header-bar">
         <h2>Command Center</h2>
         <div class="quick-actions">
@@ -9,8 +10,10 @@
         </div>
     </div>
 
+    <!-- Maintenance Alerts Container -->
     <div id="maintenance-alerts-container"></div>
 
+    <!-- Key Performance Metrics Grid -->
     <div class="stats-grid">
         <div class="stat-card">
             <h4>Monthly Revenue <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><i class="fa-solid fa-lock stat-lock-icon" title="Restricted to Admins"></i><?php endif; ?></h4>
@@ -41,6 +44,7 @@
         </div>
     </div>
 
+    <!-- Charts Section (Revenue & Venue Distribution) -->
     <div class="charts-grid-2">
         <div class="chart-card bar-card chart-card-relative">
             <h3>Revenue Trend <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><span class="admin-only-badge">(Admin Only)</span><?php endif; ?></h3>
@@ -48,81 +52,92 @@
                 <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?>
                     <div class="chart-restricted-placeholder">
                         <i class="fa-solid fa-lock-keyhole chart-restricted-icon"></i>
-                        <p class="chart-restricted-text">Financial chart restricted to Admin accounts.</p>
+                        <p class="chart-restricted-title">Financial Data Restricted</p>
+                        <p class="chart-restricted-sub">Revenue trend charts are visible to administrators only.</p>
                     </div>
                 <?php else: ?>
                     <canvas id="revenueChart"></canvas>
                 <?php endif; ?>
             </div>
         </div>
-        <div class="chart-card">
-            <h3>Booking Pipeline</h3>
-            <div class="canvas-wrapper"><canvas id="statusChart"></canvas></div>
+
+        <div class="chart-card donut-card">
+            <h3>Venue Bookings Distribution</h3>
+            <div class="canvas-wrapper">
+                <canvas id="venueDistributionChart"></canvas>
+            </div>
         </div>
     </div>
 
-    <div class="operations-grid">
+    <!-- Today's Operations & Major Events Widgets -->
+    <div class="widgets-grid">
         <div class="widget-card">
             <div class="widget-header">
-                <h3><i class="fa-solid fa-bell widget-title-icon"></i> Today's Itinerary</h3>
-                <button class="view-all-text btn-open-modal" data-target="modal-today">View All</button>
+                <h3>Today's Itinerary</h3>
+                <span class="view-all" id="btn-view-all-today">View All</span>
             </div>
-            <div class="widget-list" id="widget-today-list">
-                <p class="widget-placeholder-text">Loading...</p>
+            <div class="widget-list" id="widget-todays-list">
+                <p class="tba-text">Loading today's schedule...</p>
             </div>
         </div>
 
         <div class="widget-card">
             <div class="widget-header">
-                <h3><i class="fa-solid fa-calendar-star widget-title-icon"></i> Major Events Radar</h3>
-                <button class="view-all-text btn-open-modal" data-target="modal-events">View All</button>
+                <h3>Major Events Radar (30 Days)</h3>
+                <span class="view-all" id="btn-view-all-events">View All</span>
             </div>
             <div class="widget-list" id="widget-events-list">
-                <p class="widget-placeholder-text">Loading...</p>
+                <p class="tba-text">Loading upcoming major events...</p>
             </div>
         </div>
     </div>
 
-    <div class="table-card recent-bookings-card">
+    <!-- Recent Bookings Table -->
+    <div class="table-card">
         <div class="table-header">
             <h3>Recent Bookings</h3>
-            <a href="admin_dashboard.php?page=bookings" class="view-all-text">Manage All</a>
+            <a href="admin_dashboard.php?page=bookings" class="view-all-link">Manage All Bookings &rarr;</a>
         </div>
         <div class="table-responsive">
-            <table class="admin-table">
+            <table class="bookings-table">
                 <thead>
                     <tr>
-                        <th>Booking ID</th>
-                        <th>Venue</th>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>Status</th>
+                        <th>BOOKING ID</th>
+                        <th>VENUE</th>
+                        <th>CUSTOMER</th>
+                        <th>DATE</th>
+                        <th>AMOUNT</th>
+                        <th>STATUS</th>
                     </tr>
                 </thead>
                 <tbody id="recent-bookings-tbody">
                     <tr>
-                        <td colspan="5" class="table-loading-td">Loading...</td>
+                        <td colspan="6" class="tba-text">Loading recent bookings...</td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </div>
+
 </div>
 
-<div class="overview-modal-overlay" id="overviewModalOverlay">
+<!-- Overview Overlay Modals -->
+<div class="modal-overlay" id="overviewModalOverlay">
 
-    <div class="overview-modal" id="modal-today">
-        <div class="modal-header">
-            <h3>Today's Complete Itinerary</h3>
-            <button class="close-overview-modal"><i class="fa-solid fa-xmark"></i></button>
+    <!-- Today's Itinerary Full View Modal -->
+    <div class="admin-modal overview-modal" id="modalTodayFull">
+        <div class="maint-modal-header">
+            <h3 class="modal-main-title vd-title">Today's Itinerary & Operations</h3>
+            <button class="close-modal modal-close-btn">&times;</button>
         </div>
         <div class="table-responsive">
-            <table class="admin-table">
+            <table class="bookings-table">
                 <thead>
                     <tr>
-                        <th>Guest</th>
-                        <th>Venue</th>
-                        <th>Status</th>
+                        <th>TIME / TYPE</th>
+                        <th>UNIT / VENUE</th>
+                        <th>GUEST / DETAILS</th>
+                        <th>STATUS</th>
                     </tr>
                 </thead>
                 <tbody id="modal-today-tbody"></tbody>
@@ -130,18 +145,21 @@
         </div>
     </div>
 
-    <div class="overview-modal" id="modal-events">
-        <div class="modal-header">
-            <h3>30-Day Events Radar</h3>
-            <button class="close-overview-modal"><i class="fa-solid fa-xmark"></i></button>
+    <!-- Major Events Radar Full View Modal -->
+    <div class="admin-modal overview-modal" id="modalEventsFull">
+        <div class="maint-modal-header">
+            <h3 class="modal-main-title vd-title">30-Day Major Events Radar</h3>
+            <button class="close-modal modal-close-btn">&times;</button>
         </div>
         <div class="table-responsive">
-            <table class="admin-table">
+            <table class="bookings-table">
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Event Details</th>
-                        <th>Venue</th>
+                        <th>DATE</th>
+                        <th>EVENT NAME</th>
+                        <th>VENUE</th>
+                        <th>GUEST COUNT</th>
+                        <th>STATUS</th>
                     </tr>
                 </thead>
                 <tbody id="modal-events-tbody"></tbody>

@@ -228,7 +228,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                         <div class="header-actions">
                             <button class="btn-outline-dash" onclick="window.location.reload();"><i
                                     class="fa-solid fa-rotate-right"></i> Refresh</button>
-                            <a href="booking.php" style="text-decoration:none;"><button class="btn-primary-dash"><i
+                            <a href="booking.php" class="no-underline"><button class="btn-primary-dash"><i
                                         class="fa-solid fa-plus"></i> New Booking</button></a>
                         </div>
                     </div>
@@ -275,8 +275,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                                 <tbody>
                                     <?php if (empty($bookings)): ?>
                                     <tr>
-                                        <td colspan="6" style="text-align:center; padding:30px;">You have no bookings
-                                            yet. Time to plan a vacation!</td>
+                                        <td colspan="6" class="empty-table-cell">You have no bookings yet. Time to plan a vacation!</td>
                                     </tr>
                                     <?php else: ?>
                                     <?php foreach ($bookings as $b): 
@@ -291,10 +290,10 @@ while ($row = $notifs_result->fetch_assoc()) {
 
                                         $display_amount = '₱' . number_format($total_amt, 2);
                                         if ($is_pending_inquiry) {
-                                            $display_amount = '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>';
+                                            $display_amount = '<span class="text-tba">To Be Arranged</span>';
                                         }
 
-                                        // Badge Logic
+                                        // Status badge logic
                                         $badge_class = 'badge-pending'; 
                                         $status_text = 'Pending Payment';
                                         $filter_data = 'Pending';
@@ -334,8 +333,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                                     ?>
                                     <tr data-status="<?php echo $filter_data; ?>">
 
-                                        <td
-                                            style="font-family: monospace; letter-spacing: 1px; color: var(--color-gold); font-weight: 600;">
+                                        <td class="booking-ref-id">
                                             <?php echo $display_id; ?>
                                         </td>
                                         <td><?php echo htmlspecialchars($b['venue_name']); ?></td>
@@ -439,7 +437,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                                     </div>
                                     <div class="form-group full-width">
                                         <label>Date of Birth</label>
-                                        <input type="date" id="set-dob" class="form-control" style="max-width: 50%;"
+                                        <input type="date" id="set-dob" class="form-control dob-input-width"
                                             value="<?php echo isset($customer['dob']) ? $customer['dob'] : ''; ?>">
                                     </div>
                                 </div>
@@ -509,7 +507,7 @@ while ($row = $notifs_result->fetch_assoc()) {
             </div>
 
             <!-- Refund Info (Shows only if paid) -->
-            <div id="cancel-refund-info-wrapper" style="display: none;">
+            <div id="cancel-refund-info-wrapper" class="hidden-element">
                 <div class="cancel-summary-grid">
                     <span class="cancel-label">Total Paid by Guest:</span>
                     <span class="cancel-value" id="cancel-paid">₱0</span>
@@ -528,27 +526,25 @@ while ($row = $notifs_result->fetch_assoc()) {
             </div>
 
             <!-- Unpaid Note (Shows only if unpaid) -->
-            <div id="cancel-unpaid-info"
-                style="display: none; background: rgba(136, 160, 150, 0.1); padding: 12px; border-radius: 6px; margin: 15px 0;">
-                <p style="border: none; padding: 0; margin: 0; color: #557567; font-size: 0.9rem; text-align: center;">
+            <div id="cancel-unpaid-info" class="unpaid-banner">
+                <p class="unpaid-banner-text">
                     <i class="fa-solid fa-check-circle"></i> No payments have been made. You will not be charged.
                 </p>
             </div>
 
             <!-- FIXED Reason Input -->
             <div class="cancel-reason-block">
-                <span class="cancel-label" style="font-weight: 600;">Reason:</span>
+                <span class="cancel-label font-weight-600">Reason:</span>
                 <textarea class="cancel-textarea" rows="3"
                     placeholder="Please tell us why you are cancelling..."></textarea>
             </div>
 
             <!-- Bottom Refund Section (Shows only if paid) -->
-            <div id="cancel-refund-bottom" style="display: none;">
-                <div class="cancel-summary-grid" style="margin-top: 15px; align-items: center;">
-                    <span class="cancel-label" style="font-size: 1.1rem; color: var(--color-dark);">Refund
+            <div id="cancel-refund-bottom" class="hidden-element">
+                <div class="cancel-summary-grid refund-total-grid">
+                    <span class="cancel-label text-refund-label">Refund
                         Amount:</span>
-                    <span class="cancel-value" id="cancel-refund-total"
-                        style="font-size: 1.1rem; font-weight: 600; color: var(--color-dark);">₱0</span>
+                    <span class="cancel-value text-refund-val" id="cancel-refund-total">₱0</span>
                 </div>
 
                 <div class="cancel-checkbox-group-ui">
@@ -570,7 +566,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 
     <!-- Reschedule Modal (Upgraded to Luxury Style) -->
     <div class="modal-overlay" id="modal-reschedule">
-        <div class="modal-box cancel-modal-box" style="max-height: 90vh; overflow-y: auto;">
+        <div class="modal-box cancel-modal-box modal-box-scroll-90">
             <h2 class="cancel-modal-title">Reschedule Request</h2>
 
             <div class="cancel-summary-grid">
@@ -579,22 +575,22 @@ while ($row = $notifs_result->fetch_assoc()) {
                     id="reschedule-date">--</span>
             </div>
 
-            <div style="margin-top: 15px;">
+            <div class="margin-top-15">
                 <label
-                    style="display: block; margin-bottom: 10px; font-weight: 500; font-family: var(--font-body); color: var(--color-dark);">Select
+                    class="resched-label">Select
                     New Dates:</label>
                 <?php $calendarId = 'cal-ui-user-resched'; include 'includes/partials/booking_calendar.php'; ?>
             </div>
 
             <!-- FIXED Reason Input -->
             <div class="cancel-reason-block">
-                <span class="cancel-label" style="font-weight: 600;">Reason:</span>
+                <span class="cancel-label font-weight-600">Reason:</span>
                 <textarea id="reschedule-reason" class="cancel-textarea" rows="2"
                     placeholder="Why do you need to change dates?"></textarea>
             </div>
 
             <!-- RESTORED CHECKBOX -->
-            <div class="cancel-checkbox-group-ui" style="margin-bottom: 25px;">
+            <div class="cancel-checkbox-group-ui margin-bottom-25">
                 <input type="checkbox" id="confirm-reschedule">
                 <label for="confirm-reschedule">
                     <span class="check-title">I understand that my reschedule request is subject to availability and
@@ -612,7 +608,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 
     <!-- Booking Details Modal -->
     <div class="modal-overlay" id="modal-details">
-        <div class="modal-box" style="max-width: 580px; max-height: 85vh; overflow-y: auto;">
+        <div class="modal-box modal-details-scroll">
             <h2 class="modal-title" id="ud-title">Booking Details</h2>
             <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
 
@@ -622,71 +618,70 @@ while ($row = $notifs_result->fetch_assoc()) {
                 <p><span>Dates:</span> <span id="ud-dates">--</span></p>
                 <p><span>Guests:</span> <span id="ud-guests">--</span></p>
 
-                <div id="ud-specific-row" style="display: none;">
+                <div id="ud-specific-row" class="hidden-element">
                     <span id="ud-specific-label">Event Details:</span>
                     <span id="ud-specific-value">--</span>
                 </div>
 
-                <div id="ud-cancel-row" style="display: none; margin-top: 10px; background: #fff5f5; padding: 10px; border-left: 3px solid #dc3545;">
-                    <span style="font-weight: 600; color: #dc3545;">Cancellation Reason:</span>
+                <div id="ud-cancel-row" class="cancel-reason-box">
+                    <span class="cancel-reason-title">Cancellation Reason:</span>
                     <span id="ud-cancel-reason">--</span>
                 </div>
 
                 <!-- Itemized Cost Breakdown -->
-                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 12px;">
-                    <strong style="display:block; margin-bottom:8px; color: var(--color-dark); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em;">Cost Breakdown</strong>
+                <div class="details-breakdown-section">
+                    <strong class="details-section-title">Cost Breakdown</strong>
                     
                     <p><span>Venue Base Rate:</span> <span id="ud-base-amt">₱0.00</span></p>
                     
-                    <div id="ud-extrapax-container" style="display: none;">
+                    <div id="ud-extrapax-container" class="hidden-element">
                         <p><span>Extra Pax Charge:</span> <span id="ud-extrapax-amt">₱0.00</span></p>
                     </div>
 
-                    <div id="ud-addons-container" style="display: none;">
-                        <strong style="display:block; margin: 8px 0 4px; color: #666; font-size: 0.85rem;">Add-ons & Options:</strong>
+                    <div id="ud-addons-container" class="hidden-element">
+                        <strong class="details-subhead">Add-ons & Options:</strong>
                         <div id="ud-addons-list"></div>
                     </div>
 
-                    <div id="ud-line-items-container" style="display: none;">
-                        <strong style="display:block; margin: 8px 0 4px; color: #666; font-size: 0.85rem;">Custom Line Items:</strong>
+                    <div id="ud-line-items-container" class="hidden-element">
+                        <strong class="details-subhead">Custom Line Items:</strong>
                         <div id="ud-line-items-list"></div>
                     </div>
 
-                    <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px;">
+                    <div class="details-subtotal-box">
                         <p><span>Subtotal:</span> <span id="ud-subtotal-amt">₱0.00</span></p>
-                        <p style="font-weight: bold; font-size: 1.1rem; color: var(--color-gold); margin-top: 5px;">
+                        <p class="details-total-row">
                             <span>Total Amount:</span> <span id="ud-total-amt">₱0.00</span>
                         </p>
                     </div>
                 </div>
 
                 <!-- Payment Details -->
-                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 12px;">
-                    <strong style="display:block; margin-bottom:8px; color: var(--color-dark); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em;">Payment Details</strong>
+                <div class="details-breakdown-section">
+                    <strong class="details-section-title">Payment Details</strong>
                     <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
-                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #557567; font-weight: 600;">₱0.00</span></p>
-                    <p><span>Remaining Balance:</span> <span id="ud-balance-amt" style="color: #c94a4a; font-weight: 600;">₱0.00</span></p>
-                    <p><span>Transaction ID(s):</span> <span id="ud-tid" style="font-family: monospace; font-size: 0.85rem;">--</span></p>
+                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" class="text-paid-green">₱0.00</span></p>
+                    <p><span>Remaining Balance:</span> <span id="ud-balance-amt" class="text-balance-red">₱0.00</span></p>
+                    <p><span>Transaction ID(s):</span> <span id="ud-tid" class="text-mono-tid">--</span></p>
                 </div>
             </div>
 
-            <div class="modal-actions center-actions" style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn-modal btn-go-back close-modal" style="width: 100%; max-width: 150px;">Close</button>
-                <button class="btn-modal btn-confirm" id="btn-print-receipt" style="width: 100%; max-width: 150px; background-color: var(--color-gold);"><i class="fa-solid fa-print"></i> Print Receipt</button>
+            <div class="modal-actions center-actions details-modal-actions">
+                <button class="btn-modal btn-go-back close-modal btn-modal-150">Close</button>
+                <button class="btn-modal btn-confirm btn-modal-print-150" id="btn-print-receipt"><i class="fa-solid fa-print"></i> Print Receipt</button>
             </div>
         </div>
     </div>
 
     <!-- Alert Modal -->
-    <div class="modal-overlay" id="uniAlertModal" style="z-index: 10000;">
-        <div class="modal-box" style="max-width: 400px; text-align: center; padding: 30px;">
-            <i id="ua-icon" class="fa-solid fa-circle-info modal-icon-warning" style="color: var(--color-gold);"></i>
+    <div class="modal-overlay alert-modal-overlay" id="uniAlertModal">
+        <div class="modal-box alert-modal-box">
+            <i id="ua-icon" class="fa-solid fa-circle-info modal-icon-warning alert-icon-gold"></i>
             <h3 class="modal-title" id="ua-title">Notice</h3>
-            <p id="ua-message" style="color: var(--color-dark-light); font-size: 0.95rem; margin-bottom: 25px;">Message
+            <p id="ua-message" class="alert-msg-text">Message
                 goes here.</p>
-            <div style="display: flex; gap: 10px;">
-                <button class="btn-modal btn-confirm-red" id="ua-btn-ok"
-                    style="flex: 1; background-color: var(--color-dark); border-color: var(--color-dark);">OK</button>
+            <div class="alert-actions-flex">
+                <button class="btn-modal btn-confirm-red btn-alert-ok" id="ua-btn-ok">OK</button>
             </div>
         </div>
     </div>

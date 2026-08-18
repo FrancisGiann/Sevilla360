@@ -1272,3 +1272,210 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   User Dashboard Clean UI Classes
+   ========================================================================== */
+.no-underline {
+  text-decoration: none;
+}
+
+.empty-table-cell {
+  text-align: center;
+  padding: 30px;
+}
+
+.text-tba {
+  color: #b5884e;
+  font-style: italic;
+}
+
+.booking-ref-id {
+  font-family: monospace;
+  letter-spacing: 1px;
+  color: var(--color-gold);
+  font-weight: 600;
+}
+
+.dob-input-width {
+  max-width: 50%;
+}
+
+.hidden-element {
+  display: none;
+}
+
+.unpaid-banner {
+  display: none;
+  background: rgba(136, 160, 150, 0.1);
+  padding: 12px;
+  border-radius: 6px;
+  margin: 15px 0;
+}
+
+.unpaid-banner-text {
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: #557567;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.font-weight-600 {
+  font-weight: 600;
+}
+
+.refund-total-grid {
+  margin-top: 15px;
+  align-items: center;
+}
+
+.text-refund-label {
+  font-size: 1.1rem;
+  color: var(--color-dark);
+}
+
+.text-refund-val {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-dark);
+}
+
+.modal-box-scroll-90 {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.margin-top-15 {
+  margin-top: 15px;
+}
+
+.resched-label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--color-dark);
+}
+
+.margin-bottom-25 {
+  margin-bottom: 25px;
+}
+
+.modal-details-scroll {
+  max-width: 580px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.cancel-reason-box {
+  display: none;
+  margin-top: 10px;
+  background: #fff5f5;
+  padding: 10px;
+  border-left: 3px solid #dc3545;
+}
+
+.cancel-reason-title {
+  font-weight: 600;
+  color: #dc3545;
+}
+
+.details-breakdown-section {
+  margin-top: 15px;
+  border-top: 1px dashed #ccc;
+  padding-top: 12px;
+}
+
+.details-section-title {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-dark);
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+.details-subhead {
+  display: block;
+  margin: 8px 0 4px;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.details-subtotal-box {
+  margin-top: 10px;
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+}
+
+.details-total-row {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: var(--color-gold);
+  margin-top: 5px;
+}
+
+.text-paid-green {
+  color: #557567;
+  font-weight: 600;
+}
+
+.text-balance-red {
+  color: #c94a4a;
+  font-weight: 600;
+}
+
+.text-mono-tid {
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.details-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-modal-150 {
+  width: 100%;
+  max-width: 150px;
+}
+
+.btn-modal-print-150 {
+  width: 100%;
+  max-width: 150px;
+  background-color: var(--color-gold);
+}
+
+.alert-modal-overlay {
+  z-index: 10000;
+}
+
+.alert-modal-box {
+  max-width: 400px;
+  text-align: center;
+  padding: 30px;
+}
+
+.alert-icon-gold {
+  color: var(--color-gold);
+}
+
+.alert-msg-text {
+  color: var(--color-dark-light);
+  font-size: 0.95rem;
+  margin-bottom: 25px;
+}
+
+.alert-actions-flex {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-alert-ok {
+  flex: 1;
+  background-color: var(--color-dark);
+  border-color: var(--color-dark);
+}
