@@ -153,3 +153,38 @@
     .fc .fc-toolbar { flex-direction: column; gap: 15px; }
     .legend-box { flex-wrap: wrap; justify-content: center; }
 }
+
+/* ==========================================================================
+   Admin Calendar Clean UI Classes
+   ========================================================================== */
+.cal-master-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.8rem;
+  color: var(--color-dark);
+}
+
+.cal-master-subtitle {
+  margin: 5px 0 0 0;
+  color: var(--color-dark-light);
+}
+
+.bg-pending-color {
+  background: #c27c7c;
+}
+
+.bg-events-color {
+  background: #4a4440;
+}
+
+.bg-rooms-color {
+  background: #d6a870;
+}
+
+.bg-villas-color {
+  background: #88a096;
+}
+
+.bg-maint-color {
+  background: #64748b;
+}
