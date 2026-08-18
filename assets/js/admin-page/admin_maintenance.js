@@ -45,6 +45,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // Sub-tab switching between Active Maintenance & Past Maintenance History
+    const tableSubTabs = document.querySelectorAll("#maintTableSubTabs .tab-btn");
+    const activeView = document.getElementById("view-maint-active");
+    const historyView = document.getElementById("view-maint-history");
+
+    if (tableSubTabs.length > 0 && activeView && historyView) {
+        tableSubTabs.forEach(tab => {
+            tab.addEventListener("click", (e) => {
+                tableSubTabs.forEach(t => t.classList.remove("active"));
+                e.target.classList.add("active");
+
+                const view = e.target.getAttribute("data-maint-view");
+                if (view === "history") {
+                    activeView.classList.add("hidden-element");
+                    historyView.classList.remove("hidden-element");
+                } else {
+                    historyView.classList.add("hidden-element");
+                    activeView.classList.remove("hidden-element");
+                }
+            });
+        });
+    }
+
     const inputArea = document.getElementById("maint-area");
     const selectType = document.getElementById("maint-type");
     const toggleBlock = document.getElementById("maint-block");

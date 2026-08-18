@@ -61,12 +61,13 @@ try {
         ];
     }
 
-    // 2. Fetch MAINTENANCE Records
+    // 2. Fetch ACTIVE MAINTENANCE Records (Ignore completed/cancelled maintenance)
     $query_maint = "
         SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, 
                v.name as venue_name, v.category
         FROM maintenance m
         JOIN venues v ON m.venue_id = v.id
+        WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND m.end_date >= m.start_date
     ";
     $res_maint = $conn->query($query_maint);
 

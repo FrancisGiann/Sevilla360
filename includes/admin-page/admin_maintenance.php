@@ -2,11 +2,19 @@
 require_once 'config/db_connect.php';
 
 $upcoming_maint = $conn->query("
-    SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, v.name as venue_name 
+    SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, m.status, v.name as venue_name 
     FROM maintenance m 
     JOIN venues v ON m.venue_id = v.id 
-    WHERE m.end_date >= CURDATE() 
+    WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND m.end_date >= m.start_date
     ORDER BY m.start_date ASC
+");
+
+$past_maint = $conn->query("
+    SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, m.status, m.completed_at, v.name as venue_name 
+    FROM maintenance m 
+    JOIN venues v ON m.venue_id = v.id 
+    WHERE m.status = 'Completed' OR m.end_date < m.start_date OR m.end_date < CURDATE()
+    ORDER BY m.id DESC LIMIT 50
 ");
 
 $venues_query = $conn->query("SELECT category, name FROM venues WHERE status = 'Available' ORDER BY category, name");
@@ -92,10 +100,18 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                 </div>
             </div>
 
-            <!-- Active & Upcoming Maintenance Table -->
+            <!-- Active & History Maintenance Table -->
             <div class="table-card maint-table-card">
-                <h3 class="card-title">Active & Upcoming Maintenance</h3>
-                <div class="table-responsive">
+                <div class="table-header-flex" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                    <h3 class="card-title" style="margin:0;">Maintenance Records</h3>
+                    <div class="booking-tabs maint-table-tabs" id="maintTableSubTabs" style="margin:0;">
+                        <button class="tab-btn active" data-maint-view="active">Active & Upcoming</button>
+                        <button class="tab-btn" data-maint-view="history">Past / Completed History</button>
+                    </div>
+                </div>
+
+                <!-- Active & Upcoming Maintenance Table -->
+                <div class="table-responsive" id="view-maint-active">
                     <table class="bookings-table">
                         <thead>
                             <tr>
@@ -136,12 +152,55 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="6" class="maint-empty-row">No upcoming maintenance scheduled.</td>
+                                <td colspan="6" class="maint-empty-row">No active upcoming maintenance scheduled.</td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Past / Completed Maintenance History Table -->
+                <div class="table-responsive hidden-element" id="view-maint-history">
+                    <table class="bookings-table">
+                        <thead>
+                            <tr>
+                                <th>VENUE</th>
+                                <th>SCHEDULED DATES</th>
+                                <th>TYPE</th>
+                                <th>STATUS</th>
+                                <th>COMPLETED ON</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($past_maint && $past_maint->num_rows > 0): ?>
+                            <?php while($pm = $past_maint->fetch_assoc()): ?>
+                            <tr>
+                                <td class="font-weight-600"><?php echo htmlspecialchars($pm['venue_name']); ?></td>
+                                <td>
+                                    <?php 
+                                        $s = date('M j, Y', strtotime($pm['start_date']));
+                                        $e = date('M j, Y', strtotime($pm['end_date']));
+                                        echo ($s === $e) ? $s : "$s — $e";
+                                    ?>
+                                </td>
+                                <td><?php echo htmlspecialchars($pm['maintenance_type']); ?></td>
+                                <td>
+                                    <span class="status-badge status-confirmed">Completed</span>
+                                </td>
+                                <td>
+                                    <?php echo !empty($pm['completed_at']) ? date('M j, Y h:i A', strtotime($pm['completed_at'])) : date('M j, Y', strtotime($pm['end_date'])); ?>
+                                </td>
+                            </tr>
+                            <?php endwhile; ?>
+                            <?php else: ?>
+                            <tr>
+                                <td colspan="5" class="maint-empty-row">No past maintenance history recorded yet.</td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
             </div>
         </div>
 
@@ -160,9 +219,9 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                     <p class="maint-sum-last-row">Booking Block <span class="sum-val maint-sum-block" id="sum-maint-block">OFF</span></p>
                 </div>
 
-                <div class="action-buttons maint-action-buttons">
-                    <button class="btn btn-confirm-walkin maint-btn-full" id="btn-schedule-maint">SCHEDULE MAINTENANCE</button>
-                    <button class="btn btn-modal-outline maint-btn-clear" id="btn-clear-maint">CLEAR FORM</button>
+                <div class="action-buttons maint-summary-actions">
+                    <button type="button" class="btn-confirm-walkin btn-confirm-maint" id="btn-schedule-maint">SCHEDULE MAINTENANCE</button>
+                    <button type="button" class="btn-cancel-walkin btn-reset-maint" id="btn-clear-maint">CLEAR FORM</button>
                 </div>
             </div>
         </div>
