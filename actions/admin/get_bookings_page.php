@@ -40,7 +40,7 @@ if ($venueFilter !== 'All') {
 
 // Status Filtering Logic
 if ($statusFilter === 'action_req') {
-    $where_clauses[] = "(cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
+    $where_clauses[] = "b.booking_status != 'Cancelled' AND (cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
 } elseif ($statusFilter === 'partial') {
     $where_clauses[] = "(b.booking_status = 'Confirmed' AND b.payment_status IN ('Partial', 'Unpaid'))";
 } elseif ($statusFilter === 'confirmed') {

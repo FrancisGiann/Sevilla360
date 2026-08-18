@@ -77,6 +77,11 @@ try {
 
         $message = "Booking cancelled successfully. No refund necessary.";
     }
+
+    // Clean up any pending reschedule request for this booking
+    $stmt_rr = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Cancelled by Customer' WHERE booking_id = ? AND status = 'Pending'");
+    $stmt_rr->bind_param("i", $booking_id);
+    $stmt_rr->execute();
     
     $conn->commit();
 

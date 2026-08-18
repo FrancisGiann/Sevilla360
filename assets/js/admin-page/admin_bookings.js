@@ -183,8 +183,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 badgeClass = 'status-refunded'; statusText = 'Cancelled';
             }
   
-            if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Cancel Req.'; } 
-            else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
+            if (b.booking_status !== 'Cancelled') {
+                if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Cancel Req.'; } 
+                else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
+            }
   
             const fadeClass = (b.booking_status === 'Cancelled') ? 'faded-text' : '';
   

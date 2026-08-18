@@ -24,9 +24,9 @@ try {
     // 2. ACTION REQUIRED
     $res = $conn->query("SELECT COUNT(*) as c FROM bookings WHERE booking_status = 'Pending'");
     $pendingBookings = (int)($res->fetch_assoc()['c'] ?? 0);
-    $res = $conn->query("SELECT COUNT(*) as c FROM cancellations WHERE status = 'Pending'");
+    $res = $conn->query("SELECT COUNT(*) as c FROM cancellations cx JOIN bookings b ON cx.booking_id = b.id WHERE cx.status = 'Pending' AND b.booking_status != 'Cancelled'");
     $pendingCancels = (int)($res->fetch_assoc()['c'] ?? 0);
-    $res = $conn->query("SELECT COUNT(*) as c FROM reschedule_requests WHERE status = 'Pending'");
+    $res = $conn->query("SELECT COUNT(*) as c FROM reschedule_requests rr JOIN bookings b ON rr.booking_id = b.id WHERE rr.status = 'Pending' AND b.booking_status != 'Cancelled'");
     $pendingRescheds = (int)($res->fetch_assoc()['c'] ?? 0);
     $response['actionRequired'] = $pendingBookings + $pendingCancels + $pendingRescheds;
 

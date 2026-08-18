@@ -248,6 +248,11 @@ try {
         $stmt_cx = $conn->prepare("UPDATE cancellations SET status = 'Processed' WHERE booking_id = ?");
         $stmt_cx->bind_param("i", $booking_id);
         $stmt_cx->execute();
+
+        // Also clean up any pending reschedule request for this booking
+        $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
+        $stmt_resched->bind_param("i", $booking_id);
+        $stmt_resched->execute();
         
         $message = "Refund processed and booking cancelled!";
 
@@ -270,6 +275,11 @@ try {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
+
+        // Also clean up any pending reschedule request for this booking
+        $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
+        $stmt_resched->bind_param("i", $booking_id);
+        $stmt_resched->execute();
         
         $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
 
