@@ -26,7 +26,7 @@ $website_slots = [
     'home-hotel' => ['title' => 'Homepage - Hotel Preview', 'badge' => 'Homepage', 'type' => 'standard']
 ];
 
-$venue_standard_slots = []; // FIX: Distinct array for venue standard slots
+$venue_standard_slots = []; // Distinct array for venue standard slots
 $venue_360_slots = [];
 $venue_categories = []; 
 
@@ -47,7 +47,7 @@ if ($venues_query) {
         
         $venue_categories['venue_' . $safe_id] = $clean_name; 
         
-        // FIX: Place into the new dedicated array instead of $website_slots
+        // Place into dedicated venue_standard_slots array
         $venue_standard_slots['venue_' . $safe_id] = [
             'title' => $clean_name . ' (Standard Photo)',
             'badge' => $v['category'],
@@ -64,7 +64,7 @@ if ($venues_query) {
     }
 }
 
-// FIX: ORDER BY id DESC so the newest uploaded photo always becomes the cover [0]!
+// Order by id DESC so the newest uploaded photo takes precedence
 $query = "SELECT * FROM media_cms ORDER BY is_primary DESC, id DESC";
 $result = $conn->query($query);
 
@@ -80,7 +80,7 @@ if ($result && $result->num_rows > 0) {
         if ($slot === 'gallery') {
             $gallery_items[] = $row;
         } elseif (strpos($slot, 'home-') === 0) {
-            // FIX: Since id DESC, grab ONLY the first (newest) record, ignore DB ghost rows.
+            // Grab the newest record for single slots
             if (!isset($uploaded_media[$slot])) {
                 $uploaded_media[$slot] = $row;
             }
@@ -92,7 +92,7 @@ if ($result && $result->num_rows > 0) {
     }
 }
 
-// NEW: separate ASC-ordered dataset specifically for hotspot placement,
+// Separate ASC-ordered dataset specifically for hotspot placement
 // so "View 1/2/3" numbering always matches showroom.php's pano_urls order.
 $pano_asc_query = $conn->query("
     SELECT id, slot_assignment, file_path 

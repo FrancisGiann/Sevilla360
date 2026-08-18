@@ -75,7 +75,7 @@ class SevillaCalendar {
     const firstDayIndex = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // NEW: Get Today's exact date, and set time to midnight so we can compare accurately!
+    // Get today's exact date at midnight for accurate date comparison
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -93,7 +93,7 @@ class SevillaCalendar {
 
       const cellDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-      // NEW LOGIC: Is this date in the past?
+      // Check if date is in the past
       const isPastDate = cellDate < today;
 
       if (isPastDate) {

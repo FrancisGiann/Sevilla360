@@ -315,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     valTitle.textContent = room.title;
                     panoLoadingOverlay.style.display = "none";
                     
-                    // CRITICAL FIX: Only show the drag hint if they haven't seen it yet!
+                    // Display interaction drag hint on initial room view
                     if (interactionHint && !hasSeenHint) {
                         interactionHint.classList.add("hint-visible");
                         clearTimeout(hintTimeout);

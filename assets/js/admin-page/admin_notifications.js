@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const event = new CustomEvent('SevillaDashboardData', { detail: data });
             window.dispatchEvent(event);
 
-        }).catch(e => console.log('Dashboard fetch silent fail', e));
+        }).catch(() => {});
     }
 
     // Run instantly on page load, then check every 60 seconds

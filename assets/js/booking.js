@@ -95,9 +95,7 @@ class BookingController {
             
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
-            // =========================================================
-            // NEW: DYNAMICALLY UPDATE EVENT STYLE DROPDOWN CAPACITIES
-            // =========================================================
+            // Dynamically update event style dropdown capacities
             const styleSelect = this.getEl('event-style');
             if (styleSelect && opt.dataset.theater) {
                 // Update the text of the existing options to include the specific room capacities
@@ -344,8 +342,8 @@ class BookingController {
     async unlockDatesAPI() {
         try { 
             await fetch('actions/bookings/unlock_dates.php', {
-                method: 'POST', // Changed to POST
-                headers: { "X-CSRF-Token": this.csrfToken } // Added the token!
+                method: 'POST',
+                headers: { "X-CSRF-Token": this.csrfToken }
             }); 
         } 
         catch (error) { console.error("Unlock failed", error); }
@@ -757,9 +755,7 @@ class BookingController {
             formData.append("stay_type", stayText);
         }
 
-        // =========================================================
-        // FIX: CAPTURE CUSTOM HTML ADD-ONS AS LINE ITEMS
-        // =========================================================
+        // Capture custom HTML add-ons as line items
         let customLineItems = [];
 
         // 1. Catering

@@ -65,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
 
-        // FIX: Add all Custom Line Items to $true_total BEFORE calculating downpayment!
+        // Add custom line items to total before calculating downpayment
         if (isset($_POST['custom_line_items'])) {
             $line_items_data = json_decode($_POST['custom_line_items'], true);
             if (is_array($line_items_data)) {
@@ -91,9 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($raw_method === 'maya') $pay_method = 'Maya';
         if ($raw_method === 'bank') $pay_method = 'Bank Transfer';
 
-        // =========================================================================
-        // FIX: FIND OR CREATE CUSTOMER (Prevents Duplicate Email Error)
-        // =========================================================================
+        // Find or create customer (prevents duplicate email error)
         $guest_email = trim($_POST['guest_email']);
         $guest_phone = trim($_POST['guest_phone']);
         $guest_name = trim($_POST['guest_name']);
@@ -114,7 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_update_cust->bind_param("si", $guest_phone, $customer_id);
             $stmt_update_cust->execute();
         } else {
-            // New Customer
+            // Create new customer record
             $stmt_cust = $conn->prepare("INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)");
             $stmt_cust->bind_param("ssss", $first_name, $last_name, $guest_email, $guest_phone);
             $stmt_cust->execute();
@@ -156,7 +154,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);
         $stmt_pay->execute();
 
-        // FIX: Replaced $guestName with $_POST['guest_name'] to prevent PHP Crash
+        // Log walk-in creation using POST guest name
         if (isset($_SESSION['user_id'])) {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Walk-in Bookings';
@@ -168,9 +166,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $audit_stmt->execute();
         }
 
-        // =========================================================
-        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
-        // =========================================================
+        // Commit database before sending receipt email
         $conn->commit();
 
         // EMAIL MAILER

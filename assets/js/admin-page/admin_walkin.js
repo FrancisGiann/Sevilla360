@@ -83,9 +83,7 @@ class AdminWalkinController {
 
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
-            // =========================================================
-            // NEW: DYNAMICALLY UPDATE EVENT STYLE DROPDOWN CAPACITIES
-            // =========================================================
+            // Dynamically update event style dropdown capacities
             const styleSelect = this.getEl('event-style');
             if (styleSelect && opt.dataset.theater) {
                 // Update the text of the existing options to include the specific room capacities
@@ -358,10 +356,7 @@ class AdminWalkinController {
             case 'tab-villa': this.calcVillaMath(); break;
         }
 
-        // =====================================================================
-        // NEW POS LOGIC: Loop through the Line Item Builder to get Final Add-ons
-        // (This catches both System-synced items AND purely Manual items)
-        // =====================================================================
+        // Loop through line item builder for custom add-ons
         document.querySelectorAll(".wi-row").forEach(row => {
             const name = row.querySelector(".wi-item-name").value || "Custom Item";
             const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;

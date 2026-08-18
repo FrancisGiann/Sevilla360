@@ -73,9 +73,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             $method_str = 'card';
         }
 
-        // =========================================================================
-        // FIX: IDEMPOTENCY CHECK — prevent double-crediting on webhook retries
-        // =========================================================================
+        // Idempotency check — prevent double-crediting on webhook retries
         $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
         $stmt_dupe->bind_param("s", $transaction_id);
         $stmt_dupe->execute();
@@ -118,9 +116,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         $audit->bind_param("s", $log_action);
         $audit->execute();
 
-        // =========================================================
-        // THE FIX: COMMIT THE DATABASE BEFORE SENDING THE EMAIL!
-        // =========================================================
+        // Commit database before sending email
         $conn->commit();
         
         // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)

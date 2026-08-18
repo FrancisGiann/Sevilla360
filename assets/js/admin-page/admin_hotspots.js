@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentPanoMesh = null;
     let currentMediaId = null;
     let currentSlot = null;
-    let currentPhotosArray = []; // NEW: Keep track of all photos for this room
+    let currentPhotosArray = []; // Track all photos for this room
     let pendingPoint = null;
     let pendingSpot = null;
     let raycastEnabled = false;
@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetWrapper = document.getElementById("hs-target-wrapper");
     const targetSelect = document.getElementById("hs-target-index");
     
-    // NEW: The Admin View Switcher Dropdown
+    // Admin view switcher dropdown
     const adminViewSelector = document.getElementById("hs-admin-view-selector");
 
     // ============================================================
@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // Populate Walk-To target dropdown (excluding the current view, set to 0 by default)
             refreshTargetDropdown(0);
 
-            // NEW: Populate the Admin View Switcher
+            // Populate the admin view switcher
             if (adminViewSelector) {
                 adminViewSelector.innerHTML = "";
                 currentPhotosArray.forEach((p, idx) => {
@@ -181,7 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ============================================================
-    // NEW: ADMIN VIEW SWITCHER LOGIC
+    // ADMIN VIEW SWITCHER LOGIC
     // ============================================================
     adminViewSelector?.addEventListener("change", (e) => {
         const selectedIndex = parseInt(e.target.value, 10);
@@ -285,7 +285,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         pendingPoint = intersects[0].point.clone();
         
-        // Fix for mirrored coordinate bug
+        // Adjust coordinate orientation for 3D panorama placement
         pendingPoint.x = -pendingPoint.x;
 
         const selectedType = typeSelect?.value || "info";

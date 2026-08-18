@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
     // Listen to keystrokes in the search bar
     if (searchInput) {
-        searchInput.addEventListener('input', filterTable); // Changed from keyup to input (handles copy/paste better)
+        searchInput.addEventListener('input', filterTable);
     }
 
     // Listen to changes in the date picker

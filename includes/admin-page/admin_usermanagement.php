@@ -12,7 +12,7 @@ $staff_query = $conn->query("
 ");
 $staff_list = $staff_query->fetch_all(MYSQLI_ASSOC);
 
-// UPDATED: Fetch Customers + Status + Total Bookings
+// Fetch Customers with status and total booking counts
 $cust_query = $conn->query("
     SELECT c.id, c.user_id, u.status, c.first_name, c.last_name, c.email, COUNT(b.id) as total_bookings 
     FROM customers c 

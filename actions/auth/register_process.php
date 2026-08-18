@@ -98,9 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $new_user_id = $conn->insert_id; 
 
-        // =========================================================================
-        // THE FIX: LINK TO EXISTING WALK-IN PROFILE OR CREATE A NEW ONE
-        // =========================================================================
+        // Link to existing walk-in profile or create a new one
         $stmt_check_cust = $conn->prepare("SELECT id, user_id FROM customers WHERE email = ?");
         $stmt_check_cust->bind_param("s", $email);
         $stmt_check_cust->execute();

@@ -27,14 +27,13 @@ try {
         $fname = trim($data['fname']);
         $lname = trim($data['lname']);
         $phone = trim($data['phone']);
-        // NEW: Grab the DOB, or set it to NULL if they left it blank
+        // Handle date of birth field
         $dob = !empty($data['dob']) ? trim($data['dob']) : null; 
 
         if (empty($fname) || empty($lname)) {
             throw new Exception("First and Last name are required.");
         }
 
-        // UPDATED: Added `dob` to the SQL query
         $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ?, dob = ? WHERE user_id = ?");
         $stmt->bind_param("ssssi", $fname, $lname, $phone, $dob, $user_id);
         

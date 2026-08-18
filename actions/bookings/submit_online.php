@@ -131,9 +131,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_villa->execute();
         }
 
-        // =========================================================================
-        // FIX: SAVE CUSTOM LINE ITEMS TO DATABASE
-        // =========================================================================
+        // Save custom line items to database
         if (isset($_POST['custom_line_items'])) {
             $line_items = json_decode($_POST['custom_line_items'], true);
             $total_addons_cost = 0;
@@ -175,7 +173,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $amount_due = 0;
         
-        // FIX: ONLY CALCULATE AMOUNT DUE IF IT IS NOT AN EVENT HALL
+        // Only calculate amount due if venue is not an Event Hall
         if ($venue_category !== 'Event Hall') {
             if ($scheme === '100% Full') $amount_due = $true_total;
             elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;

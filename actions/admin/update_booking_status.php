@@ -10,9 +10,7 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['ro
 
 require_once __DIR__ . '/../../config/db_connect.php'; 
 
-// ==========================================
-// NEW: INCLUDE MAILER FOR NOTIFICATIONS
-// ==========================================
+// Include mailer for notifications
 require_once '../../includes/mailer.php'; 
 require_once '../../includes/notifications.php';
 
@@ -170,9 +168,7 @@ try {
         
         $message = "Payment of ₱" . number_format($amount_to_add, 2) . " received successfully!";
         
-        // =========================================================
-        // NEW FIX: SEND EMAIL RECEIPT FOR ADMIN MANUAL PAYMENTS
-        // =========================================================
+        // Send email receipt for admin manual payments
         try {
             $email_status = ($new_payment_status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Manual Payment)';
             send_booking_receipt($c_email, $c_name, $ref_no, $v_name, $new_amount_paid, $email_status);

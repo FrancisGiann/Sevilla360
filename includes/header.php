@@ -11,7 +11,7 @@ $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
 $isAdmin    = (($_SESSION['role'] ?? '') === 'staff' || ($_SESSION['role'] ?? '') === 'admin');
 
-// Updated to point to your actual site pages and anchors!
+// Primary navigation links and anchors
 $nav = [
     'home'           => ['label' => 'Home',             'url' => 'index.php'],
     'about'          => ['label' => 'About',            'url' => 'index.php#about'],

@@ -43,9 +43,7 @@ try {
     
     if ($balance_due <= 0) throw new Exception("This booking is already fully paid.");
 
-    // =========================================================================
-    // THE FIX: RESPECT THE PAYMENT SCHEME ON THE FIRST PAYMENT
-    // =========================================================================
+    // Respect chosen payment scheme on first payment
     $amount_to_pay = $balance_due; // Default to the full remaining balance
     $payment_label = 'Balance Payment';
 
