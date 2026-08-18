@@ -1,6 +1,3 @@
-/**
- * SEVILLA360 - Admin Dashboard Charts & Logic
- */
 document.addEventListener("DOMContentLoaded", () => {
     const colors = { gold: "#d6a870", beige: "#fdf2e2", dark: "#2a2522", green: "#88a096", red: "#c27c7c", grid: "rgba(42, 37, 34, 0.05)" };
     Chart.defaults.font.family = "'Inter', sans-serif";
@@ -13,7 +10,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
     }
 
-    // Shared Helper to Open In-Place Booking Details Modal
     window.openOverviewBookingModal = function(bookingId) {
         if (!bookingId) return;
 
@@ -21,7 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const modal = document.getElementById('overviewBookingModal');
         if (!overlay || !modal) return;
 
-        // Reset fields to loading
         document.getElementById('ov-vd-title').innerText = "Loading Details...";
         document.getElementById('ov-vd-customer-name').innerText = "...";
         document.getElementById('ov-vd-customer-email').innerText = "...";
@@ -47,7 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = res.data.booking;
                 const specifics = res.data.specifics;
                 const addons = res.data.addons;
-                const lineItems = res.data.line_items;
 
                 document.getElementById('ov-vd-title').innerText = `Booking ${data.reference_no}`;
                 
@@ -74,9 +68,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     specValue.style.display = 'block';
                     if (data.venue_category === 'Event Hall') {
                         specLabel.innerText = "Event Details:";
-                        let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
+                        let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
                         if (specifics.admin_notes) {
-                            notesHtml += `<span style="color:#2a2522; font-size:0.85rem; display:block; margin-top:5px; background:#fffaf1; border-left:3px solid #d6a870; padding:8px; border-radius:4px;"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
+                            notesHtml += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
                         }
                         specValue.innerHTML = notesHtml;
                     } else if (data.venue_category === 'Resort Villa') {
@@ -107,46 +101,25 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (addons && addons.length > 0) {
                     hasExtras = true;
                     addons.forEach(addon => {
-                        addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                    });
-                }
-
-                if (lineItems && lineItems.length > 0) {
-                    hasExtras = true;
-                    lineItems.forEach(item => {
-                        addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${item.item_name}</span> <span class="value">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+                        addonsList.innerHTML += `<span class="label">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                     });
                 }
 
                 addonsContainer.style.display = hasExtras ? 'block' : 'none';
 
-                const formatCash = (amt) => `₱${parseFloat(amt || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-                
-                if (data.venue_category === 'Event Hall' && data.booking_status === 'Pending') {
-                    document.getElementById('ov-vd-base-amt').innerText = "TBA";
-                    document.getElementById('ov-vd-addons-amt').innerText = "TBA";
-                    document.getElementById('ov-vd-extrapax-amt').innerText = "TBA";
-                    document.getElementById('ov-vd-total-amt').innerText = "To Be Arranged";
-                    document.getElementById('ov-vd-scheme').innerText = "To Be Arranged";
-                } else {
-                    document.getElementById('ov-vd-base-amt').innerText = formatCash(data.base_amount);
-                    document.getElementById('ov-vd-addons-amt').innerText = formatCash(data.addons_amount);
-                    document.getElementById('ov-vd-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
-                    document.getElementById('ov-vd-total-amt').innerText = formatCash(data.total_amount);
-                    
-                    if (data.payment_status === 'Paid') {
-                        document.getElementById('ov-vd-scheme').innerText = "100% Fully Paid";
-                    } else if (data.payment_status === 'Refunded') {
-                        document.getElementById('ov-vd-scheme').innerText = "Refunded / Cancelled";
-                    } else {
-                        document.getElementById('ov-vd-scheme').innerText = data.payment_scheme;
-                    }
-                }
-                
-                document.getElementById('ov-vd-paid-amt').innerText = formatCash(data.amount_paid);
+                document.getElementById('ov-vd-base-amt').innerText = currencyFormatter.format(data.base_amount);
+                document.getElementById('ov-vd-addons-amt').innerText = currencyFormatter.format(data.addons_amount);
+                document.getElementById('ov-vd-extrapax-amt').innerText = currencyFormatter.format(data.extra_pax_amount);
+                document.getElementById('ov-vd-total-amt').innerText = currencyFormatter.format(data.total_amount);
 
-                const manageLink = document.getElementById('ov-btn-manage-link');
-                if (manageLink) manageLink.href = `admin_dashboard.php?page=bookings&search=${data.reference_no}`;
+                let schemeText = '100% Full Payment';
+                if (data.payment_scheme === '50_percent') schemeText = '50% Downpayment';
+                else if (data.payment_scheme === '20_percent') schemeText = '20% Reservation Fee';
+                document.getElementById('ov-vd-scheme').innerText = schemeText;
+                document.getElementById('ov-vd-paid-amt').innerText = currencyFormatter.format(data.amount_paid);
+
+                const manageBtn = document.getElementById('ov-btn-manage-link');
+                if (manageBtn) manageBtn.href = `admin_dashboard.php?page=bookings&search=${encodeURIComponent(data.reference_no)}`;
             })
             .catch(err => {
                 console.error(err);
@@ -154,7 +127,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
     };
 
-    // Shared Helper to Open In-Place Maintenance Modal
     window.openOverviewMaintenanceModal = function(alert) {
         if (!alert) return;
 
@@ -176,28 +148,23 @@ document.addEventListener("DOMContentLoaded", () => {
         modal.classList.add('active');
     };
 
-    // =========================================================================
-    // LISTEN FOR DATA BROADCAST FROM admin_notifications.js
-    // =========================================================================
     window.addEventListener('SevillaDashboardData', (e) => {
         const data = e.detail;
         if(data.error) return console.error("Dashboard Error:", data.error);
 
-        // 1. Maintenance Alerts
         const alertsContainer = document.getElementById('maintenance-alerts-container');
         if (alertsContainer) {
             alertsContainer.innerHTML = ''; 
             if (data.maintenanceAlerts && data.maintenanceAlerts.length > 0) {
                 data.maintenanceAlerts.forEach(alert => {
                     const alertElem = document.createElement('div');
-                    alertElem.className = 'maintenance-alert';
-                    alertElem.style.cursor = 'pointer';
+                    alertElem.className = 'maintenance-alert clickable';
                     alertElem.title = 'Click to view maintenance details';
                     alertElem.innerHTML = `
                         <i class="fa-solid fa-triangle-exclamation"></i>
                         <div>
                             <strong>${escapeHTML(alert.name)} — Maintenance Alert (${escapeHTML(alert.maintenance_type)})</strong>
-                            <p><strong>Maintenance Type:</strong> <span style="background: rgba(220,38,38,0.1); color: #dc2626; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${escapeHTML(alert.maintenance_type)}</span>${alert.notes ? ` &bull; <strong>Notes:</strong> ${escapeHTML(alert.notes)}` : ''}</p>
+                            <p><strong>Maintenance Type:</strong> <span class="maint-pill-type">${escapeHTML(alert.maintenance_type)}</span>${alert.notes ? ` &bull; <strong>Notes:</strong> ${escapeHTML(alert.notes)}` : ''}</p>
                         </div>
                     `;
                     alertElem.addEventListener('click', () => openOverviewMaintenanceModal(alert));
@@ -206,11 +173,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        // 2. Top Stats Row
         const revStat = document.getElementById('stat-monthly-revenue');
         if (revStat) {
             if (data.monthlyRevenue === null || data.userRole === 'staff') {
-                revStat.innerHTML = '<span style="font-size: 1.1rem; color: #a3a3a3; font-style: italic;">Restricted</span>';
+                revStat.innerHTML = '<span class="stat-restricted-text">Restricted</span>';
             } else {
                 revStat.textContent = currencyFormatter.format(data.monthlyRevenue);
             }
@@ -219,7 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById('stat-arrivals-today').textContent = data.arrivalsToday;
         document.getElementById('stat-occupancy-rate').textContent = `${data.occupancyRate}%`;
 
-        // 3. Render Advanced Sections
         renderCharts(data.charts, data.userRole);
         renderTodaysOperations(data.todaysOperations);
         renderUpcomingEvents(data.upcomingEvents);
@@ -232,7 +197,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if(revChart) revChart.destroy();
         if(statChart) statChart.destroy();
 
-        // Revenue Chart (Only if not restricted for staff)
         const revCanvas = document.getElementById("revenueChart");
         if (revCanvas && chartsData.revenue && !chartsData.revenue.restricted && userRole !== 'staff') {
             new Chart(revCanvas.getContext("2d"), {
@@ -260,8 +224,8 @@ document.addEventListener("DOMContentLoaded", () => {
         widgetList.innerHTML = ''; modalBody.innerHTML = '';
 
         if (!bookings || bookings.length === 0) {
-            widgetList.innerHTML = '<p style="text-align:center; padding: 10px; color:#888;">No active bookings today.</p>';
-            modalBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No active bookings today.</td></tr>';
+            widgetList.innerHTML = '<p class="widget-placeholder-text">No active bookings today.</p>';
+            modalBody.innerHTML = '<tr><td colspan="3" class="table-loading-td">No active bookings today.</td></tr>';
             return;
         }
 
@@ -275,13 +239,13 @@ document.addEventListener("DOMContentLoaded", () => {
             let subText = '';
 
             if (isMaint) {
-                badgeHtml = `<span class="badge" style="background:#fee2e2; color:#dc2626; font-weight:600;">Maintenance (${escapeHTML(b.maintenance_type)})</span>`;
+                badgeHtml = `<span class="badge badge-maint-alert">Maintenance (${escapeHTML(b.maintenance_type)})</span>`;
                 titleText = `Out of Order: ${escapeHTML(b.venue_name)}`;
-                subText = `<span style="display:block; font-size: 0.8rem; color: #dc2626; margin-top: 3px;"><i class="fa-solid fa-wrench"></i> ${escapeHTML(b.maintenance_type)}</span>`;
+                subText = `<span class="color-red"><i class="fa-solid fa-wrench"></i> ${escapeHTML(b.maintenance_type)}</span>`;
             } else {
-                if (b.start_date === todayStr) badgeHtml = '<span class="badge" style="background:#dbeafe; color:#1e40af;">Arriving</span>';
-                else if (b.end_date === todayStr) badgeHtml = '<span class="badge" style="background:#fee2e2; color:#dc2626;">Checkout</span>';
-                else badgeHtml = '<span class="badge" style="background:#dcfce7; color:#166534;">In-House</span>';
+                if (b.start_date === todayStr) badgeHtml = '<span class="badge status-partial">Arriving</span>';
+                else if (b.end_date === todayStr) badgeHtml = '<span class="badge status-pending-refund">Checkout</span>';
+                else badgeHtml = '<span class="badge status-paid">In-House</span>';
 
                 let timeString = '';
                 if (b.category === 'Hotel Room') {
@@ -293,27 +257,22 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 titleText = `${escapeHTML(b.first_name)} ${escapeHTML(b.last_name)}`;
-                subText = `${escapeHTML(b.venue_name)} <span style="display:block; font-size: 0.8rem; color: #888; margin-top: 3px;"><i class="fa-regular fa-clock"></i> ${timeString}</span>`;
+                subText = `${escapeHTML(b.venue_name)} <span><i class="fa-regular fa-clock"></i> ${timeString}</span>`;
             }
 
-            // Modal Row
             const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
+            tr.className = 'clickable-row';
             tr.innerHTML = `
                 <td><strong>${titleText}</strong></td>
                 <td>${subText}</td>
                 <td>${badgeHtml}</td>
             `;
             tr.addEventListener('click', () => isMaint ? openOverviewMaintenanceModal(b) : openOverviewBookingModal(b.id));
-            tr.addEventListener('mouseover', () => tr.style.backgroundColor = 'rgba(214,168,112,0.1)');
-            tr.addEventListener('mouseout', () => tr.style.backgroundColor = 'transparent');
             modalBody.appendChild(tr);
 
-            // Compact Widget Item
             if (index < 3) {
                 const item = document.createElement('div');
-                item.className = 'widget-item';
-                item.style.cursor = 'pointer';
+                item.className = 'widget-item clickable';
                 item.innerHTML = `
                     <div class="widget-info">
                         <strong>${isMaint ? escapeHTML(b.venue_name) : escapeHTML(b.last_name)}</strong>
@@ -322,8 +281,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${badgeHtml}
                 `;
                 item.addEventListener('click', () => isMaint ? openOverviewMaintenanceModal(b) : openOverviewBookingModal(b.id));
-                item.addEventListener('mouseover', () => item.style.backgroundColor = 'rgba(214,168,112,0.05)');
-                item.addEventListener('mouseout', () => item.style.backgroundColor = 'transparent');
                 widgetList.appendChild(item);
             }
         });
@@ -337,8 +294,8 @@ document.addEventListener("DOMContentLoaded", () => {
         widgetList.innerHTML = ''; modalBody.innerHTML = '';
 
         if (!events || events.length === 0) {
-            widgetList.innerHTML = '<p style="text-align:center; padding: 10px; color:#888;">No upcoming events.</p>';
-            modalBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No upcoming events.</td></tr>';
+            widgetList.innerHTML = '<p class="widget-placeholder-text">No upcoming events.</p>';
+            modalBody.innerHTML = '<tr><td colspan="3" class="table-loading-td">No upcoming events.</td></tr>';
             return;
         }
 
@@ -356,36 +313,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const badgeHtml = `<span style="background:${badgeBg}; color:${badgeText}; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;">${escapeHTML(eventType)}</span>`;
 
-            // Modal Row
             const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
+            tr.className = 'clickable-row';
             tr.innerHTML = `
-                <td style="font-weight:600; color:var(--color-gold);">${dateStr}</td>
-                <td><div style="margin-bottom: 5px;">${badgeHtml} <span style="font-size:0.85rem; color:#666;">${escapeHTML(eventStyle)}</span></div>
-                <div style="font-size:0.85rem; color:var(--color-dark);">Host: <strong>${escapeHTML(e.last_name)}</strong></div></td>
+                <td class="color-gold"><strong>${dateStr}</strong></td>
+                <td><div>${badgeHtml} <span>${escapeHTML(eventStyle)}</span></div>
+                <div>Host: <strong>${escapeHTML(e.last_name)}</strong></div></td>
                 <td>${escapeHTML(e.venue_name)}</td>
             `;
             tr.addEventListener('click', () => openOverviewBookingModal(e.id));
-            tr.addEventListener('mouseover', () => tr.style.backgroundColor = 'rgba(214,168,112,0.1)');
-            tr.addEventListener('mouseout', () => tr.style.backgroundColor = 'transparent');
             modalBody.appendChild(tr);
 
-            // Compact Widget Item
             if (index < 3) {
                 const item = document.createElement('div');
-                item.className = 'widget-item';
-                item.style.alignItems = 'flex-start';
-                item.style.cursor = 'pointer';
+                item.className = 'widget-item clickable';
                 item.innerHTML = `
                     <div class="widget-info">
-                        <strong style="color:var(--color-gold); margin-right: 5px;">${dateStr}</strong> 
+                        <strong class="color-gold">${dateStr}</strong> 
                         <strong>${escapeHTML(e.last_name)}</strong>
-                        <div style="margin-top: 6px;">${badgeHtml}</div>
+                        <div>${badgeHtml}</div>
                     </div>
                 `;
                 item.addEventListener('click', () => openOverviewBookingModal(e.id));
-                item.addEventListener('mouseover', () => item.style.backgroundColor = 'rgba(214,168,112,0.05)');
-                item.addEventListener('mouseout', () => item.style.backgroundColor = 'transparent');
                 widgetList.appendChild(item);
             }
         });
@@ -397,7 +346,7 @@ document.addEventListener("DOMContentLoaded", () => {
         tbody.innerHTML = ''; 
 
         if (!bookings || bookings.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No recent bookings found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="table-loading-td">No recent bookings found.</td></tr>';
             return;
         }
 
@@ -413,14 +362,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const dateStr = new Date(booking.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 
-            // Mask price for pending events
             let amountText = currencyFormatter.format(booking.total_amount);
             if (booking.venue_category === 'Event Hall' && booking.booking_status === 'Pending') {
-                amountText = '<span style="color:#b5884e; font-style:italic;">TBA</span>';
+                amountText = '<span class="tba-text">TBA</span>';
             }
 
             const tr = document.createElement('tr');
-            tr.style.cursor = 'pointer';
+            tr.className = 'clickable-row';
             tr.title = 'Click to view booking details';
             tr.innerHTML = `
                 <td>#${booking.reference_no}</td>
@@ -430,13 +378,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td><span class="badge ${badgeClass}">${statusText}</span></td>
             `;
             tr.addEventListener('click', () => openOverviewBookingModal(booking.id));
-            tr.addEventListener('mouseover', () => tr.style.backgroundColor = 'rgba(214,168,112,0.1)');
-            tr.addEventListener('mouseout', () => tr.style.backgroundColor = 'transparent');
             tbody.appendChild(tr);
         });
     }
 
-    // Modal Handlers
     const overlay = document.getElementById('overviewModalOverlay');
     if (overlay) {
         document.querySelectorAll('.btn-open-modal').forEach(btn => {

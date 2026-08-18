@@ -670,9 +670,9 @@ document.addEventListener("DOMContentLoaded", () => {
                       specValue.style.display = 'block';
                       if (data.venue_category === 'Event Hall') {
                           specLabel.innerText = "Event Details:";
-                          let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
+                          let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
                           if (specifics.admin_notes) {
-                              notesHtml += `<span style="color:#2a2522; font-size:0.85rem; display:block; margin-top:5px; background:#fffaf1; border-left:3px solid #d6a870; padding:8px; border-radius:4px;"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
+                              notesHtml += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
                           }
                           specValue.innerHTML = notesHtml;
                       } else if (data.venue_category === 'Resort Villa') {

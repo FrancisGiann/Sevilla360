@@ -603,3 +603,401 @@
   .btn-modal { width: 100%; }
   .calendar-dropdown { width: 270px; }
 }
+
+/* ==========================================================================
+   Admin Bookings Clean UI Classes
+   ========================================================================== */
+.tab-action-req {
+  color: #e06666;
+  font-weight: 600;
+}
+
+.table-loading-td-padded {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+}
+
+.spinner-icon-gold {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+  color: var(--color-gold);
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-top: 1px solid #eee;
+  background: #faf9f7;
+  border-radius: 0 0 8px 8px;
+}
+
+.pagination-info {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.pagination-bold-dark {
+  font-weight: 600;
+  color: var(--color-dark);
+}
+
+.pagination-controls-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pagination-page-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-dark);
+  margin-right: 10px;
+}
+
+.text-gold-bold {
+  color: var(--color-gold);
+}
+
+.btn-pag {
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.text-sub-muted {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.date-picker-wrapper-bordered {
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.form-label-bold {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-dark);
+}
+
+.modal-actions-top-25 {
+  margin-top: 25px;
+}
+
+.modal-view-details {
+  max-width: 600px;
+}
+
+.vd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.vd-title {
+  margin-bottom: 0;
+}
+
+.vd-section-title {
+  font-size: 1.1rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.vd-summary-grid {
+  grid-template-columns: 120px 1fr;
+  margin-bottom: 20px;
+}
+
+.vd-addons-grid {
+  grid-template-columns: 1fr auto;
+  row-gap: 8px;
+}
+
+.vd-financials-grid {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 10px;
+}
+
+.vd-total-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  justify-content: space-between;
+}
+
+.vd-paid-grid {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 0;
+  margin-top: 10px;
+}
+
+.vd-modal-actions {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-gold {
+  background: var(--color-gold);
+  color: #fff;
+}
+
+.btn-dark {
+  background: var(--color-dark);
+  color: #fff;
+}
+
+.pmt-balance-wrapper {
+  margin-bottom: 20px;
+}
+
+.pmt-balance-amount {
+  color: #e06666;
+  font-size: 1.2rem;
+}
+
+.form-group-mb15 {
+  margin-bottom: 15px;
+}
+
+.form-label-med {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: var(--color-dark);
+}
+
+.form-input-padded {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(42, 37, 34, 0.15);
+  border-radius: 4px;
+}
+
+.icon-green {
+  color: #4ade80;
+}
+
+.text-gold-highlight {
+  color: var(--color-gold);
+}
+
+.btn-cancel-outline {
+  background: transparent;
+  color: var(--color-dark);
+  border: 1px solid rgba(42, 37, 34, 0.2);
+}
+
+.btn-approve-green {
+  background-color: #4ade80;
+  border-color: #4ade80;
+  color: var(--color-dark);
+}
+
+.text-red-danger {
+  color: #e06666;
+}
+
+.btn-full-width {
+  width: 100%;
+}
+
+.text-line-through {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.text-gold-bold-large {
+  color: var(--color-gold);
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.resched-warning-banner {
+  display: none;
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 12px;
+  border-radius: 4px;
+  margin-top: 15px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.resched-reject-box {
+  display: none;
+  margin-top: 15px;
+}
+
+.form-label-bold-block {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.form-textarea-padded {
+  width: 100%;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.btn-approve-green-solid {
+  background-color: #4ade80;
+  color: var(--color-dark);
+}
+
+.fc-subtitle {
+  margin-bottom: 15px;
+  font-size: 0.95rem;
+}
+
+.fc-info-banner {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 15px;
+}
+
+.modal-edit-price {
+  max-width: 650px;
+}
+
+.ep-subtitle {
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.ep-grid-2col {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 20px;
+}
+
+.ep-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.ep-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.ep-base-rate-group {
+  margin-bottom: 25px;
+}
+
+.ep-input-lg {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  color: var(--color-dark);
+}
+
+.ep-line-items-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.ep-line-items-title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--color-dark);
+}
+
+.btn-add-item {
+  background: var(--color-dark);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.ep-line-items-container {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 5px;
+  margin-bottom: 20px;
+}
+
+.ep-field-group {
+  margin-bottom: 20px;
+}
+
+.ep-select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.ep-help-text {
+  color: #666;
+  display: block;
+  margin-top: 5px;
+}
+
+.ep-help-text-muted {
+  color: #888;
+  display: block;
+  margin-top: 5px;
+}
+
+.ep-textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  resize: vertical;
+}
+
+.ep-total-box {
+  margin-top: 10px;
+  justify-content: space-between;
+  background: #faf9f7;
+  padding: 15px;
+  border-radius: 6px;
+  border: 1px dashed #ccc;
+}
+
+.ep-total-label {
+  font-size: 1.2rem;
+}
+
+.ep-total-amount {
+  color: var(--color-gold);
+  font-size: 1.5rem;
+}
+
+.btn-gold-save {
+  background-color: var(--color-gold);
+  color: white;
+  border: none;
+}

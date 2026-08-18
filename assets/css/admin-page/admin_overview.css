@@ -295,12 +295,33 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
+  padding: 10px 12px;
   border-bottom: 1px dashed rgba(42,37,34,0.1);
+  border-radius: 6px;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+  margin-bottom: 4px;
 }
 .widget-item:last-child {
   border-bottom: none;
-  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.widget-item.clickable {
+  cursor: pointer;
+}
+
+.widget-item.clickable:hover {
+  background-color: rgba(214, 168, 112, 0.12);
+  transform: translateX(4px);
+}
+
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.clickable-row:hover {
+  background-color: rgba(214, 168, 112, 0.12) !important;
 }
 
 .widget-info strong {
@@ -749,4 +770,318 @@
     font-family: var(--font-body);
     color: var(--color-dark-light);
     font-size: 1.05rem;
+}
+
+/* ==========================================================================
+   Admin Overview Clean UI Classes
+   ========================================================================== */
+.stat-lock-icon {
+  font-size: 0.8rem;
+  color: #a3a3a3;
+}
+
+.stat-restricted-text {
+  font-size: 1.1rem;
+  color: #a3a3a3;
+  font-style: italic;
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+}
+
+.stat-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stat-arrow-icon {
+  opacity: 0.5;
+}
+
+.chart-card-relative {
+  position: relative;
+}
+
+.admin-only-badge {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: normal;
+}
+
+.chart-restricted-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+  text-align: center;
+  padding: 20px;
+}
+
+.chart-restricted-icon {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  color: var(--color-gold);
+}
+
+.chart-restricted-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.widget-title-icon {
+  color: var(--color-gold);
+}
+
+.widget-placeholder-text {
+  text-align: center;
+  padding: 10px;
+  color: #888;
+}
+
+.recent-bookings-card {
+  margin-top: 30px;
+}
+
+.table-loading-td {
+  text-align: center;
+}
+
+.modal-maint-detail {
+  max-width: 520px;
+  padding: 35px 30px;
+}
+
+.maint-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+
+.maint-modal-title {
+  color: #dc2626;
+  margin: 0;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-icon-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #888;
+}
+
+.maint-summary-grid {
+  grid-template-columns: 140px 1fr;
+  row-gap: 12px;
+  margin-bottom: 20px;
+}
+
+.maint-label {
+  font-weight: 600;
+  color: #555;
+}
+
+.maint-venue-value {
+  font-size: 1.1rem;
+  color: var(--color-dark);
+}
+
+.maint-type-badge {
+  font-size: 0.85rem;
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.maint-dates-value {
+  font-weight: 500;
+}
+
+.maint-notes-box {
+  background: #faf9f7;
+  padding: 15px;
+  border-radius: 6px;
+  border: 1px dashed #ccc;
+  margin-top: 15px;
+}
+
+.maint-notes-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.maint-notes-text {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #333;
+  line-height: 1.5;
+}
+
+.maint-modal-footer {
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-modal-padded {
+  padding: 10px 22px;
+  font-size: 0.85rem;
+}
+
+.btn-manage-dark {
+  background: var(--color-dark);
+  color: #fff;
+  text-decoration: none;
+  padding: 10px 22px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-overview-booking {
+  max-width: 600px;
+  padding: 35px 30px;
+}
+
+.overview-booking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 15px;
+}
+
+.overview-booking-header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.overview-booking-main-title {
+  margin-bottom: 0;
+}
+
+.overview-subtitle-first {
+  font-size: 1.05rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+  color: var(--color-dark);
+  margin-top: 0;
+}
+
+.overview-subtitle {
+  font-size: 1.05rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+  color: var(--color-dark);
+}
+
+.overview-grid-info {
+  grid-template-columns: 130px 1fr;
+  margin-bottom: 20px;
+  row-gap: 8px;
+}
+
+.hidden-element {
+  display: none;
+}
+
+.hidden-element-mono {
+  display: none;
+  font-family: monospace;
+}
+
+.overview-grid-financials {
+  grid-template-columns: 1fr auto;
+  margin-bottom: 10px;
+  row-gap: 8px;
+}
+
+.overview-total-box {
+  margin-top: 10px;
+  padding: 12px 15px;
+  background: #faf9f7;
+  border-radius: 6px;
+  border: 1px dashed #ccc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.overview-total-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.overview-total-value {
+  color: var(--color-gold);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.overview-paid-value {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.maint-pill-type {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.notes-cust-box {
+  color: #666;
+  font-size: 0.85rem;
+  display: block;
+  margin-top: 5px;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.notes-prep-box {
+  color: #2a2522;
+  font-size: 0.85rem;
+  display: block;
+  margin-top: 5px;
+  background: #fffaf1;
+  border-left: 3px solid #d6a870;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.badge-maint-alert {
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.tba-text {
+  color: #b5884e;
+  font-style: italic;
 }
