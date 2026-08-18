@@ -9,8 +9,29 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
 
-  
   window.currentViewBookingId = null;
+
+  // --- Mobile Sidebar Drawer Toggle ---
+  const mobileToggle = document.getElementById('btn-mobile-sidebar-toggle');
+  const sidebarClose = document.getElementById('btn-close-sidebar');
+  const sidebar = document.querySelector('.dashboard-sidebar');
+  const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+  if (sidebar) {
+      const toggleDrawer = (open) => {
+          sidebar.classList.toggle('mobile-open', open);
+          if (sidebarOverlay) sidebarOverlay.classList.toggle('active', open);
+          document.body.style.overflow = open ? 'hidden' : '';
+      };
+
+      if (mobileToggle) mobileToggle.addEventListener('click', () => toggleDrawer(true));
+      if (sidebarClose) sidebarClose.addEventListener('click', () => toggleDrawer(false));
+      if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => toggleDrawer(false));
+
+      document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
+          link.addEventListener('click', () => toggleDrawer(false));
+      });
+  }
 
   const btnPrintReceipt = document.getElementById('btn-print-receipt');
   if (btnPrintReceipt) {

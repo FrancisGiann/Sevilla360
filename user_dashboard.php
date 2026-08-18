@@ -110,11 +110,16 @@ while ($row = $notifs_result->fetch_assoc()) {
 
 <body class="dashboard-body">
     <div class="dashboard-layout">
+        <!-- Sidebar Backdrop Overlay for Mobile -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
         <!-- LEFT SIDEBAR -->
         <aside class="dashboard-sidebar">
             <div class="sidebar-header">
                 <a href="index.php" class="brand-logo">SEVILLA360</a>
+                <button id="btn-close-sidebar" class="sidebar-close-btn" aria-label="Close sidebar">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
             <div class="user-profile">
@@ -151,29 +156,36 @@ while ($row = $notifs_result->fetch_assoc()) {
         <main class="dashboard-main">
 
             <header class="dashboard-topbar">
-                <div class="topbar-right" style="display: flex; gap: 15px; align-items: center;">
+                <div class="topbar-left">
+                    <button id="btn-mobile-sidebar-toggle" class="mobile-menu-btn" aria-label="Open menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <a href="index.php" class="mobile-brand-logo">SEVILLA360</a>
+                </div>
+
+                <div class="topbar-right">
                     <!-- Notification Bell -->
-                    <div class="notification-container" style="position: relative;">
-                        <button id="btn-notifications" style="background:none; border:none; color:var(--color-dark); font-size:1.2rem; cursor:pointer; position:relative;">
+                    <div class="notification-container">
+                        <button id="btn-notifications">
                             <i class="fa-regular fa-bell"></i>
                             <?php if($unread_count > 0): ?>
-                                <span id="notif-badge" style="position:absolute; top:-5px; right:-5px; background:var(--color-gold); color:#fff; font-size:10px; font-weight:bold; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                                <span id="notif-badge">
                                     <?php echo $unread_count; ?>
                                 </span>
                             <?php endif; ?>
                         </button>
                         
                         <!-- Dropdown -->
-                        <div id="notif-dropdown" style="display:none; position:absolute; right:0; top:35px; width:320px; background:#fff; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.1); border:1px solid #eee; z-index:100; overflow:hidden;">
-                            <div style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-                                <h4 style="margin:0; font-size:14px; color:var(--color-dark);">Notifications</h4>
+                        <div id="notif-dropdown">
+                            <div class="notif-dropdown-header">
+                                <h4>Notifications</h4>
                                 <?php if($unread_count > 0): ?>
-                                    <button id="btn-mark-read" style="background:none; border:none; color:var(--color-gold); font-size:12px; cursor:pointer; font-weight:600;">Mark all as read</button>
+                                    <button id="btn-mark-read">Mark all as read</button>
                                 <?php endif; ?>
                             </div>
-                            <div style="max-height:300px; overflow-y:auto; padding:0;">
+                            <div class="notif-list-body">
                                 <?php if(empty($notifications)): ?>
-                                    <div style="padding:20px; text-align:center; color:#888; font-size:13px;">No notifications yet.</div>
+                                    <div class="notif-empty-state">No notifications yet.</div>
                                 <?php else: ?>
                                     <?php foreach($notifications as $n): 
                                         $icon = 'fa-bell';
@@ -184,14 +196,14 @@ while ($row = $notifs_result->fetch_assoc()) {
                                         elseif (strpos($t, 'reschedule') !== false) { $icon = 'fa-calendar-day'; $color = '#17a2b8'; }
                                         elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false) { $icon = 'fa-calendar-check'; $color = '#d6a870'; }
                                     ?>
-                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>" style="padding:12px 15px; border-bottom:1px solid #f9f9f9; cursor:pointer; display:flex; gap:12px; transition:background 0.2s; <?php echo $n['is_read'] ? 'opacity:0.7;' : 'background:#fdfcf9;'; ?>" onmouseover="this.style.background='#f4f4f4'" onmouseout="this.style.background='<?php echo $n['is_read'] ? 'transparent' : '#fdfcf9'; ?>'">
-                                            <div style="color: <?php echo $color; ?>; font-size:18px; margin-top:2px;">
+                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>">
+                                            <div class="notif-item-icon" style="color: <?php echo $color; ?>;">
                                                 <i class="fa-solid <?php echo $icon; ?>"></i>
                                             </div>
                                             <div>
-                                                <h5 style="margin:0 0 5px 0; font-size:13px; color:var(--color-dark);"><?php echo htmlspecialchars($n['title']); ?></h5>
-                                                <p style="margin:0 0 5px 0; font-size:12px; color:#666; line-height:1.4;"><?php echo htmlspecialchars($n['message']); ?></p>
-                                                <span style="font-size:10px; color:#aaa;"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
+                                                <h5 class="notif-item-title"><?php echo htmlspecialchars($n['title']); ?></h5>
+                                                <p class="notif-item-msg"><?php echo htmlspecialchars($n['message']); ?></p>
+                                                <span class="notif-item-time"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
