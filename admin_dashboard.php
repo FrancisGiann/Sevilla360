@@ -27,6 +27,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
     <?php elseif ($page === 'calendar'): ?>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
     <link rel="stylesheet" href="assets/css/admin-page/admin_calendar.css?v=<?= time() ?>">
