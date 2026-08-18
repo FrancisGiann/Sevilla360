@@ -27,8 +27,13 @@ $search = isset($data['search']) ? '%' . $data['search'] . '%' : '%';
 $venueFilter = isset($data['venue']) ? $data['venue'] : 'All';
 $statusFilter = isset($data['status']) ? $data['status'] : 'all';
 
-// Base Query
-$where_clauses = ["(b.reference_no LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR v.name LIKE ?)"];
+// Base Query (Exclude internal System Maintenance locks from Customer Bookings table)
+$where_clauses = [
+    "(b.reference_no LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR v.name LIKE ?)",
+    "b.reference_no NOT LIKE 'MAINT-%'",
+    "b.source != 'Maintenance'",
+    "c.last_name != 'MAINTENANCE'"
+];
 $params = [$search, $search, $search, $search];
 $types = "ssss";
 
