@@ -1,14 +1,15 @@
 <?php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+header('Content-Type: application/json');
 require '../../config/db_connect.php';
 
 // ==========================================
-// CSRF PROTECTION GUARD (TEXT)
+// CSRF PROTECTION GUARD
 // ==========================================
 $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     http_response_code(403);
-    echo "Error: CSRF validation failed. Unauthorized request.";
+    echo json_encode(['success' => false, 'message' => 'CSRF validation failed. Unauthorized request.']);
     exit;
 }
 
@@ -58,16 +59,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['email'])) {
         
         try {
             send_custom_email($email, $customer_name, $subject, $html_content);
-            echo "Success"; // NEVER ECHO THE CODE. JUST "Success".
+            echo json_encode(['success' => true, 'message' => 'A new verification code has been sent to your email inbox!']);
         } catch (Exception $e) {
-            echo "Error: Failed to send email. Please try again later.";
+            echo json_encode(['success' => false, 'message' => 'Failed to send email. Please try again later.']);
         }
 
     } else {
-        echo "Error: Could not resend. Account may not exist or is already verified.";
+        echo json_encode(['success' => false, 'message' => 'Could not resend. Account may not exist or is already verified.']);
     }
 
     $stmt->close();
+} else {
+    echo json_encode(['success' => false, 'message' => 'Invalid request data.']);
 }
 $conn->close();
 ?>

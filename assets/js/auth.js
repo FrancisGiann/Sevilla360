@@ -206,14 +206,16 @@ document.addEventListener("DOMContentLoaded", () => {
                   },
                   body: 'email=' + encodeURIComponent(verifyEmail)
               })
-              .then(response => response.text())
+              .then(response => response.json())
               .then(data => {
-                  // NO MORE DEV MODE LEAKS!
-                  if (data === "Success") {
-                      showAlert("Notice", "A new verification code has been sent to your email inbox!");
+                  if (data.success) {
+                      showAlert("Notice", data.message || "A new verification code has been sent to your email inbox!", "success");
                   } else {
-                      showAlert("Notice", data); // Shows the error (e.g. "Account already verified")
+                      showAlert("Notice", data.message || "Could not resend code.", "error");
                   }
+              })
+              .catch(err => {
+                  showAlert("Notice", "Network error. Failed to resend verification code.", "error");
               });
 
               // 2. Disable the button and start the 60-second UI timer
