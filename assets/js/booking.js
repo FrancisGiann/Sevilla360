@@ -561,6 +561,12 @@ class BookingController {
         }
     }
 
+    syncSystemLineItem(id, name, amount) {
+        if (amount > 0 && name) {
+            this.appendSummaryRow(name, amount);
+        }
+    }
+
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
