@@ -134,10 +134,18 @@ document.addEventListener("DOMContentLoaded", () => {
             updatePaginationUI(res.pagination);
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
-            // Check if we need to auto-scroll to a highlighted URL search
-            const urlSearch = new URLSearchParams(window.location.search).get('search');
-            if (urlSearch && currentPage === 1 && !searchTerm) {
-                highlightRow(urlSearch);
+            // Auto-scroll, highlight, and pop open View Details modal if redirected from Master Calendar / Command Center
+            if (urlSearch && res.data && res.data.length > 0) {
+                const match = res.data.find(b => b.reference_no.toLowerCase() === urlSearch.toLowerCase() || b.reference_no.toLowerCase().includes(urlSearch.toLowerCase()) || b.id.toString() === urlSearch);
+                const targetRef = match ? match.reference_no : urlSearch;
+
+                highlightRow(targetRef);
+                setTimeout(() => {
+                    const firstViewBtn = document.querySelector('.btn-view');
+                    if (firstViewBtn) {
+                        firstViewBtn.click();
+                    }
+                }, 300);
             }
         })
         .catch(err => {
@@ -259,12 +267,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // URL Params parsing
     const urlParams = new URLSearchParams(window.location.search);
     const urlFilter = urlParams.get('filter');
+    const urlSearch = urlParams.get('search');
+
     if (urlFilter) {
         const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
         if (targetTab) {
             tabFilters.forEach(t => t.classList.remove("active"));
             targetTab.classList.add("active");
         }
+    }
+
+    if (urlSearch && searchInput) {
+        searchInput.value = urlSearch;
     }
   
     function highlightRow(refNo) {
