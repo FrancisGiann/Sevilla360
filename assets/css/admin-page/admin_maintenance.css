@@ -502,3 +502,45 @@ textarea:focus {
     margin-bottom: 10px;
   }
 }
+
+/* ==========================================================================
+   Admin Maintenance Clean UI Classes
+   ========================================================================== */
+.maint-table-card {
+  margin-top: 30px;
+}
+
+.font-weight-600 {
+  font-weight: 600;
+}
+
+.status-badge-blocked {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.status-badge-note {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+.maint-action-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.maint-empty-row {
+  text-align: center;
+  padding: 20px;
+}
+
+.sum-block-on {
+  color: #e06666;
+  font-weight: 600;
+}
+
+.sum-block-off {
+  color: #888;
+  font-weight: 600;
+}

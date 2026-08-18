@@ -1,7 +1,6 @@
 <?php
 require_once 'config/db_connect.php';
 
-// Fetch Upcoming Maintenance
 $upcoming_maint = $conn->query("
     SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, v.name as venue_name 
     FROM maintenance m 
@@ -10,7 +9,6 @@ $upcoming_maint = $conn->query("
     ORDER BY m.start_date ASC
 ");
 
-// Fetch all available venues grouped by category
 $venues_query = $conn->query("SELECT category, name FROM venues WHERE status = 'Available' ORDER BY category, name");
 $grouped_venues = [
     'Event Hall' => [],
@@ -29,11 +27,9 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
 <div class="admin-maintenance-container admin-booking-container">
 
-    <!-- Top Section: Venue Selection -->
     <div class="maintenance-venue-section">
         <label class="small-label maint-section-label">SELECT VENUE CATEGORY</label>
 
-        <!-- COMBINED TABS -->
         <div class="booking-tabs venue-tabs" id="maintenance-tabs">
             <button class="tab-btn active" data-venue="Event Hall">Event Hall</button>
             <button class="tab-btn" data-venue="Hotel Room">Hotel Room</button>
@@ -42,10 +38,8 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
     </div>
 
     <div class="maintenance-grid">
-        <!-- Middle Section: Calendar & Forms -->
         <div class="maintenance-main">
 
-            <!-- Calendar UI -->
             <div class="maint-calendar-wrapper">
                 <?php
                     $calendarId = 'cal-ui-maint';
@@ -53,21 +47,15 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                 ?>
             </div>
 
-            <!-- Form Inputs Section -->
             <div class="booking-card form-section maint-form-card">
 
-                <!-- NEW DYNAMIC SPECIFIC VENUE DROPDOWN -->
                 <div class="form-group">
-                    <label for="maint-specific-venue" id="label-specific-venue" class="maint-uppercase-label">WHICH
-                        EVENT HALL?</label>
-                    <select id="maint-specific-venue">
-                        <!-- Options injected by JavaScript based on active tab -->
-                    </select>
+                    <label for="maint-specific-venue" id="label-specific-venue" class="maint-uppercase-label">WHICH EVENT HALL?</label>
+                    <select id="maint-specific-venue"></select>
                 </div>
 
                 <div class="form-group">
-                    <label for="maint-area">SPECIFIC AFFECTED AREA <span
-                            class="maint-optional-text">(Optional)</span></label>
+                    <label for="maint-area">SPECIFIC AFFECTED AREA <span class="maint-optional-text">(Optional)</span></label>
                     <input type="text" id="maint-area" placeholder="e.g., Master Bathroom, Air Conditioning Unit...">
                 </div>
 
@@ -86,8 +74,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
 
                 <div class="form-group">
                     <label for="maint-notes">DESCRIPTION / NOTES</label>
-                    <textarea id="maint-notes" rows="4"
-                        placeholder="Add specific details regarding the maintenance..."></textarea>
+                    <textarea id="maint-notes" rows="4" placeholder="Add specific details regarding the maintenance..."></textarea>
                 </div>
 
                 <div class="form-group maint-mb-0">
@@ -100,8 +87,8 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                     </label>
                 </div>
             </div>
-            <!-- BOTTOM SECTION: UPCOMING MAINTENANCE TABLE -->
-            <div class="table-card" style="margin-top: 30px;">
+
+            <div class="table-card maint-table-card">
                 <h3 class="card-title">Active & Upcoming Maintenance</h3>
                 <div class="table-responsive">
                     <table class="bookings-table">
@@ -119,23 +106,19 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                             <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
                             <?php while($m = $upcoming_maint->fetch_assoc()): ?>
                             <tr>
-                                <td style="font-weight: 600;"><?php echo htmlspecialchars($m['venue_name']); ?></td>
+                                <td class="font-weight-600"><?php echo htmlspecialchars($m['venue_name']); ?></td>
                                 <td><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
                                 <td><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
                                 <td><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
                                 <td>
                                     <?php if($m['is_blocking']): ?>
-                                    <span class="status-badge status-refunded"
-                                        style="background:#fee2e2; color:#dc2626;">Blocked</span>
+                                    <span class="status-badge status-refunded status-badge-blocked">Blocked</span>
                                     <?php else: ?>
-                                    <span class="status-badge status-paid"
-                                        style="background:#e0f2fe; color:#0284c7;">Note
-                                        Only</span>
+                                    <span class="status-badge status-paid status-badge-note">Note Only</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <!-- Wrapped in a flex div to keep them side-by-side cleanly -->
-                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div class="maint-action-cell">
                                         <button class="btn-action btn-done btn-complete-maint"
                                             data-id="<?php echo $m['id']; ?>"
                                             title="Finish early & free up calendar">Mark Done</button>
@@ -148,9 +131,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                             <?php endwhile; ?>
                             <?php else: ?>
                             <tr>
-                                <td colspan="6" style="text-align: center; padding: 20px;">No upcoming maintenance
-                                    scheduled.
-                                </td>
+                                <td colspan="6" class="maint-empty-row">No upcoming maintenance scheduled.</td>
                             </tr>
                             <?php endif; ?>
                         </tbody>
@@ -159,7 +140,6 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             </div>
         </div>
 
-        <!-- Right Section: Summary Sidebar -->
         <div class="maintenance-sidebar">
             <div class="sticky-summary checkout-summary maint-summary-box">
                 <h3 class="summary-title">Maintenance Summary</h3>
@@ -171,13 +151,11 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                     <p>Duration <span class="sum-val" id="sum-maint-duration">--</span></p>
                     <p>Area <span class="sum-val" id="sum-maint-area">--</span></p>
                     <p>Type <span class="sum-val" id="sum-maint-type">--</span></p>
-                    <p class="maint-sum-last-row">Booking Block <span class="sum-val maint-sum-block"
-                            id="sum-maint-block">OFF</span></p>
+                    <p class="maint-sum-last-row">Booking Block <span class="sum-val maint-sum-block" id="sum-maint-block">OFF</span></p>
                 </div>
 
                 <div class="action-buttons maint-action-buttons">
-                    <button class="btn btn-confirm-walkin maint-btn-full" id="btn-schedule-maint">SCHEDULE
-                        MAINTENANCE</button>
+                    <button class="btn btn-confirm-walkin maint-btn-full" id="btn-schedule-maint">SCHEDULE MAINTENANCE</button>
                     <button class="btn btn-modal-outline maint-btn-clear" id="btn-clear-maint">CLEAR FORM</button>
                 </div>
             </div>
