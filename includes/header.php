@@ -6,17 +6,15 @@ $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css   = isset($extra_css) ? $extra_css : '';
 $active_page = isset($active_page) ? $active_page : '';
 
-// Check login status based on your existing session variables
 $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
 $isAdmin    = (($_SESSION['role'] ?? '') === 'staff' || ($_SESSION['role'] ?? '') === 'admin');
 
-// Fetch notifications for homepage notification bell if logged in as customer
+// Fetch notifications for homepage notification bell if logged in
 $hp_unread_count = 0;
 $hp_notifications = [];
-if ($isLoggedIn && !empty($_SESSION['user_id']) && !$isAdmin) {
-    require_once __DIR__ . '/../config/db_connect.php';
-    if (isset($conn) && $conn instanceof mysqli) {
+if ($isLoggedIn && isset($conn) && $conn instanceof mysqli) {
+    if (!$isAdmin && !empty($_SESSION['user_id'])) {
         $u_id = $_SESSION['user_id'];
         $st_h_unread = $conn->prepare("SELECT COUNT(*) AS unread FROM user_notifications WHERE user_id = ? AND is_read = 0");
         if ($st_h_unread) {
@@ -26,17 +24,62 @@ if ($isLoggedIn && !empty($_SESSION['user_id']) && !$isAdmin) {
             $st_h_unread->close();
         }
 
-        $st_h_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+        $st_h_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at, 'customer' as notif_type FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
         if ($st_h_notifs) {
             $st_h_notifs->bind_param("i", $u_id);
             $st_h_notifs->execute();
             $hp_notifications = $st_h_notifs->get_result()->fetch_all(MYSQLI_ASSOC);
             $st_h_notifs->close();
         }
+    } elseif ($isAdmin) {
+        $admin_notif_query = $conn->query("
+            SELECT b.id, b.reference_no, b.booking_status, b.start_date, v.name as venue_name, v.category as venue_category,
+                   cx.status as cancel_status, rr.status as resched_status
+            FROM bookings b
+            JOIN venues v ON b.venue_id = v.id
+            LEFT JOIN cancellations cx ON b.id = cx.booking_id
+            LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
+            WHERE cx.status = 'Pending' OR rr.status = 'Pending' OR (v.category = 'Event Hall' AND b.booking_status = 'Pending')
+            ORDER BY b.id DESC LIMIT 10
+        ");
+
+        if ($admin_notif_query) {
+            while ($b = $admin_notif_query->fetch_assoc()) {
+                $title = "Action Required";
+                $msg = "";
+                $url = "admin_dashboard.php?page=bookings&search=" . urlencode($b['reference_no']);
+                $date_str = date('M j, Y', strtotime($b['start_date']));
+
+                if ($b['cancel_status'] === 'Pending') {
+                    $title = "Refund Requested";
+                    $msg = "Refund request for {$b['venue_name']} (#{$b['reference_no']})";
+                    $hp_unread_count++;
+                } elseif ($b['resched_status'] === 'Pending') {
+                    $title = "Reschedule Requested";
+                    $msg = "Reschedule request for {$b['venue_name']} (#{$b['reference_no']})";
+                    $hp_unread_count++;
+                } elseif ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
+                    $title = "New Event Inquiry";
+                    $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
+                    $hp_unread_count++;
+                }
+
+                if (!empty($msg)) {
+                    $hp_notifications[] = [
+                        'id' => $b['id'],
+                        'title' => $title,
+                        'message' => $msg,
+                        'url' => $url,
+                        'is_read' => 0,
+                        'created_at' => $date_str,
+                        'notif_type' => 'admin'
+                    ];
+                }
+            }
+        }
     }
 }
 
-// Primary navigation links and anchors
 $nav = [
     'home'           => ['label' => 'Home',             'url' => 'index.php'],
     'about'          => ['label' => 'About',            'url' => 'index.php#about'],
@@ -54,7 +97,6 @@ $nav = [
     <meta name="csrf-token" content="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
     <title><?php echo htmlspecialchars($page_title); ?></title>
 
-    <!-- Google Fonts (Playfair Display, Inter, Great Vibes) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -62,7 +104,6 @@ $nav = [
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Load CSS -->
     <link rel="stylesheet" href="assets/css/style.css?v=<?php echo time(); ?>">
     <link rel="stylesheet" href="assets/css/header.css?v=<?php echo time(); ?>">
     <?php if (!empty($extra_css)): ?>
@@ -90,8 +131,7 @@ $nav = [
                 <?php if (!$isLoggedIn): ?>
                 <a class="s-cta" href="auth.php">Login / Register</a>
                 <?php else: ?>
-                    <?php if (!$isAdmin): ?>
-                    <!-- Homepage Notification Bell -->
+                    <!-- Homepage Notification Bell (Customers & Admins) -->
                     <div class="s-notif-wrapper" id="hpNotifWrapper">
                         <button type="button" class="s-notif-btn" id="hpNotifBtn" aria-label="Notifications">
                             <i class="fa-regular fa-bell"></i>
@@ -103,8 +143,10 @@ $nav = [
                         <div class="s-notif-dropdown" id="hpNotifDropdown">
                             <div class="s-notif-header">
                                 <span>Notifications</span>
-                                <?php if ($hp_unread_count > 0): ?>
+                                <?php if (!$isAdmin && $hp_unread_count > 0): ?>
                                 <button type="button" id="hpBtnMarkRead" class="s-notif-mark-btn">Mark all read</button>
+                                <?php elseif ($isAdmin): ?>
+                                <a href="admin_dashboard.php?page=bookings&filter=action_req" class="s-notif-mark-btn" style="text-decoration:none;">View All</a>
                                 <?php endif; ?>
                             </div>
                             <div class="s-notif-body">
@@ -116,36 +158,37 @@ $nav = [
                                     $color = '#d6a870';
                                     $t = strtolower($n['title']);
                                     if (strpos($t, 'payment') !== false) { $icon = 'fa-money-bill-wave'; $color = '#28a745'; }
-                                    elseif (strpos($t, 'cancel') !== false || strpos($t, 'reject') !== false) { $icon = 'fa-circle-xmark'; $color = '#dc3545'; }
+                                    elseif (strpos($t, 'cancel') !== false || strpos($t, 'reject') !== false || strpos($t, 'refund') !== false) { $icon = 'fa-arrow-rotate-left'; $color = '#dc3545'; }
                                     elseif (strpos($t, 'reschedule') !== false) { $icon = 'fa-calendar-day'; $color = '#17a2b8'; }
-                                    elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false) { $icon = 'fa-calendar-check'; $color = '#d6a870'; }
+                                    elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false || strpos($t, 'inquiry') !== false) { $icon = 'fa-champagne-glasses'; $color = '#d6a870'; }
+
+                                    $item_url = isset($n['url']) ? $n['url'] : '#';
                                 ?>
-                                <div class="s-notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>">
+                                <a href="<?php echo htmlspecialchars($item_url); ?>" class="s-notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" <?php if (!$isAdmin): ?>data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>"<?php endif; ?> style="text-decoration:none; display:flex;">
                                     <div class="s-notif-icon" style="color: <?php echo $color; ?>;"><i class="fa-solid <?php echo $icon; ?>"></i></div>
                                     <div class="s-notif-info">
                                         <h5><?php echo htmlspecialchars($n['title']); ?></h5>
                                         <p><?php echo htmlspecialchars($n['message']); ?></p>
-                                        <small><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></small>
+                                        <small><?php echo htmlspecialchars($n['created_at']); ?></small>
                                     </div>
-                                </div>
+                                </a>
                                 <?php endforeach; ?>
                                 <?php endif; ?>
                             </div>
                         </div>
                     </div>
-                    <?php endif; ?>
 
-                <div class="s-user" id="userMenu">
-                    <button type="button" class="s-user__btn" id="userMenuBtn" aria-expanded="false">
-                        <?php echo ($isAdmin ? '<i class="fa-solid fa-gear"></i>' : '<i class="fa-regular fa-user"></i>') . ' ' . htmlspecialchars($firstName); ?>
-                        <span aria-hidden="true">&#9662;</span>
-                    </button>
-                    <div class="s-user__menu" role="menu">
-                        <a href="<?php echo $isAdmin ? 'admin_dashboard.php' : 'user_dashboard.php'; ?>">Dashboard</a>
-                        <hr>
-                        <a href="actions/auth/logout.php" style="color: #d32f2f;">Logout</a>
+                    <div class="s-user" id="userMenu">
+                        <button type="button" class="s-user__btn" id="userMenuBtn" aria-expanded="false">
+                            <?php echo ($isAdmin ? '<i class="fa-solid fa-gear"></i>' : '<i class="fa-regular fa-user"></i>') . ' ' . htmlspecialchars($firstName); ?>
+                            <span aria-hidden="true">&#9662;</span>
+                        </button>
+                        <div class="s-user__menu" role="menu">
+                            <a href="<?php echo $isAdmin ? 'admin_dashboard.php' : 'user_dashboard.php'; ?>">Dashboard</a>
+                            <hr>
+                            <a href="actions/auth/logout.php" style="color: #d32f2f;">Logout</a>
+                        </div>
                     </div>
-                </div>
                 <?php endif; ?>
             </div>
 
@@ -174,7 +217,6 @@ $nav = [
     </header>
 
     <script>
-    // Javascript for the new Lovable Header
     (function() {
         var header = document.getElementById('siteHeader');
         var burger = document.getElementById('burger');
@@ -204,7 +246,6 @@ $nav = [
             });
         }
 
-        // Homepage Notification Bell JS
         var hpNotifWrapper = document.getElementById('hpNotifWrapper');
         var hpNotifBtn = document.getElementById('hpNotifBtn');
         if (hpNotifWrapper && hpNotifBtn) {
@@ -237,8 +278,9 @@ $nav = [
 
             document.querySelectorAll('#hpNotifDropdown .s-notif-item').forEach(function(item) {
                 item.addEventListener('click', function(e) {
-                    e.stopPropagation();
                     var id = this.getAttribute('data-id');
+                    if (!id) return;
+                    e.stopPropagation();
                     var title = this.getAttribute('data-title');
                     var msg = this.getAttribute('data-message');
                     var self = this;
