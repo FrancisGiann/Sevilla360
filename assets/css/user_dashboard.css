@@ -806,8 +806,10 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   background: var(--color-beige);
   width: 90%;
   max-width: 500px;
-  padding: 40px;
-  border-radius: 0;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 35px 30px;
+  border-radius: 8px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
   transform: translateY(20px);
   transition: var(--transition-snappy);

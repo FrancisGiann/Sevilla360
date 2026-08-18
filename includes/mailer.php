@@ -89,6 +89,25 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         }
     }
 
+    // Fetch Payment Records & Transaction IDs
+    $stmt_pay = $conn->prepare("SELECT transaction_id, payment_method, amount, payment_date FROM payments WHERE booking_id = ? AND status = 'Success' ORDER BY payment_date ASC");
+    $stmt_pay->bind_param("i", $booking['id']);
+    $stmt_pay->execute();
+    $payments_arr = $stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    $pay_details_html = "";
+    if (!empty($payments_arr)) {
+        foreach ($payments_arr as $p) {
+            $pay_date = date('M j, Y', strtotime($p['payment_date']));
+            $tx_id = htmlspecialchars($p['transaction_id']);
+            $p_method = htmlspecialchars($p['payment_method']);
+            $p_amt = number_format($p['amount'], 2);
+            $pay_details_html .= "<tr><td style='padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px;'>Payment ($p_method)<br><span style='font-size: 11px; color: #888;'>TXN: $tx_id ($pay_date)</span></td><td style='padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>- ₱$p_amt</td></tr>";
+        }
+    } else {
+        $pay_details_html = "<tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Amount Paid:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>₱" . number_format($total_paid, 2) . "</td></tr>";
+    }
+
     // Hide all money math if it is just a pending inquiry
     if ($is_inquiry) {
         $money_block = $breakdown_html . "
@@ -100,7 +119,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     } else {
         $money_block = $breakdown_html . "
             <tr><td style='padding: 12px; border-top: 2px solid #2a2522;'><strong>Total Amount:</strong></td><td style='padding: 12px; border-top: 2px solid #2a2522; text-align: right;'>₱" . number_format($total_amt, 2) . "</td></tr>
-            <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Amount Paid:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>₱" . number_format($total_paid, 2) . "</td></tr>
+            $pay_details_html
             <tr><td style='padding: 12px; border-bottom: 2px solid #2a2522; font-size: 18px;'><strong>BALANCE DUE:</strong></td><td style='padding: 12px; border-bottom: 2px solid #2a2522; text-align: right; font-size: 18px; color: #e06666;'><strong>₱" . number_format($balance, 2) . "</strong></td></tr>
         ";
         $header_title = "OFFICIAL BOOKING ITINERARY";

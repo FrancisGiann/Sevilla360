@@ -33,6 +33,10 @@ if (!$is_admin && !$is_owner) {
     die("Unauthorized access to this receipt.");
 }
 
+if (in_array($booking['booking_status'], ['Pending', 'Cancelled']) || $booking['payment_scheme'] === 'To Be Arranged') {
+    die("Receipt is not available for pending or cancelled bookings.");
+}
+
 // Fetch Business Info
 $biz = [
     'biz_name' => 'Sevilla360',
@@ -77,8 +81,9 @@ $paid_amt = floatval($booking['amount_paid']);
 $balance = $total_amt - $paid_amt;
 
 $status = $booking['booking_status'];
-if ($status === 'Confirmed' && $paid_amt >= $total_amt) $status_text = 'Fully Paid';
-elseif ($status === 'Confirmed') $status_text = 'Partially Paid';
+if ($status === 'Confirmed' && $paid_amt >= $total_amt && $total_amt > 0) $status_text = 'Fully Paid';
+elseif ($status === 'Confirmed' && $paid_amt > 0) $status_text = 'Partially Paid';
+elseif ($status === 'Confirmed') $status_text = 'Unpaid';
 else $status_text = $status;
 ?>
 <!DOCTYPE html>
@@ -367,8 +372,9 @@ else $status_text = $status;
                     Status: 
                     <?php
                         $badge_class = 'status-pending';
-                        if ($status === 'Confirmed' && $paid_amt >= $total_amt) $badge_class = 'status-paid';
-                        elseif ($status === 'Confirmed') $badge_class = 'status-partial';
+                        if ($status === 'Confirmed' && $paid_amt >= $total_amt && $total_amt > 0) $badge_class = 'status-paid';
+                        elseif ($status === 'Confirmed' && $paid_amt > 0) $badge_class = 'status-partial';
+                        elseif ($status === 'Confirmed') $badge_class = 'status-pending';
                         elseif ($status === 'Cancelled') $badge_class = 'status-cancelled';
                     ?>
                     <span class="status-badge <?php echo $badge_class; ?>"><?php echo $status_text; ?></span>

@@ -11,6 +11,31 @@ $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
 $isAdmin    = (($_SESSION['role'] ?? '') === 'staff' || ($_SESSION['role'] ?? '') === 'admin');
 
+// Fetch notifications for homepage notification bell if logged in as customer
+$hp_unread_count = 0;
+$hp_notifications = [];
+if ($isLoggedIn && !empty($_SESSION['user_id']) && !$isAdmin) {
+    require_once __DIR__ . '/../config/db_connect.php';
+    if (isset($conn) && $conn instanceof mysqli) {
+        $u_id = $_SESSION['user_id'];
+        $st_h_unread = $conn->prepare("SELECT COUNT(*) AS unread FROM user_notifications WHERE user_id = ? AND is_read = 0");
+        if ($st_h_unread) {
+            $st_h_unread->bind_param("i", $u_id);
+            $st_h_unread->execute();
+            $hp_unread_count = $st_h_unread->get_result()->fetch_assoc()['unread'] ?? 0;
+            $st_h_unread->close();
+        }
+
+        $st_h_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+        if ($st_h_notifs) {
+            $st_h_notifs->bind_param("i", $u_id);
+            $st_h_notifs->execute();
+            $hp_notifications = $st_h_notifs->get_result()->fetch_all(MYSQLI_ASSOC);
+            $st_h_notifs->close();
+        }
+    }
+}
+
 // Primary navigation links and anchors
 $nav = [
     'home'           => ['label' => 'Home',             'url' => 'index.php'],
@@ -61,10 +86,55 @@ $nav = [
                 <?php endforeach; ?>
             </ul>
 
-            <div class="s-desktop-only">
+            <div class="s-desktop-only" style="display: flex; align-items: center; gap: 16px;">
                 <?php if (!$isLoggedIn): ?>
                 <a class="s-cta" href="auth.php">Login / Register</a>
                 <?php else: ?>
+                    <?php if (!$isAdmin): ?>
+                    <!-- Homepage Notification Bell -->
+                    <div class="s-notif-wrapper" id="hpNotifWrapper">
+                        <button type="button" class="s-notif-btn" id="hpNotifBtn" aria-label="Notifications">
+                            <i class="fa-regular fa-bell"></i>
+                            <?php if ($hp_unread_count > 0): ?>
+                            <span class="s-notif-badge" id="hpNotifBadge"><?php echo $hp_unread_count; ?></span>
+                            <?php endif; ?>
+                        </button>
+
+                        <div class="s-notif-dropdown" id="hpNotifDropdown">
+                            <div class="s-notif-header">
+                                <span>Notifications</span>
+                                <?php if ($hp_unread_count > 0): ?>
+                                <button type="button" id="hpBtnMarkRead" class="s-notif-mark-btn">Mark all read</button>
+                                <?php endif; ?>
+                            </div>
+                            <div class="s-notif-body">
+                                <?php if (empty($hp_notifications)): ?>
+                                <div class="s-notif-empty">No notifications yet.</div>
+                                <?php else: ?>
+                                <?php foreach ($hp_notifications as $n): 
+                                    $icon = 'fa-bell';
+                                    $color = '#d6a870';
+                                    $t = strtolower($n['title']);
+                                    if (strpos($t, 'payment') !== false) { $icon = 'fa-money-bill-wave'; $color = '#28a745'; }
+                                    elseif (strpos($t, 'cancel') !== false || strpos($t, 'reject') !== false) { $icon = 'fa-circle-xmark'; $color = '#dc3545'; }
+                                    elseif (strpos($t, 'reschedule') !== false) { $icon = 'fa-calendar-day'; $color = '#17a2b8'; }
+                                    elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false) { $icon = 'fa-calendar-check'; $color = '#d6a870'; }
+                                ?>
+                                <div class="s-notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>">
+                                    <div class="s-notif-icon" style="color: <?php echo $color; ?>;"><i class="fa-solid <?php echo $icon; ?>"></i></div>
+                                    <div class="s-notif-info">
+                                        <h5><?php echo htmlspecialchars($n['title']); ?></h5>
+                                        <p><?php echo htmlspecialchars($n['message']); ?></p>
+                                        <small><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></small>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                 <div class="s-user" id="userMenu">
                     <button type="button" class="s-user__btn" id="userMenuBtn" aria-expanded="false">
                         <?php echo ($isAdmin ? '<i class="fa-solid fa-gear"></i>' : '<i class="fa-regular fa-user"></i>') . ' ' . htmlspecialchars($firstName); ?>
@@ -131,6 +201,58 @@ $nav = [
             document.addEventListener('click', function() {
                 userMenu.classList.remove('is-open');
                 btn.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        // Homepage Notification Bell JS
+        var hpNotifWrapper = document.getElementById('hpNotifWrapper');
+        var hpNotifBtn = document.getElementById('hpNotifBtn');
+        if (hpNotifWrapper && hpNotifBtn) {
+            hpNotifBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                hpNotifWrapper.classList.toggle('is-open');
+            });
+            document.addEventListener('click', function() {
+                hpNotifWrapper.classList.remove('is-open');
+            });
+
+            var hpBtnMarkRead = document.getElementById('hpBtnMarkRead');
+            if (hpBtnMarkRead) {
+                hpBtnMarkRead.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    fetch('actions/user/mark_notifications_read.php')
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res.success) {
+                            var badge = document.getElementById('hpNotifBadge');
+                            if (badge) badge.remove();
+                            if (hpBtnMarkRead) hpBtnMarkRead.remove();
+                            document.querySelectorAll('#hpNotifDropdown .s-notif-item').forEach(function(el) {
+                                el.classList.remove('unread');
+                            });
+                        }
+                    });
+                });
+            }
+
+            document.querySelectorAll('#hpNotifDropdown .s-notif-item').forEach(function(item) {
+                item.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var id = this.getAttribute('data-id');
+                    var title = this.getAttribute('data-title');
+                    var msg = this.getAttribute('data-message');
+                    var self = this;
+                    
+                    fetch('actions/user/mark_notifications_read.php?id=' + id)
+                    .then(function() {
+                        self.classList.remove('unread');
+                    });
+                    if (window.showAlert) {
+                        window.showAlert(title, msg, 'info');
+                    } else {
+                        alert(title + "\n\n" + msg);
+                    }
+                });
             });
         }
     })();

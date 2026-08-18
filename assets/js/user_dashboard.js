@@ -463,6 +463,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 cancelRow.style.display = 'none';
             }
 
+            const lineItems = res.data.line_items;
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
             if (addonsList) addonsList.innerHTML = ''; 
@@ -470,26 +471,50 @@ document.addEventListener("DOMContentLoaded", () => {
             if (addons && addons.length > 0 && addonsContainer && addonsList) {
                 addonsContainer.style.display = 'block';
                 addons.forEach(addon => {
-                    addonsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${addon.name} (x${addon.quantity})</span> <span style="color:var(--color-dark-light);">₱${parseFloat(addon.total_price).toLocaleString()}</span></p>`;
+                    addonsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${addon.name} (x${addon.quantity})</span> <span style="color:var(--color-dark-light);">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
                 });
             } else if(addonsContainer) {
                 addonsContainer.style.display = 'none';
             }
 
-            const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            const lineItemsContainer = document.getElementById('ud-line-items-container');
+            const lineItemsList = document.getElementById('ud-line-items-list');
+            if (lineItemsList) lineItemsList.innerHTML = '';
+
+            if (lineItems && lineItems.length > 0 && lineItemsContainer && lineItemsList) {
+                lineItemsContainer.style.display = 'block';
+                lineItems.forEach(item => {
+                    lineItemsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${item.item_name}</span> <span style="color:var(--color-dark-light);">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
+                });
+            } else if (lineItemsContainer) {
+                lineItemsContainer.style.display = 'none';
+            }
+
+            const formatCash = (amt) => `₱${parseFloat(amt || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             const isPendingEvent = data.venue_category === 'Event Hall' && data.booking_status === 'Pending';
+
+            const extraPaxAmt = parseFloat(data.extra_pax_amount || 0);
+            const extraPaxContainer = document.getElementById('ud-extrapax-container');
+            if (extraPaxContainer) {
+                extraPaxContainer.style.display = (extraPaxAmt > 0) ? 'block' : 'none';
+                if (document.getElementById('ud-extrapax-amt')) document.getElementById('ud-extrapax-amt').innerText = formatCash(extraPaxAmt);
+            }
+
+            const baseAmt = parseFloat(data.base_amount || 0);
+            const subtotal = baseAmt + extraPaxAmt;
+            const totalAmt = parseFloat(data.total_amount || 0);
+            const paidAmt = parseFloat(data.amount_paid || 0);
+            const balance = Math.max(0, totalAmt - paidAmt);
 
             if (isPendingEvent) {
                 if(document.getElementById('ud-base-amt')) document.getElementById('ud-base-amt').innerText = "TBA";
-                if(document.getElementById('ud-addons-amt')) document.getElementById('ud-addons-amt').innerText = "TBA";
-                if(document.getElementById('ud-extrapax-amt')) document.getElementById('ud-extrapax-amt').innerText = "TBA";
+                if(document.getElementById('ud-subtotal-amt')) document.getElementById('ud-subtotal-amt').innerText = "TBA";
                 if(document.getElementById('ud-total-amt')) document.getElementById('ud-total-amt').innerText = "To Be Arranged";
                 if(document.getElementById('ud-scheme')) document.getElementById('ud-scheme').innerText = "To Be Arranged";
             } else {
-                if(document.getElementById('ud-base-amt')) document.getElementById('ud-base-amt').innerText = formatCash(data.base_amount);
-                if(document.getElementById('ud-addons-amt')) document.getElementById('ud-addons-amt').innerText = formatCash(data.addons_amount);
-                if(document.getElementById('ud-extrapax-amt')) document.getElementById('ud-extrapax-amt').innerText = formatCash(data.extra_pax_amount);
-                if(document.getElementById('ud-total-amt')) document.getElementById('ud-total-amt').innerText = formatCash(data.total_amount);
+                if(document.getElementById('ud-base-amt')) document.getElementById('ud-base-amt').innerText = formatCash(baseAmt);
+                if(document.getElementById('ud-subtotal-amt')) document.getElementById('ud-subtotal-amt').innerText = formatCash(subtotal);
+                if(document.getElementById('ud-total-amt')) document.getElementById('ud-total-amt').innerText = formatCash(totalAmt);
                 
                 let schemeText = data.payment_scheme;
                 if (data.payment_scheme !== '100% Full' && data.payment_status === 'Paid') {
@@ -498,8 +523,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 if(document.getElementById('ud-scheme')) document.getElementById('ud-scheme').innerText = schemeText;
             }
             
-            if(document.getElementById('ud-paid-amt')) document.getElementById('ud-paid-amt').innerText = formatCash(data.amount_paid);
+            if(document.getElementById('ud-paid-amt')) document.getElementById('ud-paid-amt').innerText = formatCash(paidAmt);
+            if(document.getElementById('ud-balance-amt')) document.getElementById('ud-balance-amt').innerText = isPendingEvent ? "TBA" : formatCash(balance);
             if(document.getElementById('ud-tid')) document.getElementById('ud-tid').innerText = res.data.transaction_id || "--";
+
+            const btnPrint = document.getElementById('btn-print-receipt');
+            if (btnPrint) {
+                const cannotPrint = data.booking_status === 'Pending' || data.booking_status === 'Cancelled' || data.payment_scheme === 'To Be Arranged' || isPendingEvent;
+                btnPrint.style.display = cannotPrint ? 'none' : 'inline-flex';
+            }
 
             openModal("details");
         })

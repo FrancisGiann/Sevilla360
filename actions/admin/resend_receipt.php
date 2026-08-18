@@ -49,15 +49,14 @@ try {
     $venue_name = $booking['venue_name'];
     $amount_paid = floatval($booking['amount_paid']);
     
-    // Determine the email status
-    $email_status = 'Pending';
-    if ($booking['booking_status'] === 'Confirmed') {
-        if ($booking['payment_status'] === 'Paid') $email_status = 'Fully Paid';
-        elseif ($booking['payment_status'] === 'Partial') $email_status = 'Partially Paid (Downpayment)';
-        else $email_status = 'Confirmed (Unpaid)';
-    } elseif ($booking['booking_status'] === 'Cancelled') {
-        $email_status = 'Cancelled';
+    if (in_array($booking['booking_status'], ['Cancelled', 'Pending'])) {
+        throw new Exception("Receipt cannot be resent for cancelled or pending bookings.");
     }
+
+    // Determine the email status
+    $email_status = 'Confirmed (Unpaid)';
+    if ($booking['payment_status'] === 'Paid') $email_status = 'Fully Paid';
+    elseif ($booking['payment_status'] === 'Partial') $email_status = 'Partially Paid (Downpayment)';
 
     // 4. Send Email
     require_once '../../includes/mailer.php';

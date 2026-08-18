@@ -85,9 +85,10 @@ try {
         $stmt_b->bind_param("idddsi", $guests, $base_rate, $addons_amount, $new_total, $scheme, $booking_id);
         $stmt_b->execute();
 
-        // 3. Update Event Details
-        $stmt_e = $conn->prepare("UPDATE booking_event_details SET event_type = ? WHERE booking_id = ?");
-        $stmt_e->bind_param("si", $event_type, $booking_id);
+        // 3. Update Event Details (including internal admin notes)
+        $admin_notes = isset($data['admin_notes']) ? trim($data['admin_notes']) : null;
+        $stmt_e = $conn->prepare("UPDATE booking_event_details SET event_type = ?, admin_notes = ? WHERE booking_id = ?");
+        $stmt_e->bind_param("ssi", $event_type, $admin_notes, $booking_id);
         $stmt_e->execute();
 
         // 4. Wipe old initial addons & rewrite new line items
@@ -156,7 +157,7 @@ try {
         }
         
         $new_amount_paid = $current_paid + $amount_to_add;
-        $new_payment_status = ($new_amount_paid >= $total) ? 'Paid' : 'Partial';
+        $new_payment_status = ($new_amount_paid >= $total && $total > 0) ? 'Paid' : (($new_amount_paid > 0) ? 'Partial' : 'Unpaid');
 
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
         $stmt_pay->bind_param("issd", $booking_id, $trans_id, $method, $amount_to_add);

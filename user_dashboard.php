@@ -612,32 +612,61 @@ while ($row = $notifs_result->fetch_assoc()) {
 
     <!-- Booking Details Modal -->
     <div class="modal-overlay" id="modal-details">
-        <div class="modal-box" style="max-width: 550px;">
+        <div class="modal-box" style="max-width: 580px; max-height: 85vh; overflow-y: auto;">
             <h2 class="modal-title" id="ud-title">Booking Details</h2>
             <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
 
             <div class="modal-summary details-summary">
+                <p><span>Customer:</span> <span id="ud-customer-name">--</span></p>
                 <p><span>Venue:</span> <span id="ud-venue">--</span></p>
                 <p><span>Dates:</span> <span id="ud-dates">--</span></p>
                 <p><span>Guests:</span> <span id="ud-guests">--</span></p>
 
-                <div id="ud-addons-container"
-                    style="display: none; margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
-                    <strong style="display:block; margin-bottom:5px; color: var(--color-dark);">Add-ons:</strong>
-                    <div id="ud-addons-list"></div>
+                <div id="ud-specific-row" style="display: none;">
+                    <span id="ud-specific-label">Event Details:</span>
+                    <span id="ud-specific-value">--</span>
                 </div>
 
-                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
-                    <p><span>Base Amount:</span> <span id="ud-base-amt">₱0.00</span></p>
-                    <p><span>Add-ons Amount:</span> <span id="ud-addons-amt">₱0.00</span></p>
-                    <p style="font-weight: bold; font-size: 1.1rem; color: var(--color-gold); margin-top: 5px;">
-                        <span>Total Amount:</span> <span id="ud-total-amt">₱0.00</span>
-                    </p>
+                <div id="ud-cancel-row" style="display: none; margin-top: 10px; background: #fff5f5; padding: 10px; border-left: 3px solid #dc3545;">
+                    <span style="font-weight: 600; color: #dc3545;">Cancellation Reason:</span>
+                    <span id="ud-cancel-reason">--</span>
                 </div>
 
-                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 10px;">
-                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #557567;">₱0.00</span></p>
-                    <p><span>Transaction ID:</span> <span id="ud-tid">--</span></p>
+                <!-- Itemized Cost Breakdown -->
+                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 12px;">
+                    <strong style="display:block; margin-bottom:8px; color: var(--color-dark); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em;">Cost Breakdown</strong>
+                    
+                    <p><span>Venue Base Rate:</span> <span id="ud-base-amt">₱0.00</span></p>
+                    
+                    <div id="ud-extrapax-container" style="display: none;">
+                        <p><span>Extra Pax Charge:</span> <span id="ud-extrapax-amt">₱0.00</span></p>
+                    </div>
+
+                    <div id="ud-addons-container" style="display: none;">
+                        <strong style="display:block; margin: 8px 0 4px; color: #666; font-size: 0.85rem;">Add-ons & Options:</strong>
+                        <div id="ud-addons-list"></div>
+                    </div>
+
+                    <div id="ud-line-items-container" style="display: none;">
+                        <strong style="display:block; margin: 8px 0 4px; color: #666; font-size: 0.85rem;">Custom Line Items:</strong>
+                        <div id="ud-line-items-list"></div>
+                    </div>
+
+                    <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px;">
+                        <p><span>Subtotal:</span> <span id="ud-subtotal-amt">₱0.00</span></p>
+                        <p style="font-weight: bold; font-size: 1.1rem; color: var(--color-gold); margin-top: 5px;">
+                            <span>Total Amount:</span> <span id="ud-total-amt">₱0.00</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Payment Details -->
+                <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 12px;">
+                    <strong style="display:block; margin-bottom:8px; color: var(--color-dark); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em;">Payment Details</strong>
+                    <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
+                    <p><span>Amount Paid:</span> <span id="ud-paid-amt" style="color: #557567; font-weight: 600;">₱0.00</span></p>
+                    <p><span>Remaining Balance:</span> <span id="ud-balance-amt" style="color: #c94a4a; font-weight: 600;">₱0.00</span></p>
+                    <p><span>Transaction ID(s):</span> <span id="ud-tid" style="font-family: monospace; font-size: 0.85rem;">--</span></p>
                 </div>
             </div>
 

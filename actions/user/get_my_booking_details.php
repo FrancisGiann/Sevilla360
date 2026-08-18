@@ -65,6 +65,13 @@ try {
     while($row = $addons_result->fetch_assoc()) {
         $response['data']['addons'][] = $row;
     }
+
+    // 4.2. Get Custom Line Items
+    $stmt_li = $conn->prepare("SELECT item_name, amount FROM booking_line_items WHERE booking_id = ?");
+    $stmt_li->bind_param("i", $booking_id);
+    $stmt_li->execute();
+    $response['data']['line_items'] = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
+
     // 4.5. Get Cancellation Reason (if this booking was cancelled)
     if ($booking['booking_status'] === 'Cancelled') {
         $stmt_cx = $conn->prepare("
@@ -80,12 +87,16 @@ try {
     } else {
         $response['data']['cancellation'] = null;
     }
-    // 5. Get Transaction ID (if exists)
-    $stmt_pay = $conn->prepare("SELECT transaction_id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+
+    // 5. Get All Payment Records & Transaction IDs
+    $stmt_pay = $conn->prepare("SELECT transaction_id, payment_method, amount, payment_date FROM payments WHERE booking_id = ? AND status = 'Success' ORDER BY payment_date ASC");
     $stmt_pay->bind_param("i", $booking_id);
     $stmt_pay->execute();
-    $pay_res = $stmt_pay->get_result();
-    $response['data']['transaction_id'] = ($pay_res->num_rows > 0) ? $pay_res->fetch_assoc()['transaction_id'] : 'N/A';
+    $payments_res = $stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC);
+    $response['data']['payments'] = $payments_res;
+
+    $tx_ids = array_filter(array_column($payments_res, 'transaction_id'));
+    $response['data']['transaction_id'] = !empty($tx_ids) ? implode(', ', $tx_ids) : 'N/A';
 
     echo json_encode($response);
 

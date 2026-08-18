@@ -27,7 +27,7 @@ try {
     // 2. Fetch Specifics
     $specifics = null;
     if ($booking['venue_category'] === 'Event Hall') {
-        $st = $conn->prepare("SELECT event_style, event_type, custom_notes FROM booking_event_details WHERE booking_id = ?");
+        $st = $conn->prepare("SELECT event_style, event_type, custom_notes, admin_notes FROM booking_event_details WHERE booking_id = ?");
         $st->bind_param("i", $booking_id);
         $st->execute();
         $specifics = $st->get_result()->fetch_assoc();

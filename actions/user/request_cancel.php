@@ -79,6 +79,44 @@ try {
     }
     
     $conn->commit();
+
+    // 3. SEND EMAIL & IN-APP NOTIFICATION TO USER
+    require_once '../../includes/mailer.php';
+    require_once '../../includes/notifications.php';
+
+    $stmt_info = $conn->prepare("
+        SELECT c.first_name, c.last_name, c.email, c.user_id, b.reference_no, v.name AS venue_name
+        FROM bookings b
+        JOIN customers c ON b.customer_id = c.id
+        JOIN venues v ON b.venue_id = v.id
+        WHERE b.id = ?
+    ");
+    $stmt_info->bind_param("i", $booking_id);
+    $stmt_info->execute();
+    $info = $stmt_info->get_result()->fetch_assoc();
+
+    if ($info) {
+        $c_name = $info['first_name'] . ' ' . $info['last_name'];
+        $c_email = $info['email'];
+        $c_user_id = $info['user_id'];
+        $ref_no = $info['reference_no'];
+        $v_name = $info['venue_name'];
+
+        // In-App Notification
+        if ($amount_paid > 0) {
+            create_user_notification($conn, $c_user_id, "Cancellation Requested", "Your cancellation request for $v_name (Ref: $ref_no) has been submitted for refund processing.");
+        } else {
+            create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name (Ref: $ref_no) has been cancelled as requested.");
+        }
+
+        // Email Notification (Reusing existing mailer implementation)
+        try {
+            send_booking_cancellation_email($c_email, $c_name, $booking_id, ($amount_paid > 0 ? 'cancellation_requested' : 'cancelled'), $refund_amount, $reason);
+        } catch (Exception $mail_err) {
+            error_log("Failed to send user cancellation email: " . $mail_err->getMessage());
+        }
+    }
+
     echo json_encode(['success' => true, 'message' => $message]);
 
 } catch (Exception $e) {

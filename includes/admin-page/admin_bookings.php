@@ -190,11 +190,10 @@
                     style="color: #4ade80;">₱0.00</span>
             </div>
 
-            <div class="modal-actions" style="margin-top: 30px; display: flex; gap: 10px;">
-                <button class="btn-modal btn-modal-cancel close-modal"
-                    style="flex: 1; background: transparent; color: var(--color-dark); border: 1px solid #ccc;">Close</button>
-                <button class="btn-modal" id="btn-admin-print" style="flex: 1; background: var(--color-gold);"><i class="fa-solid fa-print"></i> Print</button>
-                <button class="btn-modal" id="btn-admin-resend" style="flex: 1; background: var(--color-dark);"><i class="fa-solid fa-envelope"></i> Resend Email</button>
+            <div class="modal-actions" style="margin-top: 30px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <button class="btn-modal btn-modal-cancel close-modal">Close</button>
+                <button class="btn-modal" id="btn-admin-print" style="background: var(--color-gold); color: #fff;"><i class="fa-solid fa-print"></i> <span>Print</span></button>
+                <button class="btn-modal" id="btn-admin-resend" style="background: var(--color-dark); color: #fff;"><i class="fa-solid fa-envelope"></i> <span>Resend Email</span></button>
             </div>
         </div>
 
@@ -402,7 +401,7 @@
             <div id="ep-line-items"
                 style="max-height: 200px; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;"></div>
 
-            <!-- NEW: ADMIN PAYMENT SCHEME SELECTOR -->
+            <!-- ADMIN PAYMENT SCHEME SELECTOR -->
             <div style="margin-bottom: 20px;">
                 <label style="display:block; font-weight:600; margin-bottom:5px;">Required Payment Scheme</label>
                 <select id="ep-payment-scheme"
@@ -413,6 +412,14 @@
                 </select>
                 <small style="color: #666; display: block; margin-top: 5px;">This dictates how much the customer must
                     pay today via their dashboard.</small>
+            </div>
+
+            <!-- INTERNAL EVENT PREPARATION NOTES -->
+            <div style="margin-bottom: 20px;">
+                <label style="display:block; font-weight:600; margin-bottom:5px;">Internal Preparation Notes (Admin Only)</label>
+                <textarea id="ep-admin-notes" rows="3" placeholder="Style type, theme, setup time, decoration/setup instructions..."
+                    style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; font-family:var(--font-body); resize:vertical;"></textarea>
+                <small style="color: #888; display: block; margin-top: 5px;">Saved internally for staff/admin view details only. Not sent to customer.</small>
             </div>
 
             <div class="refund-total"

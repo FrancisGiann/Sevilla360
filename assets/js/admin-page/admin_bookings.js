@@ -668,7 +668,11 @@ document.addEventListener("DOMContentLoaded", () => {
                       specValue.style.display = 'block';
                       if (data.venue_category === 'Event Hall') {
                           specLabel.innerText = "Event Details:";
-                          specValue.innerHTML = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;"><strong>Notes:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
+                          let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span style="color:#666; font-size:0.85rem; display:block; margin-top:5px; background:rgba(0,0,0,0.03); padding:8px; border-radius:4px;"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
+                          if (specifics.admin_notes) {
+                              notesHtml += `<span style="color:#2a2522; font-size:0.85rem; display:block; margin-top:5px; background:#fffaf1; border-left:3px solid #d6a870; padding:8px; border-radius:4px;"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
+                          }
+                          specValue.innerHTML = notesHtml;
                       } else if (data.venue_category === 'Resort Villa') {
                           specLabel.innerText = "Stay Type:";
                           specValue.innerText = specifics.stay_type;
@@ -735,6 +739,17 @@ document.addEventListener("DOMContentLoaded", () => {
                   }
                   
                   document.getElementById('vd-paid-amt').innerText = formatCash(data.amount_paid);
+
+                  const btnAdminPrint = document.getElementById('btn-admin-print');
+                  const btnAdminResend = document.getElementById('btn-admin-resend');
+                  const cannotPrint = (data.booking_status === 'Pending') || (data.booking_status === 'Cancelled') || (data.payment_scheme === 'To Be Arranged') || (data.venue_category === 'Event Hall' && data.booking_status === 'Pending');
+
+                  if (btnAdminPrint) {
+                      btnAdminPrint.style.display = cannotPrint ? 'none' : 'inline-flex';
+                  }
+                  if (btnAdminResend) {
+                      btnAdminResend.style.display = cannotPrint ? 'none' : 'inline-flex';
+                  }
       
                   modalOverlay.classList.add('active');
                   viewDetailsModal.classList.add('active');
@@ -810,6 +825,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     document.getElementById('ep-booking-id').innerText = `${data.reference_no}`;
                     document.getElementById('ep-guests').value = data.guests_count;
                     document.getElementById('ep-event-type').value = specifics ? specifics.event_type : "";
+                    if (document.getElementById('ep-admin-notes')) {
+                        document.getElementById('ep-admin-notes').value = specifics ? (specifics.admin_notes || "") : "";
+                    }
                     baseRateInput.value = parseFloat(data.base_amount).toFixed(2);
                     
                     lineItemsContainer.innerHTML = ""; 
@@ -833,7 +851,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         const guests = document.getElementById('ep-guests').value;
                         const eventType = document.getElementById('ep-event-type').value;
                         const baseRate = document.getElementById('ep-base-rate').value;
-                        const scheme = document.getElementById('ep-payment-scheme').value; // <--- GRABS THE SCHEME
+                        const scheme = document.getElementById('ep-payment-scheme').value;
+                        const adminNotes = document.getElementById('ep-admin-notes') ? document.getElementById('ep-admin-notes').value.trim() : "";
                   
                         let lineItemsArr = [];
                         document.querySelectorAll(".ep-row").forEach(row => {
@@ -847,7 +866,8 @@ document.addEventListener("DOMContentLoaded", () => {
                                 guests: guests, 
                                 event_type: eventType, 
                                 base_rate: baseRate,
-                                payment_scheme: scheme, // <--- SENDS SCHEME TO PHP
+                                payment_scheme: scheme,
+                                admin_notes: adminNotes,
                                 line_items: lineItemsArr
                             });
                         }, 'editPriceModal');

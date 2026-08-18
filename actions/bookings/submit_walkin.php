@@ -82,7 +82,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         elseif (strpos($scheme, '50%') !== false) $amount_paid = $true_total * 0.5;
         elseif (strpos($scheme, '20%') !== false) $amount_paid = $true_total * 0.2;
 
-        $payment_status = ($amount_paid >= $true_total) ? 'Paid' : 'Partial';
+        $payment_status = ($amount_paid >= $true_total && $true_total > 0) ? 'Paid' : (($amount_paid > 0) ? 'Partial' : 'Unpaid');
         // =========================================================================
 
         $raw_method = strtolower($_POST['payment_method']);
