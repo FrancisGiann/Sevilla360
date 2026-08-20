@@ -17,7 +17,13 @@ $past_maint = $conn->query("
     ORDER BY m.id DESC LIMIT 50
 ");
 
-$venues_query = $conn->query("SELECT category, name FROM venues WHERE status = 'Available' ORDER BY category, name");
+$venues_query = $conn->query("
+    SELECT v.id, v.category, v.name, h.room_type, h.room_number 
+    FROM venues v 
+    LEFT JOIN hotel_rooms h ON v.id = h.venue_id 
+    WHERE v.status = 'Available' 
+    ORDER BY v.category, v.name, h.room_type, h.room_number
+");
 $grouped_venues = [
     'Event Hall' => [],
     'Hotel Room' => [],
@@ -25,7 +31,16 @@ $grouped_venues = [
 ];
 
 while ($row = $venues_query->fetch_assoc()) {
-    $grouped_venues[$row['category']][] = $row['name'];
+    $display = $row['name'];
+    if ($row['category'] === 'Hotel Room') {
+        if (!empty($row['room_type'])) $display .= ' — ' . $row['room_type'];
+        if (!empty($row['room_number'])) $display .= ' — Room ' . $row['room_number'];
+    }
+    
+    $grouped_venues[$row['category']][] = [
+        'id' => $row['id'],
+        'display' => $display
+    ];
 }
 ?>
 

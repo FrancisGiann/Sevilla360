@@ -50,6 +50,18 @@ try {
     $st_li->execute();
     $line_items = $st_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
+    // Fetch Room Allocations (Hotel Add-ons)
+    $st_ra = $conn->prepare("
+        SELECT v.name as building_name, h.room_type, h.room_number, br.line_total 
+        FROM booking_rooms br 
+        JOIN venues v ON br.venue_id = v.id 
+        JOIN hotel_rooms h ON v.id = h.venue_id 
+        WHERE br.booking_id = ?
+    ");
+    $st_ra->bind_param("i", $booking_id);
+    $st_ra->execute();
+    $room_allocations = $st_ra->get_result()->fetch_all(MYSQLI_ASSOC);
+
     // Fetch Transaction Reference (latest)
     $st_tx = $conn->prepare("SELECT transaction_id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
     $st_tx->bind_param("i", $booking_id);
@@ -62,6 +74,7 @@ try {
         'specifics' => $specifics, 
         'addons' => $addons,
         'line_items' => $line_items,
+        'room_allocations' => $room_allocations,
         'transaction_id' => $transaction_id
     ]]);
 } catch (Exception $e) {

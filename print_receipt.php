@@ -59,6 +59,18 @@ $stmt_li->bind_param("i", $booking_id);
 $stmt_li->execute();
 $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// Fetch Room Allocations
+$stmt_ra = $conn->prepare("
+    SELECT v.name as building_name, h.room_type, h.room_number, br.line_total 
+    FROM booking_rooms br 
+    JOIN venues v ON br.venue_id = v.id 
+    JOIN hotel_rooms h ON v.id = h.venue_id 
+    WHERE br.booking_id = ?
+");
+$stmt_ra->bind_param("i", $booking_id);
+$stmt_ra->execute();
+$room_allocations = $st_ra->get_result()->fetch_all(MYSQLI_ASSOC);
+
 // Fetch All Payments
 $stmt_pay = $conn->prepare("SELECT transaction_id, payment_method, amount, payment_date FROM payments WHERE booking_id = ? AND status = 'Success' ORDER BY payment_date ASC");
 $stmt_pay->bind_param("i", $booking_id);
@@ -413,6 +425,16 @@ else $status_text = $status;
                         <span class="item-title"><?php echo htmlspecialchars($item['item_name']); ?></span>
                     </td>
                     <td class="right">₱<?php echo number_format($item['amount'], 2); ?></td>
+                </tr>
+                <?php endforeach; ?>
+                
+                <?php foreach ($room_allocations as $room): ?>
+                <tr>
+                    <td>
+                        <span class="item-title">Hotel Room Add-on: <?php echo htmlspecialchars($room['building_name']); ?> — <?php echo htmlspecialchars($room['room_type']); ?></span>
+                        <span class="item-desc">Room Number: <?php echo htmlspecialchars($room['room_number'] ?? 'TBA'); ?></span>
+                    </td>
+                    <td class="right">₱<?php echo number_format($room['line_total'], 2); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

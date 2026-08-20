@@ -1,7 +1,10 @@
 /**
  * ==========================================================================
  * SEVILLA360 - Admin Walk-In Booking Controller
- * Features Smart-Sync Line Items for Admin Negotiation
+ * - Uses CMS images via data-img attributes (no hardcoded Unsplash URLs)
+ * - Hotel rooms: individual physical room selection via venue_id
+ * - Hotel room add-ons: real inventory via selected room groups
+ * - Smart-Sync Line Items for Admin Negotiation
  * ==========================================================================
  */
 
@@ -19,17 +22,6 @@ class AdminWalkinController {
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
         window.calculateSummary = this.calculateSummary.bind(this);
-
-        this.imageMap = {
-            "grand-ballroom": "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=1200&q=80",
-            "garden-pavilion": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=1200&q=80",
-            "rooftop-terrace": "https://images.unsplash.com/photo-1533174000255-11593130c2c3?auto=format&fit=crop&w=1200&q=80",
-            "deluxe": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=1200&q=80",
-            "vip": "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80",
-            "standard": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=80",
-            "casita": "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=1200&q=80",
-            "hacienda": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"
-        };
 
         this.init();
     }
@@ -58,8 +50,8 @@ class AdminWalkinController {
     }
 
     bindUIInteractions() {
+        // Image swap via data-img (no Unsplash imageMap)
         this.setupImageSwap("event-venue", "event-img");
-        this.setupImageSwap("hotel-room-type", "hotel-img");
         this.setupImageSwap("villa-type", "villa-img");
 
         const hotelTypeSelect = this.getEl("hotel-room-type");
@@ -70,8 +62,17 @@ class AdminWalkinController {
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
                 const label = document.getElementById("sum-ht-type");
-                if (label) label.innerText = opt.dataset.name || opt.text.split('(')[0].trim();
-                this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                if (label) label.innerText = opt.dataset.display || opt.dataset.name || opt.text.split('(')[0].trim();
+                // Update hotel image from data-img (CMS-backed)
+                const hotelImg = this.getEl('hotel-img');
+                if (hotelImg && opt.dataset.img) {
+                    hotelImg.style.opacity = '0';
+                    setTimeout(() => { hotelImg.src = opt.dataset.img; hotelImg.style.opacity = '1'; }, 300);
+                }
+                // Fetch dates using group info
+                if (opt.dataset.type && opt.dataset.name && this.state.calendars.hotel) {
+                    this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                }
             });
         }
 
@@ -83,23 +84,18 @@ class AdminWalkinController {
 
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
-            // Dynamically update event style dropdown capacities
             const styleSelect = this.getEl('event-style');
             if (styleSelect && opt.dataset.theater) {
-                // Update the text of the existing options to include the specific room capacities
                 styleSelect.options[0].text = `Theater Style (${opt.dataset.theater} pax)`;
                 styleSelect.options[1].text = `Classroom Style (${opt.dataset.classroom} pax)`;
                 styleSelect.options[2].text = `Banquet Type (${opt.dataset.banquet} pax)`;
                 
-                // Also update the max attribute on the guest input so they can't overbook!
-                // (Defaults to the highest capacity, which is usually Theater)
                 const guestInput = this.getEl('event-guests');
                 if (guestInput) {
                     const maxCap = Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet);
                     guestInput.setAttribute('max', maxCap);
                 }
             }
-            // =========================================================
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
@@ -115,7 +111,7 @@ class AdminWalkinController {
             radio.addEventListener("change", (e) => {
                 const othersInput = this.getEl("event-type-others");
                 if (othersInput) othersInput.classList.toggle("hidden", e.target.id !== "event-others-radio");
-                this.calculateSummary(); // Trigger update for summary
+                this.calculateSummary();
             });
         });
         
@@ -154,6 +150,16 @@ class AdminWalkinController {
         });
 
         // =========================================================================
+        // HOTEL ROOM ADD-ON: "Add" buttons on room group cards
+        // =========================================================================
+        document.querySelectorAll('.btn-add-room-group').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const groupKey = e.target.dataset.groupKey;
+                this.addRoomGroupToSelection(groupKey);
+            });
+        });
+
+        // =========================================================================
         // MANUAL LINE ITEM BUILDER (For purely custom additions)
         // =========================================================================
         const lineItemsContainer = document.getElementById("wi-line-items");
@@ -175,6 +181,66 @@ class AdminWalkinController {
             });
         });
     }
+
+    // =========================================================================
+    // HOTEL ROOM ADD-ON MANAGEMENT
+    // =========================================================================
+    addRoomGroupToSelection(groupKey) {
+        const container = document.getElementById('selected-room-groups');
+        if (!container) return;
+
+        if (container.querySelector(`[data-sel-key="${CSS.escape(groupKey)}"]`)) {
+            showAlert('Notice', 'This room group is already selected. Adjust the quantity in the line items.');
+            return;
+        }
+
+        const card = document.querySelector(`.room-group-card[data-group-key="${CSS.escape(groupKey)}"]`);
+        if (!card) return;
+
+        const building  = card.dataset.building;
+        const roomType  = card.dataset.roomType;
+        const rate      = parseFloat(card.dataset.rate);
+        const inventory = parseInt(card.dataset.inventory) || 1;
+
+        const row = document.createElement('div');
+        row.className = 'wi-row selected-room-row';
+        row.setAttribute('data-sel-key', groupKey);
+        row.setAttribute('data-building', building);
+        row.setAttribute('data-room-type', roomType);
+        row.setAttribute('data-rate', rate);
+        row.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; align-items:center;';
+        row.innerHTML = `
+            <div style="flex:1; display:flex; flex-direction:column;">
+                <strong style="font-size:0.95rem; color:#333;">${building} — ${roomType}</strong>
+                <small style="color:#666;">₱${rate.toLocaleString()}/night</small>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85rem; font-weight:600; color:#555;">Qty:</label>
+                <input type="number" class="sel-room-qty" min="1" max="${inventory}" value="1"
+                    style="width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
+                <button type="button" class="btn-remove-room-sel" style="width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;" title="Remove"><i class="fa-solid fa-times"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+
+        // Also add to line items builder for admin negotiation
+        this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×1)`, rate * 1);
+
+        row.querySelector('.sel-room-qty').addEventListener('input', (e) => {
+            const qty = parseInt(e.target.value) || 1;
+            const days = this.state.calendars.event?.totalNights || 1;
+            this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×${qty} rooms)`, rate * qty * days);
+            this.calculateSummary();
+        });
+        row.querySelector('.btn-remove-room-sel').addEventListener('click', () => {
+            row.remove();
+            this.syncSystemLineItem(`room_${groupKey}`, '', 0);
+            this.calculateSummary();
+        });
+
+        this.calculateSummary();
+    }
+    // =========================================================================
 
     bindCalculatorTriggers() {
         document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"]').forEach(input => {
@@ -202,15 +268,18 @@ class AdminWalkinController {
         if (activeBtn) this.state.activeTabId = activeBtn.getAttribute('data-target');
     }
 
+    // Image swap: reads data-img attribute from selected option
     setupImageSwap(selectId, imgId) {
         const select = this.getEl(selectId);
         const img = this.getEl(imgId);
         if (!select || !img) return;
 
         select.addEventListener("change", (e) => {
+            const opt = e.target.options[e.target.selectedIndex];
+            const imgSrc = opt.dataset.img || 'assets/img/placeholder.jpg';
             img.style.opacity = "0";
             setTimeout(() => {
-                img.src = this.imageMap[e.target.value] || this.imageMap[Object.keys(this.imageMap)[0]];
+                img.src = imgSrc;
                 img.style.opacity = "1";
             }, 300);
         });
@@ -228,13 +297,18 @@ class AdminWalkinController {
         const rooms = window.hotelRoomData[category];
         if (!rooms || !nameSelect) return;
 
-        nameSelect.innerHTML = '<option value="" disabled selected>Select a specific room...</option>';
+        nameSelect.innerHTML = '<option value="" disabled selected>Select a building...</option>';
         rooms.forEach((room) => {
             const opt = document.createElement("option");
-            opt.value = room.base_rate;
-            opt.dataset.type = room.room_type;
-            opt.dataset.name = room.building_name;
-            opt.textContent = `${room.building_name} (${room.base_capacity} pax) - ₱${parseInt(room.base_rate).toLocaleString()} [${room.total_units} units]`;
+            opt.value = room.nightly_rate;
+            opt.dataset.type     = room.room_type;
+            opt.dataset.name     = room.building_name;
+            opt.dataset.inventory = room.total_inventory;
+            opt.dataset.img      = room.image || 'assets/img/placeholder.jpg';
+            opt.dataset.display  = `${room.building_name}`;
+            opt.dataset.baseCap  = room.base_capacity;
+            opt.dataset.extraPax = room.extra_pax_rate;
+            opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
@@ -265,7 +339,38 @@ class AdminWalkinController {
         if (this.state.activeCalendar) {
             this.state.activeCalendar.updateDateDisplay();
         }
+
+        // Update room availability labels in add-on panel
+        this.updateRoomAvailabilityLabels(startDate, endDate);
+
         this.calculateSummary();
+    }
+
+    async updateRoomAvailabilityLabels(startDate, endDate) {
+        if (!startDate) return;
+        const start = this.formatSafeDate(startDate);
+        const end   = endDate ? this.formatSafeDate(endDate) : start;
+
+        document.querySelectorAll('.room-group-card').forEach(async (card) => {
+            const building = card.dataset.building;
+            const roomType = card.dataset.roomType;
+            const label    = card.querySelector('.room-avail-label');
+            const addBtn   = card.querySelector('.btn-add-room-group');
+            if (!label) return;
+
+            try {
+                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
+                const res  = await fetch(url);
+                const data = await res.json();
+                if (data.success) {
+                    const n = data.available;
+                    label.style.color = n > 0 ? '#2a7a3b' : '#c0392b';
+                    label.textContent = n > 0 ? `${n} room${n > 1 ? 's' : ''} available` : 'No rooms available';
+                    if (addBtn) addBtn.disabled = (n === 0);
+                    card.dataset.available = n;
+                }
+            } catch(e) {}
+        });
     }
 
     showOverrideModal(newDate, calendarInstance) {
@@ -308,13 +413,11 @@ class AdminWalkinController {
         
         let row = container.querySelector(`.wi-row[data-system="${id}"]`);
 
-        // If the feature was untoggled (amount 0), remove it from the Line Items box
         if (amount <= 0) {
             if (row) row.remove();
             return;
         }
 
-        // Create it if it doesn't exist
         if (!row) {
             row = document.createElement("div");
             row.className = "wi-row";
@@ -327,14 +430,12 @@ class AdminWalkinController {
             `;
             container.appendChild(row);
 
-            // Flag as "Admin Edited" if they manually change the price box!
             row.querySelector(".wi-item-cost").addEventListener("input", () => {
                 row.setAttribute("data-edited", "true");
-                this.calculateSummary(); // Triggers a recalculation to update grand total
+                this.calculateSummary();
             });
         } 
         else {
-            // Update the name and price ONLY IF the Admin hasn't manually overridden it
             if (row.getAttribute("data-edited") !== "true") {
                 row.querySelector(".wi-item-name").value = name;
                 row.querySelector(".wi-item-cost").value = amount.toFixed(2);
@@ -343,13 +444,11 @@ class AdminWalkinController {
     }
     // =========================================================================
 
-
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
         this.determineActiveTab();
 
-        // 1. DO THE MATH (Dates locked or not, we show the base calculation)
         switch (this.state.activeTabId) {
             case 'tab-hotel': this.calcHotelMath(); break;
             case 'tab-event': this.calcEventMath(); break;
@@ -366,17 +465,14 @@ class AdminWalkinController {
             }
         });
 
-        // OUTPUT BREAKDOWN AND TOTAL IMMEDIATELY
         this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row"><span>No items selected</span></div>';
         this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
 
-        // 2. STOP HERE IF DATES ARE NOT LOCKED
         if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
             this.getEl('summary-due-val').textContent = "₱0.00";
             return;
         }
 
-        // Calculate Amount Due based on Scheme
         const schemePct = this.safeFloat(this.getEl("payment-scheme")?.value) || 1;
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
@@ -391,7 +487,14 @@ class AdminWalkinController {
             this.state.summary.total += roomTotal; 
             this.appendSummaryRow(`Base Room Rate (x${nights} nights)`, roomTotal);
         }
-        const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), 2, 800, this.getEl('hotel-extra-fee'));
+
+        // Get extra pax rate from DB data attributes
+        const nameSelect = this.getEl('hotel-room-name');
+        const selectedOpt = nameSelect?.options[nameSelect?.selectedIndex];
+        const baseCap = parseInt(selectedOpt?.dataset.baseCap) || 2;
+        const extraPaxRate = parseFloat(selectedOpt?.dataset.extraPax) || 800;
+
+        const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), baseCap, extraPaxRate, this.getEl('hotel-extra-fee'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
@@ -406,7 +509,7 @@ class AdminWalkinController {
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
 
-        // --- NEW: EVENT TYPE UPGRADE FEE ---
+        // EVENT TYPE UPGRADE FEE
         const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
         let evTypeText = 'Plain Hall';
         if (evTypeRadio) {
@@ -418,11 +521,11 @@ class AdminWalkinController {
                 this.state.summary.total += typePrice;
                 this.syncSystemLineItem('type', `Event Type: ${evTypeText}`, typePrice);
             } else {
-                this.syncSystemLineItem('type', '', 0); // Clear it if 0
+                this.syncSystemLineItem('type', '', 0);
             }
         }
         
-        // --- NEW: EVENT STYLE UPGRADE FEE ---
+        // EVENT STYLE UPGRADE FEE
         const styleSelect = this.getEl('event-style');
         if (styleSelect) {
             const stylePrice = this.safeFloat(styleSelect.value);
@@ -431,11 +534,11 @@ class AdminWalkinController {
                 this.state.summary.total += stylePrice;
                 this.syncSystemLineItem('style', `Event Style: ${styleText}`, stylePrice);
             } else {
-                this.syncSystemLineItem('style', '', 0); // Clear it if 0
+                this.syncSystemLineItem('style', '', 0);
             }
         }
 
-        // --- SYNC ADDONS TO LINE ITEM BUILDER ---
+        // CATERING ADD-ON
         let cateringTotal = 0; let cateringName = '';
         if (this.getEl('check-catering')?.checked) {
             const guestsInput = this.getEl('event-guests');
@@ -449,27 +552,17 @@ class AdminWalkinController {
         }
         this.syncSystemLineItem('catering', cateringName, cateringTotal);
 
-        let roomTotal = 0; let roomName = '';
-        if (this.getEl('check-rooms')?.checked) {
-            const dltQty = parseInt(this.getEl('qty-deluxe')?.textContent) || 0;
-            const vipQty = parseInt(this.getEl('qty-vip')?.textContent) || 0;
-            roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
-            
-            let parts = [];
-            if(dltQty > 0) parts.push(`Deluxe Room (x${dltQty})`);
-            if(vipQty > 0) parts.push(`VIP Suite (x${vipQty})`);
-            roomName = `Reserved Rooms: ${parts.join(', ')}`;
-        }
-        this.syncSystemLineItem('rooms', roomName, roomTotal);
-
+        // A/V SETUP ADD-ON
         let avTotal = 0;
         const avCheckbox = this.getEl('check-av');
         if (avCheckbox?.checked) {
-            avTotal = this.safeFloat(avCheckbox.value); // DYNAMIC VALUE!
+            avTotal = this.safeFloat(avCheckbox.value);
         }
         this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
-    }
 
+        // NOTE: Hotel room add-on totals are tracked in wi-line-items and summed
+        // in the main calculateSummary loop (syncSystemLineItem with room_ prefix).
+    }
 
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
@@ -487,7 +580,13 @@ class AdminWalkinController {
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
         if (stayTypePrice > 0) this.appendSummaryRow('Overnight Upgrade', stayTypePrice);
         
-        const extraFee = this.calcExtraPax(this.getEl('villa-guests'), 4, 1000, this.getEl('villa-extra-fee'));
+        // Get extra pax from data attributes
+        const villaSelect = this.getEl('villa-type');
+        const villaOpt = villaSelect?.options[villaSelect?.selectedIndex];
+        const villaCap = parseInt(villaOpt?.dataset.baseCap) || 4;
+        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
+
+        const extraFee = this.calcExtraPax(this.getEl('villa-guests'), villaCap, villaExtraPax, this.getEl('villa-extra-fee'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
@@ -496,34 +595,36 @@ class AdminWalkinController {
     }
 
     getTabContextData() {
-        const context = { roomType: '', roomName: '', baseAmt: 0, guests: 0 };
+        const context = { roomType: '', roomName: '', venueId: null, baseAmt: 0, guests: 0 };
 
         if (this.state.activeTabId === 'tab-hotel') {
-            const opt = this.getEl('hotel-room-name')?.options[this.getEl('hotel-room-name')?.selectedIndex];
+            const nameSelect = this.getEl('hotel-room-name');
+            const opt = nameSelect?.options[nameSelect?.selectedIndex];
+            context.venueId  = opt?.dataset.venueId || null;
             context.roomType = opt?.dataset.type;
             context.roomName = opt?.dataset.name;
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('hotel-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('hotel-guests')?.value;
 
         } else if (this.state.activeTabId === 'tab-event') {
             const opt = this.getEl('event-venue')?.options[this.getEl('event-venue')?.selectedIndex];
             context.roomType = 'Event Hall';
             context.roomName = opt?.dataset.name || opt?.text.split('(')[0].trim();
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('event-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('event-guests')?.value;
 
         } else if (this.state.activeTabId === 'tab-villa') {
             const opt = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
             context.roomType = 'Resort Villa';
             context.roomName = opt?.dataset.name || opt?.text.split('(')[0].trim();
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('villa-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('villa-guests')?.value;
         }
         return context;
     }
 
     async submitWalkinBooking() {
-        const guestName = this.getEl("guest-name")?.value.trim();
+        const guestName  = this.getEl("guest-name")?.value.trim();
         const guestEmail = this.getEl("guest-email")?.value.trim();
         const guestPhone = this.getEl("guest-phone")?.value.trim();
 
@@ -538,7 +639,7 @@ class AdminWalkinController {
         }
 
         const context = this.getTabContextData();
-        if (!context.roomName) { showAlert("Notice", "Please ensure a valid specific room/venue is selected."); return; }
+        if (!context.roomName && !context.venueId) { showAlert("Notice", "Please ensure a valid specific room/venue is selected."); return; }
 
         const schemeVal = this.getEl("payment-scheme")?.value;
         let schemeEnum = "100% Full";
@@ -556,21 +657,23 @@ class AdminWalkinController {
         const btnConfirm = document.querySelector(".btn-confirm-walkin");
         
         const formData = new FormData();
-        formData.append("guest_name", guestName);
+        formData.append("guest_name",  guestName);
         formData.append("guest_email", guestEmail);
         formData.append("guest_phone", guestPhone);
-        formData.append("room_type", context.roomType);
-        formData.append("room_name", context.roomName);
-        formData.append("start_date", this.formatSafeDate(this.state.activeCalendar.startDate));
-        formData.append("end_date", this.state.activeCalendar.endDate ? this.formatSafeDate(this.state.activeCalendar.endDate) : this.formatSafeDate(this.state.activeCalendar.startDate));
-        formData.append("guests", context.guests || 0);
-        formData.append("base_amount", context.baseAmt || 0);
-        
-        // SENDS THE ABSOLUTE GRAND TOTAL (Base + ALL Line Items)
-        formData.append("total_amount", this.state.summary.total);
-        formData.append("payment_scheme", schemeEnum);
-        formData.append("payment_method", paymentMethod);
-        formData.append("transaction_id", transactionId);
+        formData.append("room_type",   context.roomType);
+        formData.append("room_name",   context.roomName || '');
+
+        // Hotel rooms: pass venue_id directly
+        if (context.venueId) formData.append("venue_id", context.venueId);
+
+        formData.append("start_date",      this.formatSafeDate(this.state.activeCalendar.startDate));
+        formData.append("end_date",        this.state.activeCalendar.endDate ? this.formatSafeDate(this.state.activeCalendar.endDate) : this.formatSafeDate(this.state.activeCalendar.startDate));
+        formData.append("guests",          context.guests || 0);
+        formData.append("base_amount",     context.baseAmt || 0);
+        formData.append("total_amount",    this.state.summary.total);
+        formData.append("payment_scheme",  schemeEnum);
+        formData.append("payment_method",  paymentMethod);
+        formData.append("transaction_id",  transactionId);
 
         const notesInput = this.getEl("guest-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
@@ -593,9 +696,7 @@ class AdminWalkinController {
             formData.append("stay_type", stayRadio ? stayRadio.value : 'Day Time Stay');
         }
 
-        // =========================================================
-        // FINAL PAYLOAD: Grabs everything currently visible in the Line Items box!
-        // =========================================================
+        // Grab all custom line items from the builder
         let customLineItems = [];
         document.querySelectorAll(".wi-row").forEach(row => {
             const name = row.querySelector(".wi-item-name").value.trim();
@@ -604,11 +705,23 @@ class AdminWalkinController {
                 customLineItems.push({ name: name, amount: cost });
             }
         });
-
         if (customLineItems.length > 0) {
             formData.append('custom_line_items', JSON.stringify(customLineItems));
         }
-        // =========================================================
+
+        // Hotel room groups for event add-on (server allocates specific rooms)
+        let roomGroups = [];
+        document.querySelectorAll('.selected-room-row').forEach(row => {
+            const building = row.dataset.building;
+            const roomType = row.dataset.roomType;
+            const qty      = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
+            if (building && roomType && qty > 0) {
+                roomGroups.push({ building_name: building, room_type: roomType, quantity: qty });
+            }
+        });
+        if (roomGroups.length > 0) {
+            formData.append('room_groups', JSON.stringify(roomGroups));
+        }
 
         try {
             btnConfirm.innerText = "PROCESSING...";

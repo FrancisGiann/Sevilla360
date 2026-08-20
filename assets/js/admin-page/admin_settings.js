@@ -168,10 +168,20 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (category === "Hotel Room") targetClass = ".vm-hotel";
     else if (category === "Resort Villa") targetClass = ".vm-villa";
 
+    const isEditMode = document.getElementById("vm-id").value !== "";
+
     if (targetClass) {
       document.querySelectorAll(targetClass).forEach((el) => {
-        el.style.display = "block";
-        el.querySelector("input").setAttribute("required", "true");
+        // Handle bulk section visibility specifically
+        if (el.classList.contains("vm-bulk-section")) {
+          el.style.display = (category === "Hotel Room" && !isEditMode) ? "block" : "none";
+        } else {
+          el.style.display = "block";
+          const input = el.querySelector("input");
+          if (input && !el.classList.contains("vm-bulk-section") && input.id !== "vm-hr-room-number") {
+             input.setAttribute("required", "true");
+          }
+        }
       });
 
       if (category !== "Event Hall") {
@@ -182,6 +192,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Bulk creation toggle logic
+  const bulkToggle = document.getElementById("vm-hr-bulk-toggle");
+  const bulkFields = document.getElementById("vm-hr-bulk-fields");
+  const bulkQty = document.getElementById("vm-hr-bulk-qty");
+  const bulkStart = document.getElementById("vm-hr-bulk-start");
+  const roomNumberField = document.getElementById("vm-hr-room-number");
+
+  if (bulkToggle) {
+      bulkToggle.addEventListener("change", function() {
+          if (this.checked) {
+              bulkFields.style.display = "grid";
+              bulkQty.setAttribute("required", "true");
+              bulkStart.setAttribute("required", "true");
+              roomNumberField.removeAttribute("required");
+              roomNumberField.parentElement.style.display = "none";
+          } else {
+              bulkFields.style.display = "none";
+              bulkQty.removeAttribute("required");
+              bulkStart.removeAttribute("required");
+              roomNumberField.setAttribute("required", "true");
+              roomNumberField.parentElement.style.display = "block";
+          }
+      });
+  }
+
   if (catSelect) {
     catSelect.addEventListener("change", function () { toggleDynamicFields(this.value); });
   }
@@ -190,7 +225,14 @@ document.addEventListener("DOMContentLoaded", () => {
     formVenue.reset();
     document.getElementById("vm-id").value = "";
     document.getElementById("vm-title").innerText = "Add New Venue";
-    catSelect.disabled = false; 
+    catSelect.disabled = false;
+    
+    // Reset bulk toggle specifically
+    if (bulkToggle) {
+        bulkToggle.checked = false;
+        bulkToggle.dispatchEvent(new Event('change'));
+    }
+
     toggleDynamicFields("");
     venueModal.classList.add("active");
   });
@@ -209,6 +251,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       catSelect.value = venueData.category;
       catSelect.disabled = true; // Protects DB relational integrity
+      
+      // Ensure bulk is off and hidden during edit
+      if (bulkToggle) {
+          bulkToggle.checked = false;
+          bulkToggle.dispatchEvent(new Event('change'));
+      }
+
       toggleDynamicFields(venueData.category);
 
       if (venueData.category === "Event Hall") {
@@ -223,6 +272,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-max-cap").value = venueData.hr_max;
         document.getElementById("vm-hr-type").value = venueData.room_type;
         document.getElementById("vm-hr-rate").value = venueData.nightly_rate;
+        document.getElementById("vm-hr-room-number").value = venueData.room_number || "";
         document.getElementById("vm-extra-pax").value = venueData.hr_extra;
       } else if (venueData.category === "Resort Villa") {
         document.getElementById("vm-base-cap").value = venueData.vi_base;
@@ -242,6 +292,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (formVenue) {
     formVenue.addEventListener("submit", function (e) {
       e.preventDefault();
+
+      // Client-side validation for bulk room start number format
+      if (bulkToggle && bulkToggle.checked) {
+          const startNum = bulkStart.value.trim();
+          const match = startNum.match(/^([A-Za-z]+-)?(\d+)$/);
+          if (!match) {
+              showAlert("Notice", "Starting room number must be numeric (e.g. 101) or have a prefix (e.g. A-101).");
+              return;
+          }
+      }
+
       const submitBtn = document.getElementById("btn-save-venue");
       const originalText = submitBtn.innerText;
       submitBtn.innerText = "Saving...";
@@ -249,6 +310,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const formData = new FormData(this);
       formData.append("category", catSelect.value); // Re-append because disabled selects aren't sent
+
+      // If bulk is toggled, append an explicit flag for safety
+      if (bulkToggle && bulkToggle.checked) {
+          formData.append("is_bulk", "1");
+      }
 
       fetch("actions/admin/save_venue.php", { 
           method: "POST", 
@@ -282,21 +348,38 @@ document.addEventListener("DOMContentLoaded", () => {
   const venueRows = document.querySelectorAll('.venue-row');
 
   if (venueFilters.length > 0) {
+      const searchInput = document.getElementById('venue-search-input');
+      let currentFilter = 'all';
+
+      function applyFilters() {
+          const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+          
+          venueRows.forEach(row => {
+              const matchesCategory = currentFilter === 'all' || row.getAttribute('data-category') === currentFilter;
+              
+              // The first td contains the venue name and ID text
+              const rowText = row.querySelector('td').textContent.toLowerCase();
+              const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
+              
+              if (matchesCategory && matchesSearch) {
+                  row.style.display = ''; 
+              } else {
+                  row.style.display = 'none'; 
+              }
+          });
+      }
+
       venueFilters.forEach(btn => {
           btn.addEventListener('click', () => {
               venueFilters.forEach(f => f.classList.remove('active'));
               btn.classList.add('active');
-              
-              const filter = btn.getAttribute('data-filter');
-              
-              venueRows.forEach(row => {
-                  if (filter === 'all' || row.getAttribute('data-category') === filter) {
-                      row.style.display = ''; 
-                  } else {
-                      row.style.display = 'none'; 
-                  }
-              });
+              currentFilter = btn.getAttribute('data-filter');
+              applyFilters();
           });
       });
+
+      if (searchInput) {
+          searchInput.addEventListener('input', applyFilters);
+      }
   }
 });

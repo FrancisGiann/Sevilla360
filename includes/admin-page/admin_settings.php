@@ -17,7 +17,7 @@ $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settin
 $venues_query = $conn->query("
     SELECT 
         v.*, 
-        hr.room_type, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
+        hr.room_type, hr.room_number, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
         eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate, eh.capacity_theater, eh.capacity_classroom, eh.capacity_banquet,
         vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra
     FROM venues v
@@ -123,12 +123,17 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <button class="btn btn-primary" id="btn-add-venue">+ Add New Venue</button>
                 </div>
 
-                <!-- CATEGORY FILTER TABS -->
-                <div class="venue-filters" id="venueFilters">
-                    <button class="venue-filter-btn active" data-filter="all">All</button>
-                    <button class="venue-filter-btn" data-filter="Event Hall">Event Halls</button>
-                    <button class="venue-filter-btn" data-filter="Hotel Room">Hotel Rooms</button>
-                    <button class="venue-filter-btn" data-filter="Resort Villa">Resort Villas</button>
+                <!-- CATEGORY FILTER TABS & SEARCH -->
+                <div class="venue-filters" id="venueFilters" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                    <div>
+                        <button class="venue-filter-btn active" data-filter="all">All</button>
+                        <button class="venue-filter-btn" data-filter="Event Hall">Event Halls</button>
+                        <button class="venue-filter-btn" data-filter="Hotel Room">Hotel Rooms</button>
+                        <button class="venue-filter-btn" data-filter="Resort Villa">Resort Villas</button>
+                    </div>
+                    <div>
+                        <input type="text" id="venue-search-input" class="form-control" placeholder="Search venues..." style="max-width: 250px; border-radius: 20px; padding: 6px 15px; border: 1px solid var(--gray-border);">
+                    </div>
                 </div>
 
                 <div class="venues-table-wrapper">
@@ -148,8 +153,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
                                 <?php 
                                     $display_name = htmlspecialchars($v['name']);
-                                    if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
-                                        $display_name .= ' (' . htmlspecialchars($v['room_type']) . ')';
+                                    if ($v['category'] === 'Hotel Room') {
+                                        if (!empty($v['room_type'])) {
+                                            $display_name .= ' — ' . htmlspecialchars($v['room_type']);
+                                        }
+                                        if (!empty($v['room_number'])) {
+                                            $display_name .= ' — Room ' . htmlspecialchars($v['room_number']);
+                                        }
                                     }
                                     
                                     // Determine Badge Class
@@ -421,6 +431,35 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
                         <label>Nightly Rate (₱)</label>
                         <input type="number" id="vm-hr-rate" name="nightly_rate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Room Number</label>
+                        <input type="text" id="vm-hr-room-number" name="room_number" class="form-control"
+                            placeholder="e.g. 101 or A-101">
+                    </div>
+
+                    <!-- BULK HOTEL ROOM CREATION (Only shown on add) -->
+                    <div class="form-group vm-dynamic vm-hotel vm-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc; grid-column: span 2;">
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                <label style="margin: 0; color: #4338ca; font-weight: 600;">Bulk Create Rooms?</label>
+                                <p style="margin: 0; font-size: 0.8rem; color: #4f46e5;">Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="vm-hr-bulk-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div id="vm-hr-bulk-fields" style="display: none; margin-top: 15px; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="color: #4338ca;">Quantity to Create</label>
+                                <input type="number" id="vm-hr-bulk-qty" name="bulk_quantity" class="form-control" min="1" max="100" placeholder="e.g. 5">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="color: #4338ca;">Starting Room Number</label>
+                                <input type="text" id="vm-hr-bulk-start" name="bulk_start_number" class="form-control" placeholder="e.g. 101 or A-101">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Villa Specific -->

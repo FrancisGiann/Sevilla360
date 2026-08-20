@@ -2,9 +2,8 @@
 <div class="tab-content" id="tab-hotel">
 
     <div class="dynamic-img-wrapper">
-        <img id="hotel-img"
-            src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800"
-            alt="Hotel Room">
+        <!-- src set dynamically by JS from data-img on selected option -->
+        <img id="hotel-img" src="assets/img/placeholder.jpg" alt="Hotel Room">
     </div>
 
     <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWNS -->
@@ -39,11 +38,11 @@
     <div class="form-group">
         <label>Number of Guests</label>
         <input type="number" id="hotel-guests" min="1" max="4" value="2">
-        <small class="extra-pax-note">Additional ₱800 per head exceeding base capacity. <span
+        <small class="extra-pax-note">Additional charge per head exceeding base capacity. <span
                 id="hotel-extra-fee"></span></small>
     </div>
 
-    <!-- Inject the PHP Data for Javascript cascading dropdown -->
+    <!-- Inject the PHP Data for Javascript cascading dropdown (individual rooms) -->
     <script>
     window.hotelRoomData = <?php echo json_encode($grouped_hotel_rooms); ?>;
     </script>

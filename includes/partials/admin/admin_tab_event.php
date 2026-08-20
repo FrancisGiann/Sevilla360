@@ -10,13 +10,17 @@ if (!isset($sys_settings)) {
 }
 $type_wed = $sys_settings['event_type_wedding'] ?? 10000;
 $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
+
+$default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
+    ? $event_halls[0]['image']
+    : 'assets/img/placeholder.jpg';
 ?>
 
 <!-- ADMIN EVENT HALL TAB -->
 <div class="tab-content active" id="tab-event">
     <div class="dynamic-img-wrapper">
         <img id="event-img"
-            src="https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=800"
+            src="<?php echo htmlspecialchars($default_event_img); ?>"
             alt="Event Hall">
     </div>
 
@@ -31,7 +35,8 @@ $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
                     data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall"
                     data-theater="<?php echo $hall['capacity_theater'] ?? 0; ?>"
                     data-classroom="<?php echo $hall['capacity_classroom'] ?? 0; ?>"
-                    data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>">
+                    data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>"
+                    data-img="<?php echo htmlspecialchars($hall['image']); ?>">
                     <?php echo htmlspecialchars($hall['name']); ?> (Base Rate:
                     ₱<?php echo number_format($hall['base_rate']); ?>)
                 </option>

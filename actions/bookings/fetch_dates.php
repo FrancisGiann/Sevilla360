@@ -1,10 +1,10 @@
 <?php
 session_start();
-header('Content-Type: application/json'); // Force JSON output so JS never crashes
+header('Content-Type: application/json');
 require '../../config/db_connect.php';
 
 try {
-    // 1. AUTOMATED CLEANUP: Cancel abandoned "Pending" online bookings older than 30 minutes
+    // AUTOMATED CLEANUP: Cancel abandoned "Pending" online bookings older than 30 minutes
     $conn->query("
         UPDATE bookings 
         SET booking_status = 'Cancelled' 
@@ -14,77 +14,135 @@ try {
           AND created_at < NOW() - INTERVAL 30 MINUTE
     ");
 
-    // Safely accept both GET and POST requests
-    $room_type = $_REQUEST['room_type'] ?? '';
-    $room_name = $_REQUEST['room_name'] ?? '';
-
     $bookedDates = [];
+    $room_type = $_REQUEST['room_type'] ?? '';
+    $room_name = $_REQUEST['room_name'] ?? ''; // This is venue name or building name
 
-    // If no room is selected yet, just return an empty array safely
     if (empty($room_type) || empty($room_name)) {
         echo json_encode([]);
         exit;
     }
 
-    // Find the Venue ID
-    if ($room_type === 'Event Hall' || $room_type === 'Resort Villa' || $room_type === 'Hotel Room') {
+    if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
+        // Find single venue ID
         $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
-    } else {
-        $stmt = $conn->prepare("
-            SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
-            WHERE h.room_type = ? AND v.name = ? LIMIT 1
-        ");
-    }
-    $stmt->bind_param("ss", $room_type, $room_name);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        $venue_id = $result->fetch_assoc()['id'];
-
-        // If it is an Event Hall, ONLY block 'Confirmed' dates. 
-        // If it's a Hotel/Villa, block both 'Pending' and 'Confirmed'.
-        if ($room_type === 'Event Hall') {
-            $stmt_bookings = $conn->prepare("SELECT start_date, end_date FROM bookings WHERE venue_id = ? AND booking_status IN ('Confirmed', 'Completed')");
-        } else {
-            $stmt_bookings = $conn->prepare("SELECT start_date, end_date FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed')");
-        }
+        $stmt->bind_param("ss", $room_type, $room_name);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        $stmt_bookings->bind_param("i", $venue_id);
-        $stmt_bookings->execute();
-        $res_bookings = $stmt_bookings->get_result();
+        if ($result->num_rows > 0) {
+            $venue_id = (int)$result->fetch_assoc()['id'];
+            
+            // Event Halls only block Confirmed. Villas block Pending & Confirmed.
+            $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
+            
+            $stmt_bookings = $conn->query("SELECT start_date, end_date FROM bookings WHERE venue_id = $venue_id AND booking_status $status_filter");
+            while ($row = $stmt_bookings->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate <= $endDate) {
+                    $bookedDates[] = $currentDate->format('Y-m-d');
+                    $currentDate->modify('+1 day');
+                }
+            }
 
-        while ($row = $res_bookings->fetch_assoc()) {
-            $currentDate = new DateTime($row['start_date']);
-            $endDate = new DateTime($row['end_date']);
-
-            while ($currentDate <= $endDate) {
-                $bookedDates[] = $currentDate->format('Y-m-d');
-                $currentDate->modify('+1 day');
+            // Maintenance blocks
+            $stmt_maint = $conn->query("SELECT start_date, end_date FROM maintenance WHERE venue_id = $venue_id AND is_blocking = 1");
+            while ($row = $stmt_maint->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate <= $endDate) {
+                    $bookedDates[] = $currentDate->format('Y-m-d');
+                    $currentDate->modify('+1 day');
+                }
             }
         }
+    } else {
+        // HOTEL ROOMS (Auto-assign logic)
+        // room_type = "Stellar Room", room_name = "Building A"
+        $stmt_inv = $conn->prepare("
+            SELECT v.id 
+            FROM venues v 
+            JOIN hotel_rooms h ON v.id = h.venue_id 
+            WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+        ");
+        $stmt_inv->bind_param("ss", $room_type, $room_name);
+        $stmt_inv->execute();
+        $res_inv = $stmt_inv->get_result();
+        
+        if ($res_inv->num_rows > 0) {
+            $total_inventory = $res_inv->num_rows;
+            $venue_ids = [];
+            while($row = $res_inv->fetch_assoc()) {
+                $venue_ids[] = $row['id'];
+            }
+            $v_ids_str = implode(',', $venue_ids);
 
-        // Also fetch active maintenance blocks
-        $stmt_maint = $conn->prepare("SELECT start_date, end_date FROM maintenance WHERE venue_id = ? AND is_blocking = 1");
-        $stmt_maint->bind_param("i", $venue_id);
-        $stmt_maint->execute();
-        $res_maint = $stmt_maint->get_result();
+            // Fetch all booked dates for all units in this group
+            // For hotels, check both direct bookings and booking_rooms (add-ons)
+            $date_counts = [];
 
-        while ($row = $res_maint->fetch_assoc()) {
-            $currentDate = new DateTime($row['start_date']);
-            $endDate = new DateTime($row['end_date']);
-            while ($currentDate <= $endDate) {
-                $bookedDates[] = $currentDate->format('Y-m-d');
-                $currentDate->modify('+1 day');
+            // 1. Direct Bookings
+            $stmt_direct = $conn->query("
+                SELECT start_date, end_date 
+                FROM bookings 
+                WHERE venue_id IN ($v_ids_str) AND booking_status IN ('Pending', 'Confirmed', 'Completed')
+            ");
+            while ($row = $stmt_direct->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate <= $endDate) {
+                    $d = $currentDate->format('Y-m-d');
+                    $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
+                    $currentDate->modify('+1 day');
+                }
+            }
+
+            // 2. Add-on Bookings (booking_rooms)
+            $stmt_addon = $conn->query("
+                SELECT br.start_date, br.end_date 
+                FROM booking_rooms br
+                JOIN bookings b ON br.booking_id = b.id
+                WHERE br.venue_id IN ($v_ids_str) AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')
+            ");
+            while ($row = $stmt_addon->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate <= $endDate) {
+                    $d = $currentDate->format('Y-m-d');
+                    $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
+                    $currentDate->modify('+1 day');
+                }
+            }
+
+            // 3. Maintenance Blocks
+            $stmt_maint = $conn->query("
+                SELECT start_date, end_date 
+                FROM maintenance 
+                WHERE venue_id IN ($v_ids_str) AND is_blocking = 1
+            ");
+            while ($row = $stmt_maint->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate <= $endDate) {
+                    $d = $currentDate->format('Y-m-d');
+                    $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
+                    $currentDate->modify('+1 day');
+                }
+            }
+
+            // If count >= total_inventory, that date is fully booked
+            foreach ($date_counts as $date_str => $count) {
+                if ($count >= $total_inventory) {
+                    $bookedDates[] = $date_str;
+                }
             }
         }
     }
 
-    // Always output valid JSON
     echo json_encode(array_values(array_unique($bookedDates)));
 
 } catch (Exception $e) {
-    // If database fails, return empty array so calendar doesn't crash
     echo json_encode([]);
 }
 ?>

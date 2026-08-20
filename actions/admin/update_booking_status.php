@@ -188,24 +188,78 @@ try {
         $new_start = $data['new_start_date'];
         $new_end = $data['new_end_date'];
         
-        $stmt_venue = $conn->prepare("SELECT venue_id FROM bookings WHERE id = ?");
+        // 1. Get original venue info
+        $stmt_venue = $conn->prepare("
+            SELECT b.venue_id, v.category, v.name, h.room_type 
+            FROM bookings b 
+            JOIN venues v ON b.venue_id = v.id 
+            LEFT JOIN hotel_rooms h ON v.id = h.venue_id
+            WHERE b.id = ?
+        ");
         $stmt_venue->bind_param("i", $booking_id);
         $stmt_venue->execute();
-        $venue_id = $stmt_venue->get_result()->fetch_assoc()['venue_id'];
+        $b_data = $stmt_venue->get_result()->fetch_assoc();
+        $venue_id = $b_data['venue_id'];
 
-        $check_overlap = $conn->prepare("
-            SELECT id FROM bookings 
-            WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)
-        ");
-        $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
-        $check_overlap->execute();
-        
-        if ($check_overlap->get_result()->num_rows > 0) {
-            throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
+        if ($b_data['category'] === 'Hotel Room') {
+            // Find ANY available unit in this building and room_type
+            $r_type = $b_data['room_type'];
+            $r_name = $b_data['name'];
+            $stmt_inv = $conn->prepare("
+                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+            ");
+            $stmt_inv->bind_param("ss", $r_type, $r_name);
+            $stmt_inv->execute();
+            $res_inv = $stmt_inv->get_result();
+
+            $assigned_venue_id = null;
+            while ($row = $res_inv->fetch_assoc()) {
+                $vid = $row['id'];
+                
+                // Check Maintenance
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date <= '$new_end' AND end_date >= '$new_start')");
+                if ($maint->num_rows > 0) continue;
+                
+                // Check Bookings (Exclude this specific booking)
+                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
+                if ($bk->num_rows > 0) continue;
+
+                // Check Add-on Bookings
+                $addons = $conn->query("
+                    SELECT br.id FROM booking_rooms br
+                    JOIN bookings b ON br.booking_id = b.id
+                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.id != $booking_id 
+                    AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
+                ");
+                if ($addons->num_rows > 0) continue;
+
+                $assigned_venue_id = $vid;
+                break;
+            }
+
+            if (!$assigned_venue_id) {
+                throw new Exception("Collision Error: All rooms of this type are booked on the requested dates.");
+            }
+            $venue_id = $assigned_venue_id;
+
+        } else {
+            // For Event Halls / Villas, just check the specific unit
+            $check_overlap = $conn->prepare("
+                SELECT id FROM bookings 
+                WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)
+            ");
+            $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
+            $check_overlap->execute();
+            
+            if ($check_overlap->get_result()->num_rows > 0) {
+                throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
+            }
         }
 
-        $stmt = $conn->prepare("UPDATE bookings SET start_date = ?, end_date = ? WHERE id = ?");
-        $stmt->bind_param("ssi", $new_start, $new_end, $booking_id);
+        // Update the booking dates (and potentially the auto-assigned venue_id)
+        $stmt = $conn->prepare("UPDATE bookings SET venue_id = ?, start_date = ?, end_date = ? WHERE id = ?");
+        $stmt->bind_param("issi", $venue_id, $new_start, $new_end, $booking_id);
         $stmt->execute();
 
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Approved' WHERE booking_id = ? AND status = 'Pending'");

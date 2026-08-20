@@ -3,7 +3,7 @@
 
     <div class="dynamic-img-wrapper">
         <img id="villa-img"
-            src="https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=800"
+            src="<?php echo htmlspecialchars(!empty($villas) ? $villas[0]['image'] : 'assets/img/placeholder.jpg'); ?>"
             alt="Resort Villa">
     </div>
 
@@ -14,7 +14,12 @@
             <option value="" disabled selected>Select a Villa...</option>
             <?php foreach($villas as $villa): ?>
             <option value="<?php echo $villa['base_rate']; ?>" data-id="<?php echo $villa['id']; ?>"
-                data-name="<?php echo htmlspecialchars($villa['name']); ?>" data-type="Resort Villa">
+                data-name="<?php echo htmlspecialchars($villa['name']); ?>" data-type="Resort Villa"
+                data-overnight="<?php echo $villa['overnight_rate']; ?>"
+                data-base-cap="<?php echo $villa['base_capacity']; ?>"
+                data-max-cap="<?php echo $villa['max_capacity']; ?>"
+                data-extra-pax="<?php echo $villa['extra_pax_rate']; ?>"
+                data-img="<?php echo htmlspecialchars($villa['image']); ?>">
                 <?php echo htmlspecialchars($villa['name']); ?> (₱<?php echo number_format($villa['base_rate']); ?>)
             </option>
             <?php endforeach; ?>

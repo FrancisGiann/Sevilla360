@@ -23,22 +23,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->begin_transaction();
 
         $category = $_POST['category'];
-        $venue_name = $_POST['venue_name'];
+        $venue_id = (int)$_POST['venue_name']; // JS passes venue.id here now
         $area = trim($_POST['area']);
         $type = $_POST['type'];
         $notes = trim($_POST['notes']);
         $is_blocking = $_POST['block_unit'] === 'true';
         $sDate = $_POST['start_date'];
         $eDate = $_POST['end_date'];
-
-        // 1. Find the specific Venue ID
-        $stmt_venue = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
-        $stmt_venue->bind_param("ss", $category, $venue_name);
-        $stmt_venue->execute();
-        $venue_res = $stmt_venue->get_result();
         
-        if ($venue_res->num_rows === 0) throw new Exception("Venue not found in database.");
-        $venue_id = $venue_res->fetch_assoc()['id'];
+        if ($venue_id <= 0) throw new Exception("Invalid venue ID.");
 
         // 2. If Blocking Calendar, insert a "Maintenance Booking" lock
         if ($is_blocking) {

@@ -11,6 +11,10 @@ $cat_silv = $sys_settings['catering_silver'] ?? 750;
 $cat_gold = $sys_settings['catering_gold'] ?? 1200;
 $cat_plat = $sys_settings['catering_platinum'] ?? 1800;
 $av_setup = $sys_settings['av_setup'] ?? 5000;
+
+// $hotel_room_groups must be set by the parent page (booking.php or admin_walkin.php)
+// Each entry: {building_name, room_type, nightly_rate, base_capacity, total_inventory, image}
+$addon_room_groups = $hotel_room_groups ?? [];
 ?>
 
 <!-- Enhance Your Event (Shared Add-ons Partial) -->
@@ -72,42 +76,79 @@ $av_setup = $sys_settings['av_setup'] ?? 5000;
         </div>
     </div>
 
-    <!-- HOTEL ROOMS ADD-ON -->
+    <!-- HOTEL ROOMS ADD-ON (Real Inventory) -->
     <div class="addon-block">
         <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve Hotel Rooms</label>
         <div class="addon-content hidden" id="rooms-options">
-            <div class="mix-match">
-                <div class="mix-row">
-                    <div class="mix-info">
-                        <img src="https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=150"
-                            alt="Deluxe">
-                        <div>
-                            <h5>Deluxe Room</h5>
-                            <p>2 Pax | ₱4,500 / night</p>
-                        </div>
-                    </div>
-                    <div class="counter">
-                        <button type="button" class="btn-minus" data-target="qty-deluxe">-</button>
-                        <span class="val" id="qty-deluxe">0</span>
-                        <button type="button" class="btn-plus" data-target="qty-deluxe">+</button>
-                    </div>
-                </div>
-                <div class="mix-row">
-                    <div class="mix-info">
-                        <img src="https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=150"
-                            alt="VIP">
-                        <div>
-                            <h5>VIP Suite</h5>
-                            <p>4 Pax | ₱8,500 / night</p>
-                        </div>
-                    </div>
-                    <div class="counter">
-                        <button type="button" class="btn-minus" data-target="qty-vip">-</button>
-                        <span class="val" id="qty-vip">0</span>
-                        <button type="button" class="btn-plus" data-target="qty-vip">+</button>
-                    </div>
-                </div>
+            <p class="addon-note" style="font-size:0.85rem; color:#888; margin-bottom:12px;">
+                <i>Select dates above first to check live availability. Rates shown are per room per night.</i>
+            </p>
+
+            <!-- Filter dropdown -->
+            <?php 
+                $unique_types = [];
+                foreach($addon_room_groups as $grp) {
+                    $r_type = $grp['room_type'];
+                    if (!in_array($r_type, $unique_types)) {
+                        $unique_types[] = $r_type;
+                    }
+                }
+            ?>
+            <?php if (!empty($unique_types)): ?>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="addon-type-filter" style="font-size: 0.85rem; font-weight: 600;">Filter by Room Type:</label>
+                <select id="addon-type-filter" class="form-control" style="max-width: 300px; padding: 6px; font-size: 0.9rem;">
+                    <option value="all">All Room Types</option>
+                    <?php foreach($unique_types as $t): ?>
+                        <option value="<?php echo htmlspecialchars($t); ?>"><?php echo htmlspecialchars($t); ?></option>
+                    <?php endforeach; ?>
+                </select>
             </div>
+            <?php endif; ?>
+
+            <!-- Room group catalog: rendered from real DB data -->
+            <div class="room-groups-catalog" id="room-groups-catalog">
+                <?php foreach($addon_room_groups as $grp): 
+                    $group_key = $grp['building_name'] . '|' . $grp['room_type'];
+                    $safe_key  = htmlspecialchars($group_key);
+                ?>
+                <div class="room-group-card"
+                    data-building="<?php echo htmlspecialchars($grp['building_name']); ?>"
+                    data-room-type="<?php echo htmlspecialchars($grp['room_type']); ?>"
+                    data-rate="<?php echo $grp['nightly_rate']; ?>"
+                    data-capacity="<?php echo $grp['base_capacity']; ?>"
+                    data-inventory="<?php echo $grp['total_inventory']; ?>"
+                    data-group-key="<?php echo $safe_key; ?>"
+                    style="display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 10px; background: #fff;">
+                    <div class="room-group-info" style="display: flex; align-items: center; gap: 12px;">
+                        <img src="<?php echo htmlspecialchars($grp['image']); ?>"
+                             alt="<?php echo htmlspecialchars($grp['building_name']); ?>"
+                             class="room-group-thumb"
+                             style="width: 80px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                             onerror="this.src='assets/img/placeholder.jpg'">
+                        <div>
+                            <strong style="font-size: 0.95rem; color: #333;"><?php echo htmlspecialchars($grp['building_name']); ?> — <?php echo htmlspecialchars($grp['room_type']); ?></strong>
+                            <br>
+                            <small style="color: #666;">₱<?php echo number_format($grp['nightly_rate']); ?>/night &nbsp;|&nbsp; <?php echo $grp['base_capacity']; ?> pax base</small>
+                            <br>
+                            <!-- Availability shown only after dates are locked via JS -->
+                            <small class="room-avail-label" style="color:#888;">
+                                (<?php echo $grp['total_inventory']; ?> total units — select dates to check availability)
+                            </small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-add-room-group"
+                        data-group-key="<?php echo $safe_key; ?>"
+                        style="padding: 8px 16px; background: var(--primary, #d6a870); color: #fff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap;">+ Add</button>
+                </div>
+                <?php endforeach; ?>
+                <?php if (empty($addon_room_groups)): ?>
+                <p style="color:#aaa; font-size:0.9rem;">No hotel rooms available.</p>
+                <?php endif; ?>
+            </div>
+
+            <!-- Selected room groups with quantity controls -->
+            <div id="selected-room-groups" style="margin-top:12px;"></div>
         </div>
     </div>
 
@@ -118,3 +159,22 @@ $av_setup = $sys_settings['av_setup'] ?? 5000;
             Setup (+₱<?php echo number_format($av_setup); ?>)</label>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const filter = document.getElementById("addon-type-filter");
+    if (filter) {
+        filter.addEventListener("change", function() {
+            const selected = this.value;
+            const cards = document.querySelectorAll(".room-group-card");
+            cards.forEach(card => {
+                if (selected === "all" || card.getAttribute("data-room-type") === selected) {
+                    card.style.display = "flex";
+                } else {
+                    card.style.display = "none";
+                }
+            });
+        });
+    }
+});
+</script>

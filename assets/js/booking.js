@@ -1,6 +1,9 @@
 /**
  * ==========================================================================
  * SEVILLA360 - Booking Controller (Refactored & Fully Patched)
+ * - Uses CMS images via data-img attributes (no hardcoded Unsplash URLs)
+ * - Hotel rooms: individual physical room selection via venue_id
+ * - Hotel room add-ons: real inventory using room_groups, not hardcoded prices
  * ==========================================================================
  */
 
@@ -20,17 +23,6 @@ class BookingController {
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
         window.calculateSummary = this.calculateSummary.bind(this);
-
-        this.imageMap = {
-            "grand-ballroom": "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=800",
-            "garden-pavilion": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=800",
-            "rooftop-terrace": "https://images.unsplash.com/photo-1533174000255-11593130c2c3?auto=format&fit=crop&w=800",
-            "deluxe": "https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&w=800",
-            "vip": "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800",
-            "standard": "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800",
-            "casita": "https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?auto=format&fit=crop&w=800",
-            "hacienda": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800"
-        };
 
         this.init();
     }
@@ -70,8 +62,8 @@ class BookingController {
     }
 
     bindUIInteractions() {
+        // Image swap: reads data-img from selected option (no hardcoded imageMap)
         this.setupImageSwap("event-venue", "event-img");
-        this.setupImageSwap("hotel-room-type", "hotel-img");
         this.setupImageSwap("villa-type", "villa-img");
 
         const hotelTypeSelect = this.getEl("hotel-room-type");
@@ -80,9 +72,19 @@ class BookingController {
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 const opt = e.target.options[e.target.selectedIndex];
+                // Update summary label with room display (building + room_number)
                 const roomLabel = document.getElementById("sum-ht-room");
-                if (roomLabel) roomLabel.innerText = opt.dataset.name || opt.text.split('(')[0].trim();
-                this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                if (roomLabel) roomLabel.innerText = opt.dataset.display || opt.text.split('(')[0].trim();
+                // Update hotel image from CMS data-img
+                const hotelImg = this.getEl('hotel-img');
+                if (hotelImg && opt.dataset.img) {
+                    hotelImg.style.opacity = '0';
+                    setTimeout(() => { hotelImg.src = opt.dataset.img; hotelImg.style.opacity = '1'; }, 300);
+                }
+                // Fetch booked dates using group info
+                if (opt.dataset.type && opt.dataset.name && this.state.calendars.hotel) {
+                    this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                }
                 this.calculateSummary();
             });
         }
@@ -98,20 +100,16 @@ class BookingController {
             // Dynamically update event style dropdown capacities
             const styleSelect = this.getEl('event-style');
             if (styleSelect && opt.dataset.theater) {
-                // Update the text of the existing options to include the specific room capacities
                 styleSelect.options[0].text = `Theater Style (${opt.dataset.theater} pax)`;
                 styleSelect.options[1].text = `Classroom Style (${opt.dataset.classroom} pax)`;
                 styleSelect.options[2].text = `Banquet Type (${opt.dataset.banquet} pax)`;
                 
-                // Also update the max attribute on the guest input so they can't overbook!
-                // (Defaults to the highest capacity, which is usually Theater)
                 const guestInput = this.getEl('event-guests');
                 if (guestInput) {
                     const maxCap = Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet);
                     guestInput.setAttribute('max', maxCap);
                 }
             }
-            // =========================================================
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
@@ -154,6 +152,16 @@ class BookingController {
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
 
+        // =========================================================================
+        // HOTEL ROOM ADD-ON: "Add" buttons on room group cards
+        // =========================================================================
+        document.querySelectorAll('.btn-add-room-group').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const groupKey = e.target.dataset.groupKey;
+                this.addRoomGroupToSelection(groupKey);
+            });
+        });
+
         document.querySelectorAll(".counter").forEach(counter => {
             const minus = counter.querySelector(".btn-minus");
             const plus = counter.querySelector(".btn-plus");
@@ -169,6 +177,61 @@ class BookingController {
             });
         });
     }
+
+    // =========================================================================
+    // HOTEL ROOM ADD-ON MANAGEMENT (Real Inventory)
+    // =========================================================================
+
+    addRoomGroupToSelection(groupKey) {
+        const container = document.getElementById('selected-room-groups');
+        if (!container) return;
+
+        // Prevent duplicate entries for the same group
+        if (container.querySelector(`[data-sel-key="${CSS.escape(groupKey)}"]`)) {
+            showAlert('Notice', 'This room group is already added. Adjust the quantity below.');
+            return;
+        }
+
+        // Find the source card for metadata
+        const card = document.querySelector(`.room-group-card[data-group-key="${CSS.escape(groupKey)}"]`);
+        if (!card) return;
+
+        const building  = card.dataset.building;
+        const roomType  = card.dataset.roomType;
+        const rate      = parseFloat(card.dataset.rate);
+        const inventory = parseInt(card.dataset.inventory) || 1;
+
+        const row = document.createElement('div');
+        row.className = 'wi-row selected-room-row';
+        row.setAttribute('data-sel-key', groupKey);
+        row.setAttribute('data-building', building);
+        row.setAttribute('data-room-type', roomType);
+        row.setAttribute('data-rate', rate);
+        row.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; align-items:center;';
+        row.innerHTML = `
+            <div style="flex:1; display:flex; flex-direction:column;">
+                <strong style="font-size:0.95rem; color:#333;">${building} — ${roomType}</strong>
+                <small style="color:#666;">₱${rate.toLocaleString()}/night</small>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:0.85rem; font-weight:600; color:#555;">Qty:</label>
+                <input type="number" class="sel-room-qty" min="1" max="${inventory}" value="1"
+                    style="width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
+                <button type="button" class="btn-remove-room-sel" style="width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;" title="Remove"><i class="fa-solid fa-times"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+
+        row.querySelector('.sel-room-qty').addEventListener('input', () => this.calculateSummary());
+        row.querySelector('.btn-remove-room-sel').addEventListener('click', () => {
+            row.remove();
+            this.calculateSummary();
+        });
+
+        this.calculateSummary();
+    }
+
+    // =========================================================================
 
     bindCalculatorTriggers() {
         document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"]').forEach(input => {
@@ -212,7 +275,6 @@ class BookingController {
             if (btn) {
                 this.executeTabVisualSwitch(btn, urlTab);
             }
-            // Clear the URL param so calculateSummary never re-triggers this
             const cleanUrl = window.location.pathname;
             window.history.replaceState(null, '', cleanUrl);
             return;
@@ -222,15 +284,18 @@ class BookingController {
         if (activeBtn) this.state.activeTabId = activeBtn.getAttribute('data-tab');
     }
 
+    // Image swap: reads data-img attribute from selected option (CMS-backed)
     setupImageSwap(selectId, imgId) {
         const select = this.getEl(selectId);
         const img = this.getEl(imgId);
         if (!select || !img) return;
 
         select.addEventListener("change", (e) => {
+            const opt = e.target.options[e.target.selectedIndex];
+            const imgSrc = opt.dataset.img || 'assets/img/placeholder.jpg';
             img.style.opacity = "0";
             setTimeout(() => {
-                img.src = this.imageMap[e.target.value] || this.imageMap[Object.keys(this.imageMap)[0]];
+                img.src = imgSrc;
                 img.style.opacity = "1";
             }, 300);
         });
@@ -250,13 +315,18 @@ class BookingController {
         const rooms = window.hotelRoomData[category];
         if (!rooms || !nameSelect) return;
 
-        nameSelect.innerHTML = '<option value="" disabled selected>Select a specific room...</option>';
+        nameSelect.innerHTML = '<option value="" disabled selected>Select a building...</option>';
         rooms.forEach((room) => {
             const opt = document.createElement("option");
-            opt.value = room.base_rate;
-            opt.dataset.type = room.room_type;
-            opt.dataset.name = room.building_name;
-            opt.textContent = `${room.building_name} (${room.base_capacity} pax) - ₱${parseInt(room.base_rate).toLocaleString()} [${room.total_units} units]`;
+            opt.value = room.nightly_rate;
+            opt.dataset.type     = room.room_type;
+            opt.dataset.name     = room.building_name;
+            opt.dataset.inventory = room.total_inventory;
+            opt.dataset.img      = room.image || 'assets/img/placeholder.jpg';
+            opt.dataset.display  = `${room.building_name}`;
+            opt.dataset.baseCap  = room.base_capacity;
+            opt.dataset.extraPax = room.extra_pax_rate;
+            opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
@@ -368,16 +438,22 @@ class BookingController {
 
         confirmBtn.addEventListener("click", async () => {
             const lockData = this.getTabContextData();
-            if (!lockData.roomName) {
+            if (!lockData.roomName && !lockData.venueId) {
                 showAlert("Notice", "Please select a specific venue/room from the dropdown first!");
                 return;
             }
 
             const formData = new FormData();
-            formData.append('room_type', lockData.roomType);
-            formData.append('room_name', lockData.roomName);
             formData.append('start_date', this.formatSafeDate(startDate));
             formData.append('end_date', endDate ? this.formatSafeDate(endDate) : this.formatSafeDate(startDate));
+
+            // Hotel rooms: send venue_id directly; others: send room_type + room_name
+            if (lockData.venueId) {
+                formData.append('venue_id', lockData.venueId);
+            } else {
+                formData.append('room_type', lockData.roomType);
+                formData.append('room_name', lockData.roomName);
+            }
 
             confirmBtn.innerText = "Locking...";
             confirmBtn.disabled = true;
@@ -397,6 +473,9 @@ class BookingController {
                     calendarInstance.updateDateDisplay();
                     this.calculateSummary();
                     
+                    // Update room availability labels in add-on panel
+                    this.updateRoomAvailabilityLabels(startDate, endDate);
+                    
                     // ONLY START THE TIMER IF IT IS NOT AN EVENT INQUIRY
                     if (this.state.activeTabId !== 'event-hall') {
                         this.startTimer();
@@ -414,6 +493,40 @@ class BookingController {
             }
         });
     }
+
+    // =========================================================================
+    // After dates are locked, fetch real availability counts for room group cards
+    // =========================================================================
+    async updateRoomAvailabilityLabels(startDate, endDate) {
+        if (!startDate) return;
+        const start = this.formatSafeDate(startDate);
+        const end   = endDate ? this.formatSafeDate(endDate) : start;
+
+        document.querySelectorAll('.room-group-card').forEach(async (card) => {
+            const building  = card.dataset.building;
+            const roomType  = card.dataset.roomType;
+            const label     = card.querySelector('.room-avail-label');
+            const addBtn    = card.querySelector('.btn-add-room-group');
+            if (!label) return;
+
+            try {
+                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
+                const res  = await fetch(url);
+                const data = await res.json();
+                if (data.success) {
+                    const n = data.available;
+                    label.style.color = n > 0 ? '#2a7a3b' : '#c0392b';
+                    label.textContent = n > 0 ? `${n} room${n > 1 ? 's' : ''} available` : 'No rooms available for these dates';
+                    if (addBtn) addBtn.disabled = (n === 0);
+                    // Store available count on the card for quantity validation
+                    card.dataset.available = n;
+                }
+            } catch(e) {
+                // silently ignore
+            }
+        });
+    }
+    // =========================================================================
 
     showOverrideModal(newDate, calendarInstance) {
         const overrideModal = this.getEl("override-date-modal");
@@ -463,32 +576,25 @@ class BookingController {
     }
 
     // =========================================================================
-    // CALCULATION LOGIC (WITH CRASH FIXES & PRICING HIDER!)
+    // CALCULATION LOGIC
     // =========================================================================
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
-        // Do NOT call determineActiveTab() here — it reads the URL and causes re-switching
-        // activeTabId is maintained by handleTabSwitch and determineActiveTab (run once on init only)
 
-        // 1. SAFELY GRAB DOM ELEMENTS
         const breakdownEl = this.getEl('summary-breakdown');
         const totalValEl = this.getEl('summary-total-val');
         const dueValEl = this.getEl('summary-due-val');
         const pricingSection = this.getEl('pricing-section');
 
-        // 2. DO THE MATH (Dates locked or not, we show the base calculation)
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
             case 'event-hall': this.calcEventMath(); break;
             case 'resort-villa': this.calcVillaMath(); break;
         }
         
-        // OUTPUT BREAKDOWN AND TOTAL IMMEDIATELY
         if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
         if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
-
-        // (Removed early return to allow live updates of scheme amounts before dates are locked)
 
         let activeRadioName = 'hotel-payment';
         let summaryTextId = 'sum-ht-payment'; 
@@ -497,7 +603,6 @@ class BookingController {
 
         const proceedBtn = this.getEl("btn-proceed");
 
-        // 4. BRANCHING LOGIC: EVENT INQUIRY VS NORMAL BOOKING
         if (this.state.activeTabId === 'event-hall') {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
@@ -508,14 +613,13 @@ class BookingController {
                 proceedBtn.style.backgroundColor = "var(--color-dark)";
             }
             if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
-            if (pricingSection) pricingSection.style.display = "none"; // HIDES PRICING
+            if (pricingSection) pricingSection.style.display = "none";
 
         } else {
-            // Only show timer if dates are actually locked
             if (this.getEl("timer-box")) {
                 this.getEl("timer-box").style.display = this.state.isDatesLocked ? "block" : "none";
             }
-            if (pricingSection) pricingSection.style.display = "block"; // SHOWS PRICING
+            if (pricingSection) pricingSection.style.display = "block";
 
             if (this.state.activeTabId === 'resort-villa') {
                 activeRadioName = 'villa-payment';
@@ -553,7 +657,14 @@ class BookingController {
             this.state.summary.total += roomTotal; 
             this.appendSummaryRow(`Base Room Rate (x${nights} nights)`, roomTotal);
         }
-        const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), 2, 800, this.getEl('hotel-extra-fee'), this.getEl('sum-ht-guests'));
+
+        // Get extra pax rate from the selected option's data attribute (from DB)
+        const nameSelect = this.getEl('hotel-room-name');
+        const selectedOpt = nameSelect?.options[nameSelect?.selectedIndex];
+        const baseCap = parseInt(selectedOpt?.dataset.baseCap) || 2;
+        const extraPaxRate = parseFloat(selectedOpt?.dataset.extraPax) || 800;
+
+        const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), baseCap, extraPaxRate, this.getEl('hotel-extra-fee'), this.getEl('sum-ht-guests'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
@@ -574,7 +685,7 @@ class BookingController {
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
 
-        // --- NEW: EVENT TYPE UPGRADE FEE ---
+        // EVENT TYPE UPGRADE FEE
         const evTypeRadio = document.querySelector('input[name="event-type"]:checked');
         let evTypeText = 'Plain Hall';
         if (evTypeRadio) {
@@ -585,12 +696,10 @@ class BookingController {
             if (typePrice > 0) {
                 this.state.summary.total += typePrice;
                 this.syncSystemLineItem('type', `Event Type: ${evTypeText}`, typePrice);
-            } else {
-                this.syncSystemLineItem('type', '', 0); // Clear it if 0
             }
         }
         
-        // --- NEW: EVENT STYLE UPGRADE FEE ---
+        // EVENT STYLE UPGRADE FEE
         const styleSelect = this.getEl('event-style');
         if (styleSelect) {
             const stylePrice = this.safeFloat(styleSelect.value);
@@ -598,12 +707,10 @@ class BookingController {
             if (stylePrice > 0) {
                 this.state.summary.total += stylePrice;
                 this.syncSystemLineItem('style', `Event Style: ${styleText}`, stylePrice);
-            } else {
-                this.syncSystemLineItem('style', '', 0); // Clear it if 0
             }
         }
 
-        // --- SYNC ADDONS TO LINE ITEM BUILDER ---
+        // CATERING ADD-ON
         let cateringTotal = 0; let cateringName = '';
         if (this.getEl('check-catering')?.checked) {
             const guestsInput = this.getEl('event-guests');
@@ -615,29 +722,29 @@ class BookingController {
             const tierName = activeTier?.parentElement.querySelector('h4')?.innerText || 'Catering';
             cateringName = `Catering: ${tierName} (${guests} pax)`;
         }
-        this.syncSystemLineItem('catering', cateringName, cateringTotal);
+        if (cateringTotal > 0) this.syncSystemLineItem('catering', cateringName, cateringTotal);
 
-        let roomTotal = 0; let roomName = '';
-        if (this.getEl('check-rooms')?.checked) {
-            const dltQty = parseInt(this.getEl('qty-deluxe')?.textContent) || 0;
-            const vipQty = parseInt(this.getEl('qty-vip')?.textContent) || 0;
-            roomTotal = ((dltQty * 4500) + (vipQty * 8500)) * days;
-            
-            let parts = [];
-            if(dltQty > 0) parts.push(`Deluxe Room (x${dltQty})`);
-            if(vipQty > 0) parts.push(`VIP Suite (x${vipQty})`);
-            roomName = `Reserved Rooms: ${parts.join(', ')}`;
-        }
-        this.syncSystemLineItem('rooms', roomName, roomTotal);
+        // HOTEL ROOM ADD-ON (Real inventory via selected-room-groups)
+        document.querySelectorAll('.selected-room-row').forEach(row => {
+            const rate = parseFloat(row.dataset.rate) || 0;
+            const qty  = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
+            const building  = row.dataset.building;
+            const roomType  = row.dataset.roomType;
+            if (rate > 0 && qty > 0) {
+                const lineTotal = rate * qty * days;
+                this.state.summary.total += lineTotal;
+                this.appendSummaryRow(`${building} — ${roomType} (×${qty} room${qty > 1 ? 's' : ''}, ×${days} night${days > 1 ? 's' : ''})`, lineTotal);
+            }
+        });
 
+        // A/V SETUP ADD-ON
         let avTotal = 0;
         const avCheckbox = this.getEl('check-av');
         if (avCheckbox?.checked) {
-            avTotal = this.safeFloat(avCheckbox.value); // DYNAMIC VALUE!
+            avTotal = this.safeFloat(avCheckbox.value);
         }
-        this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
+        if (avTotal > 0) this.syncSystemLineItem('av', 'Premium A/V Setup', avTotal);
     }
-
 
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
@@ -661,7 +768,13 @@ class BookingController {
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
         if (stayTypePrice > 0) this.appendSummaryRow('Overnight Upgrade', stayTypePrice);
         
-        const extraFee = this.calcExtraPax(this.getEl('villa-guests'), 4, 1000, this.getEl('villa-extra-fee'), this.getEl('sum-vl-guests'));
+        // Extra pax rate from villa option data attribute
+        const villaSelect = this.getEl('villa-type');
+        const villaOpt = villaSelect?.options[villaSelect?.selectedIndex];
+        const villaCap = parseInt(villaOpt?.dataset.baseCap) || 4;
+        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
+
+        const extraFee = this.calcExtraPax(this.getEl('villa-guests'), villaCap, villaExtraPax, this.getEl('villa-extra-fee'), this.getEl('sum-vl-guests'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
@@ -670,30 +783,32 @@ class BookingController {
     }
 
     getTabContextData() {
-        const context = { roomType: '', roomName: '', baseAmt: 0, guests: 0, activeRadioGroup: 'payment-scheme' };
+        const context = { roomType: '', roomName: '', venueId: null, baseAmt: 0, guests: 0, activeRadioGroup: 'payment-scheme' };
 
         if (this.state.activeTabId === 'hotel-rooms') {
-            const opt = this.getEl('hotel-room-name')?.options[this.getEl('hotel-room-name')?.selectedIndex];
+            const nameSelect = this.getEl('hotel-room-name');
+            const opt = nameSelect?.options[nameSelect?.selectedIndex];
+            context.venueId  = opt?.dataset.venueId || null;
             context.roomType = opt?.dataset.type;
             context.roomName = opt?.dataset.name;
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('hotel-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('hotel-guests')?.value;
             context.activeRadioGroup = 'hotel-payment';
 
         } else if (this.state.activeTabId === 'event-hall') {
             const opt = this.getEl('event-venue')?.options[this.getEl('event-venue')?.selectedIndex];
             context.roomType = 'Event Hall';
             context.roomName = opt?.text.split('(')[0].trim();
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('event-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('event-guests')?.value;
             context.activeRadioGroup = 'payment-scheme';
 
         } else if (this.state.activeTabId === 'resort-villa') {
             const opt = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
             context.roomType = 'Resort Villa';
             context.roomName = opt?.text.split('(')[0].trim();
-            context.baseAmt = opt?.value;
-            context.guests = this.getEl('villa-guests')?.value;
+            context.baseAmt  = opt?.value;
+            context.guests   = this.getEl('villa-guests')?.value;
             context.activeRadioGroup = 'villa-payment';
         }
         return context;
@@ -722,7 +837,7 @@ class BookingController {
         const btn = this.getEl("btn-proceed");
         const context = this.getTabContextData();
         
-        if (!context.roomName) { showAlert("Notice", "Please ensure a valid room/venue is selected."); return; }
+        if (!context.roomName && !context.venueId) { showAlert("Notice", "Please ensure a valid room/venue is selected."); return; }
 
         let schemeEnum = '100% Full';
         if (this.state.activeTabId === 'event-hall') {
@@ -735,7 +850,11 @@ class BookingController {
 
         const formData = new FormData();
         formData.append("room_type", context.roomType);
-        formData.append("room_name", context.roomName);
+        formData.append("room_name", context.roomName || '');
+
+        // Hotel rooms: pass venue_id directly; others: use room_type + room_name via session lock
+        if (context.venueId) formData.append("venue_id", context.venueId);
+
         formData.append("start_date", this.formatSafeDate(this.state.activeCalendar.startDate));
         formData.append("end_date", this.state.activeCalendar.endDate ? this.formatSafeDate(this.state.activeCalendar.endDate) : this.formatSafeDate(this.state.activeCalendar.startDate));
         formData.append("guests", context.guests || 0);
@@ -743,7 +862,6 @@ class BookingController {
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
         
-        // APPEND PHONE & NOTES
         formData.append("contact_phone", phoneInput.value.trim());
         const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
@@ -761,7 +879,7 @@ class BookingController {
             formData.append("stay_type", stayText);
         }
 
-        // Capture custom HTML add-ons as line items
+        // Capture catering and A/V line items
         let customLineItems = [];
 
         // 1. Catering
@@ -780,25 +898,28 @@ class BookingController {
             }
         }
 
-        // 2. Hotel Rooms
-        const checkRooms = document.getElementById('check-rooms');
-        if (checkRooms && checkRooms.checked) {
-            const deluxeQty = parseInt(document.getElementById('qty-deluxe')?.innerText) || 0;
-            const vipQty = parseInt(document.getElementById('qty-vip')?.innerText) || 0;
-            
-            if (deluxeQty > 0) customLineItems.push({ name: `Reserved Deluxe Room (x${deluxeQty})`, amount: (deluxeQty * 4500) });
-            if (vipQty > 0) customLineItems.push({ name: `Reserved VIP Suite (x${vipQty})`, amount: (vipQty * 8500) });
-        }
-
-        // 3. A/V Setup
+        // 2. A/V Setup
         const checkAv = document.getElementById('check-av');
         if (checkAv && checkAv.checked) {
-            customLineItems.push({ name: `Premium A/V Setup`, amount: 5000 });
+            const avPrice = parseFloat(checkAv.value) || 5000;
+            customLineItems.push({ name: `Premium A/V Setup`, amount: avPrice });
         }
 
-        // Append as a JSON string so PHP can read it easily
         formData.append('custom_line_items', JSON.stringify(customLineItems));
-        // =========================================================
+
+        // 3. Hotel Room Groups (real inventory — server allocates specific rooms)
+        let roomGroups = [];
+        document.querySelectorAll('.selected-room-row').forEach(row => {
+            const building  = row.dataset.building;
+            const roomType  = row.dataset.roomType;
+            const qty       = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
+            if (building && roomType && qty > 0) {
+                roomGroups.push({ building_name: building, room_type: roomType, quantity: qty });
+            }
+        });
+        if (roomGroups.length > 0) {
+            formData.append('room_groups', JSON.stringify(roomGroups));
+        }
 
         try {
             btn.innerText = "PROCESSING...";
@@ -812,11 +933,9 @@ class BookingController {
             const data = await res.text();
             const response = data.split('|');
             
-            // IF PAYMONGO SENDS A LINK, GO THERE
             if (response[0] === 'CheckoutUrl') {
                 window.location.href = response[1]; 
             } 
-            // OTHERWISE GO TO DASHBOARD
             else if (response[0] === 'Success') {
                 showAlert("Notice", "Success! Redirecting to Dashboard.");
                 window.location.href = "user_dashboard.php"; 

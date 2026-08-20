@@ -29,22 +29,37 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // SECURITY FIX: BACKEND PRICE VERIFICATION
         // Ensures the Walk-in price is 100% accurate based on the Database
         // =========================================================================
-        if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
+        // =========================================================================
+        // SECURITY FIX: BACKEND PRICE VERIFICATION
+        // Ensures the Walk-in price is 100% accurate based on the Database
+        // =========================================================================
+        if (!empty($_POST['venue_id'])) {
+            $venue_id = (int)$_POST['venue_id'];
             $stmt_room = $conn->prepare("
                 SELECT id, category FROM venues 
-                WHERE category = ? AND name = ? AND status = 'Available'
+                WHERE id = ? AND status = 'Available'
                 AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
                 LIMIT 1
             ");
+            $stmt_room->bind_param("iss", $venue_id, $eDate, $sDate);
         } else {
-            $stmt_room = $conn->prepare("
-                SELECT v.id, v.category FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
-                WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
-                AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
-                LIMIT 1
-            ");
+            if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
+                $stmt_room = $conn->prepare("
+                    SELECT id, category FROM venues 
+                    WHERE category = ? AND name = ? AND status = 'Available'
+                    AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                    LIMIT 1
+                ");
+            } else {
+                $stmt_room = $conn->prepare("
+                    SELECT v.id, v.category FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                    WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+                    AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                    LIMIT 1
+                ");
+            }
+            $stmt_room->bind_param("ssss", $room_type, $room_name, $eDate, $sDate);
         }
-        $stmt_room->bind_param("ssss", $room_type, $room_name, $eDate, $sDate);
         $stmt_room->execute();
         $room_result = $stmt_room->get_result();
         
@@ -65,12 +80,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
 
-        // Add custom line items to total before calculating downpayment
+        $total_addons_cost = 0;
+        $line_items_data = [];
         if (isset($_POST['custom_line_items'])) {
             $line_items_data = json_decode($_POST['custom_line_items'], true);
             if (is_array($line_items_data)) {
                 foreach ($line_items_data as $item) {
-                    $true_total += floatval($item['amount']);
+                    $amt = floatval($item['amount']);
+                    if ($amt > 0) {
+                        $total_addons_cost += $amt;
+                        $true_total += $amt;
+                    }
                 }
             }
         }
@@ -91,7 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($raw_method === 'maya') $pay_method = 'Maya';
         if ($raw_method === 'bank') $pay_method = 'Bank Transfer';
 
-        // Find or create customer (prevents duplicate email error)
+        // Find or create customer
         $guest_email = trim($_POST['guest_email']);
         $guest_phone = trim($_POST['guest_phone']);
         $guest_name = trim($_POST['guest_name']);
@@ -106,30 +126,103 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $res_cust = $stmt_check_cust->get_result();
 
         if ($res_cust->num_rows > 0) {
-            // Use existing customer ID and update their phone number
             $customer_id = $res_cust->fetch_assoc()['id'];
             $stmt_update_cust = $conn->prepare("UPDATE customers SET phone = ? WHERE id = ?");
             $stmt_update_cust->bind_param("si", $guest_phone, $customer_id);
             $stmt_update_cust->execute();
         } else {
-            // Create new customer record
             $stmt_cust = $conn->prepare("INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)");
             $stmt_cust->bind_param("ssss", $first_name, $last_name, $guest_email, $guest_phone);
             $stmt_cust->execute();
             $customer_id = $conn->insert_id;
         }
-        // =========================================================================
 
         $stmt_book = $conn->prepare("
-            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
+            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, addons_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
         ");
-        $stmt_book->bind_param("siissidddss", 
+        $stmt_book->bind_param("siissiddddss", 
             $ref_no, $customer_id, $venue_id, $sDate, $eDate, 
-            $guests, $base_amount, $true_total, $amount_paid, $scheme, $payment_status
+            $guests, $base_amount, $total_addons_cost, $true_total, $amount_paid, $scheme, $payment_status
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
+
+        // INSERT LINE ITEMS
+        if (is_array($line_items_data) && count($line_items_data) > 0) {
+            $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+            foreach ($line_items_data as $item) {
+                $name = trim($item['name']);
+                $amt = floatval($item['amount']);
+                if ($amt > 0) {
+                    $stmt_li->bind_param("isd", $booking_id, $name, $amt);
+                    $stmt_li->execute();
+                }
+            }
+        }
+
+        // =========================================================================
+        // REAL HOTEL ROOM ALLOCATION LOGIC
+        // =========================================================================
+        if (isset($_POST['room_groups']) && $venue_category === 'Event Hall') {
+            $room_groups = json_decode($_POST['room_groups'], true);
+            if (is_array($room_groups) && count($room_groups) > 0) {
+                
+                $start_dt = new DateTime($sDate);
+                $end_dt = new DateTime($eDate);
+                $nights = $start_dt->diff($end_dt)->days;
+                if ($nights === 0) $nights = 1;
+
+                $stmt_alloc = $conn->prepare("
+                    SELECT v.id, h.nightly_rate
+                    FROM venues v
+                    JOIN hotel_rooms h ON v.id = h.venue_id
+                    WHERE v.name = ? 
+                      AND h.room_type = ? 
+                      AND v.status = 'Available'
+                      AND v.id NOT IN (
+                          SELECT venue_id FROM bookings
+                          WHERE booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND (start_date < ? AND end_date > ?)
+                      )
+                      AND v.id NOT IN (
+                          SELECT br.venue_id FROM booking_rooms br
+                          JOIN bookings b2 ON br.booking_id = b2.id
+                          WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND (br.start_date < ? AND br.end_date > ?)
+                      )
+                    LIMIT ?
+                ");
+                
+                $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+                foreach ($room_groups as $group) {
+                    $building = trim($group['building_name']);
+                    $type = trim($group['room_type']);
+                    $qty = (int)$group['quantity'];
+                    
+                    if ($qty > 0) {
+                        $stmt_alloc->bind_param('ssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $qty);
+                        $stmt_alloc->execute();
+                        $alloc_res = $stmt_alloc->get_result();
+                        
+                        if ($alloc_res->num_rows < $qty) {
+                            throw new Exception("Not enough inventory available for $building - $type. Please try again.");
+                        }
+
+                        while ($room = $alloc_res->fetch_assoc()) {
+                            $r_venue_id = $room['id'];
+                            $r_rate = floatval($room['nightly_rate']);
+                            $r_line_total = $r_rate * $nights;
+                            
+                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $sDate, $eDate, $nights, $r_line_total);
+                            $stmt_insert->execute();
+                        }
+                    }
+                }
+            }
+        }
+        // =========================================================================
 
         // SAVE EVENT DETAILS AND NOTES
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;

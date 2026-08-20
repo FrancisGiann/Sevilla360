@@ -16,10 +16,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const venues = window.venueData ? window.venueData[category] : null;
 
         if (venues && venues.length > 0) {
-            venues.forEach(venueName => {
+            venues.forEach(venue => {
                 const opt = document.createElement("option");
-                opt.value = venueName;
-                opt.innerText = venueName;
+                opt.value = venue.id;
+                opt.innerText = venue.display;
                 specificVenueSelect.appendChild(opt);
             });
         } else {
@@ -73,8 +73,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggleBlock = document.getElementById("maint-block");
 
     specificVenueSelect.addEventListener("change", (e) => {
-        sumMaintUnit.innerText = e.target.value;
-        maintCalendar.fetchBookedDates(currentCategory, e.target.value);
+        sumMaintUnit.innerText = e.target.options[e.target.selectedIndex].text;
+        maintCalendar.fetchBookedDates(null, null, e.target.value);
     });
 
     inputArea.addEventListener("input", (e) => { document.getElementById("sum-maint-area").innerText = e.target.value.trim() || "--"; });

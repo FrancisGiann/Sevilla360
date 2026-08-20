@@ -154,7 +154,72 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // (Event Halls stay at 0 so PayMongo is bypassed for the inquiry)
                 if ($total_addons_cost > 0) {
                     $true_total += $total_addons_cost;
-                    $conn->query("UPDATE bookings SET addons_amount = $total_addons_cost, total_amount = $true_total WHERE id = $booking_id");
+                    $stmt_upd = $conn->prepare("UPDATE bookings SET addons_amount = ?, total_amount = ? WHERE id = ?");
+                    $stmt_upd->bind_param("ddi", $total_addons_cost, $true_total, $booking_id);
+                    $stmt_upd->execute();
+                }
+            }
+        }
+
+        // =========================================================================
+        // REAL HOTEL ROOM ALLOCATION LOGIC
+        // =========================================================================
+        if (isset($_POST['room_groups']) && $venue_category === 'Event Hall') {
+            $room_groups = json_decode($_POST['room_groups'], true);
+            if (is_array($room_groups) && count($room_groups) > 0) {
+                
+                // Determine nights
+                $start_dt = new DateTime($sDate);
+                $end_dt = new DateTime($eDate);
+                $nights = $start_dt->diff($end_dt)->days;
+                if ($nights === 0) $nights = 1;
+
+                $stmt_alloc = $conn->prepare("
+                    SELECT v.id, h.nightly_rate
+                    FROM venues v
+                    JOIN hotel_rooms h ON v.id = h.venue_id
+                    WHERE v.name = ? 
+                      AND h.room_type = ? 
+                      AND v.status = 'Available'
+                      AND v.id NOT IN (
+                          SELECT venue_id FROM bookings
+                          WHERE booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND (start_date < ? AND end_date > ?)
+                      )
+                      AND v.id NOT IN (
+                          SELECT br.venue_id FROM booking_rooms br
+                          JOIN bookings b2 ON br.booking_id = b2.id
+                          WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND (br.start_date < ? AND br.end_date > ?)
+                      )
+                    LIMIT ?
+                ");
+                
+                $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+                foreach ($room_groups as $group) {
+                    $building = trim($group['building_name']);
+                    $type = trim($group['room_type']);
+                    $qty = (int)$group['quantity'];
+                    
+                    if ($qty > 0) {
+                        $stmt_alloc->bind_param('ssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $qty);
+                        $stmt_alloc->execute();
+                        $alloc_res = $stmt_alloc->get_result();
+                        
+                        if ($alloc_res->num_rows < $qty) {
+                            throw new Exception("Not enough inventory available for $building - $type. Please try again.");
+                        }
+
+                        while ($room = $alloc_res->fetch_assoc()) {
+                            $r_venue_id = $room['id'];
+                            $r_rate = floatval($room['nightly_rate']);
+                            $r_line_total = $r_rate * $nights;
+                            
+                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $sDate, $eDate, $nights, $r_line_total);
+                            $stmt_insert->execute();
+                        }
+                    }
                 }
             }
         }
