@@ -218,7 +218,7 @@ try {
                 $vid = $row['id'];
                 
                 // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date <= '$new_end' AND end_date >= '$new_start')");
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date < '$new_end' AND end_date > '$new_start')");
                 if ($maint->num_rows > 0) continue;
                 
                 // Check Bookings (Exclude this specific booking)
@@ -257,7 +257,77 @@ try {
             }
         }
 
-        // Update the booking dates (and potentially the auto-assigned venue_id)
+        // 2. Validate and re-allocate any Room Add-ons
+        $stmt_addons = $conn->prepare("
+            SELECT br.id, br.venue_id, v.name as building_name, h.room_type 
+            FROM booking_rooms br
+            JOIN venues v ON br.venue_id = v.id
+            JOIN hotel_rooms h ON v.id = h.venue_id
+            WHERE br.booking_id = ?
+        ");
+        $stmt_addons->bind_param("i", $booking_id);
+        $stmt_addons->execute();
+        $res_addons = $stmt_addons->get_result();
+
+        $new_allocations = []; // [ br_id => new_venue_id ]
+
+        while ($addon = $res_addons->fetch_assoc()) {
+            $br_id = $addon['id'];
+            $br_vid = $addon['venue_id'];
+            $r_type = $addon['room_type'];
+            $r_name = $addon['building_name'];
+
+            // Find ANY available unit in this building and room_type for the new dates
+            $stmt_inv = $conn->prepare("
+                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+            ");
+            $stmt_inv->bind_param("ss", $r_type, $r_name);
+            $stmt_inv->execute();
+            $res_inv = $stmt_inv->get_result();
+
+            $assigned_venue_id = null;
+            while ($row = $res_inv->fetch_assoc()) {
+                $vid = $row['id'];
+                
+                // If we already assigned this $vid in this loop or for the main venue, skip it
+                if (in_array($vid, $new_allocations) || $vid === $venue_id) continue;
+
+                // Check Maintenance
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date < '$new_end' AND end_date > '$new_start')");
+                if ($maint->num_rows > 0) continue;
+                
+                // Check Bookings
+                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
+                if ($bk->num_rows > 0) continue;
+
+                // Check Add-on Bookings
+                $addons_check = $conn->query("
+                    SELECT br.id FROM booking_rooms br
+                    JOIN bookings b ON br.booking_id = b.id
+                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.id != $booking_id 
+                    AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
+                ");
+                if ($addons_check->num_rows > 0) continue;
+
+                $assigned_venue_id = $vid;
+                break;
+            }
+
+            if (!$assigned_venue_id) {
+                throw new Exception("Collision Error: Not enough available '$r_name - $r_type' units for the new dates. Cannot reschedule.");
+            }
+            $new_allocations[$br_id] = $assigned_venue_id;
+        }
+
+        // Apply new allocations for add-ons
+        foreach ($new_allocations as $br_id => $new_vid) {
+            $stmt_upd_br = $conn->prepare("UPDATE booking_rooms SET venue_id = ?, start_date = ?, end_date = ? WHERE id = ?");
+            $stmt_upd_br->bind_param("issi", $new_vid, $new_start, $new_end, $br_id);
+            $stmt_upd_br->execute();
+        }
+
+        // Update the main booking dates (and potentially the auto-assigned venue_id)
         $stmt = $conn->prepare("UPDATE bookings SET venue_id = ?, start_date = ?, end_date = ? WHERE id = ?");
         $stmt->bind_param("issi", $venue_id, $new_start, $new_end, $booking_id);
         $stmt->execute();
@@ -295,13 +365,15 @@ try {
         $refund_row = $stmt_refund->get_result()->fetch_assoc();
         $refund_amount = $refund_row ? floatval($refund_row['refund_amount']) : null;
 
+        $refund_tx_id = isset($data['refund_transaction_id']) ? trim($data['refund_transaction_id']) : null;
+
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         
-        $stmt_cx = $conn->prepare("UPDATE cancellations SET status = 'Processed' WHERE booking_id = ?");
-        $stmt_cx->bind_param("i", $booking_id);
-        $stmt_cx->execute();
+        $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Processed', refund_transaction_id = ? WHERE booking_id = ?");
+        $stmt_cancel->bind_param("si", $refund_tx_id, $booking_id);
+        $stmt_cancel->execute();
 
         // Also clean up any pending reschedule request for this booking
         $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");

@@ -362,6 +362,8 @@ while ($row = $notifs_result->fetch_assoc()) {
                                                     data-id="<?php echo $b['id']; ?>"
                                                     data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
                                                     data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
+                                                    data-start="<?php echo $b['start_date']; ?>"
+                                                    data-end="<?php echo $b['end_date']; ?>"
                                                     data-date="<?php echo $date_str; ?>">Reschedule</button>
                                                 <?php endif; ?>
 

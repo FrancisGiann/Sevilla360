@@ -319,6 +319,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (userReschedCalendar) {
           userReschedCalendar.clearSelection();
+          
+          const startDt = new Date(btn.getAttribute("data-start"));
+          const endDt = new Date(btn.getAttribute("data-end"));
+          const diffTime = Math.abs(endDt - startDt);
+          let nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (venueType === 'Hotel Room' || venueType.includes('Room')) {
+              if (nights < 1) nights = 1;
+              userReschedCalendar.requireHotelRules = true;
+          } else {
+              userReschedCalendar.requireHotelRules = false;
+          }
+          userReschedCalendar.fixedDurationNights = nights;
+
           userReschedCalendar.fetchBookedDates(venueType, venueName);
           setTimeout(() => userReschedCalendar.render(), 100);
       }

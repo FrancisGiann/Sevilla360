@@ -217,6 +217,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             
                             $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $sDate, $eDate, $nights, $r_line_total);
                             $stmt_insert->execute();
+
+                            // Ensure calculated room add-on totals are saved in booking_line_items
+                            $li_name = "Room Add-on: $building - $type";
+                            $stmt_li_add = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+                            $stmt_li_add->bind_param("isd", $booking_id, $li_name, $r_line_total);
+                            $stmt_li_add->execute();
                         }
                     }
                 }

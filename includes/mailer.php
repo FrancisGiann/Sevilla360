@@ -35,19 +35,43 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     // 1. Fetch Booking Details
     $stmt = $conn->prepare("
-        SELECT b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.amount_paid, v.category 
-        FROM bookings b JOIN venues v ON b.venue_id = v.id 
+        SELECT 
+            b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.amount_paid, 
+            v.category, v.name AS venue_name, hr.room_type, hr.room_number 
+        FROM bookings b 
+        JOIN venues v ON b.venue_id = v.id 
+        LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE b.reference_no = ?
     ");
     $stmt->bind_param("s", $ref_no);
     $stmt->execute();
     $booking = $stmt->get_result()->fetch_assoc();
 
+    if ($booking['category'] === 'Hotel Room') {
+        $r_type = $booking['room_type'] ?? 'Hotel Room';
+        $r_num = $booking['room_number'] ? " - Room " . $booking['room_number'] : "";
+        $venue_name = $booking['venue_name'] . " - " . $r_type . $r_num;
+    } else {
+        $venue_name = $booking['venue_name'];
+    }
+
     // 2. Fetch Itemized Line Items!
     $stmt_li = $conn->prepare("SELECT item_name, amount FROM booking_line_items WHERE booking_id = ?");
     $stmt_li->bind_param("i", $booking['id']);
     $stmt_li->execute();
     $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    // 2b. Fetch Room Add-ons
+    $stmt_ra = $conn->prepare("
+        SELECT v.name AS building_name, hr.room_type, hr.room_number, br.nights, br.line_total 
+        FROM booking_rooms br 
+        JOIN venues v ON br.venue_id = v.id 
+        JOIN hotel_rooms hr ON v.id = hr.venue_id 
+        WHERE br.booking_id = ?
+    ");
+    $stmt_ra->bind_param("i", $booking['id']);
+    $stmt_ra->execute();
+    $room_addons = $stmt_ra->get_result()->fetch_all(MYSQLI_ASSOC);
 
     // 3. CHECK-IN / CHECK-OUT LOGIC
     $check_in_time = '2:00 PM';
@@ -80,12 +104,18 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     $breakdown_html = "";
     $is_inquiry = (strpos($status, 'Inquiry') !== false);
 
-    if (count($line_items) > 0 || $booking['category'] === 'Event Hall') {
+    if (count($line_items) > 0 || count($room_addons) > 0 || $booking['category'] === 'Event Hall') {
         $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Itemized Estimate:</strong></td></tr>";
         $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
         
         foreach ($line_items as $item) {
             $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
+        }
+
+        foreach ($room_addons as $room) {
+            $r_num_str = $room['room_number'] ? " - Rm " . $room['room_number'] : "";
+            $name_str = "Room: " . $room['building_name'] . " - " . $room['room_type'] . $r_num_str . " (" . $room['nights'] . " nights)";
+            $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($name_str) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($room['line_total'], 2) . "</td></tr>";
         }
     }
 

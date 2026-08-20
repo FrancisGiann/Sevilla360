@@ -14,6 +14,8 @@ class SevillaCalendar {
     this.startDate = null;
     this.endDate = null;
     this.totalNights = 1;
+    this.fixedDurationNights = null;
+    this.requireHotelRules = false;
 
     this.bookedDatesList = [];
     this.init();
@@ -33,8 +35,16 @@ class SevillaCalendar {
     });
   }
 
-  async fetchBookedDates(room_type, room_name, venue_id = null) {
+  async fetchBookedDates(room_type, room_name, venue_id = null, requireHotelRules = false) {
     if (!room_type && !room_name && !venue_id) return;
+    
+    // Auto-detect hotel mode from strings if passed, or explicit flag
+    if (requireHotelRules || room_type === 'Hotel Room' || room_type === 'Stellar Room' || room_type === 'Deluxe Room') {
+        this.requireHotelRules = true;
+    } else {
+        this.requireHotelRules = false;
+    }
+
     try {
       const formData = new FormData();
       if (room_type) formData.append('room_type', room_type);
@@ -127,14 +137,32 @@ class SevillaCalendar {
           if (this.startDate && this.endDate) {
             this.startDate = cellDate;
             this.endDate = null;
+            if (this.fixedDurationNights !== null) {
+              this.endDate = new Date(this.startDate);
+              this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
+            }
             this.render();
+            if (this.fixedDurationNights !== null && typeof window.requestDateConfirmation === "function") {
+                window.requestDateConfirmation(this.startDate, this.endDate, this);
+            }
           } else if (!this.startDate) {
             this.startDate = cellDate;
-            this.render();
+            if (this.fixedDurationNights !== null) {
+              this.endDate = new Date(this.startDate);
+              this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
+              this.render();
+              if (typeof window.requestDateConfirmation === "function") {
+                  window.requestDateConfirmation(this.startDate, this.endDate, this);
+              }
+            } else {
+              this.render();
+            }
           } else if (this.startDate && !this.endDate) {
             if (cellDate < this.startDate) {
               this.startDate = cellDate;
               this.render();
+            } else if (this.requireHotelRules && cellDate.getTime() === this.startDate.getTime()) {
+              showAlert("Notice", "Hotel bookings require at least 1 night stay.");
             } else {
               if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
                 showAlert("Notice", "Selection contains unavailable or booked dates.");

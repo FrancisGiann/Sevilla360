@@ -91,7 +91,7 @@ try {
             while ($row = $stmt_direct->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                while ($currentDate <= $endDate) {
+                while ($currentDate < $endDate) {
                     $d = $currentDate->format('Y-m-d');
                     $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
                     $currentDate->modify('+1 day');
@@ -108,7 +108,7 @@ try {
             while ($row = $stmt_addon->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                while ($currentDate <= $endDate) {
+                while ($currentDate < $endDate) {
                     $d = $currentDate->format('Y-m-d');
                     $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
                     $currentDate->modify('+1 day');
@@ -124,7 +124,7 @@ try {
             while ($row = $stmt_maint->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                while ($currentDate <= $endDate) {
+                while ($currentDate < $endDate) {
                     $d = $currentDate->format('Y-m-d');
                     $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
                     $currentDate->modify('+1 day');

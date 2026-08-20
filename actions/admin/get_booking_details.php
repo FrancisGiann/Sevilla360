@@ -12,10 +12,14 @@ $booking_id = (int)$_GET['id'];
 try {
     // 1. Fetch Booking + Phone Number!
     $stmt = $conn->prepare("
-        SELECT b.*, c.first_name, c.last_name, c.email, c.phone, v.name as venue_name, v.category as venue_category 
+        SELECT 
+            b.*, c.first_name, c.last_name, c.email, c.phone, 
+            v.name as venue_name, v.category as venue_category,
+            hr.room_type, hr.room_number 
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
         JOIN venues v ON b.venue_id = v.id 
+        LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE b.id = ?
     ");
     $stmt->bind_param("i", $booking_id);
@@ -23,6 +27,12 @@ try {
     $booking = $stmt->get_result()->fetch_assoc();
 
     if (!$booking) throw new Exception("Booking not found");
+
+    if ($booking['venue_category'] === 'Hotel Room') {
+        $r_type = $booking['room_type'] ?? 'Hotel Room';
+        $r_num = $booking['room_number'] ? " - Room " . $booking['room_number'] : "";
+        $booking['venue_name'] = $booking['venue_name'] . " - " . $r_type . $r_num;
+    }
 
     // 2. Fetch Specifics
     $specifics = null;
@@ -69,13 +79,20 @@ try {
     $tx_res = $st_tx->get_result()->fetch_assoc();
     $transaction_id = $tx_res ? $tx_res['transaction_id'] : null;
 
+    // Fetch Cancellation Data
+    $st_cx = $conn->prepare("SELECT refund_amount, refund_transaction_id FROM cancellations WHERE booking_id = ? LIMIT 1");
+    $st_cx->bind_param("i", $booking_id);
+    $st_cx->execute();
+    $cx_res = $st_cx->get_result()->fetch_assoc();
+    
     echo json_encode(['success' => true, 'data' => [
         'booking' => $booking, 
         'specifics' => $specifics, 
         'addons' => $addons,
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,
-        'transaction_id' => $transaction_id
+        'transaction_id' => $transaction_id,
+        'cancellation' => $cx_res
     ]]);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

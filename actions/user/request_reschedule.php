@@ -31,18 +31,36 @@ $new_start = $data['new_start_date'];
 $new_end = isset($data['new_end_date']) ? $data['new_end_date'] : $new_start;
 $reason = trim($data['reason']);
 
-// Security: Verify this booking belongs to the logged-in user
+// Security: Verify this booking belongs to the logged-in user and fetch details
 $stmt_check = $conn->prepare("
-    SELECT b.id FROM bookings b 
+    SELECT b.id, b.start_date, b.end_date, v.category 
+    FROM bookings b 
     JOIN customers c ON b.customer_id = c.id 
+    JOIN venues v ON b.venue_id = v.id
     WHERE b.id = ? AND c.user_id = ?
 ");
 $stmt_check->bind_param("ii", $booking_id, $_SESSION['user_id']);
 $stmt_check->execute();
-if ($stmt_check->get_result()->num_rows === 0) {
+$res = $stmt_check->get_result();
+
+if ($res->num_rows === 0) {
     echo json_encode(['success' => false, 'message' => 'Booking not found or access denied.']);
     exit;
 }
+
+$booking = $res->fetch_assoc();
+
+// Force strict duration rule for ALL bookings to prevent unauthorized extension/shortening
+$orig_start = new DateTime($booking['start_date']);
+$orig_end = new DateTime($booking['end_date']);
+$nights = $orig_start->diff($orig_end)->days;
+
+// Recalculate end date from the requested start date to prevent duration tampering
+$req_start = new DateTime($new_start);
+if ($nights > 0) {
+    $req_start->modify("+$nights days");
+}
+$new_end = $req_start->format('Y-m-d');
 
 try {
     // Check if a request is already pending

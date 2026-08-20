@@ -19,7 +19,12 @@
 
     <!-- Table Card & History -->
     <div class="table-card">
-        <h3 class="card-title">Booking History</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 class="card-title" style="margin-bottom: 0;">Booking History</h3>
+            <button id="btn-refresh-bookings" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
+                <i class="fa-solid fa-arrows-rotate"></i> Refresh Bookings
+            </button>
+        </div>
 
         <!-- Booking Status Filter Tabs -->
         <div class="booking-tabs" id="bookingFilters">
@@ -85,7 +90,13 @@
                 <span class="label">Reason:</span>
                 <span class="value text-sub-muted" id="modal-ref-reason">--</span>
             </div>
-            <div class="refund-total">
+            
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="form-label-med">Refund Transaction / Reference ID <span style="color:red;">*</span></label>
+                <input type="text" id="refund-transaction-id" class="form-input-padded" placeholder="Enter bank/wallet ref number" required>
+            </div>
+
+            <div class="refund-total" style="margin-top: 15px;">
                 <span class="label">Refund Amount:</span>
                 <span class="value amount">₱0.00</span>
             </div>
@@ -144,8 +155,10 @@
                 <span class="label">Guests:</span> <span class="value" id="vd-guests">--</span>
                 <span class="label hidden-element" id="vd-specific-label">Specifics:</span>
                 <span class="value hidden-element" id="vd-specific-value">--</span>
-                <span class="label hidden-element" id="vd-transaction-label">Transaction Ref:</span>
-                <span class="value hidden-element-mono" id="vd-transaction-value">--</span>
+                <span class="label" id="vd-transaction-label" style="display:none;">Transaction ID:</span> 
+                <span class="value" id="vd-transaction-value" style="display:none;">--</span>
+                <span class="label" id="vd-refund-tx-label" style="display:none;">Refund Tx ID:</span> 
+                <span class="value text-red-danger" id="vd-refund-tx-value" style="display:none;">--</span>
             </div>
 
             <!-- Add-ons & Line Items Container -->
@@ -285,10 +298,12 @@
                 <textarea id="rr-reject-reason" class="form-textarea-padded" rows="2" placeholder="e.g. Sorry, those dates are unavailable."></textarea>
             </div>
 
-            <div class="modal-actions modal-actions-top-25">
-                <button class="btn-modal btn-modal-cancel close-modal">Close</button>
-                <button class="btn-modal btn-modal-danger" id="btn-reject-resched">Reject Request</button>
-                <button class="btn-modal btn-modal-primary btn-approve-green-solid" id="btn-approve-resched">Approve & Move</button>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-modal btn-modal-cancel close-modal" style="flex: 1; letter-spacing: 2px; text-transform: uppercase; font-size: 12px; font-weight: 500;">Close / Cancel</button>
+                <button class="btn-modal btn-modal-danger" id="btn-reject-resched" style="flex: 1; letter-spacing: 2px; text-transform: uppercase; font-size: 12px; font-weight: 500;">Reject Request</button>
+            </div>
+            <div style="margin-top: 10px;">
+                <button class="btn-modal" id="btn-approve-resched" style="width: 100%; background-color: #332d2a; color: #fff; border: none; padding: 12px; letter-spacing: 2px; text-transform: uppercase; font-size: 12px; font-weight: 500; cursor: pointer;">Approve Reschedule</button>
             </div>
         </div>
 

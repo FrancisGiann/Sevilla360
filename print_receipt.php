@@ -12,10 +12,12 @@ if ($booking_id <= 0) die("Invalid booking ID.");
 // Fetch booking data
 $stmt = $conn->prepare("
     SELECT b.*, c.first_name, c.last_name, c.email, c.phone, c.user_id as owner_id,
-           v.name AS venue_name, v.category AS venue_category
+           v.name AS venue_name, v.category AS venue_category,
+           hr.room_type, hr.room_number
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
     JOIN venues v ON b.venue_id = v.id
+    LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     WHERE b.id = ?
 ");
 $stmt->bind_param("i", $booking_id);
@@ -23,6 +25,12 @@ $stmt->execute();
 $res = $stmt->get_result();
 if ($res->num_rows === 0) die("Booking not found.");
 $booking = $res->fetch_assoc();
+
+if ($booking['venue_category'] === 'Hotel Room') {
+    $r_type = $booking['room_type'] ?? 'Hotel Room';
+    $r_num = $booking['room_number'] ? " - Room " . $booking['room_number'] : "";
+    $booking['venue_name'] = $booking['venue_name'] . " - " . $r_type . $r_num;
+}
 
 // Auth Guard: Only Admin/Staff OR the Booking Owner can view this
 $role = $_SESSION['role'] ?? '';
@@ -61,7 +69,7 @@ $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Fetch Room Allocations
 $stmt_ra = $conn->prepare("
-    SELECT v.name as building_name, h.room_type, h.room_number, br.line_total 
+    SELECT v.name as building_name, h.room_type, h.room_number, br.nights, br.line_total 
     FROM booking_rooms br 
     JOIN venues v ON br.venue_id = v.id 
     JOIN hotel_rooms h ON v.id = h.venue_id 
@@ -69,7 +77,7 @@ $stmt_ra = $conn->prepare("
 ");
 $stmt_ra->bind_param("i", $booking_id);
 $stmt_ra->execute();
-$room_allocations = $st_ra->get_result()->fetch_all(MYSQLI_ASSOC);
+$room_allocations = $stmt_ra->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Fetch All Payments
 $stmt_pay = $conn->prepare("SELECT transaction_id, payment_method, amount, payment_date FROM payments WHERE booking_id = ? AND status = 'Success' ORDER BY payment_date ASC");
@@ -431,8 +439,8 @@ else $status_text = $status;
                 <?php foreach ($room_allocations as $room): ?>
                 <tr>
                     <td>
-                        <span class="item-title">Hotel Room Add-on: <?php echo htmlspecialchars($room['building_name']); ?> — <?php echo htmlspecialchars($room['room_type']); ?></span>
-                        <span class="item-desc">Room Number: <?php echo htmlspecialchars($room['room_number'] ?? 'TBA'); ?></span>
+                        <span class="item-title">Room Add-on: <?php echo htmlspecialchars($room['building_name'] . ' - ' . $room['room_type']); ?></span>
+                        <span class="item-desc">Room Number: <?php echo htmlspecialchars($room['room_number'] ?? 'TBA'); ?> | <?php echo $room['nights']; ?> Night(s)</span>
                     </td>
                     <td class="right">₱<?php echo number_format($room['line_total'], 2); ?></td>
                 </tr>

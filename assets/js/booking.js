@@ -35,6 +35,79 @@ class BookingController {
         this.bindModalsAndSubmission();
         this.bindUnloadHook();
         this.determineActiveTab();
+        this.preselectFromURL();
+    }
+
+    preselectFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const category = urlParams.get('category');
+        if (!category) return;
+
+        // Map category to tab ID
+        const tabMap = {
+            'Event Hall': 'event-hall',
+            'Hotel Room': 'hotel-rooms',
+            'Resort Villa': 'resort-villa'
+        };
+        const targetTabId = tabMap[category];
+        if (!targetTabId) return;
+
+        // Switch to the correct tab
+        const tabBtn = document.querySelector(`.tab-btn[data-target="${targetTabId}"]`);
+        if (tabBtn) this.handleTabSwitch(tabBtn);
+
+        const venueId = urlParams.get('venue_id');
+        const roomType = urlParams.get('room_type');
+        const venueName = urlParams.get('venue_name');
+
+        if (category === 'Event Hall') {
+            const select = this.getEl('event-venue');
+            if (select && venueName) {
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].text.includes(venueName)) {
+                        select.selectedIndex = i;
+                        select.dispatchEvent(new Event('change'));
+                        break;
+                    }
+                }
+            }
+        } else if (category === 'Resort Villa') {
+            const select = this.getEl('villa-type');
+            if (select && venueName) {
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].text.includes(venueName)) {
+                        select.selectedIndex = i;
+                        select.dispatchEvent(new Event('change'));
+                        break;
+                    }
+                }
+            }
+        } else if (category === 'Hotel Room') {
+            const typeSelect = this.getEl('hotel-room-type');
+            if (typeSelect && roomType) {
+                for (let i = 0; i < typeSelect.options.length; i++) {
+                    if (typeSelect.options[i].value === roomType) {
+                        typeSelect.selectedIndex = i;
+                        typeSelect.dispatchEvent(new Event('change'));
+                        break;
+                    }
+                }
+                
+                // Now specific room/building dropdown should be populated
+                setTimeout(() => {
+                    const nameSelect = this.getEl('hotel-room-name');
+                    if (nameSelect && venueName) {
+                        for (let i = 0; i < nameSelect.options.length; i++) {
+                            if (nameSelect.options[i].dataset.name === venueName) {
+                                nameSelect.selectedIndex = i;
+                                nameSelect.dispatchEvent(new Event('change'));
+                                break;
+                            }
+                        }
+                    }
+                }, 100); // small delay to allow population
+            }
+        }
     }
 
     initCalendars() {

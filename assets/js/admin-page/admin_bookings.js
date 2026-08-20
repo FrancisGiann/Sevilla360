@@ -263,6 +263,21 @@ document.addEventListener("DOMContentLoaded", () => {
             loadBookings();
         });
     });
+
+    const btnRefresh = document.getElementById('btn-refresh-bookings');
+    if (btnRefresh) {
+        btnRefresh.addEventListener("click", () => {
+            const icon = btnRefresh.querySelector('i');
+            if (icon) icon.classList.add('fa-spin');
+            
+            // Reload silently but keep current page
+            loadBookings();
+            
+            setTimeout(() => {
+                if (icon) icon.classList.remove('fa-spin');
+            }, 800);
+        });
+    }
   
     // URL Params parsing
     const urlParams = new URLSearchParams(window.location.search);
@@ -431,8 +446,13 @@ document.addEventListener("DOMContentLoaded", () => {
             
             newBtn.setAttribute('data-id', bookingId);
             newBtn.addEventListener('click', function() {
+              const refundTxId = document.getElementById('refund-transaction-id').value.trim();
+              if (!refundTxId) {
+                  showAlert("Missing Data", "Please enter the Refund Transaction / Reference ID.", "error");
+                  return;
+              }
               showConfirmModal("Are you sure you want to process this refund? This cannot be undone.", () => {
-                  processBookingAction(this.getAttribute('data-id'), 'refund', this);
+                  processBookingAction(this.getAttribute('data-id'), 'refund', this, { refund_transaction_id: refundTxId });
               }, 'refundModal');
             });
       
@@ -708,6 +728,17 @@ document.addEventListener("DOMContentLoaded", () => {
                       txLabel.style.display = 'none';
                       txValue.style.display = 'none';
                   }
+
+                  const refTxLabel = document.getElementById('vd-refund-tx-label');
+                  const refTxValue = document.getElementById('vd-refund-tx-value');
+                  if (res.data.cancellation && res.data.cancellation.refund_transaction_id) {
+                      refTxLabel.style.display = 'block';
+                      refTxValue.style.display = 'block';
+                      refTxValue.innerText = res.data.cancellation.refund_transaction_id;
+                  } else {
+                      refTxLabel.style.display = 'none';
+                      refTxValue.style.display = 'none';
+                  }
       
                   const addonsContainer = document.getElementById('vd-addons-container');
                   const addonsList = document.getElementById('vd-addons-list');
@@ -725,6 +756,15 @@ document.addEventListener("DOMContentLoaded", () => {
                       hasExtras = true;
                       lineItems.forEach(item => {
                           addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${item.item_name}</span> <span class="value">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+                      });
+                  }
+
+                  const roomAllocations = res.data.room_allocations;
+                  if (roomAllocations && roomAllocations.length > 0) {
+                      hasExtras = true;
+                      roomAllocations.forEach(room => {
+                          const rNum = room.room_number ? ` - Rm ${room.room_number}` : '';
+                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; Room: ${room.building_name} - ${room.room_type}${rNum}</span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                       });
                   }
       

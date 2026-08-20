@@ -39,8 +39,11 @@ if ($venues_query) {
 
         $showroom_data[$safe_id] = [
             'id' => $safe_id,
+            'venue_id' => $v['id'],
             'title' => strtoupper($display_name),
             'category' => $v['category'],
+            'room_type' => $v['room_type'] ?? '',
+            'venue_name' => $v['venue_name'],
             'capacity' => $cap,
             'rate' => $rate,
             'status' => $v['status'],

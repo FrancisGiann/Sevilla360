@@ -234,6 +234,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (valDesc) valDesc.textContent = room.description;
     if (topRoomLabel) topRoomLabel.textContent = room.title;
 
+    // Update Book Button URL
+    const bookBtn = document.querySelector('.btn-book');
+    if (bookBtn) {
+        bookBtn.href = `booking.php?venue_id=${room.venue_id}&category=${encodeURIComponent(room.category)}&room_type=${encodeURIComponent(room.room_type || '')}&venue_name=${encodeURIComponent(room.venue_name || '')}`;
+    }
+
     // Dynamic Amenities Icons
     if (amenitiesGrid && room.amenities) {
         amenitiesGrid.innerHTML = ""; 

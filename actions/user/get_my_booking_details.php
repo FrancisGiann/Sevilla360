@@ -24,10 +24,12 @@ try {
         SELECT 
             b.*, 
             c.first_name, c.last_name, c.email, c.phone, 
-            v.name AS venue_name, v.category AS venue_category
+            v.name AS venue_name, v.category AS venue_category,
+            hr.room_type, hr.room_number
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id
+        LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE b.id = ? AND c.user_id = ?
     ");
     $stmt->bind_param("ii", $booking_id, $user_id);
@@ -36,6 +38,14 @@ try {
     
     if ($result->num_rows === 0) throw new Exception("Booking not found or access denied.");
     $booking = $result->fetch_assoc();
+    
+    // Format the venue_name for Hotel Rooms
+    if ($booking['venue_category'] === 'Hotel Room') {
+        $r_type = $booking['room_type'] ?? 'Hotel Room';
+        $r_num = $booking['room_number'] ? " - Room " . $booking['room_number'] : "";
+        $booking['venue_name'] = $booking['venue_name'] . " - " . $r_type . $r_num;
+    }
+    
     $response['data']['booking'] = $booking;
 
     // 3. Get Specific Details
@@ -60,11 +70,26 @@ try {
     ");
     $stmt_add->bind_param("i", $booking_id);
     $stmt_add->execute();
-    $addons_result = $stmt_add->get_result();
-    $response['data']['addons'] = [];
-    while($row = $addons_result->fetch_assoc()) {
-        $response['data']['addons'][] = $row;
-    }
+    $response['data']['addons'] = $stmt_add->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    // 4b. Get Room Add-ons (booking_rooms)
+    $stmt_br = $conn->prepare("
+        SELECT 
+            v.name AS building_name, 
+            hr.room_type, 
+            hr.room_number, 
+            br.start_date, 
+            br.end_date, 
+            br.nights, 
+            br.line_total
+        FROM booking_rooms br
+        JOIN venues v ON br.venue_id = v.id
+        JOIN hotel_rooms hr ON v.id = hr.venue_id
+        WHERE br.booking_id = ?
+    ");
+    $stmt_br->bind_param("i", $booking_id);
+    $stmt_br->execute();
+    $response['data']['rooms'] = $stmt_br->get_result()->fetch_all(MYSQLI_ASSOC);
 
     // 4.2. Get Custom Line Items
     $stmt_li = $conn->prepare("SELECT item_name, amount FROM booking_line_items WHERE booking_id = ?");
