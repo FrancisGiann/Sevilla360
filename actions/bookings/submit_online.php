@@ -22,11 +22,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
 
-        $ref_no = "SV-" . mt_rand(10000, 99999);
-        $sDate = $_POST['start_date'];
-        $eDate = $_POST['end_date'];
-        $scheme = $_POST['payment_scheme'];
+        $ref_no = "SV-" . strtoupper(bin2hex(random_bytes(8)));
+        $sDate = trim($_POST['start_date'] ?? '');
+        $eDate = trim($_POST['end_date'] ?? '');
+        $scheme = $_POST['payment_scheme'] ?? '';
         $guests = (int)$_POST['guests'];
+
+        $start_dt = DateTime::createFromFormat('!Y-m-d', $sDate);
+        $end_dt = DateTime::createFromFormat('!Y-m-d', $eDate);
+        $today = new DateTime('today');
+        if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $sDate || $end_dt->format('Y-m-d') !== $eDate || $end_dt < $start_dt || $start_dt < $today) {
+            throw new Exception("Invalid booking date range.");
+        }
+        if ($guests < 1) {
+            throw new Exception("Guest count must be at least one.");
+        }
 
         // 1. Get Customer ID & Email
         $stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email FROM customers WHERE user_id = ?");
@@ -51,6 +61,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Session expired or dates were not locked properly.");
         }
         $venue_id = $_SESSION['locked_venue_id'];
+
+        // The final request must match an active lock created by this session.
+        $sid = session_id();
+        $stmt_own_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id = ? AND start_date = ? AND end_date = ? AND expires_at > NOW()");
+        $stmt_own_lock->bind_param("isss", $venue_id, $sid, $sDate, $eDate);
+        $stmt_own_lock->execute();
+        if ($stmt_own_lock->get_result()->num_rows === 0) {
+            throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
+        }
 
         // RE-VALIDATE DATE AVAILABILITY
         $stmt_overlap = $conn->prepare("
@@ -81,7 +100,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ?");
         $stmt_cat->bind_param("i", $venue_id);
         $stmt_cat->execute();
-        $venue_category = $stmt_cat->get_result()->fetch_assoc()['category'];
+        $venue = $stmt_cat->get_result()->fetch_assoc();
+        if (!$venue) {
+            throw new Exception("Selected venue no longer exists.");
+        }
+        $venue_category = $venue['category'];
+        if ($venue_category !== 'Event Hall' && $end_dt <= $start_dt) {
+            throw new Exception("Hotel and villa bookings must end after their start date.");
+        }
 
         // =========================================================================
         // SHARED PRICING LOGIC
@@ -90,6 +116,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
 
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
+        if ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
+            throw new Exception("Guest count exceeds this venue's maximum capacity.");
+        }
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
 
@@ -159,9 +188,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     }
                 }
 
-                // If it's a Hotel/Villa, update the total amount to include add-ons immediately
-                // (Event Halls stay at 0 so PayMongo is bypassed for the inquiry)
-                if ($total_addons_cost > 0) {
+                // Event Hall submissions are inquiries. Their quote is set only when staff finalizes it.
+                if ($venue_category !== 'Event Hall' && $total_addons_cost > 0) {
                     $true_total += $total_addons_cost;
                     $stmt_upd = $conn->prepare("UPDATE bookings SET addons_amount = ?, total_amount = ? WHERE id = ?");
                     $stmt_upd->bind_param("ddi", $total_addons_cost, $true_total, $booking_id);
@@ -320,7 +348,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json',
                 'accept: application/json',

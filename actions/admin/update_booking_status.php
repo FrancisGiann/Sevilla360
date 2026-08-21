@@ -8,6 +8,13 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['ro
     exit;
 }
 
+$client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'CSRF validation failed.']);
+    exit;
+}
+
 require_once __DIR__ . '/../../config/db_connect.php'; 
 
 // Include mailer for notifications
@@ -33,7 +40,7 @@ try {
     // FETCH CUSTOMER DATA FOR EMAILS
     // ==========================================
     $stmt_info = $conn->prepare("
-        SELECT b.reference_no, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id 
+        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
         JOIN venues v ON b.venue_id = v.id 
@@ -42,6 +49,9 @@ try {
     $stmt_info->bind_param("i", $booking_id);
     $stmt_info->execute();
     $b_info = $stmt_info->get_result()->fetch_assoc();
+    if (!$b_info) {
+        throw new Exception("Booking not found.");
+    }
     
     $c_email = $b_info['email'] ?? '';
     $c_name = ($b_info['first_name'] ?? '') . ' ' . ($b_info['last_name'] ?? '');
@@ -53,6 +63,18 @@ try {
     // ACTIONS
     // ==========================================
     if ($action === 'confirm') {
+        $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND start_date < ? AND end_date > ? LIMIT 1");
+        $stmt_conflict->bind_param("iiss", $b_info['venue_id'], $booking_id, $b_info['end_date'], $b_info['start_date']);
+        $stmt_conflict->execute();
+        if ($stmt_conflict->get_result()->num_rows > 0) {
+            throw new Exception("This venue is already confirmed for the selected dates.");
+        }
+        $stmt_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND start_date <= ? AND end_date >= ? LIMIT 1");
+        $stmt_maintenance->bind_param("iss", $b_info['venue_id'], $b_info['end_date'], $b_info['start_date']);
+        $stmt_maintenance->execute();
+        if ($stmt_maintenance->get_result()->num_rows > 0) {
+            throw new Exception("This venue is under maintenance for the selected dates.");
+        }
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
@@ -187,6 +209,18 @@ try {
         }
         $new_start = $data['new_start_date'];
         $new_end = $data['new_end_date'];
+
+        $new_start_dt = DateTime::createFromFormat('!Y-m-d', $new_start);
+        $new_end_dt = DateTime::createFromFormat('!Y-m-d', $new_end);
+        $today = new DateTime('today');
+        $original_start_dt = new DateTime($b_info['start_date']);
+        $original_end_dt = new DateTime($b_info['end_date']);
+        if (!$new_start_dt || !$new_end_dt || $new_start_dt->format('Y-m-d') !== $new_start || $new_end_dt->format('Y-m-d') !== $new_end || $new_end_dt < $new_start_dt || $new_start_dt < $today) {
+            throw new Exception("Invalid reschedule date range.");
+        }
+        if ($new_start_dt->diff($new_end_dt)->days !== $original_start_dt->diff($original_end_dt)->days) {
+            throw new Exception("Rescheduling must keep the original booking duration.");
+        }
         
         // 1. Get original venue info
         $stmt_venue = $conn->prepare("
@@ -322,8 +356,10 @@ try {
 
         // Apply new allocations for add-ons
         foreach ($new_allocations as $br_id => $new_vid) {
-            $stmt_upd_br = $conn->prepare("UPDATE booking_rooms SET venue_id = ?, start_date = ?, end_date = ? WHERE id = ?");
-            $stmt_upd_br->bind_param("issi", $new_vid, $new_start, $new_end, $br_id);
+            $new_nights = $new_start_dt->diff($new_end_dt)->days;
+            if ($new_nights === 0) $new_nights = 1;
+            $stmt_upd_br = $conn->prepare("UPDATE booking_rooms SET venue_id = ?, start_date = ?, end_date = ?, nights = ?, line_total = nightly_rate * ? WHERE id = ?");
+            $stmt_upd_br->bind_param("issiii", $new_vid, $new_start, $new_end, $new_nights, $new_nights, $br_id);
             $stmt_upd_br->execute();
         }
 

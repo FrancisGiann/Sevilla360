@@ -15,7 +15,7 @@ function calculate_booking_price($conn, $venue_id, $venue_category, $start_date,
     $true_total = 0;
 
     if ($venue_category === 'Hotel Room') {
-        $stmt = $conn->prepare("SELECT nightly_rate, base_capacity, extra_pax_rate FROM hotel_rooms WHERE venue_id = ?");
+        $stmt = $conn->prepare("SELECT nightly_rate, base_capacity, max_capacity, extra_pax_rate FROM hotel_rooms WHERE venue_id = ?");
         $stmt->bind_param("i", $venue_id);
         $stmt->execute();
         $room = $stmt->get_result()->fetch_assoc();
@@ -29,14 +29,14 @@ function calculate_booking_price($conn, $venue_id, $venue_category, $start_date,
         }
     } 
     elseif ($venue_category === 'Resort Villa') {
-        $stmt = $conn->prepare("SELECT day_rate, base_capacity, extra_pax_rate FROM villas WHERE venue_id = ?");
+        $stmt = $conn->prepare("SELECT day_rate, overnight_rate, base_capacity, max_capacity, extra_pax_rate FROM villas WHERE venue_id = ?");
         $stmt->bind_param("i", $venue_id);
         $stmt->execute();
         $villa = $stmt->get_result()->fetch_assoc();
 
         $base_amount = floatval($villa['day_rate']);
         
-        $stay_upgrade = ($stay_type === 'Overnight') ? (3000 * $nights) : 0;
+        $stay_upgrade = ($stay_type === 'Overnight') ? (floatval($villa['overnight_rate']) * $nights) : 0;
         $true_total = ($base_amount * $nights) + $stay_upgrade;
 
         if ($guests > $villa['base_capacity']) {
@@ -45,7 +45,7 @@ function calculate_booking_price($conn, $venue_id, $venue_category, $start_date,
         }
     } 
     elseif ($venue_category === 'Event Hall') {
-        $stmt = $conn->prepare("SELECT base_rate FROM event_halls WHERE venue_id = ?");
+        $stmt = $conn->prepare("SELECT base_rate, max_capacity FROM event_halls WHERE venue_id = ?");
         $stmt->bind_param("i", $venue_id);
         $stmt->execute();
         $hall = $stmt->get_result()->fetch_assoc();
@@ -54,9 +54,12 @@ function calculate_booking_price($conn, $venue_id, $venue_category, $start_date,
         $true_total = $base_amount * $nights; 
     }
 
+    $max_capacity = isset($room) ? intval($room['max_capacity']) : (isset($villa) ? intval($villa['max_capacity']) : (isset($hall) ? intval($hall['max_capacity']) : 0));
+
     return [
         'base_amount' => $base_amount,
-        'true_total' => $true_total
+        'true_total' => $true_total,
+        'max_capacity' => $max_capacity
     ];
 }
 ?>

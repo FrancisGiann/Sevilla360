@@ -33,7 +33,7 @@ $reason = trim($data['reason']);
 
 // Security: Verify this booking belongs to the logged-in user and fetch details
 $stmt_check = $conn->prepare("
-    SELECT b.id, b.start_date, b.end_date, v.category 
+    SELECT b.id, b.start_date, b.end_date, b.booking_status, v.category
     FROM bookings b 
     JOIN customers c ON b.customer_id = c.id 
     JOIN venues v ON b.venue_id = v.id
@@ -49,6 +49,10 @@ if ($res->num_rows === 0) {
 }
 
 $booking = $res->fetch_assoc();
+if ($booking['booking_status'] !== 'Confirmed') {
+    echo json_encode(['success' => false, 'message' => 'Only confirmed bookings can be rescheduled.']);
+    exit;
+}
 
 // Force strict duration rule for ALL bookings to prevent unauthorized extension/shortening
 $orig_start = new DateTime($booking['start_date']);
@@ -56,7 +60,11 @@ $orig_end = new DateTime($booking['end_date']);
 $nights = $orig_start->diff($orig_end)->days;
 
 // Recalculate end date from the requested start date to prevent duration tampering
-$req_start = new DateTime($new_start);
+$req_start = DateTime::createFromFormat('!Y-m-d', $new_start);
+if (!$req_start || $req_start->format('Y-m-d') !== $new_start || $req_start < new DateTime('today')) {
+    echo json_encode(['success' => false, 'message' => 'Please select a valid future reschedule date.']);
+    exit;
+}
 if ($nights > 0) {
     $req_start->modify("+$nights days");
 }

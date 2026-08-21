@@ -2,6 +2,12 @@
 session_start();
 require '../../config/db_connect.php';
 
+if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['staff', 'admin'], true)) {
+    http_response_code(403);
+    echo "Error|Unauthorized access.";
+    exit;
+}
+
 // ==========================================
 // CSRF PROTECTION GUARD (TEXT)
 // ==========================================
@@ -17,13 +23,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
 
-        $ref_no = "SV-" . mt_rand(10000, 99999);
-        $sDate = $_POST['start_date'];
-        $eDate = $_POST['end_date'];
-        $scheme = $_POST['payment_scheme'];
+        $ref_no = "SV-" . strtoupper(bin2hex(random_bytes(8)));
+        $sDate = trim($_POST['start_date'] ?? '');
+        $eDate = trim($_POST['end_date'] ?? '');
+        $scheme = $_POST['payment_scheme'] ?? '';
         $room_type = $_POST['room_type'];
         $room_name = $_POST['room_name'];
         $guests = (int)$_POST['guests'];
+
+        $start_dt = DateTime::createFromFormat('!Y-m-d', $sDate);
+        $end_dt = DateTime::createFromFormat('!Y-m-d', $eDate);
+        $today = new DateTime('today');
+        if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $sDate || $end_dt->format('Y-m-d') !== $eDate || $end_dt < $start_dt || $start_dt < $today) {
+            throw new Exception("Invalid booking date range.");
+        }
+        if ($guests < 1) {
+            throw new Exception("Guest count must be at least one.");
+        }
 
         // =========================================================================
         // SECURITY FIX: BACKEND PRICE VERIFICATION
@@ -69,6 +85,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $v_row = $room_result->fetch_assoc();
         $venue_id = $v_row['id'];
         $venue_category = $v_row['category'];
+        if ($venue_category !== 'Event Hall' && $end_dt <= $start_dt) {
+            throw new Exception("Hotel and villa bookings must end after their start date.");
+        }
 
         // =========================================================================
         // SHARED PRICING LOGIC
@@ -77,6 +96,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
 
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
+        if ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
+            throw new Exception("Guest count exceeds this venue's maximum capacity.");
+        }
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
 

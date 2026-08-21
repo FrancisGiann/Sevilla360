@@ -24,10 +24,11 @@ $booking_id = intval($data['booking_id']);
 try {
     // 1. ADDED b.payment_scheme TO THE QUERY
     $stmt = $conn->prepare("
-        SELECT b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, 
+        SELECT b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, v.category,
                c.first_name, c.last_name, c.email 
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
+        JOIN venues v ON b.venue_id = v.id
         WHERE b.id = ? AND c.user_id = ?
     ");
     $stmt->bind_param("ii", $booking_id, $_SESSION['user_id']);
@@ -36,6 +37,13 @@ try {
 
     if ($res->num_rows === 0) throw new Exception("Booking not found.");
     $booking = $res->fetch_assoc();
+
+    if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || $booking['payment_status'] === 'Refunded') {
+        throw new Exception("This booking is no longer eligible for payment.");
+    }
+    if ($booking['category'] === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') {
+        throw new Exception("Your event quotation must be finalized before payment.");
+    }
 
     $total_amount = floatval($booking['total_amount']);
     $amount_paid = floatval($booking['amount_paid']);
@@ -100,7 +108,7 @@ try {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Content-Type: application/json',
         'Authorization: Basic ' . base64_encode($paymongo_sk . ':')

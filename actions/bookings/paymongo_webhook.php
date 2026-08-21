@@ -89,7 +89,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         // 3. DATABASE UPDATE
         $conn->begin_transaction();
         
-        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid FROM bookings WHERE reference_no = ?");
+        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid, booking_status, payment_status FROM bookings WHERE reference_no = ?");
         $stmt_find->bind_param("s", $reference_no);
         $stmt_find->execute();
         $res = $stmt_find->get_result();
@@ -98,6 +98,10 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             echo "FAILED: Ref $reference_no not found in DB."; http_response_code(400); exit(); 
         }
         $booking = $res->fetch_assoc();
+
+        if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') {
+            throw new Exception("This booking is no longer eligible for payment.");
+        }
 
         $new_amount = floatval($booking['amount_paid']) + $amount_paid;
         $status = ($new_amount >= floatval($booking['total_amount'])) ? 'Paid' : 'Partial';
