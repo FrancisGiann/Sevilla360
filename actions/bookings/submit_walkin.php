@@ -137,6 +137,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $customer_id = $conn->insert_id;
         }
 
+        // Check active locks before finalizing
+        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND (start_date <= ? AND end_date >= ?)");
+        $sid = session_id();
+        $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
+        $stmt_check_lock->execute();
+        if ($stmt_check_lock->get_result()->num_rows > 0) {
+            throw new Exception("Another admin is currently booking this room for these dates. Please try again.");
+        }
+
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, addons_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
@@ -191,6 +200,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
                             AND (br.start_date < ? AND br.end_date > ?)
                       )
+                      AND v.id NOT IN (
+                          SELECT venue_id FROM booking_locks
+                          WHERE session_id != ? AND expires_at > NOW()
+                            AND (start_date < ? AND end_date > ?)
+                      )
                     LIMIT ?
                 ");
                 
@@ -202,7 +216,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $qty = (int)$group['quantity'];
                     
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('ssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $qty);
+                        $stmt_alloc->bind_param('sssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
                         $stmt_alloc->execute();
                         $alloc_res = $stmt_alloc->get_result();
                         
@@ -253,11 +267,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_pay->bind_param("issd", $booking_id, $transaction_id, $pay_method, $amount_paid);
         $stmt_pay->execute();
 
+        // Release any locks held by this session
+        $unlock = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ?");
+        $unlock->bind_param("s", $sid);
+        $unlock->execute();
+        unset($_SESSION['locked_venue_id']);
+
         // Log walk-in creation using POST guest name
         if (isset($_SESSION['user_id'])) {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Walk-in Bookings';
-            $log_action = "Created Walk-in Booking #$booking_id for " . $_POST['guest_name'];
+            $log_action = "Created walk-in booking $ref_no for " . $_POST['guest_name'];
             $log_ip = $_SERVER['REMOTE_ADDR'];
 
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
@@ -277,7 +297,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
         }
 
-        echo "Success|" . $ref_no;
+        $venue_display_name = $room_name; // from POST
+        $dates_str = ($sDate === $eDate) ? $sDate : "$sDate to $eDate";
+
+        // Success|REF_NO|guest_name|venue_name|dates|payment_status
+        echo "Success|$ref_no|" . $_POST['guest_name'] . "|$venue_display_name|$dates_str|$payment_status";
 
     } catch (Exception $e) {
         $conn->rollback();

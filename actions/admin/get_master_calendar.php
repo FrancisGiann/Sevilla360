@@ -14,10 +14,12 @@ try {
     // 1. Fetch CUSTOMER Bookings (Ignore dummy SYSTEM MAINTENANCE)
     $query_bookings = "
         SELECT b.id, b.reference_no, b.start_date, b.end_date, b.booking_status, 
-               v.name as venue_name, v.category, c.last_name
+               v.name as venue_name, v.category, c.last_name,
+               h.room_number
         FROM bookings b
         JOIN venues v ON b.venue_id = v.id
         JOIN customers c ON b.customer_id = c.id
+        LEFT JOIN hotel_rooms h ON v.id = h.venue_id AND v.category = 'Hotel Room'
         WHERE b.booking_status IN ('Confirmed', 'Pending', 'Completed')
         AND c.last_name != 'MAINTENANCE'
     ";
@@ -43,9 +45,15 @@ try {
         $endDateObj = new DateTime($row['end_date']);
         $endDateObj->modify('+1 day'); 
 
+        // Build a descriptive venue label — include room number for hotel rooms
+        $venue_label = $row['venue_name'];
+        if ($cat === 'Hotel Room' && !empty($row['room_number'])) {
+            $venue_label .= ' Rm. ' . $row['room_number'];
+        }
+
         $events[] = [
             'id' => 'booking_' . $row['id'],
-            'title' => $row['last_name'] . ' - ' . $row['venue_name'],
+            'title' => $row['last_name'] . ' - ' . $venue_label,
             'start' => $row['start_date'],
             'end' => $endDateObj->format('Y-m-d'),
             'backgroundColor' => $color,
@@ -64,9 +72,10 @@ try {
     // 2. Fetch ACTIVE MAINTENANCE Records (Ignore completed/cancelled maintenance)
     $query_maint = "
         SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, 
-               v.name as venue_name, v.category
+               v.name as venue_name, v.category, h.room_number
         FROM maintenance m
         JOIN venues v ON m.venue_id = v.id
+        LEFT JOIN hotel_rooms h ON v.id = h.venue_id AND v.category = 'Hotel Room'
         WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND m.end_date >= m.start_date
     ";
     $res_maint = $conn->query($query_maint);
@@ -80,10 +89,15 @@ try {
         $border = $row['is_blocking'] ? '#475569' : '#7a7a7a';
 
         $title_prefix = $row['is_blocking'] ? '🔧 BLOCKED: ' : '🧹 NOTE: ';
+        
+        $maint_venue_label = $row['venue_name'];
+        if ($row['category'] === 'Hotel Room' && !empty($row['room_number'])) {
+            $maint_venue_label .= ' Rm. ' . $row['room_number'];
+        }
 
         $events[] = [
             'id' => 'maint_' . $row['id'],
-            'title' => $title_prefix . $row['venue_name'],
+            'title' => $title_prefix . $maint_venue_label,
             'start' => $row['start_date'],
             'end' => $endDateObj->format('Y-m-d'),
             'backgroundColor' => $color,

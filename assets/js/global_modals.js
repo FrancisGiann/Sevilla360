@@ -91,7 +91,7 @@ window.playNotificationChime = function() {
     }
 };
 
-window.showAlert = function(title, message, type = "info", reloadOnClose = false) {
+window.showAlert = function(title, message, type = "info", reloadOnClose = false, isHtml = false) {
     if (typeof playNotificationChime === 'function') {
         playNotificationChime();
     }
@@ -104,7 +104,12 @@ window.showAlert = function(title, message, type = "info", reloadOnClose = false
     }
 
     document.getElementById("ga-title").innerText = title;
-    document.getElementById("ga-message").innerText = message;
+    
+    if (isHtml) {
+        document.getElementById("ga-message").innerHTML = message;
+    } else {
+        document.getElementById("ga-message").innerText = message;
+    }
 
     const iconEl = document.getElementById("ga-icon");
     iconEl.className = "fa-solid " + (type === "error" ? "fa-circle-xmark" : (type === "success" ? "fa-circle-check" : "fa-circle-info"));

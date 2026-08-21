@@ -23,7 +23,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->begin_transaction();
 
         $category = $_POST['category'];
-        $venue_id = (int)$_POST['venue_name']; // JS passes venue.id here now
+        $venue_id = (int)$_POST['venue_id']; // Passed from JS
         $area = trim($_POST['area']);
         $type = $_POST['type'];
         $notes = trim($_POST['notes']);
@@ -32,6 +32,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $eDate = $_POST['end_date'];
         
         if ($venue_id <= 0) throw new Exception("Invalid venue ID.");
+
+        // Fetch actual venue name and category for the logs and messages
+        $stmt_venue = $conn->prepare("SELECT category, name FROM venues WHERE id = ?");
+        $stmt_venue->bind_param("i", $venue_id);
+        $stmt_venue->execute();
+        $v_row = $stmt_venue->get_result()->fetch_assoc();
+        if (!$v_row) throw new Exception("Venue not found.");
+        
+        $real_venue_name = $v_row['name'];
+        $is_hotel = ($v_row['category'] === 'Hotel Room');
+
+        // Check against existing scheduled maintenance
+        $maint_chk = $conn->prepare("
+            SELECT id FROM maintenance 
+            WHERE venue_id = ? AND status = 'Scheduled' 
+            AND (start_date <= ? AND end_date >= ?)
+        ");
+        $maint_chk->bind_param("iss", $venue_id, $eDate, $sDate);
+        $maint_chk->execute();
+        if ($maint_chk->get_result()->num_rows > 0) {
+            throw new Exception("There is already scheduled maintenance for this unit during these dates.");
+        }
 
         // 2. If Blocking Calendar, insert a "Maintenance Booking" lock
         if ($is_blocking) {
@@ -43,16 +65,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $customer_id = $conn->insert_id;
             }
 
-            // Check if dates are already booked
+            // Check if dates are already booked by customers
+            // If hotel room, use exclusive checkout interval (start_date < eDate AND end_date > sDate)
+            // If event hall, use inclusive checkout interval (start_date <= eDate AND end_date >= sDate)
+            $overlap_condition = $is_hotel ? "(start_date < ? AND end_date > ?)" : "(start_date <= ? AND end_date >= ?)";
+            
             $check_stmt = $conn->prepare("
                 SELECT id FROM bookings 
                 WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') 
-                AND (start_date <= ? AND end_date >= ?)
+                AND $overlap_condition
             ");
             $check_stmt->bind_param("iss", $venue_id, $eDate, $sDate);
             $check_stmt->execute();
             if ($check_stmt->get_result()->num_rows > 0) {
-                throw new Exception("Cannot block these dates. A customer already has a booking overlapping this schedule!");
+                throw new Exception("Cannot block these dates. A customer already has a direct booking overlapping this schedule!");
+            }
+
+            // For hotel rooms, also check add-on rooms
+            if ($is_hotel) {
+                $check_addon = $conn->prepare("
+                    SELECT br.id FROM booking_rooms br
+                    JOIN bookings b ON br.booking_id = b.id
+                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed')
+                    AND $overlap_condition
+                ");
+                $check_addon->bind_param("iss", $venue_id, $eDate, $sDate);
+                $check_addon->execute();
+                if ($check_addon->get_result()->num_rows > 0) {
+                    throw new Exception("Cannot block these dates. A customer has booked this room as an add-on overlapping this schedule!");
+                }
             }
 
             // Insert Maintenance Block
@@ -76,7 +117,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
          if (isset($_SESSION['user_id'])) {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Maintenance';
-            $log_action = "Scheduled maintenance for Venue ID #$venue_id from $sDate to $eDate"; 
+            $log_action = "Scheduled maintenance for $real_venue_name from $sDate to $eDate"; 
             $log_ip = $_SERVER['REMOTE_ADDR'];
 
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
@@ -85,7 +126,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $conn->commit();
-        echo "Success|Maintenance scheduled successfully.";
+        echo "Success|Maintenance successfully scheduled for $real_venue_name.\nDates: $sDate to $eDate.";
 
     } catch (Exception $e) {
         $conn->rollback();

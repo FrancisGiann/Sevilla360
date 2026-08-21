@@ -58,6 +58,7 @@ class AdminWalkinController {
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
+                this.unlockDatesAPI();
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
@@ -77,6 +78,9 @@ class AdminWalkinController {
         }
 
         this.getEl('event-venue')?.addEventListener('change', (e) => {
+            this.unlockDatesAPI();
+            if (this.state.calendars.event) this.state.calendars.event.clearSelection();
+            
             const opt = e.target.options[e.target.selectedIndex];
             const venueName = opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-ev-venue");
@@ -99,6 +103,9 @@ class AdminWalkinController {
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
+            this.unlockDatesAPI();
+            if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
+
             const opt = e.target.options[e.target.selectedIndex];
             const villaName = opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-vl-type");
@@ -252,8 +259,11 @@ class AdminWalkinController {
     bindModalsAndSubmission() {
         document.querySelector(".btn-confirm-walkin")?.addEventListener("click", () => this.submitWalkinBooking());
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
-            showConfirm("Confirm Cancellation", "Are you sure you want to clear this booking form?").then(confirmed => {
-                if (confirmed) window.location.reload();
+            showConfirm("Confirm Cancellation", "Are you sure you want to clear this booking form?").then(async confirmed => {
+                if (confirmed) {
+                    await this.unlockDatesAPI();
+                    window.location.reload();
+                }
             });
         });
     }
@@ -317,6 +327,11 @@ class AdminWalkinController {
     handleTabSwitch(btn) {
         if (btn.classList.contains("active")) return;
         const targetId = btn.getAttribute("data-target");
+        
+        this.unlockDatesAPI(); // Clear any active locks on tab switch
+        if (this.state.calendars.event) this.state.calendars.event.clearSelection();
+        if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
+        if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
 
         document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
         document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
@@ -332,18 +347,100 @@ class AdminWalkinController {
         this.calculateSummary();
     }
 
-    requestDateConfirmation(startDate, endDate, calendarInstance) {
-        this.state.activeCalendar = calendarInstance;
-        this.state.isDatesLocked = true; 
-        
-        if (this.state.activeCalendar) {
-            this.state.activeCalendar.updateDateDisplay();
+    async requestDateConfirmation(startDate, endDate, calendarInstance) {
+        const lockData = this.getTabContextData();
+        if (!lockData.roomName && !lockData.venueId) {
+            showAlert("Notice", "Please select a specific venue/room from the dropdown first!");
+            calendarInstance.clearSelection();
+            return;
         }
 
-        // Update room availability labels in add-on panel
-        this.updateRoomAvailabilityLabels(startDate, endDate);
+        const formData = new FormData();
+        formData.append('start_date', this.formatSafeDate(startDate));
+        formData.append('end_date', endDate ? this.formatSafeDate(endDate) : this.formatSafeDate(startDate));
+        formData.append('source', 'walkin');
 
-        this.calculateSummary();
+        if (lockData.venueId) {
+            formData.append('venue_id', lockData.venueId);
+        } else {
+            formData.append('room_type', lockData.roomType);
+            formData.append('room_name', lockData.roomName);
+        }
+
+        try {
+            const res = await fetch('actions/bookings/lock_dates.php', { 
+                method: 'POST', 
+                headers: { "X-CSRF-Token": this.csrfToken }, 
+                body: formData 
+            });
+            const text = await res.text();
+            const response = text.split('|');
+
+            if (response[0] === 'Success') {
+                this.state.activeCalendar = calendarInstance;
+                this.state.isDatesLocked = true; 
+                
+                if (this.state.activeCalendar) {
+                    this.state.activeCalendar.updateDateDisplay();
+                }
+
+                // Show lock banner
+                this.toggleLockBanner(true);
+                this.startLockRefresh();
+
+                // Update room availability labels in add-on panel
+                this.updateRoomAvailabilityLabels(startDate, endDate);
+
+                this.calculateSummary();
+            } else {
+                calendarInstance.clearSelection();
+                throw new Error(response[1]);
+            }
+        } catch (err) {
+            showAlert("Notice", "Error: " + err.message);
+        }
+    }
+
+    async unlockDatesAPI() {
+        if (!this.state.isDatesLocked) return;
+        try { 
+            await fetch('actions/bookings/unlock_dates.php', {
+                method: 'POST',
+                headers: { "X-CSRF-Token": this.csrfToken }
+            }); 
+            this.state.isDatesLocked = false;
+            this.toggleLockBanner(false);
+            if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
+        } 
+        catch (error) { console.error("Unlock failed", error); }
+    }
+
+    startLockRefresh() {
+        if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
+        // Refresh every 55 minutes to keep the 60-min lock alive while admin works
+        this.lockRefreshInterval = setInterval(() => {
+            if (this.state.isDatesLocked && this.state.activeCalendar && this.state.activeCalendar.startDate) {
+                this.requestDateConfirmation(this.state.activeCalendar.startDate, this.state.activeCalendar.endDate, this.state.activeCalendar);
+            }
+        }, 55 * 60 * 1000); 
+    }
+
+    toggleLockBanner(show) {
+        let banner = document.getElementById("walkin-lock-banner");
+        if (!banner && show) {
+            banner = document.createElement("div");
+            banner.id = "walkin-lock-banner";
+            banner.style.cssText = "background-color: #d1fae5; color: #065f46; padding: 10px 15px; border-radius: 6px; border: 1px solid #10b981; font-size: 0.9rem; font-weight: 500; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;";
+            banner.innerHTML = '<i class="fa-solid fa-lock"></i> Dates temporarily held for this booking form. (Auto-refreshes)';
+            
+            // Insert it right before the active summary container
+            const activeSummary = document.querySelector(".summary-container.active");
+            if (activeSummary) {
+                activeSummary.parentNode.insertBefore(banner, activeSummary);
+            }
+        } else if (banner && !show) {
+            banner.remove();
+        }
     }
 
     async updateRoomAvailabilityLabels(startDate, endDate) {
@@ -736,8 +833,50 @@ class AdminWalkinController {
             const response = data.split("|");
 
             if (response[0] === "Success") {
-                showAlert("Notice", "Walk-in Booking Successful! Reference No: " + response[1]);
-                window.location.reload();
+                const [status, refNo, guest, venue, dates, payStatus] = response;
+                
+                const escapeHtml = (unsafe) => {
+                    return (unsafe || "").toString()
+                         .replace(/&/g, "&amp;")
+                         .replace(/</g, "&lt;")
+                         .replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;")
+                         .replace(/'/g, "&#039;");
+                };
+                
+                // Construct a rich success modal HTML
+                const modalHtml = `
+                    <div style="text-align:center; padding: 20px 0;">
+                        <i class="fa-solid fa-circle-check" style="font-size: 3.5rem; color: #10b981; margin-bottom: 15px;"></i>
+                        <h3 style="margin-bottom: 5px; color: #1f2937;">Booking Confirmed!</h3>
+                        <p style="color: #6b7280; font-size: 0.95rem; margin-bottom: 25px;">The walk-in booking has been successfully recorded.</p>
+                        
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 20px;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                                <span style="color:#64748b; font-size: 0.85rem;">Reference No.</span>
+                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(refNo)}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                                <span style="color:#64748b; font-size: 0.85rem;">Guest Name</span>
+                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(guest)}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                                <span style="color:#64748b; font-size: 0.85rem;">Venue</span>
+                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(venue)}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                                <span style="color:#64748b; font-size: 0.85rem;">Dates</span>
+                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(dates)}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between;">
+                                <span style="color:#64748b; font-size: 0.85rem;">Payment Status</span>
+                                <strong style="color:#10b981; font-size: 0.95rem;">${escapeHtml(payStatus)}</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                await showAlert("Success", modalHtml, "success", true, true);
             } else {
                 throw new Error(response[1]);
             }

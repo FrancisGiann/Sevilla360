@@ -350,7 +350,7 @@ try {
         $stmt_req->bind_param("si", $admin_reply, $booking_id);
         $stmt_req->execute();
         
-        $message = "Reschedule request rejected successfully.";
+        $message = "Reschedule request for Booking #$ref_no rejected.";
 
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Update</h2><p>Hello $c_name,</p><p>Regarding your request to reschedule your booking at <strong>$v_name</strong>, the administration left the following note:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #d6a870;'><em>$admin_reply</em></p><p>Your original dates remain secured.</p></div>";
@@ -380,7 +380,7 @@ try {
         $stmt_resched->bind_param("i", $booking_id);
         $stmt_resched->execute();
         
-        $message = "Refund processed and booking cancelled!";
+        $message = "Refund processed and Booking #$ref_no cancelled.";
 
         // EMAIL NOTIFICATION
         try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'refund', $refund_amount); } catch (Exception $e) {}

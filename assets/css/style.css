@@ -1320,4 +1320,17 @@ section {
 .venue-filter-btn::after {
   border-radius: 0 !important;
   height: 1px !important;
+}.cal-day-cell.booked.past-date {
+  background: #c97e7e !important;
+  color: #fff !important;
+  text-decoration: none !important;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.cal-day-cell.maintenance.past-date {
+  background: #b19356 !important;
+  color: #fff !important;
+  text-decoration: none !important;
+  cursor: not-allowed;
+  pointer-events: none;
 }

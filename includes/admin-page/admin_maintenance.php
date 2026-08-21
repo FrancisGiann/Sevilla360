@@ -31,16 +31,27 @@ $grouped_venues = [
 ];
 
 while ($row = $venues_query->fetch_assoc()) {
-    $display = $row['name'];
     if ($row['category'] === 'Hotel Room') {
-        if (!empty($row['room_type'])) $display .= ' — ' . $row['room_type'];
-        if (!empty($row['room_number'])) $display .= ' — Room ' . $row['room_number'];
+        $building = $row['name'];
+        $type = $row['room_type'] ?: 'Standard';
+        $num = $row['room_number'] ?: 'Unknown';
+        
+        if (!isset($grouped_venues['Hotel Room'][$building])) {
+            $grouped_venues['Hotel Room'][$building] = [];
+        }
+        if (!isset($grouped_venues['Hotel Room'][$building][$type])) {
+            $grouped_venues['Hotel Room'][$building][$type] = [];
+        }
+        $grouped_venues['Hotel Room'][$building][$type][] = [
+            'id' => $row['id'],
+            'display' => "Room $num"
+        ];
+    } else {
+        $grouped_venues[$row['category']][] = [
+            'id' => $row['id'],
+            'display' => $row['name']
+        ];
     }
-    
-    $grouped_venues[$row['category']][] = [
-        'id' => $row['id'],
-        'display' => $display
-    ];
 }
 ?>
 
@@ -68,9 +79,24 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             <!-- Maintenance Form Inputs -->
             <div class="booking-card form-section maint-form-card">
 
-                <div class="form-group">
+                <div class="form-group" id="wrapper-specific-venue">
                     <label for="maint-specific-venue" id="label-specific-venue" class="maint-uppercase-label">WHICH EVENT HALL?</label>
                     <select id="maint-specific-venue"></select>
+                </div>
+                
+                <div id="wrapper-hotel-cascading" style="display: none; gap: 15px; margin-bottom: 20px;">
+                    <div class="form-group" style="flex:1; margin-bottom: 0;">
+                        <label for="maint-hotel-building" class="maint-uppercase-label">BUILDING</label>
+                        <select id="maint-hotel-building"></select>
+                    </div>
+                    <div class="form-group" style="flex:1; margin-bottom: 0;">
+                        <label for="maint-hotel-roomtype" class="maint-uppercase-label">ROOM TYPE</label>
+                        <select id="maint-hotel-roomtype"></select>
+                    </div>
+                    <div class="form-group" style="flex:1; margin-bottom: 0;">
+                        <label for="maint-hotel-roomnum" class="maint-uppercase-label">ROOM NUMBER</label>
+                        <select id="maint-hotel-roomnum"></select>
+                    </div>
                 </div>
 
                 <div class="form-group">

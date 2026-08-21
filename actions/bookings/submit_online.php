@@ -102,6 +102,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
         // 3. Save Booking
+        // Check active locks before finalizing
+        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND (start_date <= ? AND end_date >= ?)");
+        $sid = session_id();
+        $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
+        $stmt_check_lock->execute();
+        if ($stmt_check_lock->get_result()->num_rows > 0) {
+            throw new Exception("Another user is currently booking this room for these dates. Please try again.");
+        }
+
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
@@ -192,6 +201,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
                             AND (br.start_date < ? AND br.end_date > ?)
                       )
+                      AND v.id NOT IN (
+                          SELECT venue_id FROM booking_locks
+                          WHERE session_id != ? AND expires_at > NOW()
+                            AND (start_date < ? AND end_date > ?)
+                      )
                     LIMIT ?
                 ");
                 
@@ -203,7 +217,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $qty = (int)$group['quantity'];
                     
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('ssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $qty);
+                        $stmt_alloc->bind_param('sssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
                         $stmt_alloc->execute();
                         $alloc_res = $stmt_alloc->get_result();
                         

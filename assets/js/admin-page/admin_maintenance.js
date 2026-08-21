@@ -9,26 +9,98 @@ document.addEventListener("DOMContentLoaded", () => {
     const sumMaintUnit = document.getElementById("sum-maint-unit");
     
     let currentCategory = "Event Hall";
+    let selectedVenueId = null; // Track the final selected venue ID globally
+    let selectedVenueName = ""; // Track final venue name globally
+
+    const wrapperSpecific = document.getElementById("wrapper-specific-venue");
+    const wrapperHotelCascading = document.getElementById("wrapper-hotel-cascading");
+    const hotelBuildingSelect = document.getElementById("maint-hotel-building");
+    const hotelRoomTypeSelect = document.getElementById("maint-hotel-roomtype");
+    const hotelRoomNumSelect = document.getElementById("maint-hotel-roomnum");
 
     function populateSpecificVenues(category) {
-        specificVenueSelect.innerHTML = '<option value="" disabled selected>Select a unit...</option>';
-        
-        const venues = window.venueData ? window.venueData[category] : null;
+        selectedVenueId = null;
+        selectedVenueName = "";
+        sumMaintUnit.innerText = "--";
 
-        if (venues && venues.length > 0) {
-            venues.forEach(venue => {
+        if (category === 'Hotel Room') {
+            wrapperSpecific.style.display = 'none';
+            wrapperHotelCascading.style.display = 'flex';
+            
+            hotelBuildingSelect.innerHTML = '<option value="" disabled selected>Building...</option>';
+            hotelRoomTypeSelect.innerHTML = '<option value="" disabled selected>Type...</option>';
+            hotelRoomNumSelect.innerHTML = '<option value="" disabled selected>Room...</option>';
+
+            const buildings = window.venueData ? Object.keys(window.venueData['Hotel Room'] || {}) : [];
+            buildings.forEach(b => {
                 const opt = document.createElement("option");
-                opt.value = venue.id;
-                opt.innerText = venue.display;
-                specificVenueSelect.appendChild(opt);
+                opt.value = b;
+                opt.innerText = b;
+                hotelBuildingSelect.appendChild(opt);
             });
         } else {
-            specificVenueSelect.innerHTML = '<option value="" disabled selected>No units available</option>';
-        }
+            wrapperHotelCascading.style.display = 'none';
+            wrapperSpecific.style.display = 'block';
+            
+            specificVenueSelect.innerHTML = '<option value="" disabled selected>Select a unit...</option>';
+            const venues = window.venueData ? window.venueData[category] : null;
 
-        specificVenueLabel.innerText = `WHICH ${category.toUpperCase()}?`;
-        sumMaintUnit.innerText = "--";
+            if (venues && venues.length > 0) {
+                venues.forEach(venue => {
+                    const opt = document.createElement("option");
+                    opt.value = venue.id;
+                    opt.innerText = venue.display;
+                    specificVenueSelect.appendChild(opt);
+                });
+            } else {
+                specificVenueSelect.innerHTML = '<option value="" disabled selected>No units available</option>';
+            }
+
+            specificVenueLabel.innerText = `WHICH ${category.toUpperCase()}?`;
+        }
     }
+
+    // Hotel Cascading Event Listeners
+    hotelBuildingSelect.addEventListener('change', (e) => {
+        const building = e.target.value;
+        hotelRoomTypeSelect.innerHTML = '<option value="" disabled selected>Type...</option>';
+        hotelRoomNumSelect.innerHTML = '<option value="" disabled selected>Room...</option>';
+        
+        const types = Object.keys(window.venueData['Hotel Room'][building] || {});
+        types.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t;
+            opt.innerText = t;
+            hotelRoomTypeSelect.appendChild(opt);
+        });
+        selectedVenueId = null;
+        sumMaintUnit.innerText = "--";
+        maintCalendar.clearSelection();
+    });
+
+    hotelRoomTypeSelect.addEventListener('change', (e) => {
+        const building = hotelBuildingSelect.value;
+        const type = e.target.value;
+        hotelRoomNumSelect.innerHTML = '<option value="" disabled selected>Room...</option>';
+        
+        const rooms = window.venueData['Hotel Room'][building][type] || [];
+        rooms.forEach(r => {
+            const opt = document.createElement("option");
+            opt.value = r.id;
+            opt.innerText = r.display;
+            hotelRoomNumSelect.appendChild(opt);
+        });
+        selectedVenueId = null;
+        sumMaintUnit.innerText = "--";
+        maintCalendar.clearSelection();
+    });
+
+    hotelRoomNumSelect.addEventListener('change', (e) => {
+        selectedVenueId = e.target.value;
+        selectedVenueName = `${hotelBuildingSelect.value} - ${hotelRoomTypeSelect.value} - ${e.target.options[e.target.selectedIndex].text}`;
+        sumMaintUnit.innerText = selectedVenueName;
+        maintCalendar.fetchMaintenanceCalendarData(selectedVenueId);
+    });
 
     populateSpecificVenues(currentCategory);
 
@@ -73,8 +145,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const toggleBlock = document.getElementById("maint-block");
 
     specificVenueSelect.addEventListener("change", (e) => {
-        sumMaintUnit.innerText = e.target.options[e.target.selectedIndex].text;
-        maintCalendar.fetchBookedDates(null, null, e.target.value);
+        selectedVenueId = e.target.value;
+        selectedVenueName = e.target.options[e.target.selectedIndex].text;
+        sumMaintUnit.innerText = selectedVenueName;
+        maintCalendar.fetchMaintenanceCalendarData(selectedVenueId);
     });
 
     inputArea.addEventListener("input", (e) => { document.getElementById("sum-maint-area").innerText = e.target.value.trim() || "--"; });
@@ -127,7 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-schedule-maint").addEventListener("click", async (e) => {
         const btn = e.target;
         
-        if (!specificVenueSelect.value) return showAlert("Notice", "Please select a specific Unit/Venue first.");
+        if (!selectedVenueId) return showAlert("Notice", "Please select a specific Unit/Venue first.");
         if (!maintCalendar.startDate) return showAlert("Notice", "Please select dates from the Availability Calendar.");
         if (!selectType.value) return showAlert("Notice", "Please select a Maintenance Type.");
 
@@ -135,7 +209,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const formData = new FormData();
         formData.append("category", currentCategory);
-        formData.append("venue_name", specificVenueSelect.value);
+        formData.append("venue_id", selectedVenueId); // Changed from venue_name to venue_id
         formData.append("area", inputArea.value);
         formData.append("type", selectType.value);
         formData.append("notes", document.getElementById("maint-notes").value);
@@ -156,7 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = data.split("|");
 
             if (response[0] === "Success") {
-                showAlert("Notice", "Maintenance successfully scheduled!");
+                await showAlert("Success", response[1]);
                 window.location.reload();
             } else {
                 throw new Error(response[1]);

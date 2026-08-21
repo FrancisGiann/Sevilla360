@@ -610,3 +610,19 @@ textarea:focus {
   border-color: var(--color-dark);
   color: var(--color-dark);
 }
+.cal-day-cell.maintenance {
+    background-color: var(--color-danger);
+    color: white;
+    opacity: 0.8;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.cal-day-cell.booked {
+    /* Ensure bookings look slightly distinct in maintenance context */
+    background-color: #5b7999;
+    color: white;
+    opacity: 0.8;
+    pointer-events: none;
+    cursor: not-allowed;
+}

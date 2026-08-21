@@ -112,11 +112,24 @@ try {
             }
         }
 
+        // Get user details for logging before deleting
+        $stmt_info = $conn->prepare("
+            SELECT u.email, s.full_name 
+            FROM users u
+            LEFT JOIN staff s ON u.id = s.user_id
+            WHERE u.id = ?
+        ");
+        $stmt_info->bind_param("i", $user_id);
+        $stmt_info->execute();
+        $user_info = $stmt_info->get_result()->fetch_assoc();
+        $email = $user_info['email'] ?? 'Unknown Email';
+        $staff_name = $user_info['full_name'] ?? 'Unknown Name';
+
         $stmt = $conn->prepare("DELETE FROM users WHERE id = ?"); // Cascade deletes staff table
         $stmt->bind_param("i", $user_id);
         $stmt->execute();
 
-        $log_action = "Deleted staff user_id: $user_id";
+        $log_action = "Deleted staff account: $staff_name ($email, user ID: $user_id)";
         $message = "Staff deleted successfully.";
     }
 

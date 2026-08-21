@@ -33,13 +33,19 @@ try {
     $conn->begin_transaction();
 
     // 1. Get the details of the maintenance so we can find the matching dummy booking
-    $stmt_get = $conn->prepare("SELECT venue_id, start_date, end_date, is_blocking FROM maintenance WHERE id = ?");
+    $stmt_get = $conn->prepare("
+        SELECT m.venue_id, m.start_date, m.end_date, m.is_blocking, v.name as venue_name 
+        FROM maintenance m
+        LEFT JOIN venues v ON m.venue_id = v.id
+        WHERE m.id = ?
+    ");
     $stmt_get->bind_param("i", $maint_id);
     $stmt_get->execute();
     $res = $stmt_get->get_result();
 
     if ($res->num_rows === 0) throw new Exception("Maintenance record not found.");
     $maint = $res->fetch_assoc();
+    $v_name = $maint['venue_name'] ?? 'Unknown Venue';
 
     // 2. If it was blocking, delete the associated dummy booking lock
     if ($maint['is_blocking']) {
@@ -57,7 +63,7 @@ try {
     if (isset($_SESSION['user_id'])) {
         $log_user = $_SESSION['user_id'];
         $log_module = 'Maintenance';
-        $log_action = "Cancelled maintenance for Venue ID #{$maint['venue_id']} ({$maint['start_date']} to {$maint['end_date']})"; 
+        $log_action = "Cancelled maintenance for $v_name ({$maint['start_date']} to {$maint['end_date']})"; 
         $log_ip = $_SERVER['REMOTE_ADDR'];
 
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");

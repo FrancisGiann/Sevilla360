@@ -18,6 +18,9 @@ class SevillaCalendar {
     this.requireHotelRules = false;
 
     this.bookedDatesList = [];
+    this.maintenanceDatesList = []; // Array of objects {date, type}
+    this.isMaintenanceMode = false;
+
     this.init();
   }
 
@@ -35,11 +38,49 @@ class SevillaCalendar {
     });
   }
 
+  async fetchMaintenanceCalendarData(venue_id) {
+    if (!venue_id) return;
+    this.isMaintenanceMode = true;
+    try {
+      const formData = new FormData();
+      formData.append('venue_id', venue_id);
+
+      const response = await fetch('actions/admin/fetch_maintenance_calendar.php', {
+          method: 'POST',
+          body: formData
+      });
+      
+      const data = await response.json();
+      
+      // Convert booked_dates array of objects into simple array of date strings for easy checking
+      this.bookedDatesList = (data.booked_dates || []).map(b => b.date);
+      // Store raw booked objects for tooltips
+      this.bookedObjectsList = data.booked_dates || [];
+      
+      this.maintenanceDatesList = data.maintenance_dates || [];
+      
+      // Also add blocking maintenance dates to bookedDatesList so drag-selection is prevented
+      this.maintenanceDatesList.forEach(m => {
+          if (m.is_blocking && !this.bookedDatesList.includes(m.date)) {
+              this.bookedDatesList.push(m.date);
+          }
+      });
+      
+      const legendMaint = this.container.querySelector('#cal-legend-maint');
+      if (legendMaint) legendMaint.style.display = 'inline-block';
+      
+      this.render();
+    } catch (error) {
+      console.error("Error fetching maintenance calendar:", error);
+    }
+  }
+
   async fetchBookedDates(room_type, room_name, venue_id = null, requireHotelRules = false) {
     if (!room_type && !room_name && !venue_id) return;
+    this.isMaintenanceMode = false;
     
     // Auto-detect hotel mode from strings if passed, or explicit flag
-    if (requireHotelRules || room_type === 'Hotel Room' || room_type === 'Stellar Room' || room_type === 'Deluxe Room') {
+    if (requireHotelRules || room_type === 'Hotel Room' || (room_type && room_type !== 'Event Hall' && room_type !== 'Resort Villa')) {
         this.requireHotelRules = true;
     } else {
         this.requireHotelRules = false;
@@ -106,14 +147,40 @@ class SevillaCalendar {
 
       // Check if date is in the past
       const isPastDate = cellDate < today;
+      
+      const maintObj = this.isMaintenanceMode ? this.maintenanceDatesList.find(m => m.date === cellDateStr) : null;
+      const isMaintenance = !!maintObj;
+      const isBooked = this.bookedDatesList.includes(cellDateStr);
 
       if (isPastDate) {
         // If it's in the past, gray it out completely and DO NOT attach a click listener.
         cell.classList.add("past-date");
+        
+        // If it was also booked or maintenance, add those classes so it still visually shows as occupied (but unclickable)
+        if (isMaintenance) {
+            cell.classList.add("maintenance");
+            cell.title = `Maintenance: ${maintObj.type}`;
+        } else if (isBooked) {
+            cell.classList.add("booked");
+            if (this.isMaintenanceMode) {
+                const bObj = this.bookedObjectsList.find(b => b.date === cellDateStr);
+                if (bObj) cell.title = `Booked (${bObj.ref_no} - ${bObj.status})`;
+            }
+        }
       } 
-      else if (this.bookedDatesList.includes(cellDateStr)) {
+      else if (isMaintenance) {
+        cell.classList.add("maintenance");
+        cell.title = `Maintenance: ${maintObj.type}`;
+        // If maintenance is not blocking, we theoretically could book, but the standard behavior is blocks the cell visually.
+        if (maintObj.is_blocking) cell.classList.add("booked");
+      }
+      else if (isBooked) {
         // If it's booked by someone else
         cell.classList.add("booked");
+        if (this.isMaintenanceMode) {
+            const bObj = this.bookedObjectsList.find(b => b.date === cellDateStr);
+            if (bObj) cell.title = `Booked (${bObj.ref_no} - ${bObj.status})`;
+        }
       } 
       else {
         // IF IT IS A VALID, FUTURE DATE:
@@ -162,7 +229,7 @@ class SevillaCalendar {
               this.startDate = cellDate;
               this.render();
             } else if (this.requireHotelRules && cellDate.getTime() === this.startDate.getTime()) {
-              showAlert("Notice", "Hotel bookings require at least 1 night stay.");
+              showAlert("Notice", "You've selected the same check-in and check-out date. Hotel room bookings require a minimum of 1 night — please select a check-out date that is at least 1 day after your check-in.", "info");
             } else {
               if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
                 showAlert("Notice", "Selection contains unavailable or booked dates.");
@@ -223,6 +290,9 @@ class SevillaCalendar {
   clearSelection() {
     this.startDate = null;
     this.endDate = null;
+    this.bookedDatesList = [];
+    this.bookedObjectsList = [];
+    this.maintenanceDatesList = [];
     this.render();
     this.updateDateDisplay();
   }
