@@ -153,20 +153,8 @@ class SevillaCalendar {
       const isBooked = this.bookedDatesList.includes(cellDateStr);
 
       if (isPastDate) {
-        // If it's in the past, gray it out completely and DO NOT attach a click listener.
+        // Past dates are always grey — they're unavailable regardless of booking status.
         cell.classList.add("past-date");
-        
-        // If it was also booked or maintenance, add those classes so it still visually shows as occupied (but unclickable)
-        if (isMaintenance) {
-            cell.classList.add("maintenance");
-            cell.title = `Maintenance: ${maintObj.type}`;
-        } else if (isBooked) {
-            cell.classList.add("booked");
-            if (this.isMaintenanceMode) {
-                const bObj = this.bookedObjectsList.find(b => b.date === cellDateStr);
-                if (bObj) cell.title = `Booked (${bObj.ref_no} - ${bObj.status})`;
-            }
-        }
       } 
       else if (isMaintenance) {
         cell.classList.add("maintenance");
