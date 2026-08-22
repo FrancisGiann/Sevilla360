@@ -25,7 +25,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
 
-        $ref_no = generate_booking_reference($conn);
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
         $scheme = $_POST['payment_scheme'] ?? '';
@@ -109,6 +108,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Selected venue no longer exists.");
         }
         $venue_category = $venue['category'];
+        $ref_no = generate_booking_reference($conn, $venue_category);
         if ($venue_category !== 'Event Hall' && $end_dt <= $start_dt) {
             throw new Exception("Hotel and villa bookings must end after their start date.");
         }
