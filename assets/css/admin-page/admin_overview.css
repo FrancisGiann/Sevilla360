@@ -738,6 +738,108 @@
   }
 }
 
+/* Mobile navigation: keep every admin destination usable instead of squeezing
+   ten icon targets into a bottom bar. */
+@media (max-width: 768px) {
+  .admin-layout { padding-bottom: 0; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: auto;
+    left: 0;
+    width: min(88vw, 320px);
+    height: 100dvh;
+    background: var(--color-white);
+    border-right: 1px solid rgba(42, 37, 34, .08);
+    border-top: none;
+    box-shadow: 12px 0 32px rgba(0, 0, 0, .14);
+    flex-direction: column;
+    transform: translateX(-105%);
+    transition: transform .22s ease;
+    z-index: 1200;
+  }
+
+  .sidebar.mobile-nav-open { transform: translateX(0); }
+
+  .sidebar-header {
+    display: flex;
+    padding: 22px 20px;
+    justify-content: space-between;
+  }
+
+  .sidebar-header .navbar-brand,
+  .admin-badge { display: inline-block; }
+
+  .sidebar-footer { display: block; padding: 16px 20px; }
+
+  .sidebar-nav { padding: 20px; width: 100%; overflow-y: auto; }
+
+  .nav-list {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .nav-link {
+    padding: 13px 14px;
+    height: auto;
+    flex: none;
+    border-radius: 6px;
+    font-size: .95rem;
+    justify-content: flex-start;
+  }
+
+  .nav-link i { font-size: 1rem; margin-right: 12px; }
+
+  .nav-link.active { box-shadow: inset 3px 0 0 var(--color-gold); }
+
+  .sign-out {
+    display: flex;
+    width: 100%;
+    font-size: .95rem;
+    padding: 13px 14px;
+    justify-content: flex-start;
+  }
+
+  .sign-out i { margin-right: 12px; }
+
+  .mobile-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 9px 12px;
+    border: 1px solid rgba(42, 37, 34, .15);
+    background: var(--color-white);
+    color: var(--color-dark);
+    border-radius: 5px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .mobile-nav-scrim {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(24, 21, 19, .38);
+  }
+
+  .mobile-nav-scrim.mobile-nav-scrim-open { display: block; }
+
+  .admin-header-title-row { display: flex; align-items: center; gap: 12px; width: 100%; }
+  .page-title { margin: 0; }
+  .main-content { min-height: 100dvh; }
+}
+
+@media (min-width: 769px) {
+  .mobile-nav-toggle,
+  .mobile-nav-scrim { display: none !important; }
+}
+
 /* ==========================================================================
    Unauthorized Access Error Card
    ========================================================================== */

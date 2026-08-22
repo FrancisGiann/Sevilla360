@@ -53,7 +53,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 <body class="admin-body">
     <div class="admin-layout">
         <!-- Left Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="admin-sidebar">
             <div class="sidebar-header">
                 <a href="index.php" class="navbar-brand">SEVILLA360</a>
                 <span class="admin-badge">
@@ -125,12 +125,17 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</a>
             </div>
         </aside>
+        <div class="mobile-nav-scrim" id="mobile-nav-scrim" aria-hidden="true"></div>
 
         <!-- Main Content Area -->
         <main class="main-content <?php echo ($page !== 'overview') ? 'booking-main-scroll' : ''; ?>">
             <!-- Top Header -->
             <header class="admin-header">
-                <h2 class="page-title">
+                <div class="admin-header-title-row">
+                    <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="admin-sidebar">
+                        <i class="fa-solid fa-bars" aria-hidden="true"></i><span>Menu</span>
+                    </button>
+                    <h2 class="page-title">
                     <?php 
                         if ($page === 'overview') echo 'Dashboard Overview';
                         elseif ($page === 'calendar') echo 'Master Calendar';
@@ -143,7 +148,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'cms') echo 'Media CMS';
                         elseif ($page === 'backups') echo 'Database Backup & Recovery';
                     ?>
-                </h2>
+                    </h2>
+                </div>
                 <div class="header-actions">
                     <!-- Notification Center -->
                     <div class="notification-center" id="notifCenter" style="position: relative; margin-right: 20px;">
@@ -213,6 +219,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <script src="assets/js/admin-page/admin_notifications.js?v=<?= time() ?>"></script>
     <!-- Global Custom Modals -->
     <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
+    <script src="assets/js/admin-page/admin_navigation.js?v=<?= time() ?>"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
