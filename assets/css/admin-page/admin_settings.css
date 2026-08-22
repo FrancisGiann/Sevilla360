@@ -94,6 +94,16 @@
 
 .settings-panel.active { display: block; }
 
+.profile-section-card { padding: 24px; border: 1px solid rgba(42, 37, 34, .1); border-radius: 8px; background: #fcfbf9; }
+.profile-section-heading { margin-bottom: 20px; }
+.profile-section-heading h3 { margin: 0 0 5px; color: var(--color-dark); font-family: var(--font-heading); font-size: 1.35rem; font-weight: 500; }
+.profile-section-heading p { margin: 0; color: var(--color-dark-light); line-height: 1.5; }
+.profile-form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.password-input-wrap { position: relative; }
+.password-input-wrap .form-control { padding-right: 72px; }
+.password-toggle { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); border: 0; background: transparent; color: var(--color-gold); font-size: .8rem; font-weight: 600; cursor: pointer; }
+.password-toggle:focus { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
 .settings-section-note { margin: -20px 0 24px; color: var(--color-dark-light); line-height: 1.6; }
 .field-help { color: var(--color-dark-light); font-size: .82rem; font-weight: 400; }
 .support-field-wide { grid-column: 1 / -1; }
@@ -430,5 +440,5 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
   .support-settings-heading { flex-direction: column; }
   .support-faq-row { grid-template-columns: 1fr; }
   .support-faq-row .btn { width: 100%; }
-  .pricing-fields, .settings-form-grid { grid-template-columns: 1fr; }
+  .pricing-fields, .settings-form-grid, .profile-form-grid { grid-template-columns: 1fr; }
 }

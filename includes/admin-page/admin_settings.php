@@ -101,38 +101,51 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     $admin_phone = htmlspecialchars($u_res['phone'] ?? '');
                 ?>
                 <form class="settings-form" id="form-profile-security" onsubmit="return false;">
-                    <div class="form-grid">
+                    <section class="profile-section-card">
+                        <div class="profile-section-heading">
+                            <h3>Profile information</h3>
+                            <p>Update the name and contact number shown on your staff account.</p>
+                        </div>
+                        <div class="form-grid profile-form-grid">
                         <div class="form-group">
-                            <label>Full Name</label>
-                            <input type="text" class="form-control" id="prof-name" placeholder="John Doe" value="<?php echo $admin_name; ?>">
+                            <label for="prof-name">Full Name</label>
+                            <input type="text" class="form-control" id="prof-name" name="name" autocomplete="name" placeholder="John Doe" value="<?php echo $admin_name; ?>">
                         </div>
                         <div class="form-group">
-                            <label>Email Address</label>
-                            <input type="email" class="form-control" id="prof-email" placeholder="admin@sevilla360.com" value="<?php echo $admin_email; ?>" readonly style="background-color: #f1f1f1; cursor: not-allowed;">
+                            <label for="prof-email">Email Address</label>
+                            <input type="email" class="form-control" id="prof-email" name="email" autocomplete="email" placeholder="admin@sevilla360.com" value="<?php echo $admin_email; ?>" readonly aria-describedby="prof-email-help">
+                            <small class="field-help" id="prof-email-help">Email changes are managed by an administrator.</small>
                         </div>
                         <div class="form-group">
-                            <label>Contact Number</label>
-                            <input type="text" class="form-control" id="prof-contact" placeholder="+63 912 345 6789" value="<?php echo $admin_phone; ?>">
+                            <label for="prof-contact">Contact Number</label>
+                            <input type="tel" class="form-control" id="prof-contact" name="phone" autocomplete="tel" placeholder="+63 912 345 6789" value="<?php echo $admin_phone; ?>">
                         </div>
-                    </div>
+                        </div>
+                    </section>
 
                     <hr class="panel-divider">
 
-                    <h3 class="panel-subheading">Update Password</h3>
-                    <div class="form-grid">
+                    <section class="profile-section-card">
+                    <div class="profile-section-heading">
+                        <h3>Update password</h3>
+                        <p>Leave these fields blank if you only want to update your profile information.</p>
+                    </div>
+                    <div class="form-grid profile-form-grid">
                         <div class="form-group">
-                            <label>Current Password</label>
-                            <input type="password" class="form-control" id="prof-curr-pass" placeholder="Enter current password">
+                            <label for="prof-curr-pass">Current Password</label>
+                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-curr-pass" name="current-password" autocomplete="current-password" placeholder="Enter current password"><button type="button" class="password-toggle" data-target="prof-curr-pass" aria-label="Show current password">Show</button></div>
                         </div>
                         <div class="form-group">
-                            <label>New Password</label>
-                            <input type="password" class="form-control" id="prof-new-pass" placeholder="Enter new password">
+                            <label for="prof-new-pass">New Password</label>
+                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-new-pass" name="new-password" autocomplete="new-password" placeholder="Enter new password" aria-describedby="password-help"><button type="button" class="password-toggle" data-target="prof-new-pass" aria-label="Show new password">Show</button></div>
                         </div>
                         <div class="form-group">
-                            <label>Confirm Password</label>
-                            <input type="password" class="form-control" id="prof-conf-pass" placeholder="Confirm new password">
+                            <label for="prof-conf-pass">Confirm Password</label>
+                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-conf-pass" name="confirm-password" autocomplete="new-password" placeholder="Confirm new password"><button type="button" class="password-toggle" data-target="prof-conf-pass" aria-label="Show confirmation password">Show</button></div>
                         </div>
                     </div>
+                    <small class="field-help" id="password-help">Use a strong password and do not reuse it on another account.</small>
+                    </section>
 
                     <div class="panel-footer">
                         <button type="button" class="btn btn-primary" id="btn-save-profile">Save Changes</button>

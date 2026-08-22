@@ -76,6 +76,17 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   });
 
+  document.querySelectorAll('.password-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const input = document.getElementById(toggle.dataset.target);
+      if (!input) return;
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      toggle.textContent = showing ? 'Show' : 'Hide';
+      toggle.setAttribute('aria-label', `${showing ? 'Show' : 'Hide'} ${input.labels?.[0]?.textContent.toLowerCase() || 'password'}`);
+    });
+  });
+
   // =========================================================
   // 3. SYSTEM PREFERENCES (AJAX SAVE)
   // =========================================================
