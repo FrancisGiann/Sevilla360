@@ -40,7 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // a new session, and an inactive staff member must not access the admin
     // portal. Staff availability lives in `staff.status`; customer suspension
     // lives in `users.status`.
-    $stmt = $conn->prepare("\
+    $stmt = $conn->prepare("
         SELECT u.id, u.password_hash, u.role, u.is_verified, u.status AS user_status,
                s.status AS staff_status
         FROM users u
