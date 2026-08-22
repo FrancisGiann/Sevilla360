@@ -123,6 +123,10 @@
   position: relative;
 }
 
+.password-wrapper .form-control {
+  padding-right: 78px;
+}
+
 .password-toggle {
   position: absolute;
   right: 16px;
@@ -252,8 +256,43 @@
     top: 0;
     left: 0;
     align-self: flex-start;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     font-size: 0.75rem;
+  }
+
+  .auth-page {
+    justify-content: flex-start;
+    padding: 1.5rem 1.25rem 2rem;
+  }
+
+  .auth-header {
+    margin-bottom: 1.75rem;
+  }
+
+  .auth-logo {
+    font-size: 2.7rem;
+  }
+
+  .auth-tagline {
+    font-size: 0.78rem;
+    letter-spacing: 1.5px;
+    line-height: 1.5;
+  }
+
+  .auth-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .auth-subtitle {
+    margin-bottom: 1.5rem;
+  }
+
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  .auth-footer {
+    margin-top: 1.5rem;
   }
 }
 /* Registration Step Logic */

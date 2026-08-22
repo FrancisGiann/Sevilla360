@@ -1216,6 +1216,43 @@ section {
   .idx-footer-grid { grid-template-columns: repeat(4, 1fr); }
 }
 
+@media (max-width: 767px) {
+  .idx-footer-inner {
+    padding: 3rem 1.25rem 2rem;
+  }
+
+  .idx-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.25rem;
+    row-gap: 1.75rem;
+  }
+
+  .idx-footer-brand,
+  .idx-footer-col:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .idx-footer-brand p {
+    margin-top: 0.75rem;
+    line-height: 1.65;
+  }
+
+  .idx-footer-col h4 {
+    margin-bottom: 0.75rem;
+  }
+
+  .idx-footer-col li {
+    margin-bottom: 0.5rem;
+  }
+
+  .idx-footer-bottom {
+    margin-top: 2rem;
+    padding-top: 1.25rem;
+    font-size: 0.62rem;
+    line-height: 1.5;
+  }
+}
+
 /* ==========================================================================
    DASHBOARD OVERRIDES (Admin & User) - LOVABLE MINIMAL LUXURY
    ========================================================================== */

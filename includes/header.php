@@ -128,7 +128,7 @@ $nav = [
                 <?php endforeach; ?>
             </ul>
 
-            <div class="s-desktop-only" style="display: flex; align-items: center; gap: 16px;">
+            <div class="s-desktop-only">
                 <?php if (!$isLoggedIn): ?>
                 <a class="s-cta" href="auth.php">Login / Register</a>
                 <?php else: ?>

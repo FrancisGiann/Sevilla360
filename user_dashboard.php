@@ -179,7 +179,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                 <div class="topbar-right">
                     <!-- Notification Bell -->
                     <div class="notification-container">
-                        <button id="btn-notifications">
+                        <button id="btn-notifications" aria-label="Notifications">
                             <i class="fa-regular fa-bell"></i>
                             <?php if($unread_count > 0): ?>
                                 <span id="notif-badge">
@@ -225,7 +225,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                         </div>
                     </div>
 
-                    <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> Back to Home</a>
+                    <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> <span>Back to Home</span></a>
                 </div>
             </header>
 
@@ -264,12 +264,23 @@ while ($row = $notifs_result->fetch_assoc()) {
                     <div class="history-container">
                         <div class="history-header">
                             <h2>Booking History</h2>
-                            <div class="filter-pills" id="statusFilters">
+                            <div class="filter-pills" id="statusFiltersDesktop">
                                 <button class="filter-pill active" data-filter="All">All</button>
                                 <button class="filter-pill" data-filter="Pending">Pending</button>
                                 <button class="filter-pill" data-filter="Partially Paid">Partially Paid</button>
                                 <button class="filter-pill" data-filter="Paid">Paid</button>
                                 <button class="filter-pill" data-filter="Cancelled">Cancelled</button>
+                            </div>
+
+                            <div class="status-filter status-filter-mobile" id="statusFiltersMobile">
+                                <label for="statusFilter">Status</label>
+                                <select id="statusFilter" class="status-filter-select" aria-label="Filter bookings by status">
+                                    <option value="All">All</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Partially Paid">Partially Paid</option>
+                                    <option value="Paid">Paid</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
                             </div>
                         </div>
 
@@ -346,21 +357,22 @@ while ($row = $notifs_result->fetch_assoc()) {
                                     ?>
                                     <tr data-status="<?php echo $filter_data; ?>">
 
-                                        <td class="booking-ref-id">
+                                        <td class="booking-ref-id" data-label="Booking ID">
                                             <?php echo $display_id; ?>
                                         </td>
-                                        <td><?php echo htmlspecialchars($b['venue_name']); ?></td>
-                                        <td><?php echo $date_str; ?></td>
+                                        <td data-label="Venue"><?php echo htmlspecialchars($b['venue_name']); ?></td>
+                                        <td data-label="Date"><?php echo $date_str; ?></td>
                                         <td
+                                            data-label="Amount"
                                             class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'text-muted' : ''; ?>">
                                             <?php echo $display_amount; ?>
                                         </td>
-                                        <td>
+                                        <td data-label="Status">
                                             <span class="badge <?php echo $badge_class; ?>">
                                                 <?php echo ($b['cancel_status'] === 'Pending') ? 'Cancel Requested' : $status_text; ?>
                                             </span>
                                         </td>
-                                        <td>
+                                        <td data-label="Actions">
                                             <div class="action-cell">
                                                 <?php if ($b['cancel_status'] !== 'Pending' && ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial'])))): ?>
                                                 <?php if (!$is_pending_inquiry): ?>

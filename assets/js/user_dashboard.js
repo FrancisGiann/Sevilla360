@@ -147,21 +147,31 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- 2. Table Filtering ---
-  const filterPills = document.querySelectorAll(".filter-pill");
+  const statusFilter = document.getElementById("statusFilter");
+  const filterPills = document.querySelectorAll("#statusFiltersDesktop .filter-pill");
   const tableRows = document.querySelectorAll("#bookingsTable tbody tr[data-status]");
 
+  const applyBookingFilter = (filterValue) => {
+    tableRows.forEach((row) => {
+      const rowStatus = row.getAttribute("data-status");
+      row.style.display = filterValue === "All" || rowStatus === filterValue ? "" : "none";
+    });
+  };
+
+  if (statusFilter) {
+    statusFilter.addEventListener("change", (e) => {
+      const filterValue = e.target.value;
+      filterPills.forEach((pill) => pill.classList.toggle("active", pill.dataset.filter === filterValue));
+      applyBookingFilter(filterValue);
+    });
+  }
+
   filterPills.forEach((pill) => {
-    pill.addEventListener("click", (e) => {
-      filterPills.forEach((p) => p.classList.remove("active"));
-      e.target.classList.add("active");
-
-      const filterValue = e.target.getAttribute("data-filter");
-
-      tableRows.forEach((row) => {
-        const rowStatus = row.getAttribute("data-status");
-        if (filterValue === "All" || rowStatus === filterValue) row.style.display = "";
-        else row.style.display = "none";
-      });
+    pill.addEventListener("click", () => {
+      const filterValue = pill.dataset.filter;
+      filterPills.forEach((item) => item.classList.toggle("active", item === pill));
+      if (statusFilter) statusFilter.value = filterValue;
+      applyBookingFilter(filterValue);
     });
   });
 
