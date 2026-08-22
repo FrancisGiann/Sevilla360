@@ -96,6 +96,7 @@ $nav = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
     <title><?php echo htmlspecialchars($page_title); ?></title>
+    <link rel="icon" type="image/png" href="assets/img/Logo.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

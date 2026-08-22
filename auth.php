@@ -23,6 +23,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?php echo $_SESSION['csrf_token']; ?>">
     <title>Authentication - SEVILLA360</title>
 
