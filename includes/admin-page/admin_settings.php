@@ -239,7 +239,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <hr class="panel-divider">
                     <div class="support-settings-heading"><div><h3 class="panel-subheading">Frequently Asked Questions</h3><p class="settings-section-note">Add, edit, or remove the questions shown on the public page.</p></div><button type="button" class="btn btn-outline" id="btn-add-support-faq">+ Add FAQ</button></div>
                     <div id="support-faq-list">
-                        <?php foreach ($support_faq as $faq): ?><div class="support-faq-row"><input type="text" class="form-control support-faq-question" placeholder="Question" value="<?php echo htmlspecialchars((string)($faq['question'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" maxlength="240"><textarea class="form-control support-faq-answer" placeholder="Answer" rows="2"><?php echo htmlspecialchars((string)($faq['answer'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div><?php endforeach; ?>
+                        <?php foreach ($support_faq as $faq): ?><div class="support-faq-row"><div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" value="<?php echo htmlspecialchars((string)($faq['question'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" maxlength="240"></div><div class="form-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3"><?php echo htmlspecialchars((string)($faq['answer'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea></div><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div><?php endforeach; ?>
                     </div>
 
                     <hr class="panel-divider">
@@ -290,13 +290,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
                     <!-- NEW: BUSINESS INFORMATION CONFIGURATION -->
                     <hr class="panel-divider">
-                    <div class="preference-item" style="display: block;">
-                        <div class="preference-info" style="margin-bottom: 20px;">
+                    <div class="preference-item settings-section-card">
+                        <div class="preference-info settings-section-card-heading">
                             <h4 style="color: var(--color-gold);">Business Information</h4>
                             <p>Configure the public business details used in email receipts, invoices, and automated notifications.</p>
                         </div>
 
-                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-grid settings-form-grid">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label>Business Name</label>
                                 <input type="text" name="biz_name" class="form-control"
@@ -317,12 +317,12 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                 <input type="text" name="biz_phone" class="form-control"
                                     value="<?php echo htmlspecialchars($current_settings['biz_phone'] ?? '+63 912 345 6789'); ?>">
                             </div>
-                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
+                            <div class="form-group settings-field-wide">
                                 <label>Business Address</label>
                                 <input type="text" name="biz_address" class="form-control"
                                     value="<?php echo htmlspecialchars($current_settings['biz_address'] ?? '123 Resort Drive, Paradise City'); ?>">
                             </div>
-                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
+                            <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
                                 <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Cancellations made less than 7 days before arrival are subject to fees."); ?></textarea>
                             </div>
@@ -340,44 +340,58 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
                     <!-- GLOBAL EVENT PRICING CONFIGURATION -->
                     <hr class="panel-divider">
-                    <div class="preference-item" style="display: block;">
-                        <div class="preference-info" style="margin-bottom: 20px;">
+                    <div class="preference-item settings-section-card pricing-section-card">
+                        <div class="preference-info settings-section-card-heading">
                             <h4 style="color: var(--color-gold);">Global Event Pricing Configuration</h4>
                             <p>Set the base prices for event modifiers, add-ons, and catering. These prices will
                                 automatically apply to all new online and walk-in bookings.</p>
                         </div>
 
-                        <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
-
-                            <div class="form-group" style="margin-bottom: 0;">
+                        <div class="pricing-groups">
+                            <div class="pricing-group">
+                                <h5>Event Surcharges</h5>
+                                <div class="pricing-fields">
+                            <div class="form-group">
+                                <label>Wedding Surcharge (₱)</label>
+                                <input type="number" name="event_type_wedding" class="form-control"
+                                    value="<?php echo $current_settings['event_type_wedding'] ?? 10000; ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Birthday Surcharge (₱)</label>
+                                <input type="number" name="event_type_birthday" class="form-control"
+                                    value="<?php echo $current_settings['event_type_birthday'] ?? 5000; ?>">
+                            </div>
+                                </div>
+                            </div>
+                            <div class="pricing-group">
+                                <h5>Catering Rates</h5>
+                                <div class="pricing-fields">
+                            <div class="form-group">
+                                <label>Silver (₱/head)</label>
+                                <input type="number" name="catering_silver" class="form-control"
+                                    value="<?php echo $current_settings['catering_silver'] ?? 750; ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Gold (₱/head)</label>
+                                <input type="number" name="catering_gold" class="form-control"
+                                    value="<?php echo $current_settings['catering_gold'] ?? 1200; ?>">
+                            </div>
+                            <div class="form-group">
+                                <label>Platinum (₱/head)</label>
+                                <input type="number" name="catering_platinum" class="form-control"
+                                    value="<?php echo $current_settings['catering_platinum'] ?? 1800; ?>">
+                            </div>
+                                </div>
+                            </div>
+                            <div class="pricing-group">
+                                <h5>Setup</h5>
+                                <div class="pricing-fields pricing-fields-single">
+                            <div class="form-group">
                                 <label>Premium A/V Setup (₱)</label>
                                 <input type="number" name="av_setup" class="form-control"
                                     value="<?php echo $current_settings['av_setup'] ?? 5000; ?>">
                             </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Type: Wedding Surcharge (₱)</label>
-                                <input type="number" name="event_type_wedding" class="form-control"
-                                    value="<?php echo $current_settings['event_type_wedding'] ?? 10000; ?>">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Type: Birthday Surcharge (₱)</label>
-                                <input type="number" name="event_type_birthday" class="form-control"
-                                    value="<?php echo $current_settings['event_type_birthday'] ?? 5000; ?>">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Catering: Silver (₱/head)</label>
-                                <input type="number" name="catering_silver" class="form-control"
-                                    value="<?php echo $current_settings['catering_silver'] ?? 750; ?>">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label>Catering: Gold (₱/head)</label>
-                                <input type="number" name="catering_gold" class="form-control"
-                                    value="<?php echo $current_settings['catering_gold'] ?? 1200; ?>">
-                            </div>
-                            <div class="form-group" style="margin-bottom: 0; grid-column: span 2;">
-                                <label>Catering: Platinum (₱/head)</label>
-                                <input type="number" name="catering_platinum" class="form-control"
-                                    value="<?php echo $current_settings['catering_platinum'] ?? 1800; ?>">
+                                </div>
                             </div>
                         </div>
                     </div>

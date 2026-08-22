@@ -147,7 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!supportFaqList) return;
     const row = document.createElement('div');
     row.className = 'support-faq-row';
-    row.innerHTML = `<input type="text" class="form-control support-faq-question" placeholder="Question" maxlength="240"><textarea class="form-control support-faq-answer" placeholder="Answer" rows="2"></textarea><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button>`;
+    row.innerHTML = `<div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" maxlength="240"></div><div class="form-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3"></textarea></div><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button>`;
     row.querySelector('.support-faq-question').value = question;
     row.querySelector('.support-faq-answer').value = answer;
     supportFaqList.appendChild(row);
