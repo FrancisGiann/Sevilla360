@@ -406,8 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const venueFilters = document.querySelectorAll('#venueFilters .venue-filter-btn');
   const venueRows = document.querySelectorAll('.venue-row');
-  const buildingSelect = document.getElementById('hotel-building-select');
-  const roomRows = document.querySelectorAll('.room-row');
+  const venueGroups = document.querySelectorAll('.venue-group-row');
 
   if (venueFilters.length > 0) {
       const searchInput = document.getElementById('venue-search-input');
@@ -415,21 +414,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
       function applyFilters() {
           const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-          
           venueRows.forEach(row => {
               const matchesCategory = currentFilter === 'all' || row.getAttribute('data-category') === currentFilter;
-              
-              // The first td contains the venue name and ID text
               const rowText = row.querySelector('td').textContent.toLowerCase();
               const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
-              
-              if (matchesCategory && matchesSearch) {
-                  row.style.display = ''; 
+              const isRoom = row.classList.contains('room-row');
+              const groupId = row.getAttribute('data-group-id');
+              const group = groupId ? document.querySelector(`.venue-group-row[aria-controls="hotel-group-${groupId}"]`) : null;
+              const groupText = group ? group.textContent.toLowerCase() : '';
+              const matchesGroupSearch = groupText.includes(searchTerm);
+              const expanded = group?.querySelector('.venue-group-toggle')?.getAttribute('aria-expanded') === 'true';
+
+              if (isRoom) {
+                  row.style.display = matchesCategory && expanded && (matchesSearch || matchesGroupSearch) ? '' : 'none';
               } else {
-                  row.style.display = 'none'; 
+                  row.style.display = matchesCategory && matchesSearch ? '' : 'none';
               }
           });
+
+          venueGroups.forEach(group => {
+              const groupId = group.querySelector('.venue-group-toggle')?.getAttribute('aria-controls')?.replace('hotel-group-', '');
+              const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
+              const groupText = group.textContent.toLowerCase();
+              const hasMatchingChild = children.some(row => row.querySelector('td').textContent.toLowerCase().includes(searchTerm));
+              const matchesSearch = searchTerm === '' || groupText.includes(searchTerm) || hasMatchingChild;
+              group.style.display = currentFilter === 'all' || currentFilter === 'Hotel Room' ? (matchesSearch ? '' : 'none') : 'none';
+          });
       }
+
+      venueGroups.forEach(group => {
+          const toggle = group.querySelector('.venue-group-toggle');
+          toggle?.addEventListener('click', () => {
+              const expanded = toggle.getAttribute('aria-expanded') === 'true';
+              toggle.setAttribute('aria-expanded', String(!expanded));
+              toggle.querySelector('.venue-group-arrow').textContent = expanded ? '▸' : '▾';
+              const groupId = toggle.getAttribute('aria-controls')?.replace('hotel-group-', '');
+              const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
+              const countLabel = toggle.querySelector('.venue-group-count');
+              if (countLabel) countLabel.textContent = expanded ? 'Rooms are collapsed' : `${children.length} room${children.length === 1 ? '' : 's'}`;
+              applyFilters();
+          });
+      });
 
       venueFilters.forEach(btn => {
           btn.addEventListener('click', () => {
@@ -445,16 +470,4 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       applyFilters();
   }
-
-  function applyRoomFilters() {
-      const selectedBuilding = buildingSelect?.value || '';
-      const searchTerm = document.getElementById('room-search-input')?.value.toLowerCase() || '';
-      roomRows.forEach(row => {
-          const rowText = row.querySelector('td')?.textContent.toLowerCase() || '';
-          row.style.display = selectedBuilding && row.getAttribute('data-building') === selectedBuilding && (!searchTerm || rowText.includes(searchTerm)) ? '' : 'none';
-      });
-  }
-  buildingSelect?.addEventListener('change', applyRoomFilters);
-  document.getElementById('room-search-input')?.addEventListener('input', applyRoomFilters);
-  applyRoomFilters();
 });
