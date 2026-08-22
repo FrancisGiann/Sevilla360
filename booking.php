@@ -3,17 +3,8 @@ $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = 'assets/css/booking.css?v=' . time(); 
 $extra_js = 'assets/js/booking.js?v=' . time();    
 $active_page = 'booking';              
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-if (!isset($_SESSION['user_id'])) {
-    header("Location: auth.php");
-    exit();
-}
-if (isset($_SESSION['role']) && ($_SESSION['role'] === 'staff' || $_SESSION['role'] === 'admin')) {
-    header("Location: admin_dashboard.php");
-    exit();
-}
+$required_role = 'customer';
+require 'includes/auth_guard.php';
 
 include 'includes/header.php';
 

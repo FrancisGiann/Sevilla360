@@ -35,7 +35,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST['password'];
 
     // Secure Database Query (Prepared Statements prevent SQL Injection hacking)
-    $stmt = $conn->prepare("SELECT id, password_hash, role, is_verified FROM users WHERE email = ?");
+    // Account status is intentionally checked here rather than only in the
+    // administration screen.  A suspended customer must not be able to start
+    // a new session, and an inactive staff member must not access the admin
+    // portal. Staff availability lives in `staff.status`; customer suspension
+    // lives in `users.status`.
+    $stmt = $conn->prepare("\
+        SELECT u.id, u.password_hash, u.role, u.is_verified, u.status AS user_status,
+               s.status AS staff_status
+        FROM users u
+        LEFT JOIN staff s ON s.user_id = u.id
+        WHERE u.email = ?
+        LIMIT 1
+    ");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -47,12 +59,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Check if the user is verified
         if ($user['is_verified'] == 0) {
             $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'Please verify your email address first!', 'type' => 'warning'];
-            header("Location: ../../auth.php");
+            // Reopen the verification dialog after an interrupted attempt so
+            // the customer can enter or resend a code without registering again.
+            header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
         }
 
         //Verify the typed password against the encrypted one in the database
         if (password_verify($password, $user['password_hash'])) {
+
+            $account_status = in_array($user['role'], ['admin', 'staff'], true)
+                ? ($user['staff_status'] ?? '')
+                : ($user['user_status'] ?? '');
+            if (strcasecmp((string) $account_status, 'active') !== 0) {
+                $_SESSION['auth_alert'] = [
+                    'title' => 'Account unavailable',
+                    'message' => 'This account is suspended or inactive. Please contact an administrator.',
+                    'type' => 'error'
+                ];
+                header("Location: ../../auth.php");
+                exit();
+            }
             
             // ROLE VALIDATION GUARD
             $login_type = $_POST['login_type'] ?? 'customer';
@@ -112,6 +139,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             $_SESSION['first_name'] = $display_name;
+
+            // Successful staff/admin logins were previously absent from the
+            // audit log. Keep this non-blocking: a logging failure must not
+            // prevent a valid login.
+            try {
+                $login_action = 'Successful ' . $user['role'] . ' login: ' . $email;
+                $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Authentication', ?, ?)");
+                if ($audit) {
+                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+                    $audit->bind_param("iss", $user['id'], $login_action, $ip_address);
+                    $audit->execute();
+                    $audit->close();
+                }
+            } catch (Throwable $e) {
+                // Authentication remains available if audit logging is unavailable.
+            }
 
 
             // Redirect based on their role
