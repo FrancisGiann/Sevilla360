@@ -308,6 +308,13 @@ class SevillaCalendar {
     this.render();
   }
 
+  clearSelectedRange() {
+    this.startDate = null;
+    this.endDate = null;
+    this.render();
+    this.updateDateDisplay();
+  }
+
   clearSelection() {
     this.startDate = null;
     this.endDate = null;

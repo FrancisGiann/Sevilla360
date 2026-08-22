@@ -626,7 +626,7 @@ class BookingController {
         const confirmBtn = this.replaceElement("btn-confirm-date");
         this.replaceElement("btn-cancel-date").addEventListener("click", () => {
             dateModal.classList.remove("active");
-            calendarInstance.clearSelection();
+            calendarInstance.clearSelectedRange();
         });
 
         confirmBtn.addEventListener("click", async () => {
@@ -682,6 +682,7 @@ class BookingController {
                     throw new Error(response[1]);
                 }
             } catch (err) {
+                calendarInstance.clearSelectedRange();
                 if (err.sessionExpired) {
                     showAlert("Session Expired", err.message, "error", true);
                 } else {
@@ -690,7 +691,6 @@ class BookingController {
                     calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId);
                 }
                 dateModal.classList.remove("active");
-                calendarInstance.clearSelection();
             } finally {
                 confirmBtn.innerText = "Confirm";
                 confirmBtn.disabled = false;
