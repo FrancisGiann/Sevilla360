@@ -18,7 +18,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 // sessions that were active when an administrator suspended a customer or
 // marked a staff account inactive.
 require_once __DIR__ . '/../config/db_connect.php';
-$account_stmt = $conn->prepare("\
+$account_stmt = $conn->prepare("
     SELECT u.role, u.status AS user_status, s.status AS staff_status
     FROM users u
     LEFT JOIN staff s ON s.user_id = u.id
