@@ -55,27 +55,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_room = $conn->prepare("
                 SELECT id, category FROM venues 
                 WHERE id = ? AND status = 'Available'
-                AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
+                AND id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
                 LIMIT 1
             ");
-            $stmt_room->bind_param("iss", $venue_id, $eDate, $sDate);
+            $stmt_room->bind_param("issss", $venue_id, $eDate, $sDate, $eDate, $sDate);
         } else {
             if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
                 $stmt_room = $conn->prepare("
                     SELECT id, category FROM venues 
                     WHERE category = ? AND name = ? AND status = 'Available'
-                    AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                    AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
+                    AND id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
                     LIMIT 1
                 ");
             } else {
                 $stmt_room = $conn->prepare("
                     SELECT v.id, v.category FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
                     WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
-                    AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND (start_date < ? AND end_date > ?))
+                    AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
+                    AND v.id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
                     LIMIT 1
                 ");
             }
-            $stmt_room->bind_param("ssss", $room_type, $room_name, $eDate, $sDate);
+            $stmt_room->bind_param("ssssss", $room_type, $room_name, $eDate, $sDate, $eDate, $sDate);
         }
         $stmt_room->execute();
         $room_result = $stmt_room->get_result();
@@ -218,12 +221,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       AND v.id NOT IN (
                           SELECT venue_id FROM bookings
                           WHERE booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND source <> 'Maintenance'
                             AND (start_date < ? AND end_date > ?)
+                      )
+                      AND v.id NOT IN (
+                          SELECT venue_id FROM maintenance
+                          WHERE is_blocking = 1 AND status = 'Scheduled'
+                            AND (start_date <= ? AND end_date >= ?)
                       )
                       AND v.id NOT IN (
                           SELECT br.venue_id FROM booking_rooms br
                           JOIN bookings b2 ON br.booking_id = b2.id
                           WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND b2.source <> 'Maintenance'
                             AND (br.start_date < ? AND br.end_date > ?)
                       )
                       AND v.id NOT IN (
@@ -242,7 +252,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $qty = (int)$group['quantity'];
                     
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('sssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
+                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
                         $stmt_alloc->execute();
                         $alloc_res = $stmt_alloc->get_result();
                         

@@ -37,7 +37,7 @@ try {
             // Event Halls only block Confirmed. Villas block Pending & Confirmed.
             $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
             
-            $stmt_bookings = $conn->query("SELECT start_date, end_date FROM bookings WHERE venue_id = $venue_id AND booking_status $status_filter");
+            $stmt_bookings = $conn->query("SELECT start_date, end_date FROM bookings WHERE venue_id = $venue_id AND booking_status $status_filter AND source <> 'Maintenance'");
             while ($row = $stmt_bookings->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
@@ -104,7 +104,7 @@ try {
             $stmt_direct = $conn->query("
                 SELECT start_date, end_date 
                 FROM bookings 
-                WHERE venue_id IN ($v_ids_str) AND booking_status IN ('Pending', 'Confirmed', 'Completed')
+                WHERE venue_id IN ($v_ids_str) AND booking_status IN ('Pending', 'Confirmed', 'Completed') AND source <> 'Maintenance'
             ");
             while ($row = $stmt_direct->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
@@ -121,7 +121,7 @@ try {
                 SELECT br.start_date, br.end_date 
                 FROM booking_rooms br
                 JOIN bookings b ON br.booking_id = b.id
-                WHERE br.venue_id IN ($v_ids_str) AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                WHERE br.venue_id IN ($v_ids_str) AND b.booking_status IN ('Pending', 'Confirmed', 'Completed') AND b.source <> 'Maintenance'
             ");
             while ($row = $stmt_addon->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);

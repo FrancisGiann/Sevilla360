@@ -58,14 +58,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $venue_id = $result->fetch_assoc()['id'];
 
             // 1. Check Maintenance
-            $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (start_date <= ? AND end_date >= ?)");
+            $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?)");
             $chk_maint->bind_param("iss", $venue_id, $end_date, $start_date);
             $chk_maint->execute();
             if ($chk_maint->get_result()->num_rows > 0) throw new Exception("These dates are currently under maintenance.");
 
             // 2. Check existing bookings
             $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
-            $chk_booking = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $status_filter AND (start_date <= ? AND end_date >= ?)");
+            $chk_booking = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $status_filter AND source <> 'Maintenance' AND (start_date <= ? AND end_date >= ?)");
             $chk_booking->bind_param("iss", $venue_id, $end_date, $start_date);
             $chk_booking->execute();
             if ($chk_booking->get_result()->num_rows > 0) throw new Exception("These dates are already booked.");
@@ -103,13 +103,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $vid = $row['id'];
                 
                 // Check Maintenance (maintenance ALWAYS blocks inclusively)
-                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (start_date <= ? AND end_date >= ?)");
+                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?)");
                 $maint->bind_param("iss", $vid, $end_date, $start_date);
                 $maint->execute();
                 if ($maint->get_result()->num_rows > 0) continue;
                 
                 // Check Direct Bookings
-                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed') AND $overlap_cond");
+                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed') AND source <> 'Maintenance' AND $overlap_cond");
                 $bk->bind_param("iss", $vid, $end_date, $start_date);
                 $bk->execute();
                 if ($bk->get_result()->num_rows > 0) continue;
@@ -119,7 +119,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $addons = $conn->prepare("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed', 'Completed') 
+                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed', 'Completed') AND b.source <> 'Maintenance'
                     AND $addons_overlap
                 ");
                 $addons->bind_param("iss", $vid, $end_date, $start_date);

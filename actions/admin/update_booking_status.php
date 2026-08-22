@@ -64,13 +64,13 @@ try {
     // ==========================================
     if ($action === 'confirm') {
         $was_already_confirmed = ($b_info['booking_status'] === 'Confirmed');
-        $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND start_date < ? AND end_date > ? LIMIT 1");
+        $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND source <> 'Maintenance' AND start_date < ? AND end_date > ? LIMIT 1");
         $stmt_conflict->bind_param("iiss", $b_info['venue_id'], $booking_id, $b_info['end_date'], $b_info['start_date']);
         $stmt_conflict->execute();
         if ($stmt_conflict->get_result()->num_rows > 0) {
             throw new Exception("This venue is already confirmed for the selected dates.");
         }
-        $stmt_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND start_date <= ? AND end_date >= ? LIMIT 1");
+        $stmt_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND start_date <= ? AND end_date >= ? LIMIT 1");
         $stmt_maintenance->bind_param("iss", $b_info['venue_id'], $b_info['end_date'], $b_info['start_date']);
         $stmt_maintenance->execute();
         if ($stmt_maintenance->get_result()->num_rows > 0) {
@@ -264,18 +264,18 @@ try {
                 $vid = $row['id'];
                 
                 // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date < '$new_end' AND end_date > '$new_start')");
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$new_end' AND end_date >= '$new_start')");
                 if ($maint->num_rows > 0) continue;
                 
                 // Check Bookings (Exclude this specific booking)
-                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
+                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
                 if ($bk->num_rows > 0) continue;
 
                 // Check Add-on Bookings
                 $addons = $conn->query("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.id != $booking_id 
+                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance' AND b.id != $booking_id
                     AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
                 ");
                 if ($addons->num_rows > 0) continue;
@@ -293,7 +293,7 @@ try {
             // For Event Halls / Villas, just check the specific unit
             $check_overlap = $conn->prepare("
                 SELECT id FROM bookings 
-                WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND id != ? AND (start_date < ? AND end_date > ?)
+                WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND (start_date < ? AND end_date > ?)
             ");
             $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
             $check_overlap->execute();
@@ -340,18 +340,18 @@ try {
                 if (in_array($vid, $new_allocations) || $vid === $venue_id) continue;
 
                 // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND (start_date < '$new_end' AND end_date > '$new_start')");
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$new_end' AND end_date >= '$new_start')");
                 if ($maint->num_rows > 0) continue;
                 
                 // Check Bookings
-                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
+                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
                 if ($bk->num_rows > 0) continue;
 
                 // Check Add-on Bookings
                 $addons_check = $conn->query("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.id != $booking_id 
+                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance' AND b.id != $booking_id
                     AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
                 ");
                 if ($addons_check->num_rows > 0) continue;

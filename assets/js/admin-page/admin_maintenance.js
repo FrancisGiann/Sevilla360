@@ -230,13 +230,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = data.split("|");
 
             if (response[0] === "Success") {
-                await showAlert("Success", response[1]);
-                window.location.reload();
+                showAlert("Success", response.slice(1).join("|"), "success", true);
             } else {
-                throw new Error(response[1]);
+                throw new Error(response.slice(1).join("|") || "Unable to schedule maintenance.");
             }
         } catch (error) {
-            showAlert("Notice", "Error: " + error.message);
+            showAlert("Notice", "Error: " + error.message, "error");
             btn.innerText = "SCHEDULE MAINTENANCE";
             btn.disabled = false;
         }
@@ -268,13 +267,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = await res.json();
                 
                 if (data.success) {
-                    showAlert("Notice", "Maintenance successfully deleted!");
-                    window.location.reload();
+                    showAlert("Success", "Maintenance successfully deleted!", "success", true);
                 } else {
                     throw new Error(data.message);
                 }
             } catch (error) {
-                showAlert("Notice", "Error: " + error.message);
+                showAlert("Notice", "Error: " + error.message, "error");
                 e.target.innerText = "Cancel / Delete";
                 e.target.disabled = false;
             }
@@ -306,13 +304,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 const data = await res.json();
                 if (data.success) {
-                    showAlert("Notice", "Maintenance marked as completed! Calendar has been updated.");
-                    window.location.reload();
+                    showAlert("Success", "Maintenance marked as completed! Calendar has been updated.", "success", true);
                 } else {
                     throw new Error(data.message);
                 }
             } catch (error) {
-                showAlert("Notice", "Error: " + error.message);
+                showAlert("Notice", "Error: " + error.message, "error");
                 e.target.innerText = "Mark Done";
                 e.target.disabled = false;
             }

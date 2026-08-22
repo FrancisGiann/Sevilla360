@@ -37,16 +37,23 @@ try {
           AND v.id NOT IN (
               SELECT venue_id FROM bookings
               WHERE booking_status IN ('Pending', 'Confirmed', 'Completed')
+                AND source <> 'Maintenance'
                 AND (start_date < ? AND end_date > ?)
           )
           AND v.id NOT IN (
               SELECT br.venue_id FROM booking_rooms br
               JOIN bookings b2 ON br.booking_id = b2.id
               WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                AND b2.source <> 'Maintenance'
                 AND (br.start_date < ? AND br.end_date > ?)
           )
+          AND v.id NOT IN (
+              SELECT venue_id FROM maintenance
+              WHERE is_blocking = 1 AND status = 'Scheduled'
+                AND (start_date <= ? AND end_date >= ?)
+          )
     ");
-    $stmt->bind_param('ssssss', $building_name, $room_type, $end_date, $start_date, $end_date, $start_date);
+    $stmt->bind_param('ssssssss', $building_name, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $available = (int)($row['available'] ?? 0);

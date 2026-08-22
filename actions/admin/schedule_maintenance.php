@@ -33,6 +33,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         if ($venue_id <= 0) throw new Exception("Invalid venue ID.");
 
+        $start_dt = DateTime::createFromFormat('!Y-m-d', $sDate);
+        $end_dt = DateTime::createFromFormat('!Y-m-d', $eDate);
+        if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $sDate || $end_dt->format('Y-m-d') !== $eDate || $end_dt < $start_dt) {
+            throw new Exception("Invalid maintenance date range.");
+        }
+
         // Fetch actual venue name and category for the logs and messages
         $stmt_venue = $conn->prepare("SELECT category, name FROM venues WHERE id = ?");
         $stmt_venue->bind_param("i", $venue_id);
@@ -55,24 +61,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("There is already scheduled maintenance for this unit during these dates.");
         }
 
-        // 2. If Blocking Calendar, insert a "Maintenance Booking" lock
+        // Maintenance records are the single source of truth for maintenance
+        // availability. Do not create a fake customer booking here: it would
+        // be counted twice and could remain blocking after completion.
         if ($is_blocking) {
-            $cust_res = $conn->query("SELECT id FROM customers WHERE first_name = 'SYSTEM' AND last_name = 'MAINTENANCE'");
-            if ($cust_res->num_rows > 0) {
-                $customer_id = $cust_res->fetch_assoc()['id'];
-            } else {
-                $conn->query("INSERT INTO customers (first_name, last_name, email, phone) VALUES ('SYSTEM', 'MAINTENANCE', 'admin@sevilla360.com', '00000000000')");
-                $customer_id = $conn->insert_id;
-            }
-
             // Check if dates are already booked by customers
             // If hotel room, use exclusive checkout interval (start_date < eDate AND end_date > sDate)
             // If event hall, use inclusive checkout interval (start_date <= eDate AND end_date >= sDate)
-            $overlap_condition = $is_hotel ? "(start_date < ? AND end_date > ?)" : "(start_date <= ? AND end_date >= ?)";
+            $overlap_condition = $is_hotel ? "(b.start_date < ? AND b.end_date > ?)" : "(b.start_date <= ? AND b.end_date >= ?)";
             
             $check_stmt = $conn->prepare("
-                SELECT id FROM bookings 
-                WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') 
+                SELECT id FROM bookings b
+                WHERE b.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance'
                 AND $overlap_condition
             ");
             $check_stmt->bind_param("iss", $venue_id, $eDate, $sDate);
@@ -86,8 +86,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $check_addon = $conn->prepare("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed')
-                    AND $overlap_condition
+                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance'
+                    AND " . ($is_hotel ? "(br.start_date < ? AND br.end_date > ?)" : "(br.start_date <= ? AND br.end_date >= ?)") . "
                 ");
                 $check_addon->bind_param("iss", $venue_id, $eDate, $sDate);
                 $check_addon->execute();
@@ -96,14 +96,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
             }
 
-            // Insert Maintenance Block
-            $ref_no = "MAINT-" . mt_rand(1000, 9999);
-            $book_stmt = $conn->prepare("
-                INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
-                VALUES (?, ?, ?, ?, ?, 0, 0, 0, '100% Full', 'Confirmed', 'Paid', 'Maintenance')
-            ");
-            $book_stmt->bind_param("siiss", $ref_no, $customer_id, $venue_id, $sDate, $eDate);
-            $book_stmt->execute();
         }
 
         // ==========================================

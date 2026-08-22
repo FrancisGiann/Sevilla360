@@ -31,7 +31,7 @@ try {
 
     // 1. Get maintenance details
     $stmt_get = $conn->prepare("
-        SELECT m.venue_id, m.start_date, m.end_date, m.is_blocking, v.name as venue_name 
+        SELECT m.venue_id, m.start_date, m.end_date, m.is_blocking, m.status, v.name as venue_name
         FROM maintenance m
         LEFT JOIN venues v ON m.venue_id = v.id
         WHERE m.id = ?
@@ -43,29 +43,25 @@ try {
     if (!$maint) {
         throw new Exception("Maintenance record not found.");
     }
+    if ($maint['status'] !== 'Scheduled') {
+        throw new Exception("Maintenance is already completed or cancelled.");
+    }
     $v_name = $maint['venue_name'] ?? 'Unknown Venue';
 
-    // 2. Mark maintenance status as 'Completed' and update completed_at timestamp
-    // If end_date is currently in the future/today, shrink it cleanly so calendar availability opens up without start > end date corruption
+    // 2. Mark the record completed without changing its historical date range.
     $stmt_maint = $conn->prepare("
         UPDATE maintenance 
         SET status = 'Completed', 
-            completed_at = NOW(),
-            end_date = IF(start_date >= CURDATE(), start_date, IF(end_date >= CURDATE(), (CURDATE() - INTERVAL 1 DAY), end_date))
+            completed_at = NOW()
         WHERE id = ?
     ");
     $stmt_maint->bind_param("i", $maint_id);
     $stmt_maint->execute();
 
-    // 3. Update associated dummy booking lock in bookings table
+    // 3. Remove a legacy fake booking lock, if one still exists.
     if ($maint['is_blocking']) {
-        $stmt_book = $conn->prepare("
-            UPDATE bookings 
-            SET booking_status = 'Completed',
-                end_date = IF(start_date >= CURDATE(), start_date, IF(end_date >= CURDATE(), (CURDATE() - INTERVAL 1 DAY), end_date))
-            WHERE source = 'Maintenance' AND venue_id = ? AND start_date = ?
-        ");
-        $stmt_book->bind_param("is", $maint['venue_id'], $maint['start_date']);
+        $stmt_book = $conn->prepare("DELETE FROM bookings WHERE source = 'Maintenance' AND venue_id = ? AND start_date = ? AND end_date = ?");
+        $stmt_book->bind_param("iss", $maint['venue_id'], $maint['start_date'], $maint['end_date']);
         $stmt_book->execute();
     }
 

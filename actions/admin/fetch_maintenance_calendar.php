@@ -57,7 +57,7 @@ try {
             SELECT b.reference_no, br.start_date, br.end_date, b.booking_status 
             FROM booking_rooms br
             JOIN bookings b ON br.booking_id = b.id
-            WHERE br.venue_id = ? AND b.booking_status != 'Cancelled'
+            WHERE br.venue_id = ? AND b.booking_status != 'Cancelled' AND b.source != 'Maintenance'
         ");
         $stmt_addons->bind_param("i", $venue_id);
         $stmt_addons->execute();
