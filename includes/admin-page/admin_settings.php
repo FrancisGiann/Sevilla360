@@ -84,6 +84,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
             <button class="tab-link" data-target="panel-venues">Manage Venues</button>
+            <button class="tab-link" data-target="panel-rooms">Manage Hotel Rooms</button>
             <button class="tab-link" data-target="panel-support">Support &amp; Information</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
             <?php endif; ?>
@@ -161,21 +162,12 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     <div>
                         <button class="venue-filter-btn active" data-filter="all">All</button>
                         <button class="venue-filter-btn" data-filter="Event Hall">Event Halls</button>
-                        <button class="venue-filter-btn" data-filter="Hotel Room">Hotel Rooms</button>
                         <button class="venue-filter-btn" data-filter="Resort Villa">Resort Villas</button>
                     </div>
                     <div>
                         <input type="text" id="venue-search-input" class="form-control" placeholder="Search venues..." style="max-width: 250px; border-radius: 20px; padding: 6px 15px; border: 1px solid var(--gray-border);">
                     </div>
                 </div>
-                <div class="hotel-building-selector" id="hotel-building-selector" hidden>
-                    <label for="hotel-building-select">Hotel building</label>
-                    <select id="hotel-building-select" class="form-control">
-                        <option value="">Select a building to view its rooms</option>
-                        <?php foreach ($hotel_buildings as $building): ?><option value="<?php echo htmlspecialchars($building, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($building); ?></option><?php endforeach; ?>
-                    </select>
-                </div>
-
                 <div class="venues-table-wrapper">
                     <table class="venues-table">
                         <thead>
@@ -187,7 +179,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach($all_venues as $v): ?>
+                            <?php foreach($all_venues as $v): if ($v['category'] === 'Hotel Room') continue; ?>
 
                             <tr class="venue-row" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-building="<?php echo htmlspecialchars($v['name'], ENT_QUOTES, 'UTF-8'); ?>">
 
@@ -231,7 +223,37 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                 </div>
             </div>
 
-            <!-- PANEL 3: Support & Information -->
+            <!-- PANEL 3: Manage Hotel Rooms -->
+            <div class="settings-panel" id="panel-rooms">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div><h2 class="panel-heading" style="border: none; padding: 0; margin: 0;">Manage Hotel Rooms</h2><p class="settings-section-note" style="margin: 6px 0 0;">Choose a building to view and edit its individual rooms.</p></div>
+                </div>
+                <div class="hotel-building-selector" id="hotel-building-selector">
+                    <label for="hotel-building-select">Hotel building</label>
+                    <select id="hotel-building-select" class="form-control">
+                        <option value="">Select a building to view its rooms</option>
+                        <?php foreach ($hotel_buildings as $building): ?><option value="<?php echo htmlspecialchars($building, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($building); ?></option><?php endforeach; ?>
+                    </select>
+                    <input type="text" id="room-search-input" class="form-control" placeholder="Search rooms...">
+                </div>
+                <div class="venues-table-wrapper">
+                    <table class="venues-table">
+                        <thead><tr><th>Building / Room</th><th>Room Type</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                        <?php foreach ($all_venues as $v): if ($v['category'] !== 'Hotel Room') continue; $badge_class = $v['status'] === 'Available' ? 'v-badge-available' : ($v['status'] === 'Maintenance' ? 'v-badge-maintenance' : 'v-badge-inactive'); ?>
+                            <tr class="room-row" data-category="Hotel Room" data-building="<?php echo htmlspecialchars($v['name'], ENT_QUOTES, 'UTF-8'); ?>">
+                                <td style="font-weight: 500;"><?php echo htmlspecialchars($v['name']); ?> — Room <?php echo htmlspecialchars($v['room_number'] ?? ''); ?><span class="venue-id-text">ID: #<?php echo $v['id']; ?></span></td>
+                                <td style="color: var(--color-dark-light);"><?php echo htmlspecialchars($v['room_type'] ?? 'Hotel Room'); ?></td>
+                                <td><span class="v-badge <?php echo $badge_class; ?>"><?php echo htmlspecialchars($v['status']); ?></span></td>
+                                <td><button class="btn-edit-venue" data-id="<?php echo $v['id']; ?>">Edit</button></td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PANEL 4: Support & Information -->
             <div class="settings-panel" id="panel-support">
                 <h2 class="panel-heading">Support &amp; Information</h2>
                 <p class="settings-section-note">Edit the content shown on the public Support &amp; Information page. Leave each FAQ on its own card and use one line per term.</p>
@@ -272,7 +294,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                 </form>
             </div>
 
-            <!-- PANEL 4: System Preferences -->
+            <!-- PANEL 5: System Preferences -->
             <div class="settings-panel" id="panel-prefs">
                 <h2 class="panel-heading">System Preferences</h2>
 

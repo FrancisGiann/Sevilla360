@@ -406,28 +406,24 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const venueFilters = document.querySelectorAll('#venueFilters .venue-filter-btn');
   const venueRows = document.querySelectorAll('.venue-row');
-  const buildingSelector = document.getElementById('hotel-building-selector');
   const buildingSelect = document.getElementById('hotel-building-select');
+  const roomRows = document.querySelectorAll('.room-row');
 
   if (venueFilters.length > 0) {
       const searchInput = document.getElementById('venue-search-input');
       let currentFilter = 'all';
 
       function applyFilters() {
-      const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-          const selectedBuilding = buildingSelect ? buildingSelect.value : '';
-          if (buildingSelector) buildingSelector.hidden = currentFilter !== 'Hotel Room';
+          const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
           
           venueRows.forEach(row => {
               const matchesCategory = currentFilter === 'all' || row.getAttribute('data-category') === currentFilter;
-              const isHotelRoom = row.getAttribute('data-category') === 'Hotel Room';
-              const matchesBuilding = !isHotelRoom || (currentFilter === 'Hotel Room' && selectedBuilding !== '' && row.getAttribute('data-building') === selectedBuilding);
               
               // The first td contains the venue name and ID text
               const rowText = row.querySelector('td').textContent.toLowerCase();
               const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
               
-              if (matchesCategory && matchesBuilding && matchesSearch) {
+              if (matchesCategory && matchesSearch) {
                   row.style.display = ''; 
               } else {
                   row.style.display = 'none'; 
@@ -440,7 +436,6 @@ document.addEventListener("DOMContentLoaded", () => {
               venueFilters.forEach(f => f.classList.remove('active'));
               btn.classList.add('active');
               currentFilter = btn.getAttribute('data-filter');
-              if (currentFilter === 'Hotel Room' && buildingSelect && !buildingSelect.value && buildingSelect.options.length > 1) buildingSelect.selectedIndex = 1;
               applyFilters();
           });
       });
@@ -448,7 +443,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (searchInput) {
           searchInput.addEventListener('input', applyFilters);
       }
-      buildingSelect?.addEventListener('change', applyFilters);
       applyFilters();
   }
+
+  function applyRoomFilters() {
+      const selectedBuilding = buildingSelect?.value || '';
+      const searchTerm = document.getElementById('room-search-input')?.value.toLowerCase() || '';
+      roomRows.forEach(row => {
+          const rowText = row.querySelector('td')?.textContent.toLowerCase() || '';
+          row.style.display = selectedBuilding && row.getAttribute('data-building') === selectedBuilding && (!searchTerm || rowText.includes(searchTerm)) ? '' : 'none';
+      });
+  }
+  buildingSelect?.addEventListener('change', applyRoomFilters);
+  document.getElementById('room-search-input')?.addEventListener('input', applyRoomFilters);
+  applyRoomFilters();
 });
