@@ -40,7 +40,7 @@ try {
     // FETCH CUSTOMER DATA FOR EMAILS
     // ==========================================
     $stmt_info = $conn->prepare("
-        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
+        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id 
         JOIN venues v ON b.venue_id = v.id 
@@ -63,6 +63,7 @@ try {
     // ACTIONS
     // ==========================================
     if ($action === 'confirm') {
+        $was_already_confirmed = ($b_info['booking_status'] === 'Confirmed');
         $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND start_date < ? AND end_date > ? LIMIT 1");
         $stmt_conflict->bind_param("iiss", $b_info['venue_id'], $booking_id, $b_info['end_date'], $b_info['start_date']);
         $stmt_conflict->execute();
@@ -79,6 +80,17 @@ try {
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         $message = "Booking #$ref_no has been confirmed!";
+
+        // Notify only on an actual transition to Confirmed. Repeating the
+        // same admin action must not create duplicate customer alerts.
+        if (!$was_already_confirmed) {
+            create_user_notification(
+                $conn,
+                $c_user_id,
+                "Booking Confirmed",
+                "Your booking for $v_name (Reference: $ref_no) has been approved."
+            );
+        }
         
     } 
     elseif ($action === 'cancel') {

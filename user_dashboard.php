@@ -22,7 +22,7 @@ $cleanup_stmt->close();
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
 
-$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone, special_req, dob FROM customers WHERE user_id = ?");
+$stmt_cust = $conn->prepare("SELECT id, first_name, last_name, email, phone, special_req FROM customers WHERE user_id = ?");
 $stmt_cust->bind_param("i", $user_id);
 $stmt_cust->execute();
 $customer_res = $stmt_cust->get_result();
@@ -33,7 +33,24 @@ if ($customer_res->num_rows === 0) {
 $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
 
-// 2. Fetch all bookings
+// 2. Calculate dashboard-wide booking totals independently of the visible page.
+$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN booking_status = 'Pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN booking_status = 'Confirmed' THEN 1 ELSE 0 END) AS confirmed FROM bookings WHERE customer_id = ?");
+$stmt_stats->bind_param("i", $customer_id);
+$stmt_stats->execute();
+$booking_stats = $stmt_stats->get_result()->fetch_assoc() ?: [];
+$stat_total = (int) ($booking_stats['total'] ?? 0);
+$stat_pending = (int) ($booking_stats['pending'] ?? 0);
+$stat_confirmed = (int) ($booking_stats['confirmed'] ?? 0);
+$stmt_stats->close();
+
+$booking_limit = 10;
+$booking_page = filter_input(INPUT_GET, 'booking_page', FILTER_VALIDATE_INT);
+$booking_page = ($booking_page && $booking_page > 0) ? $booking_page : 1;
+$booking_pages = max(1, (int) ceil($stat_total / $booking_limit));
+$booking_page = min($booking_page, $booking_pages);
+$booking_offset = ($booking_page - 1) * $booking_limit;
+
+// 3. Fetch only the current page of bookings.
 $stmt_bookings = $conn->prepare("
     SELECT 
         b.*, 
@@ -52,24 +69,19 @@ $stmt_bookings = $conn->prepare("
     WHERE b.customer_id = ?
     GROUP BY b.id
     ORDER BY b.id DESC
+    LIMIT ? OFFSET ?
 ");
-$stmt_bookings->bind_param("i", $customer_id);
+$stmt_bookings->bind_param("iii", $customer_id, $booking_limit, $booking_offset);
 $stmt_bookings->execute();
 $bookings_result = $stmt_bookings->get_result();
 
 $bookings = [];
-$stat_total = 0;
-$stat_pending = 0;
-$stat_confirmed = 0;
 
 while ($row = $bookings_result->fetch_assoc()) {
     $bookings[] = $row;
-    $stat_total++;
-    if ($row['booking_status'] === 'Pending') $stat_pending++;
-    if ($row['booking_status'] === 'Confirmed') $stat_confirmed++;
 }
 
-// 3. Fetch Notifications
+// 4. Fetch Notifications
 $stmt_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
 $stmt_notifs->bind_param("i", $user_id);
 $stmt_notifs->execute();
@@ -396,6 +408,24 @@ while ($row = $notifs_result->fetch_assoc()) {
                                 </tbody>
                             </table>
                         </div>
+                        <?php if ($booking_pages > 1): ?>
+                        <nav class="booking-pagination" aria-label="Booking history pages">
+                            <span class="pagination-summary">
+                                Showing <?php echo (($booking_page - 1) * $booking_limit) + 1; ?>-<?php echo min($booking_page * $booking_limit, $stat_total); ?> of <?php echo $stat_total; ?> bookings
+                            </span>
+                            <div class="pagination-controls">
+                                <?php if ($booking_page > 1): ?>
+                                <a class="pagination-link" href="user_dashboard.php?booking_page=<?php echo $booking_page - 1; ?>" aria-label="Previous page">&larr; Previous</a>
+                                <?php endif; ?>
+                                <?php for ($page_number = 1; $page_number <= $booking_pages; $page_number++): ?>
+                                <a class="pagination-link <?php echo $page_number === $booking_page ? 'active' : ''; ?>" href="user_dashboard.php?booking_page=<?php echo $page_number; ?>" aria-current="<?php echo $page_number === $booking_page ? 'page' : 'false'; ?>"><?php echo $page_number; ?></a>
+                                <?php endfor; ?>
+                                <?php if ($booking_page < $booking_pages): ?>
+                                <a class="pagination-link" href="user_dashboard.php?booking_page=<?php echo $booking_page + 1; ?>" aria-label="Next page">Next &rarr;</a>
+                                <?php endif; ?>
+                            </div>
+                        </nav>
+                        <?php endif; ?>
                     </div>
                     <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
                         complete.</p>
@@ -437,11 +467,6 @@ while ($row = $notifs_result->fetch_assoc()) {
                                         <input type="tel" id="set-phone" class="form-control"
                                             value="<?php echo htmlspecialchars($customer['phone']); ?>">
                                     </div>
-                                    <div class="form-group full-width">
-                                        <label>Date of Birth</label>
-                                        <input type="date" id="set-dob" class="form-control dob-input-width"
-                                            value="<?php echo isset($customer['dob']) ? $customer['dob'] : ''; ?>">
-                                    </div>
                                 </div>
                                 <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
                             </form>
@@ -474,6 +499,11 @@ while ($row = $notifs_result->fetch_assoc()) {
                                         <label>New Password</label>
                                         <input type="password" id="set-new-pass" class="form-control"
                                             placeholder="Enter new password">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Confirm New Password</label>
+                                        <input type="password" id="set-confirm-pass" class="form-control"
+                                            placeholder="Re-enter new password">
                                     </div>
                                 </div>
                                 <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update

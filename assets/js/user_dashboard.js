@@ -575,6 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
               if (payload.action === 'update_password') {
                   document.getElementById('set-old-pass').value = '';
                   document.getElementById('set-new-pass').value = '';
+                  document.getElementById('set-confirm-pass').value = '';
               }
           } else {
               showAlert("Error", data.message, "error");
@@ -594,8 +595,7 @@ document.addEventListener("DOMContentLoaded", () => {
           action: 'update_profile',
           fname: document.getElementById('set-fname').value,
           lname: document.getElementById('set-lname').value,
-          phone: document.getElementById('set-phone').value,
-          dob: document.getElementById('set-dob').value 
+          phone: document.getElementById('set-phone').value
       }, this);
   });
 
@@ -607,10 +607,17 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById('btn-update-password')?.addEventListener('click', function() {
+      const newPassword = document.getElementById('set-new-pass').value;
+      const confirmPassword = document.getElementById('set-confirm-pass').value;
+      if (newPassword !== confirmPassword) {
+          showAlert("Error", "New password and confirmation do not match.", "error");
+          return;
+      }
       updateSettings({
           action: 'update_password',
           old_pass: document.getElementById('set-old-pass').value,
-          new_pass: document.getElementById('set-new-pass').value
+          new_pass: newPassword,
+          confirm_pass: confirmPassword
       }, this);
   });
 

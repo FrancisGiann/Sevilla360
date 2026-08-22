@@ -27,15 +27,12 @@ try {
         $fname = trim($data['fname']);
         $lname = trim($data['lname']);
         $phone = trim($data['phone']);
-        // Handle date of birth field
-        $dob = !empty($data['dob']) ? trim($data['dob']) : null; 
-
         if (empty($fname) || empty($lname)) {
             throw new Exception("First and Last name are required.");
         }
 
-        $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ?, dob = ? WHERE user_id = ?");
-        $stmt->bind_param("ssssi", $fname, $lname, $phone, $dob, $user_id);
+        $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ? WHERE user_id = ?");
+        $stmt->bind_param("sssi", $fname, $lname, $phone, $user_id);
         
         if (!$stmt->execute()) {
             throw new Exception("Failed to update profile.");
@@ -55,14 +52,18 @@ try {
     }
 
     elseif ($action === 'update_password') {
-        $old_pass = $data['old_pass'];
-        $new_pass = $data['new_pass'];
+        $old_pass = (string) ($data['old_pass'] ?? '');
+        $new_pass = (string) ($data['new_pass'] ?? '');
+        $confirm_pass = (string) ($data['confirm_pass'] ?? '');
 
-        if (empty($old_pass) || empty($new_pass)) {
-            throw new Exception("Both password fields are required.");
+        if ($old_pass === '' || $new_pass === '' || $confirm_pass === '') {
+            throw new Exception("Current password, new password, and confirmation are required.");
         }
         if (strlen($new_pass) < 6) {
             throw new Exception("New password must be at least 6 characters.");
+        }
+        if (!hash_equals($new_pass, $confirm_pass)) {
+            throw new Exception("New password and confirmation do not match.");
         }
 
         // Fetch current password hash
@@ -71,7 +72,7 @@ try {
         $stmt->execute();
         $user = $stmt->get_result()->fetch_assoc();
 
-        if (!password_verify($old_pass, $user['password_hash'])) {
+        if (!$user || !password_verify($old_pass, $user['password_hash'])) {
             throw new Exception("Incorrect current password.");
         }
 

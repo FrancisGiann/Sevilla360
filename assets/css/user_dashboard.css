@@ -594,6 +594,45 @@
 .text-muted { color: #999; text-decoration: line-through; }
 .footer-note { font-size: 0.8rem; color: var(--color-dark-light); margin-top: 10px; }
 
+.booking-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid rgba(42, 37, 34, 0.1);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.pagination-summary {
+  color: var(--color-dark-light);
+  font-size: 0.78rem;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pagination-link {
+  color: var(--color-dark);
+  border: 1px solid rgba(42, 37, 34, 0.18);
+  padding: 7px 10px;
+  font-size: 0.75rem;
+  text-decoration: none;
+  transition: var(--transition-snappy);
+}
+
+.pagination-link:hover,
+.pagination-link.active {
+  color: var(--color-white);
+  background: var(--color-dark);
+  border-color: var(--color-dark);
+}
+
 
 /* ==========================================================================
    TABLE STATUS BADGES & ACTION BUTTONS
