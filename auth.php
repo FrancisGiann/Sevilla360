@@ -4,6 +4,15 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 
 require_once 'config/db_connect.php';
 
+if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+    if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
+        header("Location: admin_dashboard.php");
+    } else {
+        header("Location: index.php");
+    }
+    exit();
+}
+
 // Fetch CMS images so auth page can reuse the homepage hero background
 $cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
 $cms_images = [];

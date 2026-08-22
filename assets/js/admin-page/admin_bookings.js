@@ -239,7 +239,16 @@ document.addEventListener("DOMContentLoaded", () => {
     function updatePaginationUI(pag) {
         pagCurrent.innerText = pag.current_page;
         pagTotalPages.innerText = pag.total_pages;
-        pagTotalRows.innerText = pag.total_rows;
+        
+        let startItem = 0;
+        let endItem = 0;
+        if (pag.total_rows > 0) {
+            startItem = (pag.current_page - 1) * rowsPerPage + 1;
+            endItem = Math.min(pag.current_page * rowsPerPage, pag.total_rows);
+        }
+        
+        pagTotalRows.innerText = `${startItem}-${endItem} of ${pag.total_rows}`;
+        
         btnPrev.disabled = (pag.current_page <= 1);
         btnNext.disabled = (pag.current_page >= pag.total_pages);
     }

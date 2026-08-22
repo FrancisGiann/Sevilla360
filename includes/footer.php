@@ -76,6 +76,38 @@ $footer_social_links = is_array($footer_social_links) ? $footer_social_links : [
 <script src="<?php echo $extra_js; ?>"></script>
 <?php endif; ?>
 
+<?php
+$latest_unread_hp = null;
+if (isset($hp_notifications) && !empty($hp_notifications) && isset($isAdmin) && !$isAdmin) {
+    foreach ($hp_notifications as $n) {
+        if (isset($n['is_read']) && $n['is_read'] == 0) {
+            $latest_unread_hp = $n;
+            break;
+        }
+    }
+}
+?>
+<?php if ($latest_unread_hp): ?>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            if (typeof playNotificationChime === 'function') {
+                playNotificationChime();
+            }
+            if (typeof showAlert === 'function') {
+                showAlert(
+                    "<?php echo addslashes($latest_unread_hp['title']); ?>",
+                    "<?php echo addslashes($latest_unread_hp['message']); ?>",
+                    "info"
+                );
+            }
+            // Mark this auto-popped notification as read so it doesn't repeatedly auto-popup on future refreshes
+            fetch("actions/user/mark_notifications_read.php?id=<?php echo (int)$latest_unread_hp['id']; ?>");
+        }, 500);
+    });
+</script>
+<?php endif; ?>
+
 </body>
 
 </html>

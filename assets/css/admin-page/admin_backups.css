@@ -31,6 +31,7 @@
     align-items: center;
 }
 
+.um-search-wrapper i,
 .um-search-wrapper svg {
     position: absolute;
     left: 12px;

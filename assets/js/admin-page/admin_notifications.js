@@ -72,9 +72,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     badge.innerText = unreadCount;
                     badge.style.display = 'block';
                     notifList.innerHTML = htmlList;
+                    
+                    let notifiedCount = parseInt(sessionStorage.getItem('adminNotifiedCount')) || 0;
+                    if (unreadCount > notifiedCount) {
+                        setTimeout(() => {
+                            if (typeof playNotificationChime === 'function') playNotificationChime();
+                            if (typeof showAlert === 'function') {
+                                showAlert("Action Required", `You have ${unreadCount} pending action(s) requiring attention.`, "info");
+                            }
+                        }, 500);
+                    }
+                    sessionStorage.setItem('adminNotifiedCount', unreadCount);
                 } else {
                     badge.style.display = 'none';
                     notifList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">You\'re all caught up!</div>';
+                    sessionStorage.setItem('adminNotifiedCount', 0);
                 }
             }
 

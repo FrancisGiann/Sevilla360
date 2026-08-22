@@ -532,6 +532,17 @@ textarea:focus {
   background: rgba(192, 57, 43, 0.1);
 }
 
+.save-contact-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-dark);
+  cursor: pointer;
+}
+
 .terms-group {
   display: flex;
   align-items: center;

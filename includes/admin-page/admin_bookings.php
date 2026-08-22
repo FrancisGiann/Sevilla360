@@ -64,7 +64,7 @@
         <!-- Server-Side Pagination Controls -->
         <div class="pagination-controls pagination-wrapper">
             <div class="pagination-info">
-                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> total bookings
+                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> bookings
             </div>
             <div class="pagination-controls-right">
                 <span class="pagination-page-label">Page <span id="pag-current-page" class="text-gold-bold">1</span> of <span id="pag-total-pages">1</span></span>
