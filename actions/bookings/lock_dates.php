@@ -2,6 +2,17 @@
 session_start();
 require '../../config/db_connect.php';
 
+$requested_source = $_POST['source'] ?? 'online';
+$is_staff_booking = ($requested_source === 'walkin');
+$is_authorized = $is_staff_booking
+    ? isset($_SESSION['user_id']) && in_array($_SESSION['role'] ?? '', ['staff', 'admin'], true)
+    : isset($_SESSION['user_id']) && ($_SESSION['role'] ?? '') === 'customer';
+if (!$is_authorized) {
+    http_response_code(401);
+    echo "Error|Your session has expired. Please sign in again.";
+    exit;
+}
+
 // ==========================================
 // CSRF PROTECTION GUARD (TEXT)
 // ==========================================
@@ -16,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $start_date = $_POST['start_date'];
     $end_date   = $_POST['end_date'];
     $session_id = session_id();
-    $source     = $_POST['source'] ?? 'online'; // walkin or online
+    $source     = $is_staff_booking ? 'walkin' : 'online'; // walkin or online
     $lock_mins  = ($source === 'walkin') ? 60 : 30; // 1 hour for walk-in, 30 min for online
 
     // Validate date formats

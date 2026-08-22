@@ -43,21 +43,15 @@
                 id="hotel-extra-fee"></span></small>
     </div>
 
-    <div class="inclusions-card">
+    <div class="inclusions-card hotel-information-card">
         <div class="inc-col">
-            <h4>Room Features</h4>
-            <ul>
-                <li>King-sized Bed</li>
-                <li>En-suite Bathroom</li>
-                <li>Smart TV & Wi-Fi</li>
-            </ul>
+            <h4>Accommodation Information</h4>
+            <p id="hotel-description">Select a building to view its description.</p>
         </div>
         <div class="inc-col">
-            <h4>Resort Perks</h4>
-            <ul>
-                <li>Free Breakfast for 2</li>
-                <li>Pool Access</li>
-                <li>Gym Access</li>
+            <h4>Amenities</h4>
+            <ul id="hotel-amenities">
+                <li>Select a building to view its amenities.</li>
             </ul>
         </div>
     </div>

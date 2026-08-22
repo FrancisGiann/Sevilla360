@@ -1,8 +1,10 @@
 <?php
 session_start();
 require '../../config/db_connect.php';
+require_once '../../includes/booking_reference.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
+    http_response_code(401);
     echo "Error|You must be logged in to make a booking.";
     exit();
 }
@@ -22,7 +24,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
 
-        $ref_no = "SV-" . strtoupper(bin2hex(random_bytes(8)));
+        $ref_no = generate_booking_reference($conn);
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
         $scheme = $_POST['payment_scheme'] ?? '';
@@ -132,7 +134,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 3. Save Booking
         // Check active locks before finalizing
-        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND (start_date <= ? AND end_date >= ?)");
+        $lock_overlap = ($venue_category === 'Hotel Room')
+            ? '(start_date < ? AND end_date > ?)'
+            : '(start_date <= ? AND end_date >= ?)';
+        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
         $sid = session_id();
         $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
         $stmt_check_lock->execute();
@@ -170,7 +175,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Save custom line items to database
-        if (isset($_POST['custom_line_items'])) {
+        // Catering and A/V are Event Hall-only line items. Ignore any stale
+        // hidden controls posted after a tab switch.
+        if ($venue_category === 'Event Hall' && isset($_POST['custom_line_items'])) {
             $line_items = json_decode($_POST['custom_line_items'], true);
             $total_addons_cost = 0;
 

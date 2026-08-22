@@ -86,6 +86,7 @@ class SevillaCalendar {
         this.requireHotelRules = false;
     }
 
+    const previousBookedDates = [...this.bookedDatesList];
     try {
       const formData = new FormData();
       if (room_type) formData.append('room_type', room_type);
@@ -96,12 +97,21 @@ class SevillaCalendar {
           method: 'POST',
           body: formData
       });
-      
+
       const data = await response.json();
-      this.bookedDatesList = data || [];
+      if (!response.ok || !data.success || !Array.isArray(data.booked_dates)) {
+          throw new Error(data.message || 'Availability could not be loaded.');
+      }
+      this.bookedDatesList = data.booked_dates;
       this.render();
     } catch (error) {
       console.error("Error fetching dates:", error);
+      // Never turn a failed request into an apparently empty calendar.
+      this.bookedDatesList = previousBookedDates;
+      this.render();
+      if (typeof showAlert === 'function') {
+          showAlert('Availability Error', error.message || 'Availability could not be loaded. Please try again.', 'error');
+      }
     }
   }
 

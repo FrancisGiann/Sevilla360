@@ -28,11 +28,13 @@ $rooms_query = $conn->query("
         h.base_capacity,
         h.nightly_rate,
         h.extra_pax_rate,
+        v.description AS venue_description,
+        v.amenities AS venue_amenities,
         COUNT(v.id) AS total_inventory
     FROM venues v 
     JOIN hotel_rooms h ON v.id = h.venue_id 
     WHERE v.status = 'Available'
-    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate, h.extra_pax_rate
+    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
     ORDER BY h.room_type, v.name
 ");
 $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);

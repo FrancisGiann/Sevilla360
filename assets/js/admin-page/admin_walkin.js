@@ -62,6 +62,7 @@ class AdminWalkinController {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
+                this.updateHotelInformation(opt);
                 const label = document.getElementById("sum-ht-type");
                 if (label) label.innerText = opt.dataset.display || opt.dataset.name || opt.text.split('(')[0].trim();
                 // Update hotel image from data-img (CMS-backed)
@@ -318,10 +319,33 @@ class AdminWalkinController {
             opt.dataset.display  = `${room.building_name}`;
             opt.dataset.baseCap  = room.base_capacity;
             opt.dataset.extraPax = room.extra_pax_rate;
+            opt.dataset.description = room.venue_description || '';
+            opt.dataset.amenities = room.venue_amenities || '';
             opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
+        this.updateHotelInformation(nameSelect.options[nameSelect.selectedIndex]);
+    }
+
+    updateHotelInformation(option) {
+        const description = this.getEl('hotel-description');
+        const amenities = this.getEl('hotel-amenities');
+        if (!description || !amenities || !option) return;
+        description.textContent = option.dataset.description || 'No additional description is available for this accommodation.';
+        amenities.innerHTML = '';
+        const items = (option.dataset.amenities || '').split(/[,\n]+/).map(item => item.trim()).filter(Boolean);
+        if (items.length === 0) {
+            const empty = document.createElement('li');
+            empty.textContent = 'No amenities listed.';
+            amenities.appendChild(empty);
+        } else {
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                amenities.appendChild(li);
+            });
+        }
     }
 
     handleTabSwitch(btn) {
@@ -373,6 +397,10 @@ class AdminWalkinController {
                 headers: { "X-CSRF-Token": this.csrfToken }, 
                 body: formData 
             });
+            if (res.status === 401) {
+                showAlert("Session Expired", "Your admin session has expired. Please sign in again.", "error", true);
+                return;
+            }
             const text = await res.text();
             const response = text.split('|');
 

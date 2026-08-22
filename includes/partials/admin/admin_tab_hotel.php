@@ -42,6 +42,19 @@
                 id="hotel-extra-fee"></span></small>
     </div>
 
+    <div class="inclusions-card hotel-information-card">
+        <div class="inc-col">
+            <h4>Accommodation Information</h4>
+            <p id="hotel-description">Select a room to view its description.</p>
+        </div>
+        <div class="inc-col">
+            <h4>Amenities</h4>
+            <ul id="hotel-amenities">
+                <li>Select a room to view its amenities.</li>
+            </ul>
+        </div>
+    </div>
+
     <!-- Inject the PHP Data for Javascript cascading dropdown (individual rooms) -->
     <script>
     window.hotelRoomData = <?php echo json_encode($grouped_hotel_rooms); ?>;

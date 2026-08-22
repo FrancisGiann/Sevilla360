@@ -15,11 +15,12 @@ try {
     ");
 
     $bookedDates = [];
+    $current_session = session_id();
     $room_type = $_REQUEST['room_type'] ?? '';
     $room_name = $_REQUEST['room_name'] ?? ''; // This is venue name or building name
 
     if (empty($room_type) || empty($room_name)) {
-        echo json_encode([]);
+        echo json_encode(['success' => true, 'booked_dates' => []]);
         exit;
     }
 
@@ -46,8 +47,8 @@ try {
                 }
             }
 
-            // Maintenance blocks
-            $stmt_maint = $conn->query("SELECT start_date, end_date FROM maintenance WHERE venue_id = $venue_id AND is_blocking = 1");
+            // Maintenance blocks (completed/cancelled records are no longer availability blockers).
+            $stmt_maint = $conn->query("SELECT start_date, end_date FROM maintenance WHERE venue_id = $venue_id AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)");
             while ($row = $stmt_maint->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
@@ -55,6 +56,23 @@ try {
                     $bookedDates[] = $currentDate->format('Y-m-d');
                     $currentDate->modify('+1 day');
                 }
+            }
+
+            // Villas are single units, so another session's active lock is unavailable.
+            if ($room_type === 'Resort Villa') {
+                $stmt_locks = $conn->prepare("SELECT start_date, end_date FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW()");
+                $stmt_locks->bind_param('is', $venue_id, $current_session);
+                $stmt_locks->execute();
+                $res_locks = $stmt_locks->get_result();
+                while ($row = $res_locks->fetch_assoc()) {
+                    $currentDate = new DateTime($row['start_date']);
+                    $endDate = new DateTime($row['end_date']);
+                    while ($currentDate <= $endDate) {
+                        $bookedDates[] = $currentDate->format('Y-m-d');
+                        $currentDate->modify('+1 day');
+                    }
+                }
+                $stmt_locks->close();
             }
         }
     } else {
@@ -119,7 +137,7 @@ try {
             $stmt_maint = $conn->query("
                 SELECT start_date, end_date 
                 FROM maintenance 
-                WHERE venue_id IN ($v_ids_str) AND is_blocking = 1
+                WHERE venue_id IN ($v_ids_str) AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
             ");
             while ($row = $stmt_maint->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
@@ -131,6 +149,22 @@ try {
                 }
             }
 
+            // Count active locks held by other sessions against the same room inventory.
+            $stmt_locks = $conn->prepare("SELECT venue_id, start_date, end_date FROM booking_locks WHERE venue_id IN ($v_ids_str) AND session_id != ? AND expires_at > NOW()");
+            $stmt_locks->bind_param('s', $current_session);
+            $stmt_locks->execute();
+            $res_locks = $stmt_locks->get_result();
+            while ($row = $res_locks->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate < $endDate) {
+                    $d = $currentDate->format('Y-m-d');
+                    $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
+                    $currentDate->modify('+1 day');
+                }
+            }
+            $stmt_locks->close();
+
             // If count >= total_inventory, that date is fully booked
             foreach ($date_counts as $date_str => $count) {
                 if ($count >= $total_inventory) {
@@ -140,9 +174,10 @@ try {
         }
     }
 
-    echo json_encode(array_values(array_unique($bookedDates)));
+    echo json_encode(['success' => true, 'booked_dates' => array_values(array_unique($bookedDates))]);
 
 } catch (Exception $e) {
-    echo json_encode([]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'booked_dates' => [], 'message' => 'Availability could not be loaded. Please try again.']);
 }
 ?>

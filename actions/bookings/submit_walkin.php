@@ -1,9 +1,10 @@
 <?php
 session_start();
 require '../../config/db_connect.php';
+require_once '../../includes/booking_reference.php';
 
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['staff', 'admin'], true)) {
-    http_response_code(403);
+    http_response_code(401);
     echo "Error|Unauthorized access.";
     exit;
 }
@@ -23,7 +24,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {
         $conn->begin_transaction();
 
-        $ref_no = "SV-" . strtoupper(bin2hex(random_bytes(8)));
+        $ref_no = generate_booking_reference($conn);
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
         $scheme = $_POST['payment_scheme'] ?? '';
@@ -104,7 +105,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $total_addons_cost = 0;
         $line_items_data = [];
-        if (isset($_POST['custom_line_items'])) {
+        if ($venue_category === 'Event Hall' && isset($_POST['custom_line_items'])) {
             $line_items_data = json_decode($_POST['custom_line_items'], true);
             if (is_array($line_items_data)) {
                 foreach ($line_items_data as $item) {
@@ -160,7 +161,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Check active locks before finalizing
-        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND (start_date <= ? AND end_date >= ?)");
+        $lock_overlap = ($venue_category === 'Hotel Room')
+            ? '(start_date < ? AND end_date > ?)'
+            : '(start_date <= ? AND end_date >= ?)';
+        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
         $sid = session_id();
         $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
         $stmt_check_lock->execute();
@@ -180,7 +184,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $booking_id = $conn->insert_id;
 
         // INSERT LINE ITEMS
-        if (is_array($line_items_data) && count($line_items_data) > 0) {
+        if ($venue_category === 'Event Hall' && is_array($line_items_data) && count($line_items_data) > 0) {
             $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
             foreach ($line_items_data as $item) {
                 $name = trim($item['name']);

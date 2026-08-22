@@ -145,6 +145,7 @@ class BookingController {
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 const opt = e.target.options[e.target.selectedIndex];
+                this.updateHotelInformation(opt);
                 // Update summary label with room display (building + room_number)
                 const roomLabel = document.getElementById("sum-ht-room");
                 if (roomLabel) roomLabel.innerText = opt.dataset.display || opt.text.split('(')[0].trim();
@@ -399,13 +400,38 @@ class BookingController {
             opt.dataset.display  = `${room.building_name}`;
             opt.dataset.baseCap  = room.base_capacity;
             opt.dataset.extraPax = room.extra_pax_rate;
+            opt.dataset.description = room.venue_description || '';
+            opt.dataset.amenities = room.venue_amenities || '';
             opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
+
+        this.updateHotelInformation(nameSelect.options[nameSelect.selectedIndex]);
         
         const label = this.getEl("sum-ht-type");
         if (label) label.innerText = category;
+    }
+
+    updateHotelInformation(option) {
+        const description = this.getEl('hotel-description');
+        const amenities = this.getEl('hotel-amenities');
+        if (!description || !amenities || !option) return;
+
+        description.textContent = option.dataset.description || 'No additional description is available for this accommodation.';
+        amenities.innerHTML = '';
+        const items = (option.dataset.amenities || '').split(/[,\n]+/).map(item => item.trim()).filter(Boolean);
+        if (items.length === 0) {
+            const empty = document.createElement('li');
+            empty.textContent = 'No amenities listed.';
+            amenities.appendChild(empty);
+        } else {
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                amenities.appendChild(li);
+            });
+        }
     }
 
     handleTabSwitch(btn) {
@@ -478,6 +504,17 @@ class BookingController {
         if(this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
         if(this.getEl("terms-check")) this.getEl("terms-check").checked = false;
 
+        // Event-only selections must not survive a tab switch or cancelled
+        // booking attempt.
+        ['check-catering', 'check-av', 'check-rooms'].forEach(id => {
+            const checkbox = this.getEl(id);
+            if (checkbox) checkbox.checked = false;
+        });
+        this.getEl('catering-options')?.classList.add('hidden');
+        this.getEl('rooms-options')?.classList.add('hidden');
+        const selectedRoomGroups = this.getEl('selected-room-groups');
+        if (selectedRoomGroups) selectedRoomGroups.innerHTML = '';
+
         if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
         this.calculateSummary();
     }
@@ -537,6 +574,11 @@ class BookingController {
                 headers: { "X-CSRF-Token": this.csrfToken }, 
                 body: formData 
             });
+                if (res.status === 401) {
+                    const sessionError = new Error('Your session has expired. Please sign in again.');
+                    sessionError.sessionExpired = true;
+                    throw sessionError;
+                }
                 const text = await res.text();
                 const response = text.split('|');
 
@@ -557,7 +599,13 @@ class BookingController {
                     throw new Error(response[1]);
                 }
             } catch (err) {
-                showAlert("Notice", "Error: " + err.message);
+                if (err.sessionExpired) {
+                    showAlert("Session Expired", err.message, "error", true);
+                } else {
+                    showAlert("Notice", "Error: " + err.message, "error");
+                    const refreshData = this.getTabContextData();
+                    calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId);
+                }
                 dateModal.classList.remove("active");
                 calendarInstance.clearSelection();
             } finally {
@@ -952,11 +1000,12 @@ class BookingController {
             formData.append("stay_type", stayText);
         }
 
-        // Capture catering and A/V line items
+        // Capture Event Hall-only line items. Hidden controls from another tab
+        // must never affect a Hotel or Villa booking.
         let customLineItems = [];
 
         // 1. Catering
-        const checkCatering = document.getElementById('check-catering');
+        const checkCatering = context.roomType === 'Event Hall' ? document.getElementById('check-catering') : null;
         if (checkCatering && checkCatering.checked) {
             const activeTier = document.querySelector('input[name="catering-tier"]:checked');
             if (activeTier) {
@@ -972,7 +1021,7 @@ class BookingController {
         }
 
         // 2. A/V Setup
-        const checkAv = document.getElementById('check-av');
+        const checkAv = context.roomType === 'Event Hall' ? document.getElementById('check-av') : null;
         if (checkAv && checkAv.checked) {
             const avPrice = parseFloat(checkAv.value) || 5000;
             customLineItems.push({ name: `Premium A/V Setup`, amount: avPrice });
@@ -982,7 +1031,7 @@ class BookingController {
 
         // 3. Hotel Room Groups (real inventory — server allocates specific rooms)
         let roomGroups = [];
-        document.querySelectorAll('.selected-room-row').forEach(row => {
+        if (context.roomType === 'Event Hall') document.querySelectorAll('.selected-room-row').forEach(row => {
             const building  = row.dataset.building;
             const roomType  = row.dataset.roomType;
             const qty       = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
@@ -1003,6 +1052,10 @@ class BookingController {
                 headers: { "X-CSRF-Token": this.csrfToken }, 
                 body: formData 
             });
+            if (res.status === 401) {
+                showAlert("Session Expired", "Your session has expired. Please sign in again.", "error", true);
+                return;
+            }
             const data = await res.text();
             const response = data.split('|');
             
