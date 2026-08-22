@@ -282,12 +282,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // SAVE EVENT DETAILS AND NOTES
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
+        $admin_notes = isset($_POST['admin_notes']) ? trim($_POST['admin_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
         $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
 
-        if (!empty($custom_notes) || !empty($event_type) || !empty($event_style)) {
-            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes) VALUES (?, ?, ?, ?)");
-            $stmt_notes->bind_param("isss", $booking_id, $event_style, $event_type, $custom_notes);
+        if ($venue_category === 'Event Hall' && (!empty($custom_notes) || !empty($admin_notes) || !empty($event_type) || !empty($event_style))) {
+            $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes, admin_notes) VALUES (?, ?, ?, ?, ?)");
+            $stmt_notes->bind_param("issss", $booking_id, $event_style, $event_type, $custom_notes, $admin_notes);
             $stmt_notes->execute();
         }
 

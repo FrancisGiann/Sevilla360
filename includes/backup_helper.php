@@ -6,6 +6,39 @@
  */
 
 class BackupHelper {
+
+    public static function createBackupFile($conn, $database, $backupDir, $prefix) {
+        $timestamp = date('Y-m-d_H-i-s');
+        $filename = $prefix . $timestamp . '.sql';
+        $filePath = rtrim($backupDir, '/') . '/' . $filename;
+        if (!self::exportDatabase($conn, $database, $filePath)) return false;
+        return ['filename' => $filename, 'path' => $filePath, 'file_size' => filesize($filePath)];
+    }
+
+    public static function registerBackup($conn, $filename, $fileSize, $createdBy) {
+        $stmt = $conn->prepare("INSERT INTO backups (filename, file_size, created_by) VALUES (?, ?, ?)");
+        if (!$stmt) return false;
+        $stmt->bind_param("sii", $filename, $fileSize, $createdBy);
+        return $stmt->execute();
+    }
+
+    public static function cleanupNormalBackups($conn, $backupDir, $keep = 30) {
+        $keep = max(1, (int)$keep);
+        $result = $conn->query("SELECT id, filename FROM backups WHERE filename LIKE 'sevilla360_backup_%' OR filename LIKE 'sevilla360_auto_%' ORDER BY created_at DESC, id DESC");
+        if (!$result) return 0;
+        $deleted = 0;
+        $index = 0;
+        while ($row = $result->fetch_assoc()) {
+            $index++;
+            if ($index <= $keep) continue;
+            $path = rtrim($backupDir, '/') . '/' . basename($row['filename']);
+            if (file_exists($path) && !unlink($path)) continue;
+            $stmt = $conn->prepare("DELETE FROM backups WHERE id = ?");
+            $stmt->bind_param("i", $row['id']);
+            if ($stmt->execute()) $deleted++;
+        }
+        return $deleted;
+    }
     
     /**
      * Exports the database to a .sql file

@@ -33,6 +33,7 @@ class AdminWalkinController {
         this.bindCalculatorTriggers();
         this.bindModalsAndSubmission();
         this.determineActiveTab();
+        this.updateAdminNotesVisibility();
     }
 
     initCalendars() {
@@ -279,6 +280,11 @@ class AdminWalkinController {
         if (activeBtn) this.state.activeTabId = activeBtn.getAttribute('data-target');
     }
 
+    updateAdminNotesVisibility() {
+        const row = this.getEl('walkin-admin-notes-row');
+        if (row) row.style.display = this.state.activeTabId === 'tab-event' ? '' : 'none';
+    }
+
     // Image swap: reads data-img attribute from selected option
     setupImageSwap(selectId, imgId) {
         const select = this.getEl(selectId);
@@ -363,6 +369,7 @@ class AdminWalkinController {
         btn.classList.add("active");
         this.getEl(targetId)?.classList.add("active");
         this.state.activeTabId = targetId;
+        this.updateAdminNotesVisibility();
 
         if (targetId === "tab-event" && this.state.calendars.event) this.state.calendars.event.updateDateDisplay();
         if (targetId === "tab-hotel" && this.state.calendars.hotel) this.state.calendars.hotel.updateDateDisplay();
@@ -814,6 +821,7 @@ class AdminWalkinController {
             
             formData.append("event_type", evTypeTxt);
             formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
+            formData.append("admin_notes", this.getEl('admin-notes')?.value.trim() || "");
         }
 
         if (context.roomType === 'Resort Villa') {

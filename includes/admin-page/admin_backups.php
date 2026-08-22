@@ -66,11 +66,12 @@ function formatBytes($bytes, $precision = 2) {
                     </tr>
                 <?php else: ?>
                     <?php foreach ($backup_list as $b): ?>
+                    <?php $isProtected = str_starts_with($b['filename'], 'sevilla360_imported_') || str_starts_with($b['filename'], 'sevilla360_pre_restore_'); ?>
                     <tr>
                         <td><i class="fa-solid fa-file-lines" style="color: #666; margin-right: 8px;"></i> <?php echo htmlspecialchars($b['filename']); ?></td>
                         <td><?php echo date('M d, Y h:i A', strtotime($b['created_at'])); ?></td>
                         <td><?php echo formatBytes($b['file_size']); ?></td>
-                        <td><?php echo htmlspecialchars($b['full_name'] ?? 'System'); ?></td>
+                        <td><?php echo $isProtected ? 'Protected' : htmlspecialchars($b['full_name'] ?? 'System'); ?></td>
                         <td class="action-cells">
                             <button class="btn-icon btn-download" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Download">
                                 <i class="fa-solid fa-download"></i>
@@ -109,6 +110,7 @@ function formatBytes($bytes, $precision = 2) {
                     <li><strong>Customer Accounts</strong> registered after this backup date will be erased.</li>
                     <li><strong>Staff Roles & Settings</strong> will revert to their exact state at the time of backup.</li>
                     <li><strong>Audit Logs</strong> and <strong>Media CMS</strong> changes will be rolled back.</li>
+                    <li>A signed <strong>pre-restore safety backup</strong> is created automatically before this action.</li>
                 </ul>
             </div>
 

@@ -25,14 +25,20 @@ document.addEventListener('DOMContentLoaded', function() {
             // When Admin clicks an event pill
             eventClick: function(info) {
                 const props = info.event.extendedProps;
+                const formatDate = (value) => value
+                    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'N/A';
+                const dateText = props.startDate && props.endDate && props.startDate !== props.endDate
+                    ? `${formatDate(props.startDate)} - ${formatDate(props.endDate)}`
+                    : formatDate(props.startDate);
 
                 if (props.type === 'maintenance') {
-                    showAlert("Maintenance Block", `Venue: ${info.event.title}\nType: ${props.task || 'N/A'}\nCategory: ${props.category}`);
+                    showAlert("Maintenance Block", `Venue: ${info.event.title}\nDates: ${dateText}\nType: ${props.task || 'N/A'}\nCategory: ${props.category}`);
                     return;
                 }
 
                 const bookingRef = props.refNo;
-                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingRef}?\n\nGuest: ${info.event.title}\nStatus: ${props.status}`).then(confirmed => {
+                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingRef}?\n\nGuest: ${info.event.title}\nDates: ${dateText}\nStatus: ${props.status}`).then(confirmed => {
                     if (confirmed) window.location.href = `admin_dashboard.php?page=bookings&search=${bookingRef}`;
                 });
             }

@@ -29,10 +29,8 @@ if (BackupHelper::exportDatabase($conn, $database, $filePath)) {
     $fileSize = filesize($filePath);
     $adminId = $_SESSION['user_id'];
 
-    $stmt = $conn->prepare("INSERT INTO backups (filename, file_size, created_by) VALUES (?, ?, ?)");
-    $stmt->bind_param("sii", $filename, $fileSize, $adminId);
-    
-    if ($stmt->execute()) {
+    if (BackupHelper::registerBackup($conn, $filename, $fileSize, $adminId)) {
+        BackupHelper::cleanupNormalBackups($conn, $backupDir, 30);
         // Log to audit
         $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
         $details = "Created database backup: {$filename}";

@@ -98,8 +98,15 @@ unset($villa);
         </div>
         <div class="form-row">
             <div class="form-group full-width">
-                <label>Special Requests / Internal Notes</label>
-                <textarea id="guest-notes" rows="3" placeholder="Enter any specific guest requirements or admin notes..." class="form-textarea-full"></textarea>
+                <label>Special Requests</label>
+                <textarea id="guest-notes" rows="3" placeholder="Enter any specific guest requirements..." class="form-textarea-full"></textarea>
+            </div>
+        </div>
+        <div class="form-row" id="walkin-admin-notes-row" style="display: none;">
+            <div class="form-group full-width">
+                <label>Internal Preparation Notes (Admin Only)</label>
+                <textarea id="admin-notes" rows="3" placeholder="Style, theme, setup time, decoration or preparation instructions..." class="form-textarea-full"></textarea>
+                <small>Saved for staff/admin view only and not shown to the customer.</small>
             </div>
         </div>
     </section>

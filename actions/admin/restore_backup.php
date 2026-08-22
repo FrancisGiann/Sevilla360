@@ -45,12 +45,30 @@ if (!file_exists($filePath)) {
     exit;
 }
 
+$backupDir = __DIR__ . '/../../storage/backups';
+$safetyBackup = BackupHelper::createBackupFile($conn, $database, $backupDir, 'sevilla360_pre_restore_');
+if ($safetyBackup === false) {
+    echo json_encode(['success' => false, 'error' => 'Restore cancelled: the pre-restore safety backup could not be created.']);
+    exit;
+}
+
 // Proceed with restore
 if (BackupHelper::importDatabase($conn, $filePath)) {
-    // Log to audit (We have to reconnect or ensure connection is alive, but importDatabase doesn't kill it if successful)
-    $adminId = $_SESSION['user_id'];
+    $adminId = (int)($_SESSION['user_id'] ?? 0);
+    $adminCheck = $conn->prepare("SELECT id FROM users WHERE id = ? AND role = 'admin' LIMIT 1");
+    $adminCheck->bind_param("i", $adminId);
+    $adminCheck->execute();
+    if ($adminCheck->get_result()->num_rows === 0) {
+        $fallback = $conn->query("SELECT id FROM users WHERE role = 'admin' LIMIT 1")->fetch_assoc();
+        $adminId = (int)($fallback['id'] ?? 0);
+    }
+    if ($adminId <= 0 || !BackupHelper::registerBackup($conn, $safetyBackup['filename'], $safetyBackup['file_size'], $adminId)) {
+        echo json_encode(['success' => false, 'error' => 'Database restored, but the pre-restore safety backup could not be registered.']);
+        exit;
+    }
+
     $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
-    $details = "Restored database from backup: {$filename}";
+    $details = "Restored database from backup: {$filename}; safety backup: {$safetyBackup['filename']}";
     $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
     $auditStmt->bind_param("iss", $adminId, $details, $ip);
     $auditStmt->execute();

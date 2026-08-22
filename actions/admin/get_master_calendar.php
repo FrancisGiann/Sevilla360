@@ -64,7 +64,9 @@ try {
                 'type' => 'booking',
                 'status' => $row['booking_status'],
                 'category' => $row['category'],
-                'refNo' => $row['reference_no']
+                'refNo' => $row['reference_no'],
+                'startDate' => $row['start_date'],
+                'endDate' => $row['end_date']
             ]
         ];
     }
@@ -107,7 +109,9 @@ try {
             'extendedProps' => [
                 'type' => 'maintenance',
                 'task' => $row['maintenance_type'],
-                'category' => $row['category']
+                'category' => $row['category'],
+                'startDate' => $row['start_date'],
+                'endDate' => $row['end_date']
             ]
         ];
     }

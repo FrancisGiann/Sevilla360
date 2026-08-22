@@ -23,19 +23,20 @@ $page = isset($data['page']) ? intval($data['page']) : 1;
 $limit = isset($data['limit']) ? intval($data['limit']) : 10;
 $offset = ($page - 1) * $limit;
 
-$search = isset($data['search']) ? '%' . $data['search'] . '%' : '%';
+$searchTerm = trim((string)($data['search'] ?? ''));
+$search = '%' . $searchTerm . '%';
 $venueFilter = isset($data['venue']) ? $data['venue'] : 'All';
 $statusFilter = isset($data['status']) ? $data['status'] : 'all';
 
 // Base Query (Exclude internal System Maintenance locks from Customer Bookings table)
 $where_clauses = [
-    "(b.reference_no LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR v.name LIKE ?)",
+    "(b.reference_no LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR v.name LIKE ?)",
     "b.reference_no NOT LIKE 'MAINT-%'",
     "b.source != 'Maintenance'",
     "c.last_name != 'MAINTENANCE'"
 ];
-$params = [$search, $search, $search, $search];
-$types = "ssss";
+$params = [$search, $search, $search, $search, $search];
+$types = "sssss";
 
 if ($venueFilter !== 'All') {
     $where_clauses[] = "v.category = ?";
