@@ -39,6 +39,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'biz_policies' => trim($_POST['biz_policies'] ?? ''),
     ];
 
+    $social_links = json_decode($_POST['social_links_json'] ?? '[]', true);
+    if (!is_array($social_links)) { echo "Error|Invalid social media configuration."; exit; }
+    $clean_social_links = [];
+    foreach ($social_links as $social) {
+        if (!is_array($social)) continue;
+        $label = trim((string)($social['label'] ?? ''));
+        $url = trim((string)($social['url'] ?? ''));
+        if ($label === '' && $url === '') continue;
+        if ($label === '' || strlen($label) > 40 || strlen($url) > 500 || !filter_var($url, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $url)) {
+            echo "Error|Each social media link needs a name and a valid http(s) URL."; exit;
+        }
+        $clean_social_links[] = ['label' => $label, 'url' => $url];
+    }
+    $settings['social_links_json'] = json_encode($clean_social_links, JSON_UNESCAPED_SLASHES);
+
     // Upsert into database
     $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
     

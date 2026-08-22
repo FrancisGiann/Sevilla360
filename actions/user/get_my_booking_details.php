@@ -21,9 +21,9 @@ $response = ['success' => true, 'data' => []];
 try {
     // 2. SECURITY: Fetch the booking, ensuring it belongs to THIS user_id!
     $stmt = $conn->prepare("
-        SELECT 
-            b.*, 
-            c.first_name, c.last_name, c.email, c.phone, 
+        SELECT
+            b.*,
+            c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name AS venue_name, v.category AS venue_category,
             hr.room_type, hr.room_number
         FROM bookings b
@@ -35,17 +35,17 @@ try {
     $stmt->bind_param("ii", $booking_id, $user_id);
     $stmt->execute();
     $result = $stmt->get_result();
-    
+
     if ($result->num_rows === 0) throw new Exception("Booking not found or access denied.");
     $booking = $result->fetch_assoc();
-    
+
     // Format the venue_name for Hotel Rooms
     if ($booking['venue_category'] === 'Hotel Room') {
         $r_type = $booking['room_type'] ?? 'Hotel Room';
         $r_num = $booking['room_number'] ? " - Room " . $booking['room_number'] : "";
         $booking['venue_name'] = $booking['venue_name'] . " - " . $r_type . $r_num;
     }
-    
+
     $response['data']['booking'] = $booking;
 
     // 3. Get Specific Details
@@ -63,9 +63,9 @@ try {
 
     // 4. Get Add-ons
     $stmt_add = $conn->prepare("
-        SELECT a.name, ba.quantity, ba.total_price 
-        FROM booking_addons ba 
-        JOIN addons a ON ba.addon_id = a.id 
+        SELECT a.name, ba.quantity, ba.total_price
+        FROM booking_addons ba
+        JOIN addons a ON ba.addon_id = a.id
         WHERE ba.booking_id = ?
     ");
     $stmt_add->bind_param("i", $booking_id);
@@ -74,13 +74,13 @@ try {
 
     // 4b. Get Room Add-ons (booking_rooms)
     $stmt_br = $conn->prepare("
-        SELECT 
-            v.name AS building_name, 
-            hr.room_type, 
-            hr.room_number, 
-            br.start_date, 
-            br.end_date, 
-            br.nights, 
+        SELECT
+            v.name AS building_name,
+            hr.room_type,
+            hr.room_number,
+            br.start_date,
+            br.end_date,
+            br.nights,
             br.line_total
         FROM booking_rooms br
         JOIN venues v ON br.venue_id = v.id
@@ -100,9 +100,9 @@ try {
     // 4.5. Get Cancellation Reason (if this booking was cancelled)
     if ($booking['booking_status'] === 'Cancelled') {
         $stmt_cx = $conn->prepare("
-            SELECT reason, admin_reply, status 
-            FROM cancellations 
-            WHERE booking_id = ? 
+            SELECT reason, admin_reply, status
+            FROM cancellations
+            WHERE booking_id = ?
             ORDER BY id DESC LIMIT 1
         ");
         $stmt_cx->bind_param("i", $booking_id);

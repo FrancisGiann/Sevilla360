@@ -10,6 +10,11 @@ include 'includes/header.php';
 
 require_once 'config/db_connect.php';
 require_once 'includes/media_helper.php';
+$phone_stmt = $conn->prepare("SELECT phone FROM customers WHERE user_id = ? LIMIT 1");
+$phone_stmt->bind_param('i', $_SESSION['user_id']);
+$phone_stmt->execute();
+$saved_contact_phone = (string)($phone_stmt->get_result()->fetch_assoc()['phone'] ?? '');
+$phone_stmt->close();
 
 // Fetch Event Halls with CMS image
 $halls_query = $conn->query("SELECT v.id, v.name, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
@@ -179,8 +184,10 @@ unset($villa);
                         <label
                             style="display:block; font-weight:600; font-size:0.9rem; margin-bottom:8px; color:var(--color-dark);">Best
                             Contact Number</label>
-                        <input type="text" id="contact-phone" placeholder="e.g. 09123456789"
+                        <?php if ($saved_contact_phone !== ''): ?><div class="contact-number-options"><label><input type="radio" name="contact-phone-choice" value="saved" checked> Use my saved number <strong><?php echo htmlspecialchars($saved_contact_phone); ?></strong></label><label><input type="radio" name="contact-phone-choice" value="alternate"> Use a different number</label></div><?php endif; ?>
+                        <input type="tel" id="contact-phone" value="<?php echo htmlspecialchars($saved_contact_phone); ?>" placeholder="e.g. 09123456789" autocomplete="tel" inputmode="tel"
                             style="width:100%; padding:10px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); font-family:var(--font-body);">
+                        <label class="save-contact-choice <?php echo $saved_contact_phone !== '' ? 'hidden' : ''; ?>" id="save-contact-choice"><input type="checkbox" id="save-contact-default"> Save this as my default number</label>
                         <small style="color: #888; display: block; margin-top: 5px;">We will call this number to confirm
                             your booking.</small>
                     </div>

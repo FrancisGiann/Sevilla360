@@ -81,7 +81,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const btnSavePrefs = document.getElementById("btn-save-prefs");
   const formPrefs = document.getElementById("form-prefs");
+  const socialList = document.getElementById("social-links-list");
+  const socialJson = document.getElementById("social-links-json");
   let isFormDirty = false;
+
+  function addSocialRow() {
+    if (!socialList) return;
+    const row = document.createElement("div");
+    row.className = "social-link-row";
+    row.innerHTML = '<input type="text" class="form-control social-label" placeholder="Platform (e.g. Facebook)" maxlength="40"><input type="url" class="form-control social-url" placeholder="https://..." maxlength="500"><button type="button" class="btn btn-danger btn-remove-social">Remove</button>';
+    socialList.appendChild(row);
+    isFormDirty = true;
+  }
+  function collectSocialLinks() {
+    return [...(socialList?.querySelectorAll('.social-link-row') || [])].map(row => ({label: row.querySelector('.social-label')?.value.trim() || '', url: row.querySelector('.social-url')?.value.trim() || ''})).filter(item => item.label || item.url);
+  }
+  document.getElementById('btn-add-social')?.addEventListener('click', addSocialRow);
+  socialList?.addEventListener('click', event => { const button = event.target.closest('.btn-remove-social'); if (button) { button.closest('.social-link-row')?.remove(); isFormDirty = true; } });
 
   if (btnSavePrefs && formPrefs) {
     formPrefs.addEventListener("change", () => isFormDirty = true);
@@ -92,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btnSavePrefs.style.opacity = "0.8";
       btnSavePrefs.style.pointerEvents = "none";
 
+      if (socialJson) socialJson.value = JSON.stringify(collectSocialLinks());
       const formData = new FormData(formPrefs);
 
       fetch("actions/admin/save_preferences.php", {

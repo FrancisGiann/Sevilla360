@@ -478,6 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const lineItems = res.data.line_items;
+            const rooms = res.data.rooms || [];
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
             if (addonsList) addonsList.innerHTML = ''; 
@@ -498,10 +499,19 @@ document.addEventListener("DOMContentLoaded", () => {
             if (lineItems && lineItems.length > 0 && lineItemsContainer && lineItemsList) {
                 lineItemsContainer.style.display = 'block';
                 lineItems.forEach(item => {
+                    if (rooms.length && item.item_name.startsWith('Room Add-on:')) return;
                     lineItemsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${item.item_name}</span> <span style="color:var(--color-dark-light);">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
                 });
             } else if (lineItemsContainer) {
                 lineItemsContainer.style.display = 'none';
+            }
+
+            if (rooms.length && lineItemsContainer && lineItemsList) {
+                lineItemsContainer.style.display = 'block';
+                rooms.forEach(room => {
+                    const number = room.room_number ? ` - Room ${room.room_number}` : '';
+                    lineItemsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${room.building_name} — ${room.room_type}${number}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span style="color:var(--color-dark-light);">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
+                });
             }
 
             const formatCash = (amt) => `₱${parseFloat(amt || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;

@@ -8,6 +8,8 @@ header('Content-Type: application/json');
 require '../../config/db_connect.php';
 
 try {
+    $conn->query("DELETE FROM booking_locks WHERE expires_at <= NOW()");
+    $current_session = session_id();
     $building_name = trim($_GET['building_name'] ?? '');
     $room_type     = trim($_GET['room_type'] ?? '');
     $start_date    = trim($_GET['start_date'] ?? '');
@@ -21,7 +23,7 @@ try {
     // Validate date formats
     $start_dt = DateTime::createFromFormat('Y-m-d', $start_date);
     $end_dt   = DateTime::createFromFormat('Y-m-d', $end_date);
-    if (!$start_dt || !$end_dt || $end_dt < $start_dt) {
+    if (!$start_dt || !$end_dt || $end_dt <= $start_dt) {
         echo json_encode(['success' => false, 'message' => 'Invalid date range.']);
         exit;
     }
@@ -49,11 +51,16 @@ try {
           )
           AND v.id NOT IN (
               SELECT venue_id FROM maintenance
-              WHERE is_blocking = 1 AND status = 'Scheduled'
+              WHERE is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
                 AND (start_date <= ? AND end_date >= ?)
           )
+          AND v.id NOT IN (
+              SELECT venue_id FROM booking_locks
+              WHERE session_id != ? AND expires_at > NOW()
+                AND (start_date < ? AND end_date > ?)
+          )
     ");
-    $stmt->bind_param('ssssssss', $building_name, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date);
+    $stmt->bind_param('sssssssssss', $building_name, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date, $current_session, $end_date, $start_date);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $available = (int)($row['available'] ?? 0);

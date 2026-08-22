@@ -12,6 +12,8 @@ if ($settings_query) {
 
 $maintenance_checked = (isset($current_settings['maintenance_mode']) && $current_settings['maintenance_mode'] === 'true') ? 'checked' : '';
 $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
+$social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
+$social_links = is_array($social_links) ? $social_links : [];
 
 // 2. Fetch all Venues and their specific child-table data
 $venues_query = $conn->query("
@@ -260,6 +262,15 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                 <label>Resort Policies (Shown at bottom of emails)</label>
                                 <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Cancellations made less than 7 days before arrival are subject to fees."); ?></textarea>
                             </div>
+                        </div>
+                        <div class="social-settings-block">
+                            <div class="social-settings-heading"><div><h4>Social Media Links</h4><p>Add only active profiles. Unconfigured platforms stay hidden from the public footer.</p></div><button type="button" class="btn btn-outline" id="btn-add-social">+ Add Social Media</button></div>
+                            <div id="social-links-list">
+                                <?php foreach ($social_links as $social): ?>
+                                <div class="social-link-row"><input type="text" class="form-control social-label" placeholder="Platform (e.g. Facebook)" value="<?php echo htmlspecialchars((string)($social['label'] ?? '')); ?>" maxlength="40"><input type="url" class="form-control social-url" placeholder="https://..." value="<?php echo htmlspecialchars((string)($social['url'] ?? '')); ?>" maxlength="500"><button type="button" class="btn btn-danger btn-remove-social">Remove</button></div>
+                                <?php endforeach; ?>
+                            </div>
+                            <input type="hidden" name="social_links_json" id="social-links-json" value="<?php echo htmlspecialchars(json_encode($social_links), ENT_QUOTES, 'UTF-8'); ?>">
                         </div>
                     </div>
 

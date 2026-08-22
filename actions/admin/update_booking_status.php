@@ -15,10 +15,10 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     exit;
 }
 
-require_once __DIR__ . '/../../config/db_connect.php'; 
+require_once __DIR__ . '/../../config/db_connect.php';
 
 // Include mailer for notifications
-require_once '../../includes/mailer.php'; 
+require_once '../../includes/mailer.php';
 require_once '../../includes/notifications.php';
 
 // 2. Get POST JSON Data
@@ -41,9 +41,9 @@ try {
     // ==========================================
     $stmt_info = $conn->prepare("
         SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
-        FROM bookings b 
-        JOIN customers c ON b.customer_id = c.id 
-        JOIN venues v ON b.venue_id = v.id 
+        FROM bookings b
+        JOIN customers c ON b.customer_id = c.id
+        JOIN venues v ON b.venue_id = v.id
         WHERE b.id = ?
     ");
     $stmt_info->bind_param("i", $booking_id);
@@ -52,7 +52,7 @@ try {
     if (!$b_info) {
         throw new Exception("Booking not found.");
     }
-    
+
     $c_email = $b_info['email'] ?? '';
     $c_name = ($b_info['first_name'] ?? '') . ' ' . ($b_info['last_name'] ?? '');
     $ref_no = $b_info['reference_no'] ?? '';
@@ -91,15 +91,15 @@ try {
                 "Your booking for $v_name (Reference: $ref_no) has been approved."
             );
         }
-        
-    } 
+
+    }
     elseif ($action === 'cancel') {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         $message = "Booking #$ref_no has been cancelled!";
-        
-    } 
+
+    }
     elseif ($action === 'finalize_event_invoice') {
         $guests = intval($data['guests']);
         $event_type = trim($data['event_type']);
@@ -148,7 +148,7 @@ try {
         } catch (Throwable $mail_e) {
             error_log("Failed to send invoice email: " . $mail_e->getMessage());
         }
-        
+
         create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Please review it on your dashboard.");
 
         $message = "Invoice finalized and sent to customer!";
@@ -161,7 +161,7 @@ try {
         $stmt_check->bind_param("i", $booking_id);
         $stmt_check->execute();
         $res = $stmt_check->get_result();
-        
+
         if ($res->num_rows === 0) throw new Exception('Booking not found.');
         $booking = $res->fetch_assoc();
 
@@ -189,7 +189,7 @@ try {
                 throw new Exception("This transaction ID has already been recorded.");
             }
         }
-        
+
         $new_amount_paid = $current_paid + $amount_to_add;
         $new_payment_status = ($new_amount_paid >= $total && $total > 0) ? 'Paid' : (($new_amount_paid > 0) ? 'Partial' : 'Unpaid');
 
@@ -200,9 +200,9 @@ try {
         $stmt_update = $conn->prepare("UPDATE bookings SET payment_status = ?, amount_paid = ?, booking_status = 'Confirmed' WHERE id = ?");
         $stmt_update->bind_param("sdi", $new_payment_status, $new_amount_paid, $booking_id);
         $stmt_update->execute();
-        
+
         $message = "Payment of ₱" . number_format($amount_to_add, 2) . " received successfully!";
-        
+
         // Send email receipt for admin manual payments
         try {
             $email_status = ($new_payment_status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Manual Payment)';
@@ -211,7 +211,7 @@ try {
             // Silently fail so the admin doesn't get an error popup if Gmail is slow
             error_log("Failed to send admin payment receipt: " . $mail_e->getMessage());
         }
-        
+
         create_user_notification($conn, $c_user_id, "Payment Received", "A payment of ₱" . number_format($amount_to_add, 2) . " for your booking at $v_name has been confirmed.");
         // =========================================================
     }
@@ -233,12 +233,12 @@ try {
         if ($new_start_dt->diff($new_end_dt)->days !== $original_start_dt->diff($original_end_dt)->days) {
             throw new Exception("Rescheduling must keep the original booking duration.");
         }
-        
+
         // 1. Get original venue info
         $stmt_venue = $conn->prepare("
-            SELECT b.venue_id, v.category, v.name, h.room_type 
-            FROM bookings b 
-            JOIN venues v ON b.venue_id = v.id 
+            SELECT b.venue_id, v.category, v.name, h.room_type
+            FROM bookings b
+            JOIN venues v ON b.venue_id = v.id
             LEFT JOIN hotel_rooms h ON v.id = h.venue_id
             WHERE b.id = ?
         ");
@@ -252,7 +252,7 @@ try {
             $r_type = $b_data['room_type'];
             $r_name = $b_data['name'];
             $stmt_inv = $conn->prepare("
-                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
                 WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
             ");
             $stmt_inv->bind_param("ss", $r_type, $r_name);
@@ -262,11 +262,11 @@ try {
             $assigned_venue_id = null;
             while ($row = $res_inv->fetch_assoc()) {
                 $vid = $row['id'];
-                
+
                 // Check Maintenance
                 $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$new_end' AND end_date >= '$new_start')");
                 if ($maint->num_rows > 0) continue;
-                
+
                 // Check Bookings (Exclude this specific booking)
                 $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
                 if ($bk->num_rows > 0) continue;
@@ -292,12 +292,12 @@ try {
         } else {
             // For Event Halls / Villas, just check the specific unit
             $check_overlap = $conn->prepare("
-                SELECT id FROM bookings 
+                SELECT id FROM bookings
                 WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND (start_date < ? AND end_date > ?)
             ");
             $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
             $check_overlap->execute();
-            
+
             if ($check_overlap->get_result()->num_rows > 0) {
                 throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
             }
@@ -305,7 +305,7 @@ try {
 
         // 2. Validate and re-allocate any Room Add-ons
         $stmt_addons = $conn->prepare("
-            SELECT br.id, br.venue_id, v.name as building_name, h.room_type 
+            SELECT br.id, br.venue_id, br.start_date, br.end_date, br.nights, v.name as building_name, h.room_type
             FROM booking_rooms br
             JOIN venues v ON br.venue_id = v.id
             JOIN hotel_rooms h ON v.id = h.venue_id
@@ -315,17 +315,31 @@ try {
         $stmt_addons->execute();
         $res_addons = $stmt_addons->get_result();
 
-        $new_allocations = []; // [ br_id => new_venue_id ]
+        $new_allocations = [];
+        $reserved_addon_venues = [];
+        $shift_days = (int)$original_start_dt->diff($new_start_dt)->format('%r%a');
 
         while ($addon = $res_addons->fetch_assoc()) {
             $br_id = $addon['id'];
             $br_vid = $addon['venue_id'];
             $r_type = $addon['room_type'];
             $r_name = $addon['building_name'];
+            $addon_start_dt = new DateTime($addon['start_date']);
+            $addon_end_dt = new DateTime($addon['end_date']);
+            if ($shift_days !== 0) {
+                $addon_start_dt->modify(($shift_days > 0 ? '+' : '') . $shift_days . ' days');
+                $addon_end_dt->modify(($shift_days > 0 ? '+' : '') . $shift_days . ' days');
+            }
+            $addon_new_start = $addon_start_dt->format('Y-m-d');
+            $addon_new_end = $addon_end_dt->format('Y-m-d');
+            $addon_nights = (int)$addon['nights'];
+            if ($addon_start_dt < $today) {
+                throw new Exception('The room add-on would move into the past. Choose a later event date.');
+            }
 
             // Find ANY available unit in this building and room_type for the new dates
             $stmt_inv = $conn->prepare("
-                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
                 WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
             ");
             $stmt_inv->bind_param("ss", $r_type, $r_name);
@@ -335,16 +349,16 @@ try {
             $assigned_venue_id = null;
             while ($row = $res_inv->fetch_assoc()) {
                 $vid = $row['id'];
-                
+
                 // If we already assigned this $vid in this loop or for the main venue, skip it
-                if (in_array($vid, $new_allocations) || $vid === $venue_id) continue;
+                if (in_array($vid, $reserved_addon_venues, true) || $vid === $venue_id) continue;
 
                 // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$new_end' AND end_date >= '$new_start')");
+                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$addon_new_end' AND end_date >= '$addon_new_start')");
                 if ($maint->num_rows > 0) continue;
-                
+
                 // Check Bookings
-                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
+                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$addon_new_end' AND end_date > '$addon_new_start')");
                 if ($bk->num_rows > 0) continue;
 
                 // Check Add-on Bookings
@@ -352,7 +366,7 @@ try {
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
                     WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance' AND b.id != $booking_id
-                    AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
+                    AND (br.start_date < '$addon_new_end' AND br.end_date > '$addon_new_start')
                 ");
                 if ($addons_check->num_rows > 0) continue;
 
@@ -363,15 +377,23 @@ try {
             if (!$assigned_venue_id) {
                 throw new Exception("Collision Error: Not enough available '$r_name - $r_type' units for the new dates. Cannot reschedule.");
             }
-            $new_allocations[$br_id] = $assigned_venue_id;
+            $reserved_addon_venues[] = $assigned_venue_id;
+            $new_allocations[$br_id] = [
+                'venue_id' => $assigned_venue_id,
+                'start_date' => $addon_new_start,
+                'end_date' => $addon_new_end,
+                'nights' => $addon_nights
+            ];
         }
 
         // Apply new allocations for add-ons
-        foreach ($new_allocations as $br_id => $new_vid) {
-            $new_nights = $new_start_dt->diff($new_end_dt)->days;
-            if ($new_nights === 0) $new_nights = 1;
+        foreach ($new_allocations as $br_id => $allocation) {
+            $allocation_venue_id = $allocation['venue_id'];
+            $allocation_start = $allocation['start_date'];
+            $allocation_end = $allocation['end_date'];
+            $allocation_nights = $allocation['nights'];
             $stmt_upd_br = $conn->prepare("UPDATE booking_rooms SET venue_id = ?, start_date = ?, end_date = ?, nights = ?, line_total = nightly_rate * ? WHERE id = ?");
-            $stmt_upd_br->bind_param("issiii", $new_vid, $new_start, $new_end, $new_nights, $new_nights, $br_id);
+            $stmt_upd_br->bind_param("issiii", $allocation_venue_id, $allocation_start, $allocation_end, $allocation_nights, $allocation_nights, $br_id);
             $stmt_upd_br->execute();
         }
 
@@ -383,12 +405,12 @@ try {
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Approved' WHERE booking_id = ? AND status = 'Pending'");
         $stmt_req->bind_param("i", $booking_id);
         $stmt_req->execute();
-        
+
         $message = "Booking #$ref_no successfully rescheduled to $new_start!";
-        
+
         // EMAIL NOTIFICATION
         try { send_reschedule_approved_email($c_email, $c_name, $booking_id); } catch (Exception $e) {}
-        
+
         create_user_notification($conn, $c_user_id, "Reschedule Approved", "Your request to reschedule $v_name to $new_start has been approved.");
     }
     elseif ($action === 'reject_reschedule') {
@@ -397,13 +419,13 @@ try {
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = ? WHERE booking_id = ? AND status = 'Pending'");
         $stmt_req->bind_param("si", $admin_reply, $booking_id);
         $stmt_req->execute();
-        
+
         $message = "Reschedule request for Booking #$ref_no rejected.";
 
         // EMAIL NOTIFICATION
         $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Update</h2><p>Hello $c_name,</p><p>Regarding your request to reschedule your booking at <strong>$v_name</strong>, the administration left the following note:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #d6a870;'><em>$admin_reply</em></p><p>Your original dates remain secured.</p></div>";
         try { send_custom_email($c_email, $c_name, "Reschedule Update - $ref_no", $html); } catch (Exception $e) {}
-        
+
         create_user_notification($conn, $c_user_id, "Reschedule Rejected", "Your request to reschedule $v_name was declined. Please check your email for details.");
     }
     elseif ($action === 'refund') {
@@ -418,7 +440,7 @@ try {
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
-        
+
         $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Processed', refund_transaction_id = ? WHERE booking_id = ?");
         $stmt_cancel->bind_param("si", $refund_tx_id, $booking_id);
         $stmt_cancel->execute();
@@ -427,17 +449,17 @@ try {
         $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
         $stmt_resched->bind_param("i", $booking_id);
         $stmt_resched->execute();
-        
+
         $message = "Refund processed and Booking #$ref_no cancelled.";
 
         // EMAIL NOTIFICATION
         try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'refund', $refund_amount); } catch (Exception $e) {}
-        
+
         create_user_notification($conn, $c_user_id, "Refund Processed", "Your refund for $v_name has been processed. Your booking is cancelled.");
-    } 
+    }
     elseif ($action === 'admin_force_cancel') {
         if (!isset($data['reason'])) throw new Exception("Reason is required.");
-        
+
         $reason = trim($data['reason']);
         $refund_amount = floatval($data['refund_amount']);
         $fee = 0.00; // Resort shoulders the fee
@@ -454,12 +476,12 @@ try {
         $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
         $stmt_resched->bind_param("i", $booking_id);
         $stmt_resched->execute();
-        
+
         $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
 
         // EMAIL NOTIFICATION
         try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'cancelled', $refund_amount, $reason); } catch (Exception $e) {}
-        
+
         create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name has been cancelled by the admin. Check your email for details.");
     }
     else {
@@ -472,7 +494,7 @@ try {
     if (isset($_SESSION['user_id'])) {
         $log_user = $_SESSION['user_id'];
         $log_module = 'Booking Management';
-        $log_action = $message; 
+        $log_action = $message;
         $log_ip = $_SERVER['REMOTE_ADDR'];
 
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");

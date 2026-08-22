@@ -2,6 +2,7 @@
 session_start();
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
+require_once '../../includes/phone_helper.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -20,7 +21,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    
+
     try {
         $conn->begin_transaction();
 
@@ -51,9 +52,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $customer_name = $customer['first_name'] . ' ' . $customer['last_name'];
         $customer_email = $customer['email'];
 
-        // 2. Update Phone Number
-        $contact_phone = isset($_POST['contact_phone']) ? trim($_POST['contact_phone']) : null;
-        if (!empty($contact_phone)) {
+        // 2. Snapshot the booking contact and update the profile only by request.
+        $contact_phone = normalize_contact_phone((string)($_POST['contact_phone'] ?? ''));
+        if (($_POST['save_contact_default'] ?? '0') === '1') {
             $stmt_phone = $conn->prepare("UPDATE customers SET phone = ? WHERE id = ?");
             $stmt_phone->bind_param("si", $contact_phone, $customer_id);
             $stmt_phone->execute();
@@ -75,8 +76,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // RE-VALIDATE DATE AVAILABILITY
         $stmt_overlap = $conn->prepare("
-            SELECT id FROM bookings 
-            WHERE venue_id = ? 
+            SELECT id FROM bookings
+            WHERE venue_id = ?
             AND booking_status IN ('Pending', 'Confirmed', 'Completed')
             AND source <> 'Maintenance'
             AND (start_date < ? AND end_date > ?)
@@ -89,7 +90,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Check maintenance blocks
         $stmt_maint = $conn->prepare("
-            SELECT id FROM maintenance 
+            SELECT id FROM maintenance
             WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled'
             AND (start_date <= ? AND end_date >= ?)
         ");
@@ -127,8 +128,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Online Event Halls strictly act as inquiries ($0 upfront)
         if ($venue_category === 'Event Hall') {
-            $true_total = 0; 
-            $scheme = 'To Be Arranged'; 
+            $true_total = 0;
+            $scheme = 'To Be Arranged';
         }
         // =========================================================================
 
@@ -147,12 +148,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $stmt_book = $conn->prepare("
-            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, total_amount, payment_scheme, booking_status, payment_status, source) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
+            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
         ");
-        $stmt_book->bind_param("siissidds", 
-            $ref_no, $customer_id, $venue_id, $sDate, $eDate, 
-            $guests, $base_amount, $true_total, $scheme
+        $stmt_book->bind_param("siissisdds",
+            $ref_no, $customer_id, $venue_id, $sDate, $eDate,
+            $guests, $contact_phone, $base_amount, $true_total, $scheme
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
@@ -184,11 +185,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             if (is_array($line_items) && count($line_items) > 0) {
                 $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
-                
+
                 foreach ($line_items as $item) {
                     $name = trim($item['name']);
                     $amt = floatval($item['amount']);
-                    
+
                     if ($amt > 0) {
                         $total_addons_cost += $amt;
                         $stmt_li->bind_param("isd", $booking_id, $name, $amt);
@@ -212,19 +213,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (isset($_POST['room_groups']) && $venue_category === 'Event Hall') {
             $room_groups = json_decode($_POST['room_groups'], true);
             if (is_array($room_groups) && count($room_groups) > 0) {
-                
-                // Determine nights
-                $start_dt = new DateTime($sDate);
-                $end_dt = new DateTime($eDate);
+
+                $room_start = trim($_POST['room_start_date'] ?? '');
+                $room_end = trim($_POST['room_end_date'] ?? '');
+                $start_dt = DateTime::createFromFormat('!Y-m-d', $room_start);
+                $end_dt = DateTime::createFromFormat('!Y-m-d', $room_end);
+                if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $room_start || $end_dt->format('Y-m-d') !== $room_end || $end_dt <= $start_dt || $start_dt < new DateTime('today')) {
+                    throw new Exception('Please select a valid hotel stay of at least 1 night.');
+                }
                 $nights = $start_dt->diff($end_dt)->days;
-                if ($nights === 0) $nights = 1;
 
                 $stmt_alloc = $conn->prepare("
                     SELECT v.id, h.nightly_rate
                     FROM venues v
                     JOIN hotel_rooms h ON v.id = h.venue_id
-                    WHERE v.name = ? 
-                      AND h.room_type = ? 
+                    WHERE v.name = ?
+                      AND h.room_type = ?
                       AND v.status = 'Available'
                       AND v.id NOT IN (
                           SELECT venue_id FROM bookings
@@ -234,7 +238,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       )
                       AND v.id NOT IN (
                           SELECT venue_id FROM maintenance
-                          WHERE is_blocking = 1 AND status = 'Scheduled'
+                          WHERE is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
                             AND (start_date <= ? AND end_date >= ?)
                       )
                       AND v.id NOT IN (
@@ -249,21 +253,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE session_id != ? AND expires_at > NOW()
                             AND (start_date < ? AND end_date > ?)
                       )
-                    LIMIT ?
+                    ORDER BY v.id
+                    LIMIT ? FOR UPDATE
                 ");
-                
+
                 $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
                 foreach ($room_groups as $group) {
                     $building = trim($group['building_name']);
                     $type = trim($group['room_type']);
                     $qty = (int)$group['quantity'];
-                    
+
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
+                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $qty);
                         $stmt_alloc->execute();
                         $alloc_res = $stmt_alloc->get_result();
-                        
+
                         if ($alloc_res->num_rows < $qty) {
                             throw new Exception("Not enough inventory available for $building - $type. Please try again.");
                         }
@@ -272,8 +277,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $r_venue_id = $room['id'];
                             $r_rate = floatval($room['nightly_rate']);
                             $r_line_total = $r_rate * $nights;
-                            
-                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $sDate, $eDate, $nights, $r_line_total);
+
+                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total);
                             $stmt_insert->execute();
 
                             // Ensure calculated room add-on totals are saved in booking_line_items
@@ -296,11 +301,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         unset($_SESSION['locked_venue_id']);
 
         // =========================================================================
-        // PAYMONGO CHECKOUT INTEGRATION 
+        // PAYMONGO CHECKOUT INTEGRATION
         // =========================================================================
-        
+
         $amount_due = 0;
-        
+
         // Only calculate amount due if venue is not an Event Hall
         if ($venue_category !== 'Event Hall') {
             if ($scheme === '100% Full') $amount_due = $true_total;
@@ -317,14 +322,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($amount_due > 0) {
             // NOTE: Make sure you changed this to $_ENV['PAYMONGO_SECRET_KEY'] as discussed earlier!
             $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY'];
-            
+
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
             $domain = $_SERVER['HTTP_HOST'];
             $success_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=success";
             $cancel_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=failed";
 
             $centavos = (int)round($amount_due * 100);
-            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']); 
+            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']);
             $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
 
             $payload = [
@@ -361,7 +366,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -388,7 +393,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 throw new Exception("Failed to generate PayMongo link. Unknown API response.");
             }
         }
-        
+
         $conn->commit();
 
         // IF AMOUNT IS 0 (EVENT INQUIRY), SEND EMAIL AND SUCCESS
@@ -400,7 +405,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } catch (Exception $mail_e) {
             // Log silently
         }
-        
+
         echo "Success|" . $ref_no;
 
     } catch (Exception $e) {

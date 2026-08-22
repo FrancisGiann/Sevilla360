@@ -41,6 +41,10 @@ class AdminWalkinController {
             this.state.calendars.event = new SevillaCalendar("cal-ui-event");
             this.state.calendars.hotel = new SevillaCalendar("cal-ui-hotel");
             this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
+            this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
+                requireHotelRules: true,
+                onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
+            });
         }
     }
 
@@ -136,6 +140,10 @@ class AdminWalkinController {
 
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
+        this.getEl('check-rooms')?.addEventListener('change', (e) => {
+            if (e.target.checked) this.suggestAddonStayDates();
+            else this.resetAddonStayDates();
+        });
 
         document.querySelectorAll(".counter").forEach(counter => {
             const minus = counter.querySelector(".btn-minus");
@@ -194,6 +202,55 @@ class AdminWalkinController {
     // =========================================================================
     // HOTEL ROOM ADD-ON MANAGEMENT
     // =========================================================================
+    getAddonStayRange() {
+        const calendar = this.state.calendars.addonHotel;
+        if (!calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate) return null;
+        return { start: calendar.startDate, end: calendar.endDate, nights: Math.round((calendar.endDate - calendar.startDate) / 86400000) };
+    }
+
+    handleAddonRangeSelected(start, end) {
+        const range = this.getAddonStayRange();
+        const display = this.getEl('addon-room-date-display');
+        if (!range) {
+            if (display) display.textContent = 'Select a stay of at least 1 night';
+            return;
+        }
+        if (display) display.textContent = `${this.formatSafeDate(start)} to ${this.formatSafeDate(end)} (${range.nights} night${range.nights === 1 ? '' : 's'})`;
+        this.updateRoomAvailabilityLabels(start, end);
+        this.syncSelectedRoomLineItems();
+        this.calculateSummary();
+    }
+
+    suggestAddonStayDates() {
+        const calendar = this.state.calendars.addonHotel;
+        if (!calendar || this.getAddonStayRange()) return;
+        const event = this.state.calendars.event;
+        if (!event?.startDate) return;
+        const start = new Date(event.startDate);
+        const end = event.endDate && event.endDate > start ? new Date(event.endDate) : new Date(start);
+        if (end.getTime() === start.getTime()) end.setDate(end.getDate() + 1);
+        calendar.setSelection(start, end);
+        this.handleAddonRangeSelected(start, end);
+    }
+
+    resetAddonStayDates() {
+        const calendar = this.state.calendars.addonHotel;
+        if (calendar) { calendar.startDate = null; calendar.endDate = null; calendar.render(); }
+        const display = this.getEl('addon-room-date-display');
+        if (display) display.textContent = 'Select a stay of at least 1 night';
+        this.syncSelectedRoomLineItems();
+    }
+
+    syncSelectedRoomLineItems() {
+        const nights = this.getAddonStayRange()?.nights || 0;
+        document.querySelectorAll('.selected-room-row').forEach(row => {
+            const qty = parseInt(row.querySelector('.sel-room-qty')?.value) || 1;
+            const rate = parseFloat(row.dataset.rate) || 0;
+            const key = row.dataset.selKey;
+            this.syncSystemLineItem(`room_${key}`, `${row.dataset.building} — ${row.dataset.roomType} (×${qty} rooms, ×${nights} nights)`, rate * qty * nights);
+        });
+    }
+
     addRoomGroupToSelection(groupKey) {
         const container = document.getElementById('selected-room-groups');
         if (!container) return;
@@ -209,7 +266,7 @@ class AdminWalkinController {
         const building  = card.dataset.building;
         const roomType  = card.dataset.roomType;
         const rate      = parseFloat(card.dataset.rate);
-        const inventory = parseInt(card.dataset.inventory) || 1;
+        const inventory = parseInt(card.dataset.available ?? card.dataset.inventory) || 1;
 
         const row = document.createElement('div');
         row.className = 'wi-row selected-room-row';
@@ -233,12 +290,13 @@ class AdminWalkinController {
         container.appendChild(row);
 
         // Also add to line items builder for admin negotiation
-        this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×1)`, rate * 1);
+        const nights = this.getAddonStayRange()?.nights || 0;
+        this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×1 room, ×${nights} nights)`, rate * nights);
 
         row.querySelector('.sel-room-qty').addEventListener('input', (e) => {
             const qty = parseInt(e.target.value) || 1;
-            const days = this.state.calendars.event?.totalNights || 1;
-            this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×${qty} rooms)`, rate * qty * days);
+            const roomNights = this.getAddonStayRange()?.nights || 0;
+            this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×${qty} rooms, ×${roomNights} nights)`, rate * qty * roomNights);
             this.calculateSummary();
         });
         row.querySelector('.btn-remove-room-sel').addEventListener('click', () => {
@@ -362,6 +420,7 @@ class AdminWalkinController {
         if (this.state.calendars.event) this.state.calendars.event.clearSelection();
         if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
         if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
+        this.resetAddonStayDates();
 
         document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
         document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
@@ -424,7 +483,7 @@ class AdminWalkinController {
                 this.startLockRefresh();
 
                 // Update room availability labels in add-on panel
-                this.updateRoomAvailabilityLabels(startDate, endDate);
+                if (this.state.activeTabId === 'tab-event') this.suggestAddonStayDates();
 
                 this.calculateSummary();
             } else {
@@ -500,6 +559,15 @@ class AdminWalkinController {
                     label.textContent = n > 0 ? `${n} room${n > 1 ? 's' : ''} available` : 'No rooms available';
                     if (addBtn) addBtn.disabled = (n === 0);
                     card.dataset.available = n;
+                    const selectedQty = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"] .sel-room-qty`);
+                    if (selectedQty) {
+                        selectedQty.max = Math.max(n, 1);
+                        if (n > 0 && parseInt(selectedQty.value) > n) {
+                            selectedQty.value = n;
+                            this.syncSelectedRoomLineItems();
+                            this.calculateSummary();
+                        }
+                    }
                 }
             } catch(e) {}
         });
@@ -588,8 +656,8 @@ class AdminWalkinController {
         }
 
         // Loop through line item builder for custom add-ons
-        document.querySelectorAll(".wi-row").forEach(row => {
-            const name = row.querySelector(".wi-item-name").value || "Custom Item";
+        document.querySelectorAll(".wi-row:not(.selected-room-row)").forEach(row => {
+            const name = row.querySelector(".wi-item-name")?.value || "Custom Item";
             const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;
             if (cost > 0) {
                 this.state.summary.total += cost;
@@ -831,8 +899,9 @@ class AdminWalkinController {
 
         // Grab all custom line items from the builder
         let customLineItems = [];
-        document.querySelectorAll(".wi-row").forEach(row => {
-            const name = row.querySelector(".wi-item-name").value.trim();
+        document.querySelectorAll(".wi-row:not(.selected-room-row)").forEach(row => {
+            if ((row.dataset.system || '').startsWith('room_')) return;
+            const name = row.querySelector(".wi-item-name")?.value.trim() || '';
             const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;
             if (name !== "" && cost > 0) {
                 customLineItems.push({ name: name, amount: cost });
@@ -853,7 +922,14 @@ class AdminWalkinController {
             }
         });
         if (roomGroups.length > 0) {
+            const stay = this.getAddonStayRange();
+            if (!stay) {
+                showAlert('Notice', 'Please select a hotel check-in and check-out date for the room add-on.');
+                return;
+            }
             formData.append('room_groups', JSON.stringify(roomGroups));
+            formData.append('room_start_date', this.formatSafeDate(stay.start));
+            formData.append('room_end_date', this.formatSafeDate(stay.end));
         }
 
         try {

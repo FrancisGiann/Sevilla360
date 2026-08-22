@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const data = res.data.booking;
                 const specifics = res.data.specifics;
                 const addons = res.data.addons;
+                const roomAllocations = res.data.room_allocations || [];
 
                 document.getElementById('ov-vd-title').innerText = `Booking ${data.reference_no}`;
                 
@@ -108,6 +109,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     hasExtras = true;
                     addons.forEach(addon => {
                         addonsList.innerHTML += `<span class="label">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+                    });
+                }
+                if (roomAllocations.length > 0) {
+                    hasExtras = true;
+                    roomAllocations.forEach(room => {
+                        const number = room.room_number ? ` - Room ${room.room_number}` : '';
+                        addonsList.innerHTML += `<span class="label">&#8226; ${room.building_name} — ${room.room_type}${number}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                     });
                 }
 

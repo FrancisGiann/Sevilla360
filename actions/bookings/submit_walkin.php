@@ -2,6 +2,7 @@
 session_start();
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
+require_once '../../includes/phone_helper.php';
 
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['staff', 'admin'], true)) {
     http_response_code(401);
@@ -20,7 +21,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    
+
     try {
         $conn->begin_transaction();
 
@@ -53,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (!empty($_POST['venue_id'])) {
             $venue_id = (int)$_POST['venue_id'];
             $stmt_room = $conn->prepare("
-                SELECT id, category FROM venues 
+                SELECT id, category FROM venues
                 WHERE id = ? AND status = 'Available'
                 AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
                 AND id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
@@ -63,7 +64,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
                 $stmt_room = $conn->prepare("
-                    SELECT id, category FROM venues 
+                    SELECT id, category FROM venues
                     WHERE category = ? AND name = ? AND status = 'Available'
                     AND id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
                     AND id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
@@ -71,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ");
             } else {
                 $stmt_room = $conn->prepare("
-                    SELECT v.id, v.category FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id 
+                    SELECT v.id, v.category FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
                     WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
                     AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND (start_date < ? AND end_date > ?))
                     AND v.id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?))
@@ -82,7 +83,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $stmt_room->execute();
         $room_result = $stmt_room->get_result();
-        
+
         if ($room_result->num_rows === 0) {
             throw new Exception("All units for this specific room were just booked by someone online! Please select different dates.");
         }
@@ -139,9 +140,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // Find or create customer
         $guest_email = trim($_POST['guest_email']);
-        $guest_phone = trim($_POST['guest_phone']);
+        $guest_phone = normalize_contact_phone((string)($_POST['guest_phone'] ?? ''));
         $guest_name = trim($_POST['guest_name']);
-        
+
         $name_parts = explode(' ', $guest_name, 2);
         $first_name = $name_parts[0];
         $last_name = $name_parts[1] ?? 'Walk-in';
@@ -176,12 +177,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $stmt_book = $conn->prepare("
-            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, base_amount, addons_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
+            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, addons_amount, total_amount, amount_paid, payment_scheme, booking_status, payment_status, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, 'Walk-in')
         ");
-        $stmt_book->bind_param("siissiddddss", 
-            $ref_no, $customer_id, $venue_id, $sDate, $eDate, 
-            $guests, $base_amount, $total_addons_cost, $true_total, $amount_paid, $scheme, $payment_status
+        $stmt_book->bind_param("siissisddddss",
+            $ref_no, $customer_id, $venue_id, $sDate, $eDate,
+            $guests, $guest_phone, $base_amount, $total_addons_cost, $true_total, $amount_paid, $scheme, $payment_status
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
@@ -205,18 +206,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (isset($_POST['room_groups']) && $venue_category === 'Event Hall') {
             $room_groups = json_decode($_POST['room_groups'], true);
             if (is_array($room_groups) && count($room_groups) > 0) {
-                
-                $start_dt = new DateTime($sDate);
-                $end_dt = new DateTime($eDate);
+
+                $room_start = trim($_POST['room_start_date'] ?? '');
+                $room_end = trim($_POST['room_end_date'] ?? '');
+                $start_dt = DateTime::createFromFormat('!Y-m-d', $room_start);
+                $end_dt = DateTime::createFromFormat('!Y-m-d', $room_end);
+                if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $room_start || $end_dt->format('Y-m-d') !== $room_end || $end_dt <= $start_dt || $start_dt < new DateTime('today')) {
+                    throw new Exception('Please select a valid hotel stay of at least 1 night.');
+                }
                 $nights = $start_dt->diff($end_dt)->days;
-                if ($nights === 0) $nights = 1;
 
                 $stmt_alloc = $conn->prepare("
                     SELECT v.id, h.nightly_rate
                     FROM venues v
                     JOIN hotel_rooms h ON v.id = h.venue_id
-                    WHERE v.name = ? 
-                      AND h.room_type = ? 
+                    WHERE v.name = ?
+                      AND h.room_type = ?
                       AND v.status = 'Available'
                       AND v.id NOT IN (
                           SELECT venue_id FROM bookings
@@ -226,7 +231,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       )
                       AND v.id NOT IN (
                           SELECT venue_id FROM maintenance
-                          WHERE is_blocking = 1 AND status = 'Scheduled'
+                          WHERE is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
                             AND (start_date <= ? AND end_date >= ?)
                       )
                       AND v.id NOT IN (
@@ -241,21 +246,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE session_id != ? AND expires_at > NOW()
                             AND (start_date < ? AND end_date > ?)
                       )
-                    LIMIT ?
+                    ORDER BY v.id
+                    LIMIT ? FOR UPDATE
                 ");
-                
+
                 $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
                 foreach ($room_groups as $group) {
                     $building = trim($group['building_name']);
                     $type = trim($group['room_type']);
                     $qty = (int)$group['quantity'];
-                    
+
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $eDate, $sDate, $eDate, $sDate, $eDate, $sDate, $sid, $eDate, $sDate, $qty);
+                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $qty);
                         $stmt_alloc->execute();
                         $alloc_res = $stmt_alloc->get_result();
-                        
+
                         if ($alloc_res->num_rows < $qty) {
                             throw new Exception("Not enough inventory available for $building - $type. Please try again.");
                         }
@@ -264,8 +270,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $r_venue_id = $room['id'];
                             $r_rate = floatval($room['nightly_rate']);
                             $r_line_total = $r_rate * $nights;
-                            
-                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $sDate, $eDate, $nights, $r_line_total);
+
+                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total);
                             $stmt_insert->execute();
 
                             // Ensure calculated room add-on totals are saved in booking_line_items

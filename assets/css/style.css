@@ -760,6 +760,7 @@ section {
   background: #e06666 !important;
   color: #fff !important;
 }
+.cal-day-cell.booked.checkout-boundary{pointer-events:auto!important;cursor:pointer!important;outline:2px dashed rgba(255,255,255,.9);outline-offset:-5px}.cal-day-cell.booked.checkout-boundary:hover{background:#c95151!important}.dot.checkout-dot{outline:2px dashed #fff;outline-offset:-2px}.hotel-calendar-help{margin:.75rem 0 0;color:#777;font-size:.82rem;line-height:1.5}
 
 .cal-day-cell.unavailable {
   background: #e0e0e0 !important;
@@ -1321,3 +1322,10 @@ section {
   border-radius: 0 !important;
   height: 1px !important;
 }
+
+.addon-note { font-size: .88rem; color: #6b7280; margin: 0 0 .75rem; }
+.addon-room-calendar { margin: 0 0 1rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; }
+.addon-room-calendar-heading { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; color: #374151; }
+.addon-room-calendar-heading span { color: #6b7280; font-size: .88rem; text-align: right; }
+.contact-number-options, .save-contact-choice { display: grid; gap: .45rem; margin: .5rem 0; color: #4b5563; font-size: .9rem; }
+@media (max-width: 640px) { .addon-room-calendar-heading { flex-direction: column; } .addon-room-calendar-heading span { text-align: left; } }

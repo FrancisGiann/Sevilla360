@@ -11,7 +11,7 @@ if ($booking_id <= 0) die("Invalid booking ID.");
 
 // Fetch booking data
 $stmt = $conn->prepare("
-    SELECT b.*, c.first_name, c.last_name, c.email, c.phone, c.user_id as owner_id,
+    SELECT b.*, c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone, c.user_id as owner_id,
            v.name AS venue_name, v.category AS venue_category,
            hr.room_type, hr.room_number
     FROM bookings b

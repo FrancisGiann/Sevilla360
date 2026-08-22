@@ -12,13 +12,13 @@ $booking_id = (int)$_GET['id'];
 try {
     // 1. Fetch Booking + Phone Number!
     $stmt = $conn->prepare("
-        SELECT 
-            b.*, c.first_name, c.last_name, c.email, c.phone, 
+        SELECT
+            b.*, c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name as venue_name, v.category as venue_category,
-            hr.room_type, hr.room_number 
-        FROM bookings b 
-        JOIN customers c ON b.customer_id = c.id 
-        JOIN venues v ON b.venue_id = v.id 
+            hr.room_type, hr.room_number
+        FROM bookings b
+        JOIN customers c ON b.customer_id = c.id
+        JOIN venues v ON b.venue_id = v.id
         LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE b.id = ?
     ");
@@ -62,10 +62,10 @@ try {
 
     // Fetch Room Allocations (Hotel Add-ons)
     $st_ra = $conn->prepare("
-        SELECT v.name as building_name, h.room_type, h.room_number, br.line_total 
-        FROM booking_rooms br 
-        JOIN venues v ON br.venue_id = v.id 
-        JOIN hotel_rooms h ON v.id = h.venue_id 
+        SELECT v.name as building_name, h.room_type, h.room_number, br.start_date, br.end_date, br.nights, br.line_total
+        FROM booking_rooms br
+        JOIN venues v ON br.venue_id = v.id
+        JOIN hotel_rooms h ON v.id = h.venue_id
         WHERE br.booking_id = ?
     ");
     $st_ra->bind_param("i", $booking_id);
@@ -84,10 +84,10 @@ try {
     $st_cx->bind_param("i", $booking_id);
     $st_cx->execute();
     $cx_res = $st_cx->get_result()->fetch_assoc();
-    
+
     echo json_encode(['success' => true, 'data' => [
-        'booking' => $booking, 
-        'specifics' => $specifics, 
+        'booking' => $booking,
+        'specifics' => $specifics,
         'addons' => $addons,
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,

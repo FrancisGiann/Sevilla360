@@ -1,3 +1,16 @@
+<?php
+$footer_settings = ['biz_email' => 'reservations@sevilla360.com', 'social_links_json' => '[]'];
+if (isset($conn) && $conn instanceof mysqli) {
+    $footer_query = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('biz_email', 'social_links_json')");
+    if ($footer_query) {
+        while ($footer_row = $footer_query->fetch_assoc()) {
+            $footer_settings[$footer_row['setting_key']] = $footer_row['setting_value'];
+        }
+    }
+}
+$footer_social_links = json_decode($footer_settings['social_links_json'], true);
+$footer_social_links = is_array($footer_social_links) ? $footer_social_links : [];
+?>
 <!-- Footer -->
 <footer class="idx-footer">
     <div class="idx-footer-inner">
@@ -13,8 +26,8 @@
                 <ul>
                     <li><a href="index.php">Home</a></li>
                     <li><a href="index.php#about">About</a></li>
-                    <li><a href="index.php#experiences">Experiences</a></li>
-                    <li><a href="index.php#accommodations">Venues</a></li>
+                    <li><a href="index.php#experiences">Events</a></li>
+                    <li><a href="index.php#accommodations">Accommodations</a></li>
                     <li><a href="showroom.php">Virtual Showroom</a></li>
                 </ul>
             </nav>
@@ -22,21 +35,27 @@
             <nav class="idx-footer-col">
                 <h4>Support</h4>
                 <ul>
-                    <li><a href="#">Contact Us</a></li>
-                    <li><a href="#">Booking Policy</a></li>
-                    <li><a href="#">FAQs</a></li>
-                    <li><a href="#">Privacy</a></li>
-                    <li><a href="#">Terms</a></li>
+                    <li><a href="support.php#contact">Contact Us</a></li>
+                    <li><a href="support.php#booking-policy">Booking Policy</a></li>
+                    <li><a href="support.php#faqs">FAQs</a></li>
+                    <li><a href="support.php#privacy">Privacy</a></li>
+                    <li><a href="support.php#terms">Terms</a></li>
                 </ul>
             </nav>
 
             <nav class="idx-footer-col">
                 <h4>Connect</h4>
                 <ul>
-                    <li><a href="#">Facebook</a></li>
-                    <li><a href="#">Instagram</a></li>
-                    <li><a href="#">TikTok</a></li>
-                    <li><a href="#">Email Us</a></li>
+                    <?php foreach ($footer_social_links as $footer_social):
+                        $footer_label = trim((string)($footer_social['label'] ?? ''));
+                        $footer_url = trim((string)($footer_social['url'] ?? ''));
+                        if ($footer_label === '' || !preg_match('/^https?:\/\//i', $footer_url)) continue;
+                    ?>
+                    <li><a href="<?php echo htmlspecialchars($footer_url, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars($footer_label, ENT_QUOTES, 'UTF-8'); ?></a></li>
+                    <?php endforeach; ?>
+                    <?php if (filter_var($footer_settings['biz_email'], FILTER_VALIDATE_EMAIL)): ?>
+                    <li><a href="mailto:<?php echo htmlspecialchars($footer_settings['biz_email'], ENT_QUOTES, 'UTF-8'); ?>">Email Us</a></li>
+                    <?php endif; ?>
                 </ul>
             </nav>
         </div>

@@ -1,5 +1,5 @@
 class SevillaCalendar {
-  constructor(containerId) {
+  constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
 
@@ -15,9 +15,11 @@ class SevillaCalendar {
     this.endDate = null;
     this.totalNights = 1;
     this.fixedDurationNights = null;
-    this.requireHotelRules = false;
+    this.requireHotelRules = options.requireHotelRules === true;
+    this.onRangeSelected = typeof options.onRangeSelected === 'function' ? options.onRangeSelected : null;
 
     this.bookedDatesList = [];
+    this.hardBlockedDatesList = [];
     this.maintenanceDatesList = []; // Array of objects {date, type}
     this.isMaintenanceMode = false;
 
@@ -87,6 +89,7 @@ class SevillaCalendar {
     }
 
     const previousBookedDates = [...this.bookedDatesList];
+    const previousHardBlockedDates = [...this.hardBlockedDatesList];
     try {
       const formData = new FormData();
       if (room_type) formData.append('room_type', room_type);
@@ -103,11 +106,13 @@ class SevillaCalendar {
           throw new Error(data.message || 'Availability could not be loaded.');
       }
       this.bookedDatesList = data.booked_dates;
+      this.hardBlockedDatesList = Array.isArray(data.hard_blocked_dates) ? data.hard_blocked_dates : [];
       this.render();
     } catch (error) {
       console.error("Error fetching dates:", error);
       // Never turn a failed request into an apparently empty calendar.
       this.bookedDatesList = previousBookedDates;
+      this.hardBlockedDatesList = previousHardBlockedDates;
       this.render();
       if (typeof showAlert === 'function') {
           showAlert('Availability Error', error.message || 'Availability could not be loaded. Please try again.', 'error');
@@ -161,23 +166,33 @@ class SevillaCalendar {
       const maintObj = this.isMaintenanceMode ? this.maintenanceDatesList.find(m => m.date === cellDateStr) : null;
       const isMaintenance = !!maintObj;
       const isBooked = this.bookedDatesList.includes(cellDateStr);
+      const isHardBlocked = this.hardBlockedDatesList.includes(cellDateStr);
 
       if (isPastDate) {
         // Past dates are always grey — they're unavailable regardless of booking status.
         cell.classList.add("past-date");
       } 
-      else if (isMaintenance) {
+      else if (isMaintenance || isHardBlocked) {
         cell.classList.add("maintenance");
-        cell.title = `Maintenance: ${maintObj.type}`;
+        cell.title = maintObj ? `Maintenance: ${maintObj.type}` : 'Unavailable due to maintenance';
         // If maintenance is not blocking, we theoretically could book, but the standard behavior is blocks the cell visually.
-        if (maintObj.is_blocking) cell.classList.add("booked");
+        if (isHardBlocked || maintObj?.is_blocking) cell.classList.add("booked");
       }
       else if (isBooked) {
-        // If it's booked by someone else
         cell.classList.add("booked");
         if (this.isMaintenanceMode) {
             const bObj = this.bookedObjectsList.find(b => b.date === cellDateStr);
             if (bObj) cell.title = `Booked (${bObj.ref_no} - ${bObj.status})`;
+        }
+        const checkoutBoundary = this.requireHotelRules && this.startDate && !this.endDate && cellDate > this.startDate && !this.hasInvalidDaysBetween(this.startDate, cellDate);
+        if (checkoutBoundary) {
+          cell.classList.add('checkout-boundary');
+          cell.title = 'Available as a hotel checkout date';
+          cell.addEventListener('click', () => {
+            this.endDate = cellDate;
+            this.render();
+            this.notifyRangeSelected();
+          });
         }
       } 
       else {
@@ -207,18 +222,14 @@ class SevillaCalendar {
               this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
             }
             this.render();
-            if (this.fixedDurationNights !== null && typeof window.requestDateConfirmation === "function") {
-                window.requestDateConfirmation(this.startDate, this.endDate, this);
-            }
+            if (this.fixedDurationNights !== null) this.notifyRangeSelected();
           } else if (!this.startDate) {
             this.startDate = cellDate;
             if (this.fixedDurationNights !== null) {
               this.endDate = new Date(this.startDate);
               this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
               this.render();
-              if (typeof window.requestDateConfirmation === "function") {
-                  window.requestDateConfirmation(this.startDate, this.endDate, this);
-              }
+              this.notifyRangeSelected();
             } else {
               this.render();
             }
@@ -237,9 +248,7 @@ class SevillaCalendar {
                 this.endDate = cellDate;
                 this.render();
                 
-                if (typeof window.requestDateConfirmation === "function") {
-                    window.requestDateConfirmation(this.startDate, this.endDate, this);
-                }
+                this.notifyRangeSelected();
               }
             }
           }
@@ -285,10 +294,25 @@ class SevillaCalendar {
     }
   }
 
+  notifyRangeSelected() {
+    if (this.onRangeSelected) this.onRangeSelected(this.startDate, this.endDate, this);
+    else if (typeof window.requestDateConfirmation === 'function') window.requestDateConfirmation(this.startDate, this.endDate, this);
+  }
+
+  setSelection(startDate, endDate) {
+    this.startDate = startDate ? new Date(startDate) : null;
+    this.endDate = endDate ? new Date(endDate) : null;
+    if (this.startDate) {
+      this.currentDate = new Date(this.startDate.getFullYear(), this.startDate.getMonth(), 1);
+    }
+    this.render();
+  }
+
   clearSelection() {
     this.startDate = null;
     this.endDate = null;
     this.bookedDatesList = [];
+    this.hardBlockedDatesList = [];
     this.bookedObjectsList = [];
     this.maintenanceDatesList = [];
     this.render();

@@ -363,6 +363,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 }
 
 .toast-notification.show { bottom: 40px; }
+.social-settings-block{margin-top:24px;padding-top:20px;border-top:1px solid rgba(42,37,34,.12)}.social-settings-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.social-settings-heading h4{margin:0 0 4px;color:var(--color-gold)}.social-settings-heading p{margin:0;color:#777;font-size:.85rem}.social-link-row{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:center;margin-bottom:10px}@media(max-width:700px){.social-settings-heading{flex-direction:column}.social-link-row{grid-template-columns:1fr}.social-link-row .btn{width:100%}}
 .toast-notification svg { color: var(--color-gold); }
 
 /* --- Unsaved Changes Modal Specifics --- */

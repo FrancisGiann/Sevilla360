@@ -181,7 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   if (panoramasRef[idx]) viewerRef.setPanorama(panoramasRef[idx]);
               });
           } else {
-              spot.addHoverText(h.title, -100);
+              spot.addHoverText(h.title);
               spot.addEventListener('click', () => showHotspotInfoModal(h.title, h.description));
           }
 

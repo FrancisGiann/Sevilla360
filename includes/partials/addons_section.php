@@ -80,9 +80,14 @@ $addon_room_groups = $hotel_room_groups ?? [];
     <div class="addon-block">
         <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve Hotel Rooms</label>
         <div class="addon-content hidden" id="rooms-options">
-            <p class="addon-note" style="font-size:0.85rem; color:#888; margin-bottom:12px;">
-                <i>Select dates above first to check live availability. Rates shown are per room per night.</i>
-            </p>
+            <p class="addon-note">Choose one shared hotel stay for every room in this event add-on. Rates are per room per night.</p>
+            <div class="addon-room-calendar">
+                <div class="addon-room-calendar-heading">
+                    <strong>Hotel check-in and check-out</strong>
+                    <span id="addon-room-date-display">Select a stay of at least 1 night</span>
+                </div>
+                <?php $calendarId = 'cal-ui-addon-hotel'; include __DIR__ . '/booking_calendar.php'; ?>
+            </div>
 
             <!-- Filter dropdown -->
             <?php 

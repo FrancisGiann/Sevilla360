@@ -29,17 +29,17 @@ function get_biz_info() {
 
 function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_name, $amount_paid, $status) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL']; 
-    $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $smtp_email = $_ENV['SMTP_EMAIL'];
+    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
 
     // 1. Fetch Booking Details
     $stmt = $conn->prepare("
-        SELECT 
-            b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.amount_paid, 
-            v.category, v.name AS venue_name, hr.room_type, hr.room_number 
-        FROM bookings b 
-        JOIN venues v ON b.venue_id = v.id 
+        SELECT
+            b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.amount_paid,
+            v.category, v.name AS venue_name, hr.room_type, hr.room_number
+        FROM bookings b
+        JOIN venues v ON b.venue_id = v.id
         LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE b.reference_no = ?
     ");
@@ -63,10 +63,10 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     // 2b. Fetch Room Add-ons
     $stmt_ra = $conn->prepare("
-        SELECT v.name AS building_name, hr.room_type, hr.room_number, br.nights, br.line_total 
-        FROM booking_rooms br 
-        JOIN venues v ON br.venue_id = v.id 
-        JOIN hotel_rooms hr ON v.id = hr.venue_id 
+        SELECT v.name AS building_name, hr.room_type, hr.room_number, br.start_date, br.end_date, br.nights, br.line_total
+        FROM booking_rooms br
+        JOIN venues v ON br.venue_id = v.id
+        JOIN hotel_rooms hr ON v.id = hr.venue_id
         WHERE br.booking_id = ?
     ");
     $stmt_ra->bind_param("i", $booking['id']);
@@ -82,7 +82,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         $stmt_villa->bind_param("i", $booking['id']);
         $stmt_villa->execute();
         $villa_details = $stmt_villa->get_result()->fetch_assoc();
-        
+
         if ($villa_details && $villa_details['stay_type'] === 'Day Time Stay') {
             $check_in_time = '7:00 AM'; $check_out_time = '5:00 PM';
         }
@@ -92,7 +92,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     $check_in = date('F j, Y', strtotime($booking['start_date'])) . ' <br><span style="color:#d6a870; font-size:12px;">' . $check_in_time . '</span>';
     $check_out = date('F j, Y', strtotime($booking['end_date'])) . ' <br><span style="color:#d6a870; font-size:12px;">' . $check_out_time . '</span>';
-    
+
     $guests = $booking['guests_count'];
     $total_amt = floatval($booking['total_amount']);
     $total_paid = floatval($booking['amount_paid']);
@@ -107,14 +107,15 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     if (count($line_items) > 0 || count($room_addons) > 0 || $booking['category'] === 'Event Hall') {
         $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Itemized Estimate:</strong></td></tr>";
         $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
-        
+
         foreach ($line_items as $item) {
+            if (count($room_addons) > 0 && str_starts_with($item['item_name'], 'Room Add-on:')) continue;
             $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
         }
 
         foreach ($room_addons as $room) {
             $r_num_str = $room['room_number'] ? " - Rm " . $room['room_number'] : "";
-            $name_str = "Room: " . $room['building_name'] . " - " . $room['room_type'] . $r_num_str . " (" . $room['nights'] . " nights)";
+            $name_str = "Room: " . $room['building_name'] . " - " . $room['room_type'] . $r_num_str . " (" . date('M j, Y', strtotime($room['start_date'])) . " to " . date('M j, Y', strtotime($room['end_date'])) . "; " . $room['nights'] . " nights)";
             $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($name_str) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($room['line_total'], 2) . "</td></tr>";
         }
     }
@@ -206,7 +207,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         $mail->Port = 587;
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Reservations');
-        $mail->addAddress($customer_email, $customer_name); 
+        $mail->addAddress($customer_email, $customer_name);
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body = $html_content;
@@ -221,10 +222,10 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 // STANDALONE FUNCTION (Fixed from being nested!)
 // -------------------------------------------------------------
 function send_custom_email($to_email, $to_name, $subject, $html_content) {
-    $smtp_email = $_ENV['SMTP_EMAIL']; 
-    $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $smtp_email = $_ENV['SMTP_EMAIL'];
+    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
-    
+
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
@@ -239,7 +240,7 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($to_email, $to_name); 
+        $mail->addAddress($to_email, $to_name);
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body    = $html_content;
@@ -405,14 +406,14 @@ function send_reschedule_approved_email($customer_email, $customer_name, $bookin
 // -------------------------------------------------------------
 function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $total_amount, $dashboard_link) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL']; 
-    $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $smtp_email = $_ENV['SMTP_EMAIL'];
+    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
 
     // 1. Fetch Booking Details
     $stmt = $conn->prepare("
-        SELECT b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.payment_scheme, v.name as venue_name 
-        FROM bookings b JOIN venues v ON b.venue_id = v.id 
+        SELECT b.id, b.start_date, b.end_date, b.guests_count, b.base_amount, b.total_amount, b.payment_scheme, v.name as venue_name
+        FROM bookings b JOIN venues v ON b.venue_id = v.id
         WHERE b.reference_no = ?
     ");
     $stmt->bind_param("s", $ref_no);
@@ -426,7 +427,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     $line_items = $stmt_li->get_result()->fetch_all(MYSQLI_ASSOC);
 
     $subject = "{$biz['biz_name']}: Your Final Event Invoice [$ref_no]";
-    
+
     $check_in = date('F j, Y', strtotime($booking['start_date']));
     $check_out = date('F j, Y', strtotime($booking['end_date']));
     $date_str = ($check_in === $check_out) ? $check_in : "$check_in - $check_out";
@@ -435,11 +436,11 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     $breakdown_html = "";
     $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Finalized Itemized Invoice:</strong></td></tr>";
     $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
-    
+
     foreach ($line_items as $item) {
         $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
     }
-    
+
     // 4. Calculate the required downpayment based on their scheme
     $scheme = $booking['payment_scheme'];
     $downpayment = 0;
@@ -461,7 +462,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                     Hello <strong>$customer_name</strong>,<br><br>
                     Our administration has finalized your customized event quotation based on our recent consultation. Please review the updated details below.
                 </p>
-                
+
                 <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 20px;'>
                     <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>
@@ -471,9 +472,9 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>" . $booking['venue_name'] . "</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Event Date:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$date_str</td></tr>
                         <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>" . $booking['guests_count'] . " Persons</td></tr>
-                        
+
                         $breakdown_html
-                        
+
                         <tr>
                             <td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Final Total Amount:</strong></td>
                             <td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 18px; color: #d6a870;'><strong>₱" . number_format($booking['total_amount'], 2) . "</strong></td>
@@ -488,7 +489,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                 <div style='text-align: center; margin-top: 30px;'>
                     <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>Pay Now to Secure Booking</a>
                 </div>
-                
+
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>
                     <strong>Policies:</strong><br>
                     " . nl2br(htmlspecialchars($biz['biz_policies'])) . "
@@ -514,7 +515,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($customer_email, $customer_name); 
+        $mail->addAddress($customer_email, $customer_name);
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body    = $html_content;
@@ -526,12 +527,12 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
 // -------------------------------------------------------------
 function send_password_reset_email($to_email, $to_name, $reset_link) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL']; 
-    $smtp_password = $_ENV['SMTP_PASSWORD']; 
+    $smtp_email = $_ENV['SMTP_EMAIL'];
+    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
-    
+
     $subject = "{$biz['biz_name']}: Password Reset Request";
-    
+
     $html_content = "
     <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
         <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
@@ -542,13 +543,13 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>PASSWORD RESET REQUEST</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>" . htmlspecialchars($to_name) . "</strong>,</p>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>We received a request to reset your password. If you didn't make this request, you can safely ignore this email.</p>
-                
+
                 <div style='text-align: center; margin: 40px 0;'>
                     <a href='" . htmlspecialchars($reset_link) . "' style='background-color: #d6a870; color: #fff; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 16px; display: inline-block;'>RESET PASSWORD</a>
                 </div>
-                
+
                 <p style='color: #888; font-size: 13px; line-height: 1.5;'><em>Note: This link will expire in 1 hour.</em></p>
-                
+
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #aaa; text-align: center;'>
                     " . htmlspecialchars($biz['biz_address']) . " | " . htmlspecialchars($biz['biz_phone']) . " | " . htmlspecialchars($biz['biz_email']) . "
                 </div>
@@ -556,7 +557,7 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
         </div>
     </div>
     ";
-    
+
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
@@ -570,7 +571,7 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
         $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($to_email, $to_name); 
+        $mail->addAddress($to_email, $to_name);
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body    = $html_content;
@@ -587,7 +588,7 @@ function send_welcome_email($to_email, $to_name) {
     $biz = get_biz_info();
     $subject = "Welcome to {$biz['biz_name']}!";
     $first_name = htmlspecialchars(trim($to_name), ENT_QUOTES, 'UTF-8');
-    
+
     $html_content = "
     <div style='background-color:#f4f4f4; padding:40px 0; font-family:Helvetica, Arial, sans-serif;'>
         <div style='max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);'>

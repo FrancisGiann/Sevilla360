@@ -15,6 +15,7 @@
     <div class="cal-legend">
         <span class="legend-item"><span class="dot selected"></span> Selected</span>
         <span class="legend-item"><span class="dot booked"></span> Booked</span>
+        <span class="legend-item"><span class="dot booked checkout-dot"></span> Checkout boundary</span>
         <span class="legend-item" id="cal-legend-maint" style="display: none;"><span class="dot" style="background-color: var(--color-danger); opacity: 0.8;"></span> Maintenance</span>
         <span class="legend-item"><span class="dot available"></span> Available</span>
         <span class="legend-item"><span class="dot unavailable"></span> Unavailable</span>

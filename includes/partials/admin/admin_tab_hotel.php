@@ -32,6 +32,7 @@
         $calendarId = 'cal-ui-hotel';
         include 'includes/partials/booking_calendar.php';
         ?>
+        <p class="hotel-calendar-help">Hotel rooms are booked per night. A booked arrival date may still be selected as the checkout boundary.</p>
     </div>
 
     <!-- 3. WHO: GUESTS -->

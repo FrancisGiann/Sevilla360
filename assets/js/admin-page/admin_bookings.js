@@ -742,6 +742,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
                   const addonsContainer = document.getElementById('vd-addons-container');
                   const addonsList = document.getElementById('vd-addons-list');
+                  const roomAllocations = res.data.room_allocations;
                   addonsList.innerHTML = ''; 
                   let hasExtras = false;
       
@@ -755,16 +756,16 @@ document.addEventListener("DOMContentLoaded", () => {
                   if (lineItems && lineItems.length > 0) {
                       hasExtras = true;
                       lineItems.forEach(item => {
+                          if (roomAllocations?.length && item.item_name.startsWith('Room Add-on:')) return;
                           addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${item.item_name}</span> <span class="value">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                       });
                   }
 
-                  const roomAllocations = res.data.room_allocations;
                   if (roomAllocations && roomAllocations.length > 0) {
                       hasExtras = true;
                       roomAllocations.forEach(room => {
                           const rNum = room.room_number ? ` - Rm ${room.room_number}` : '';
-                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; Room: ${room.building_name} - ${room.room_type}${rNum}</span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; Room: ${room.building_name} - ${room.room_type}${rNum}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
                       });
                   }
       

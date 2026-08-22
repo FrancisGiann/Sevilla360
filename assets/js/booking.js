@@ -115,6 +115,10 @@ class BookingController {
             this.state.calendars.event = new SevillaCalendar("cal-ui-event");
             this.state.calendars.hotel = new SevillaCalendar("cal-ui-hotel");
             this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
+            this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
+                requireHotelRules: true,
+                onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
+            });
         }
     }
 
@@ -225,6 +229,34 @@ class BookingController {
 
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
+        this.getEl('check-rooms')?.addEventListener('change', (e) => {
+            if (e.target.checked) this.suggestAddonStayDates();
+            else this.resetAddonStayDates();
+        });
+
+        document.querySelectorAll('input[name="contact-phone-choice"]').forEach(choice => {
+            choice.addEventListener('change', (e) => {
+                const phone = this.getEl('contact-phone');
+                const saveChoice = this.getEl('save-contact-choice');
+                if (!phone) return;
+                if (e.target.value === 'saved') {
+                    phone.value = phone.defaultValue;
+                    saveChoice?.classList.add('hidden');
+                    const save = this.getEl('save-contact-default');
+                    if (save) save.checked = false;
+                } else {
+                    phone.value = '';
+                    saveChoice?.classList.remove('hidden');
+                    phone.focus();
+                }
+            });
+        });
+        this.getEl('contact-phone')?.addEventListener('input', (e) => {
+            if (!e.target.defaultValue || e.target.value === e.target.defaultValue) return;
+            const alternate = document.querySelector('input[name="contact-phone-choice"][value="alternate"]');
+            if (alternate) alternate.checked = true;
+            this.getEl('save-contact-choice')?.classList.remove('hidden');
+        });
 
         // =========================================================================
         // HOTEL ROOM ADD-ON: "Add" buttons on room group cards
@@ -256,6 +288,56 @@ class BookingController {
     // HOTEL ROOM ADD-ON MANAGEMENT (Real Inventory)
     // =========================================================================
 
+    getAddonStayRange() {
+        const calendar = this.state.calendars.addonHotel;
+        if (!calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate) return null;
+        return {
+            start: calendar.startDate,
+            end: calendar.endDate,
+            nights: Math.round((calendar.endDate - calendar.startDate) / 86400000)
+        };
+    }
+
+    handleAddonRangeSelected(start, end) {
+        const range = this.getAddonStayRange();
+        const display = this.getEl('addon-room-date-display');
+        if (!range) {
+            if (display) display.textContent = 'Select a stay of at least 1 night';
+            return;
+        }
+        if (display) display.textContent = `${this.formatSafeDate(start)} to ${this.formatSafeDate(end)} (${range.nights} night${range.nights === 1 ? '' : 's'})`;
+        this.updateRoomAvailabilityLabels(start, end);
+        this.calculateSummary();
+    }
+
+    suggestAddonStayDates() {
+        const calendar = this.state.calendars.addonHotel;
+        if (!calendar || this.getAddonStayRange()) return;
+        const event = this.state.calendars.event;
+        if (!event?.startDate) return;
+        const start = new Date(event.startDate);
+        const end = event.endDate && event.endDate > start ? new Date(event.endDate) : new Date(start);
+        if (end.getTime() === start.getTime()) end.setDate(end.getDate() + 1);
+        calendar.setSelection(start, end);
+        this.handleAddonRangeSelected(start, end);
+    }
+
+    resetAddonStayDates() {
+        const calendar = this.state.calendars.addonHotel;
+        if (calendar) {
+            calendar.startDate = null;
+            calendar.endDate = null;
+            calendar.render();
+        }
+        const display = this.getEl('addon-room-date-display');
+        if (display) display.textContent = 'Select a stay of at least 1 night';
+        document.querySelectorAll('.room-group-card').forEach(card => {
+            card.removeAttribute('data-available');
+            const label = card.querySelector('.room-avail-label');
+            if (label) label.textContent = `${card.dataset.inventory || 0} total units — select dates to check availability`;
+        });
+    }
+
     addRoomGroupToSelection(groupKey) {
         const container = document.getElementById('selected-room-groups');
         if (!container) return;
@@ -273,7 +355,7 @@ class BookingController {
         const building  = card.dataset.building;
         const roomType  = card.dataset.roomType;
         const rate      = parseFloat(card.dataset.rate);
-        const inventory = parseInt(card.dataset.inventory) || 1;
+        const inventory = parseInt(card.dataset.available ?? card.dataset.inventory) || 1;
 
         const row = document.createElement('div');
         row.className = 'wi-row selected-room-row';
@@ -514,6 +596,7 @@ class BookingController {
         this.getEl('rooms-options')?.classList.add('hidden');
         const selectedRoomGroups = this.getEl('selected-room-groups');
         if (selectedRoomGroups) selectedRoomGroups.innerHTML = '';
+        this.resetAddonStayDates();
 
         if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
         this.calculateSummary();
@@ -589,7 +672,7 @@ class BookingController {
                     this.calculateSummary();
                     
                     // Update room availability labels in add-on panel
-                    this.updateRoomAvailabilityLabels(startDate, endDate);
+                    if (this.state.activeTabId === 'event-hall') this.suggestAddonStayDates();
                     
                     // ONLY START THE TIMER IF IT IS NOT AN EVENT INQUIRY
                     if (this.state.activeTabId !== 'event-hall') {
@@ -641,6 +724,14 @@ class BookingController {
                     if (addBtn) addBtn.disabled = (n === 0);
                     // Store available count on the card for quantity validation
                     card.dataset.available = n;
+                    const selectedQty = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"] .sel-room-qty`);
+                    if (selectedQty) {
+                        selectedQty.max = Math.max(n, 1);
+                        if (n > 0 && parseInt(selectedQty.value) > n) {
+                            selectedQty.value = n;
+                            this.calculateSummary();
+                        }
+                    }
                 }
             } catch(e) {
                 // silently ignore
@@ -846,15 +937,17 @@ class BookingController {
         if (cateringTotal > 0) this.syncSystemLineItem('catering', cateringName, cateringTotal);
 
         // HOTEL ROOM ADD-ON (Real inventory via selected-room-groups)
+        const addonStay = this.getAddonStayRange();
+        const roomNights = addonStay?.nights || 0;
         document.querySelectorAll('.selected-room-row').forEach(row => {
             const rate = parseFloat(row.dataset.rate) || 0;
             const qty  = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
             const building  = row.dataset.building;
             const roomType  = row.dataset.roomType;
-            if (rate > 0 && qty > 0) {
-                const lineTotal = rate * qty * days;
+            if (rate > 0 && qty > 0 && roomNights > 0) {
+                const lineTotal = rate * qty * roomNights;
                 this.state.summary.total += lineTotal;
-                this.appendSummaryRow(`${building} — ${roomType} (×${qty} room${qty > 1 ? 's' : ''}, ×${days} night${days > 1 ? 's' : ''})`, lineTotal);
+                this.appendSummaryRow(`${building} — ${roomType} (×${qty} room${qty > 1 ? 's' : ''}, ×${roomNights} night${roomNights > 1 ? 's' : ''})`, lineTotal);
             }
         });
 
@@ -984,6 +1077,7 @@ class BookingController {
         formData.append("payment_scheme", schemeEnum);
         
         formData.append("contact_phone", phoneInput.value.trim());
+        formData.append("save_contact_default", this.getEl('save-contact-default')?.checked ? '1' : '0');
         const notesInput = document.getElementById("booking-notes");
         formData.append("custom_notes", notesInput ? notesInput.value.trim() : "");
 
@@ -1040,7 +1134,14 @@ class BookingController {
             }
         });
         if (roomGroups.length > 0) {
+            const stay = this.getAddonStayRange();
+            if (!stay) {
+                showAlert('Notice', 'Please select a hotel check-in and check-out date for the room add-on.');
+                return;
+            }
             formData.append('room_groups', JSON.stringify(roomGroups));
+            formData.append('room_start_date', this.formatSafeDate(stay.start));
+            formData.append('room_end_date', this.formatSafeDate(stay.end));
         }
 
         try {
