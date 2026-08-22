@@ -223,3 +223,118 @@
     padding: 1rem;
   }
 }
+
+@media (max-width: 1024px) {
+  .audit-log-container {
+    padding: 1.25rem 1rem 5rem;
+  }
+
+  .audit-log-header {
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .audit-controls {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .input-wrapper,
+  .input-wrapper input,
+  .btn-export-csv {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .audit-table-card {
+    overflow: visible;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .audit-table,
+  .audit-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .audit-table thead {
+    display: none;
+  }
+
+  .audit-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .audit-table tbody tr {
+    display: block;
+    padding: 10px 14px;
+    border: 1px solid rgba(42, 37, 34, .1);
+    border-radius: 8px;
+    background: var(--color-white);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .audit-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 0;
+    white-space: normal;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .audit-table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--color-dark-light);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-align: left;
+  }
+
+  .audit-table td:last-child {
+    border-top: 1px solid rgba(42, 37, 34, .06);
+  }
+
+  .audit-table td.action-text {
+    display: block;
+    text-align: right;
+  }
+
+  .audit-table td.action-text::before {
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  .audit-table td.action-text .action-main,
+  .audit-table td.action-text .action-module {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .audit-table td.action-text .action-module {
+    margin-top: 4px;
+  }
+}
+
+/* Keep action descriptions aligned with the value column at every width. */
+.audit-table td.action-text {
+  text-align: right;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.audit-table td.action-text .action-main,
+.audit-table td.action-text .action-module {
+  display: block;
+  text-align: right;
+  overflow-wrap: anywhere;
+}

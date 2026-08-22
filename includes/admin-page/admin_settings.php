@@ -82,6 +82,15 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
             <?php endif; ?>
         </div>
+        <label class="settings-tab-select-label" for="settingsTabSelect">Settings section</label>
+        <select class="settings-tab-select" id="settingsTabSelect" aria-label="Choose settings section">
+            <option value="panel-profile">Profile &amp; Security</option>
+            <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+            <option value="panel-venues">Manage Venues</option>
+            <option value="panel-support">Support &amp; Information</option>
+            <option value="panel-prefs">System Preferences</option>
+            <?php endif; ?>
+        </select>
 
         <!-- RIGHT COLUMN: Content Panels -->
         <div class="settings-content">

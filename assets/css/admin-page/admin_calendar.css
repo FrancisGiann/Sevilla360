@@ -148,10 +148,28 @@
 }
 
 /* Mobile Adjustments */
-@media (max-width: 768px) {
-    .calendar-page-container { padding: 15px; }
-    .fc .fc-toolbar { flex-direction: column; gap: 15px; }
-    .legend-box { flex-wrap: wrap; justify-content: center; }
+@media (max-width: 1024px) {
+    .calendar-page-container { padding: 15px 12px 32px; }
+    .calendar-header-card { padding: 16px; gap: 12px; margin-bottom: 16px; }
+    .cal-master-title { font-size: 1.45rem; }
+    .cal-master-subtitle { font-size: .86rem; line-height: 1.45; }
+    .legend-box { width: 100%; box-sizing: border-box; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 10px 12px; }
+    .legend-item { gap: 6px; font-size: .76rem; min-width: 0; }
+    .color-box { width: 11px; height: 11px; flex: 0 0 11px; }
+    .calendar-wrapper-card { padding: 16px 12px; }
+    .fc .fc-toolbar { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title title" "nav views"; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .fc .fc-toolbar-chunk:nth-child(1) { grid-area: nav; justify-content: flex-start; display: flex; }
+    .fc .fc-toolbar-chunk:nth-child(2) { grid-area: title; justify-content: center; display: flex; }
+    .fc .fc-toolbar-chunk:nth-child(3) { grid-area: views; justify-content: flex-end; display: flex; }
+    .fc .fc-toolbar-title { font-size: 1.3rem !important; }
+    .fc .fc-button-primary { padding: 6px 10px !important; font-size: .78rem !important; }
+}
+
+@media (max-width: 420px) {
+    .legend-box { gap: 7px 8px; }
+    .legend-item { font-size: .7rem; }
+    .fc .fc-toolbar-title { font-size: 1.18rem !important; }
+    .fc .fc-button-primary { padding: 6px 8px !important; }
 }
 
 /* ==========================================================================
@@ -187,4 +205,9 @@
 
 .bg-maint-color {
   background: #64748b;
+}
+
+@media (max-width: 1024px) {
+  .cal-master-title { font-size: 1.45rem; }
+  .cal-master-subtitle { font-size: .86rem; line-height: 1.45; }
 }

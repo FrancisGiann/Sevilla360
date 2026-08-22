@@ -56,10 +56,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
         <!-- Left Sidebar -->
         <aside class="sidebar" id="admin-sidebar">
             <div class="sidebar-header">
-                <a href="index.php" class="navbar-brand">SEVILLA360</a>
-                <span class="admin-badge">
-                    <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') ? 'ADMIN' : 'STAFF'; ?>
-                </span>
+                <div class="sidebar-brand-row">
+                    <a href="index.php" class="navbar-brand">SEVILLA360</a>
+                    <span class="admin-badge">
+                        <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') ? 'ADMIN' : 'STAFF'; ?>
+                    </span>
+                </div>
+                <button type="button" class="sidebar-collapse-toggle" id="sidebar-collapse-toggle"
+                    aria-label="Minimize sidebar" aria-pressed="false" title="Minimize sidebar">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
             </div>
 
             <nav class="sidebar-nav">
@@ -156,7 +162,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     <div class="notification-center" id="notifCenter" style="position: relative; margin-right: 20px;">
 
                         <!-- The Bell Button -->
-                        <div class="notification-bell" id="notifBell"
+                        <button type="button" class="notification-bell" id="notifBell"
+                            aria-label="Open notifications" aria-expanded="false"
                             style="cursor: pointer; position: relative; padding: 5px;">
                             <i class="fa-regular fa-bell"
                                 style="font-size: 1.4rem; color: var(--color-dark); transition: 0.2s;"
@@ -164,7 +171,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                                 onmouseout="this.style.color='var(--color-dark)'"></i>
                             <span id="global-notif-badge"
                                 style="display:none; position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; border-radius: 50%; padding: 2px 5px; font-size: 0.65rem; font-weight: bold; border: 2px solid white;">0</span>
-                        </div>
+                        </button>
 
                         <!-- The Dropdown Window (Hidden by Default) -->
                         <div class="notif-dropdown" id="notifDropdown">
@@ -183,7 +190,9 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 
                     </div>
 
-                    <div class="admin-profile"><i class="fa-solid fa-circle-user profile-icon"></i></div>
+                    <div class="admin-profile" role="img" aria-label="Admin profile">
+                        <i class="fa-solid fa-circle-user profile-icon" aria-hidden="true"></i>
+                    </div>
                 </div>
             </header>
 

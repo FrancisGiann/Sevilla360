@@ -168,18 +168,18 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                             <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
                             <?php while($m = $upcoming_maint->fetch_assoc()): ?>
                             <tr>
-                                <td class="font-weight-600"><?php echo htmlspecialchars($m['venue_name']); ?></td>
-                                <td><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
-                                <td><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
-                                <td><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
-                                <td>
+                                <td data-label="Venue" class="font-weight-600"><?php echo htmlspecialchars($m['venue_name']); ?></td>
+                                <td data-label="Start Date"><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
+                                <td data-label="End Date"><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
+                                <td data-label="Type"><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
+                                <td data-label="Status">
                                     <?php if($m['is_blocking']): ?>
                                     <span class="status-badge status-refunded status-badge-blocked">Blocked</span>
                                     <?php else: ?>
                                     <span class="status-badge status-paid status-badge-note">Note Only</span>
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td data-label="Actions">
                                     <div class="maint-action-cell">
                                         <button class="btn-action btn-done btn-complete-maint"
                                             data-id="<?php echo $m['id']; ?>"
@@ -216,19 +216,19 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                             <?php if ($past_maint && $past_maint->num_rows > 0): ?>
                             <?php while($pm = $past_maint->fetch_assoc()): ?>
                             <tr>
-                                <td class="font-weight-600"><?php echo htmlspecialchars($pm['venue_name']); ?></td>
-                                <td>
+                                <td data-label="Venue" class="font-weight-600"><?php echo htmlspecialchars($pm['venue_name']); ?></td>
+                                <td data-label="Scheduled Dates">
                                     <?php 
                                         $s = date('M j, Y', strtotime($pm['start_date']));
                                         $e = date('M j, Y', strtotime($pm['end_date']));
                                         echo ($s === $e) ? $s : "$s — $e";
                                     ?>
                                 </td>
-                                <td><?php echo htmlspecialchars($pm['maintenance_type']); ?></td>
-                                <td>
+                                <td data-label="Type"><?php echo htmlspecialchars($pm['maintenance_type']); ?></td>
+                                <td data-label="Status">
                                     <span class="status-badge status-confirmed">Completed</span>
                                 </td>
-                                <td>
+                                <td data-label="Completed On">
                                     <?php echo !empty($pm['completed_at']) ? date('M j, Y h:i A', strtotime($pm['completed_at'])) : date('M j, Y', strtotime($pm['end_date'])); ?>
                                 </td>
                             </tr>

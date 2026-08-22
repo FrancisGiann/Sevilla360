@@ -90,6 +90,10 @@
   box-shadow: var(--shadow-soft);
 }
 
+.admin-bookings-container .table-card {
+  padding: 40px;
+}
+
 .card-title {
   font-family: var(--font-heading);
   font-size: 2rem; 
@@ -167,7 +171,7 @@
   width: 100%;
   border-collapse: collapse;
   text-align: left; 
-  min-width: 900px; 
+  min-width: 760px;
 }
 
 .bookings-table th {
@@ -277,6 +281,13 @@
 }
 
 .btn-icon:hover { color: var(--color-dark); }
+
+@media (min-width: 1101px) {
+  .action-cells {
+    min-width: 150px;
+    max-width: 210px;
+  }
+}
 
 /* --- Modals System --- */
 .modal-overlay {
@@ -690,6 +701,218 @@
 
 .modal-actions-top-25 {
   margin-top: 25px;
+}
+
+/* Responsive status control and booking cards */
+.booking-filter-select,
+.booking-filter-select-label {
+  display: none;
+}
+
+.booking-history-heading {
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .booking-tabs#bookingFilters {
+    gap: 1.5rem;
+  }
+
+  .bookings-table {
+    min-width: 0;
+  }
+}
+
+/* Keep tall booking dialogs below the browser chrome and make their own body
+   scrollable, so the close control is never clipped at the top. */
+@media (max-width: 768px) {
+  .modal-overlay {
+    align-items: flex-start;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 22px 0 max(32px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal-overlay .admin-modal {
+    max-height: calc(100dvh - 76px);
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 1024px) {
+  .admin-bookings-container {
+    width: 100%;
+    margin: 24px auto;
+  }
+
+  .bookings-page-header {
+    margin-bottom: 24px;
+  }
+
+  .top-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .control-select,
+  .search-bar,
+  .search-bar input {
+    width: 100%;
+  }
+
+  .table-card {
+    padding: 24px 16px;
+  }
+
+  .booking-history-heading {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .booking-history-heading .card-title {
+    margin-bottom: 0;
+  }
+
+  #btn-refresh-bookings {
+    width: 100%;
+    justify-content: center;
+  }
+
+  #bookingFilters {
+    display: none;
+  }
+
+  .booking-filter-select-label {
+    display: block;
+    margin: 0 0 6px;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--color-dark-light);
+  }
+
+  .booking-filter-select {
+    display: block;
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 11px 14px;
+    border: 1px solid rgba(42, 37, 34, .18);
+    border-radius: 5px;
+    background: var(--color-white);
+    color: var(--color-dark);
+    font: inherit;
+  }
+
+  .table-responsive {
+    overflow: visible;
+    border: 0;
+  }
+
+  .bookings-table,
+  .bookings-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .bookings-table thead {
+    display: none;
+  }
+
+  .bookings-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .bookings-table tbody tr {
+    display: block;
+    padding: 12px 14px;
+    border: 1px solid rgba(42, 37, 34, .1);
+    border-radius: 7px;
+    background: var(--color-white);
+    box-shadow: 0 3px 12px rgba(42, 37, 34, .05);
+  }
+
+  .bookings-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 0;
+    border: 0;
+    font-size: .88rem;
+    text-align: right;
+  }
+
+  .bookings-table td::before {
+    flex: 0 0 auto;
+    content: attr(data-label);
+    color: var(--color-dark-light);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    text-align: left;
+  }
+
+  .bookings-table td.action-cells {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid rgba(42, 37, 34, .08);
+  }
+
+  .bookings-table td.action-cells::before {
+    grid-column: 1 / -1;
+  }
+
+  .action-cells .btn-action {
+    width: 100%;
+    min-width: 0;
+    font-size: .72rem;
+    padding: 9px 6px;
+    min-height: 34px;
+    height: auto;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    letter-spacing: .12em;
+    box-sizing: border-box;
+  }
+
+  .action-cells .btn-view { grid-column: 1 / -1; }
+
+  .pagination-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .pagination-controls-right {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Give action labels enough width to remain readable on phone cards. */
+  .bookings-table td.action-cells {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .action-cells .btn-action,
+  .action-cells .btn-view {
+    grid-column: 1 / -1;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    letter-spacing: .16em;
+    padding: 9px 10px;
+  }
 }
 
 .modal-view-details {

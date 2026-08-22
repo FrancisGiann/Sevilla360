@@ -195,3 +195,108 @@
 @keyframes popIn {
     to { transform: scale(1); }
 }
+
+@media (max-width: 1024px) {
+    .backups-container {
+        padding: 20px 16px 80px;
+    }
+
+    .backups-container .um-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .backups-container .um-tabs,
+    .backups-container .um-controls {
+        width: 100%;
+    }
+
+    .backups-container .um-controls {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .backups-container .um-search-wrapper,
+    .backups-container .um-search-wrapper input,
+    .backups-container .um-controls > button {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .backups-container .um-controls > button {
+        justify-content: center;
+    }
+
+    .backups-container .um-card {
+        overflow: visible;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .backups-container .um-table,
+    .backups-container .um-table tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .backups-container .um-table thead {
+        display: none;
+    }
+
+    .backups-container .um-table tbody {
+        display: grid;
+        gap: 12px;
+    }
+
+    .backups-container .um-table tbody tr {
+        display: block;
+        padding: 10px 14px;
+        border: 1px solid rgba(42, 37, 34, .1);
+        border-radius: 8px;
+        background: var(--color-white);
+        box-shadow: var(--shadow-soft);
+    }
+
+    .backups-container .um-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 9px 0;
+        border-bottom: 1px solid rgba(42, 37, 34, .06);
+        overflow-wrap: anywhere;
+        text-align: right;
+    }
+
+    .backups-container .um-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        color: var(--color-dark-light);
+        font-size: .7rem;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        text-align: left;
+    }
+
+    .backups-container .um-table tbody td:last-child {
+        border-bottom: 0;
+    }
+
+    .backups-container .um-table tbody td.action-cells {
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .backups-container .um-table tbody td.action-cells::before {
+        margin-right: auto;
+    }
+
+    .backups-container .btn-icon {
+        padding: 8px 10px;
+        border: 1px solid rgba(42, 37, 34, .12);
+    }
+}

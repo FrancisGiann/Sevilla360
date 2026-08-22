@@ -90,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchInput = document.getElementById("table-search");
     const venueFilter = document.getElementById("table-venue-filter");
     const tabFilters = document.querySelectorAll("#bookingFilters .tab-btn");
+    const bookingFilterSelect = document.getElementById("bookingFilterSelect");
     const tbody = document.getElementById("admin-bookings-tbody");
     
     const btnPrev = document.getElementById("btn-prev-page");
@@ -108,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             Loading Bookings...
                            </td></tr>`;
         
-        const activeTab = document.querySelector("#bookingFilters .tab-btn.active").getAttribute("data-filter");
+        const activeTab = document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all";
         const searchTerm = searchInput.value.trim();
         const venue = venueFilter.value;
   
@@ -223,13 +224,13 @@ document.addEventListener("DOMContentLoaded", () => {
   
             html += `
             <tr class="${b.booking_status === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
-                <td style="font-weight: 600; color: var(--color-gold);">${b.reference_no}</td>
-                <td>${b.venue_name}</td>
-                <td>${customerName}</td>
-                <td>${dateStr}</td>
-                <td class="${fadeClass}">${displayAmount}</td>
-                <td><span class="status-badge ${badgeClass}">${statusText}</span></td>
-                <td class="action-cells">${actionBtns}</td>
+                <td data-label="Booking ID" style="font-weight: 600; color: var(--color-gold);">${b.reference_no}</td>
+                <td data-label="Venue">${b.venue_name}</td>
+                <td data-label="Customer">${customerName}</td>
+                <td data-label="Date">${dateStr}</td>
+                <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
+                <td data-label="Status"><span class="status-badge ${badgeClass}">${statusText}</span></td>
+                <td data-label="Actions" class="action-cells">${actionBtns}</td>
             </tr>`;
         });
   
@@ -268,9 +269,17 @@ document.addEventListener("DOMContentLoaded", () => {
         tab.addEventListener("click", () => {
             tabFilters.forEach(t => t.classList.remove("active"));
             tab.classList.add("active");
+            if (bookingFilterSelect) bookingFilterSelect.value = tab.dataset.filter;
             currentPage = 1;
             loadBookings();
         });
+    });
+
+    bookingFilterSelect?.addEventListener("change", () => {
+        const selected = bookingFilterSelect.value;
+        tabFilters.forEach(tab => tab.classList.toggle("active", tab.dataset.filter === selected));
+        currentPage = 1;
+        loadBookings();
     });
 
     const btnRefresh = document.getElementById('btn-refresh-bookings');
@@ -298,6 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (targetTab) {
             tabFilters.forEach(t => t.classList.remove("active"));
             targetTab.classList.add("active");
+            if (bookingFilterSelect) bookingFilterSelect.value = urlFilter;
         }
     }
 

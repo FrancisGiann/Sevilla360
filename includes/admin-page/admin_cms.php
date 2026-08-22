@@ -354,11 +354,11 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
 <!-- 2. MANAGE GALLERY MODAL -->
 <div class="cms-modal-overlay" id="manageGalleryModal">
-    <div class="cms-modal-content" style="max-width: 800px;">
+    <div class="cms-modal-content manage-gallery-content" style="max-width: 800px;">
         <h3 class="cms-modal-title" id="mg-title">Manage Gallery</h3>
 
         <!-- NEW: BULK DELETE CONTROLS -->
-        <div id="mg-bulk-controls"
+        <div id="mg-bulk-controls" class="manage-gallery-bulk"
             style="display: none; justify-content: space-between; align-items: center; margin-bottom: 15px; background: #f9f9f9; padding: 10px 15px; border-radius: 6px; border: 1px solid #e0e0e0;">
             <label
                 style="cursor:pointer; font-weight:600; display:flex; align-items:center; gap:8px; color: var(--color-dark);">
@@ -370,12 +370,12 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
             </button>
         </div>
 
-        <div id="mg-grid"
+        <div id="mg-grid" class="manage-gallery-grid"
             style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 50vh; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
             <!-- JavaScript will inject photos here -->
         </div>
 
-        <div class="cms-modal-actions" style="justify-content: space-between;">
+        <div class="cms-modal-actions manage-gallery-actions" style="justify-content: space-between;">
             <button type="button" class="btn cms-btn-outline" id="btnCloseGalleryModal">Close</button>
             <button type="button" class="btn btn-primary" id="btn-mg-add">Add Photos</button>
         </div>
@@ -420,10 +420,10 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
 <!-- 6. HOTSPOT PLACEMENT MODAL -->
 <div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
-    <div class="cms-modal-content" style="max-width: 1100px; width: 95vw; padding: 0; overflow: hidden; border-radius: 12px;">
+    <div class="cms-modal-content hotspot-modal-content" style="max-width: 1100px; width: 95vw; padding: 0; overflow: hidden; border-radius: 12px;">
 
         <!-- Modal Header -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding: 1.25rem 1.75rem; border-bottom: 1px solid rgba(42,37,34,0.1); background: var(--color-white);">
+        <div class="hotspot-modal-header" style="display:flex; justify-content:space-between; align-items:center; padding: 1.25rem 1.75rem; border-bottom: 1px solid rgba(42,37,34,0.1); background: var(--color-white);">
             <div>
                 <h3 class="cms-modal-title" style="margin:0; font-size: 1.2rem;" id="hotspot-modal-title">Place Hotspots</h3>
                 <p style="margin: 3px 0 0; font-size: 0.82rem; color: var(--color-dark-light);">Click anywhere on the 360° preview to drop a pin. Drag to look around first.</p>
@@ -432,10 +432,10 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
         </div>
 
         <!-- Modal Body -->
-        <div style="display: flex; height: 580px; padding: 1.25rem; gap: 1.25rem; background: #f5f4f1;">
+        <div class="hotspot-modal-body" style="display: flex; height: 580px; padding: 1.25rem; gap: 1.25rem; background: #f5f4f1;">
 
             <!-- LEFT: Panorama Viewer -->
-            <div style="flex: 2; position: relative; background: #111; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+            <div class="hotspot-pano-panel" style="flex: 2; position: relative; background: #111; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
                 <div id="hotspot-pano-container" style="width: 100%; height: 100%; cursor: crosshair;"></div>
                 <div id="hotspot-loading" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,0.7); gap: 10px; border-radius: 10px;">
                     <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; color: var(--color-gold);"></i>
@@ -444,7 +444,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
             </div>
 
             <!-- RIGHT: Single scrollable sidebar -->
-            <div style="flex: 1; min-width: 300px; max-width: 340px; display: flex; flex-direction: column; overflow-y: auto; background: white; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+            <div class="hotspot-sidebar" style="flex: 1; min-width: 300px; max-width: 340px; display: flex; flex-direction: column; overflow-y: auto; background: white; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
 
                 <!-- View Switcher (hidden by default) -->
                 <div id="hs-admin-view-switcher-wrapper" style="display: none; padding: 14px 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">

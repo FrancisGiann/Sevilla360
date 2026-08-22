@@ -425,7 +425,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
   .settings-panel { padding: 40px 30px; }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .admin-settings-container { padding: 15px 15px 80px; margin-top: 10px; }
   .settings-panel { padding: 30px 20px; }
   .panel-heading { font-size: 1.6rem; }
@@ -441,4 +441,46 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
   .support-faq-row { grid-template-columns: 1fr; }
   .support-faq-row .btn { width: 100%; }
   .pricing-fields, .settings-form-grid, .profile-form-grid { grid-template-columns: 1fr; }
+}
+
+.settings-tab-select,
+.settings-tab-select-label {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .settings-sidebar {
+    display: none;
+  }
+
+  .settings-tab-select-label {
+    display: block;
+    margin: 0 0 6px;
+    color: var(--color-dark-light);
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  .settings-tab-select {
+    display: block;
+    width: 100%;
+    margin-bottom: 20px;
+    padding: 11px 14px;
+    border: 1px solid rgba(42, 37, 34, .18);
+    border-radius: 5px;
+    background: var(--color-white);
+    color: var(--color-dark);
+    font: inherit;
+  }
+
+  .settings-panel {
+    padding: 24px 16px;
+  }
+
+  .panel-heading {
+    font-size: 1.45rem;
+    margin-bottom: 24px;
+  }
 }

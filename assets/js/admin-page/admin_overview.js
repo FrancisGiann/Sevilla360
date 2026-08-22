@@ -435,11 +435,11 @@ document.addEventListener("DOMContentLoaded", () => {
             tr.className = 'clickable-row';
             tr.title = 'Click to view booking details';
             tr.innerHTML = `
-                <td>#${booking.reference_no}</td>
-                <td>${escapeHTML(booking.venue_name)}</td>
-                <td>${dateStr}</td>
-                <td>${amountText}</td>
-                <td><span class="badge ${badgeClass}">${statusText}</span></td>
+                <td data-label="Booking ID">#${booking.reference_no}</td>
+                <td data-label="Venue">${escapeHTML(booking.venue_name)}</td>
+                <td data-label="Date">${dateStr}</td>
+                <td data-label="Amount">${amountText}</td>
+                <td data-label="Status"><span class="badge ${badgeClass}">${statusText}</span></td>
             `;
             tr.addEventListener('click', () => openOverviewBookingModal(booking.id));
             tbody.appendChild(tr);

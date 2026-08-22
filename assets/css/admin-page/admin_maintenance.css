@@ -539,6 +539,91 @@ textarea:focus {
   padding: 20px;
 }
 
+/* Keep the maintenance workspace inside the viewport on tablet and mobile. */
+@media (max-width: 1024px) {
+  .admin-maintenance-container,
+  .maintenance-grid,
+  .maintenance-grid > *,
+  .maintenance-main,
+  .maint-form-card,
+  .maint-calendar-wrapper,
+  .maint-table-card {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  #wrapper-hotel-cascading {
+    flex-direction: column !important;
+  }
+
+  #wrapper-hotel-cascading .form-group {
+    width: 100%;
+  }
+
+  .maint-calendar-wrapper .calendar-ui {
+    padding: 16px;
+  }
+
+  .maint-calendar-wrapper .cal-day-cell {
+    margin: 0 1px;
+    font-size: .82rem;
+  }
+
+  .maint-table-card .table-responsive {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .maintenance-venue-section {
+    margin-bottom: 1rem;
+  }
+
+  .maintenance-venue-section .booking-tabs {
+    gap: 1.1rem;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .maint-form-card {
+    padding: 20px 15px;
+  }
+
+  .maint-table-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .maint-action-cell {
+    flex-wrap: wrap;
+  }
+
+  .maint-action-cell .btn-action {
+    flex: 1 1 100%;
+  }
+}
+
+/* Records become readable cards on touch widths instead of a clipped table. */
+@media (max-width: 1024px) {
+  .maint-table-tabs { flex-wrap: wrap; overflow: visible; gap: 8px; }
+  .maint-table-tabs .tab-btn { flex: 1 1 180px; }
+  .maint-table-card .table-responsive { overflow: visible; border: 0; }
+  .maint-table-card .bookings-table,
+  .maint-table-card .bookings-table tbody { display: block; width: 100%; min-width: 0; }
+  .maint-table-card .bookings-table thead { display: none; }
+  .maint-table-card .bookings-table tbody { display: grid; gap: 12px; }
+  .maint-table-card .bookings-table tbody tr { display: block; padding: 10px 14px; background: var(--color-white); border: 1px solid rgba(42,37,34,.1); border-radius: 8px; box-shadow: var(--shadow-soft); }
+  .maint-table-card .bookings-table tbody td { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; width: 100%; box-sizing: border-box; padding: 9px 0; border-bottom: 1px solid rgba(42,37,34,.06); text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .maint-table-card .bookings-table tbody td::before { content: attr(data-label); flex: 0 0 auto; color: var(--color-dark-light); font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-align: left; }
+  .maint-table-card .bookings-table tbody td:last-child { border-bottom: 0; }
+  .maint-table-card .bookings-table tbody td.maint-empty-row { display: block; text-align: center; border-bottom: 0; }
+  .maint-table-card .bookings-table tbody td.maint-empty-row::before { display: none; }
+  .maint-table-card .maint-action-cell { width: 100%; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+  .maint-table-card .maint-action-cell .btn-action { flex: 1 1 120px; }
+}
+
 .sum-block-on {
   color: #e06666;
   font-weight: 600;

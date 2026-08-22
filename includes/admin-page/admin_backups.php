@@ -68,18 +68,18 @@ function formatBytes($bytes, $precision = 2) {
                     <?php foreach ($backup_list as $b): ?>
                     <?php $isProtected = str_starts_with($b['filename'], 'sevilla360_imported_') || str_starts_with($b['filename'], 'sevilla360_pre_restore_'); ?>
                     <tr>
-                        <td><i class="fa-solid fa-file-lines" style="color: #666; margin-right: 8px;"></i> <?php echo htmlspecialchars($b['filename']); ?></td>
-                        <td><?php echo date('M d, Y h:i A', strtotime($b['created_at'])); ?></td>
-                        <td><?php echo formatBytes($b['file_size']); ?></td>
-                        <td><?php echo $isProtected ? 'Protected' : htmlspecialchars($b['full_name'] ?? 'System'); ?></td>
-                        <td class="action-cells">
-                            <button class="btn-icon btn-download" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Download">
+                        <td data-label="Filename"><i class="fa-solid fa-file-lines" style="color: #666; margin-right: 8px;"></i> <?php echo htmlspecialchars($b['filename']); ?></td>
+                        <td data-label="Date Created"><?php echo date('M d, Y h:i A', strtotime($b['created_at'])); ?></td>
+                        <td data-label="Size"><?php echo formatBytes($b['file_size']); ?></td>
+                        <td data-label="Created By"><?php echo $isProtected ? 'Protected' : htmlspecialchars($b['full_name'] ?? 'System'); ?></td>
+                        <td data-label="Actions" class="action-cells">
+                            <button class="btn-icon btn-download" aria-label="Download backup" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Download">
                                 <i class="fa-solid fa-download"></i>
                             </button>
-                            <button class="btn-icon btn-restore" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Restore">
+                            <button class="btn-icon btn-restore" aria-label="Restore backup" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Restore">
                                 <i class="fa-solid fa-clock-rotate-left"></i>
                             </button>
-                            <button class="btn-icon btn-delete" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Delete">
+                            <button class="btn-icon btn-delete" aria-label="Delete backup" data-id="<?php echo $b['id']; ?>" data-filename="<?php echo htmlspecialchars($b['filename']); ?>" title="Delete">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
                         </td>

@@ -19,7 +19,7 @@
 
     <!-- Table Card & History -->
     <div class="table-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div class="booking-history-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h3 class="card-title" style="margin-bottom: 0;">Booking History</h3>
             <button id="btn-refresh-bookings" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="fa-solid fa-arrows-rotate"></i> Refresh Bookings
@@ -35,6 +35,15 @@
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
         </div>
+        <label class="booking-filter-select-label" for="bookingFilterSelect">Booking status</label>
+        <select class="booking-filter-select" id="bookingFilterSelect" aria-label="Filter bookings by status">
+            <option value="all">All</option>
+            <option value="action_req">Action Required</option>
+            <option value="partial">Balances Due</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="cancelled">Cancelled</option>
+        </select>
 
         <div class="table-responsive">
             <table class="bookings-table">

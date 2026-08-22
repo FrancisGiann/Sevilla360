@@ -57,13 +57,13 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
             <tbody>
                 <?php foreach ($staff_list as $s): ?>
                 <tr>
-                    <td><?php echo htmlspecialchars($s['full_name']); ?></td>
-                    <td><?php echo htmlspecialchars($s['email']); ?></td>
-                    <td style="text-transform: capitalize;"><?php echo htmlspecialchars($s['role']); ?></td>
-                    <td><span
+                    <td data-label="Name"><?php echo htmlspecialchars($s['full_name']); ?></td>
+                    <td data-label="Email Address"><?php echo htmlspecialchars($s['email']); ?></td>
+                    <td data-label="Role" style="text-transform: capitalize;"><?php echo htmlspecialchars($s['role']); ?></td>
+                    <td data-label="Status"><span
                             class="um-pill <?php echo $s['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>"><?php echo ucfirst($s['status']); ?></span>
                     </td>
-                    <td class="um-actions">
+                    <td data-label="Actions" class="um-actions">
                         <button class="action-edit btn-staff-modal" data-id="<?php echo $s['user_id']; ?>"
                             data-name="<?php echo htmlspecialchars($s['full_name']); ?>"
                             data-email="<?php echo htmlspecialchars($s['email']); ?>"
@@ -89,6 +89,12 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
                 <button class="filter-pill cust-filter" data-filter="Registered">Registered Accounts</button>
                 <button class="filter-pill cust-filter" data-filter="Walk-in">Walk-in Guests</button>
             </div>
+            <label class="customer-filter-select-label" for="customerFilterSelect">Customer type</label>
+            <select class="customer-filter-select" id="customerFilterSelect">
+                <option value="All">All Customers</option>
+                <option value="Registered">Registered Accounts</option>
+                <option value="Walk-in">Walk-in Guests</option>
+            </select>
 
             <table style="width: 100%; text-align: left; border-collapse: collapse;">
                 <thead>
@@ -107,13 +113,13 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
                     ?>
                     <!-- Added data-type for JS filtering -->
                     <tr class="cust-row" data-type="<?php echo $rowType; ?>">
-                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                        <td data-label="Name" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
                             <?php echo htmlspecialchars($c['first_name'] . ' ' . $c['last_name']); ?></td>
-                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                        <td data-label="Email Address" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
                             <?php echo htmlspecialchars($c['email']); ?></td>
-                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                        <td data-label="Total Bookings" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
                             <?php echo $c['total_bookings']; ?></td>
-                        <td style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                        <td data-label="Status" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
                             <?php if ($c['user_id'] !== null): ?>
                             <span
                                 class="um-pill <?php echo $c['status'] === 'active' ? 'pill-active' : 'pill-inactive'; ?>">
@@ -123,7 +129,7 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
                             <span class="um-pill" style="background:#e5e7eb; color:#374151;">Walk-in</span>
                             <?php endif; ?>
                         </td>
-                        <td class="um-actions" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
+                        <td data-label="Actions" class="um-actions" style="padding: 15px 10px; border-bottom: 1px solid #eee;">
                             <button class="action-view btn-history-modal"
                                 data-id="<?php echo $c['id']; ?>">History</button>
 

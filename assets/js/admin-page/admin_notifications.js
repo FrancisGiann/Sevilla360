@@ -14,13 +14,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // 1. Toggle Dropdown on Bell Click
     bell.addEventListener('click', (e) => {
         e.stopPropagation();
-        dropdown.classList.toggle('show');
+        const isOpen = dropdown.classList.toggle('show');
+        bell.setAttribute('aria-expanded', String(isOpen));
     });
 
     // Close dropdown if clicking anywhere else on the screen
     window.addEventListener('click', (e) => {
         if (!document.getElementById('notifCenter').contains(e.target)) {
             dropdown.classList.remove('show');
+            bell.setAttribute('aria-expanded', 'false');
         }
     });
 

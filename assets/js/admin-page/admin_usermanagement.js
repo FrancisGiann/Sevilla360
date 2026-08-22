@@ -30,27 +30,20 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- Customer Type Filter Logic ---
     const custFilters = document.querySelectorAll(".cust-filter");
     const custRows = document.querySelectorAll(".cust-row");
+    const customerFilterSelect = document.getElementById("customerFilterSelect");
 
-    custFilters.forEach(btn => {
-        btn.addEventListener("click", () => {
-            // 1. Reset all buttons
-            custFilters.forEach(f => f.classList.remove("active"));
-
-            // 2. Highlight clicked button
-            btn.classList.add("active");
-
-            // 3. Filter the rows
-            const filterValue = btn.getAttribute("data-filter");
-            
-            custRows.forEach(row => {
-                if (filterValue === "All" || row.getAttribute("data-type") === filterValue) {
-                    row.style.display = ""; // Show
-                } else {
-                    row.style.display = "none"; // Hide
-                }
-            });
+    function applyCustomerFilter(filterValue) {
+        custFilters.forEach(filter => filter.classList.toggle("active", filter.getAttribute("data-filter") === filterValue));
+        if (customerFilterSelect) customerFilterSelect.value = filterValue;
+        custRows.forEach(row => {
+            row.style.display = filterValue === "All" || row.getAttribute("data-type") === filterValue ? "" : "none";
         });
-    });
+    }
+
+    custFilters.forEach(btn => btn.addEventListener("click", () => applyCustomerFilter(btn.getAttribute("data-filter"))));
+    if (customerFilterSelect) {
+        customerFilterSelect.addEventListener("change", () => applyCustomerFilter(customerFilterSelect.value));
+    }
   
     // --- 2. Modal Controls ---
     const staffModal = document.getElementById("staffModal");

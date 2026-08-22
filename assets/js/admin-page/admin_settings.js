@@ -9,17 +9,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   const tabLinks = document.querySelectorAll(".tab-link");
   const settingsPanels = document.querySelectorAll(".settings-panel");
+  const settingsTabSelect = document.getElementById("settingsTabSelect");
+
+  function activateSettingsPanel(targetId) {
+    if (!targetId) return;
+    tabLinks.forEach((tab) => tab.classList.toggle("active", tab.getAttribute("data-target") === targetId));
+    settingsPanels.forEach((panel) => panel.classList.toggle("active", panel.id === targetId));
+    if (settingsTabSelect) settingsTabSelect.value = targetId;
+  }
 
   tabLinks.forEach((link) => {
     link.addEventListener("click", () => {
-      tabLinks.forEach((t) => t.classList.remove("active"));
-      settingsPanels.forEach((p) => p.classList.remove("active"));
-
-      link.classList.add("active");
-      const targetPanel = document.getElementById(link.getAttribute("data-target"));
-      if (targetPanel) targetPanel.classList.add("active");
+      activateSettingsPanel(link.getAttribute("data-target"));
     });
   });
+
+  settingsTabSelect?.addEventListener("change", () => activateSettingsPanel(settingsTabSelect.value));
 
   // =========================================================
   // 2. TOAST NOTIFICATION UTILITY

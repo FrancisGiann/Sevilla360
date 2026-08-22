@@ -4,26 +4,6 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>';
     exit;
 }
-
-require_once 'config/db_connect.php';
-
-// Fetch the last 150 Audit Logs
-// We use COALESCE to grab the Staff Name, or fallback to the User Email, or fallback to 'System'
-$query = "
-    SELECT 
-        a.created_at, 
-        a.action, 
-        a.module, 
-        a.ip_address, 
-        COALESCE(s.full_name, u.email, 'System') as staff_name
-    FROM audit_logs a
-    LEFT JOIN users u ON a.user_id = u.id
-    LEFT JOIN staff s ON u.id = s.user_id
-    ORDER BY a.created_at DESC
-    LIMIT 150
-";
-$result = $conn->query($query);
-$logs = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
 ?>
 
 <!-- Audit Log Container -->
@@ -63,44 +43,26 @@ $logs = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
                     <th>IP Address</th>
                 </tr>
             </thead>
-            <tbody>
-                <?php if (empty($logs)): ?>
+            <tbody id="audit-tbody">
                 <tr>
-                    <td colspan="4" style="text-align: center; padding: 20px; color: #888;">No audit logs recorded yet.
+                    <td colspan="4" style="text-align: center; padding: 40px; color: #888;">
+                        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; margin-bottom: 10px; color: var(--color-gold);"></i><br>
+                        Loading Audit Logs...
                     </td>
                 </tr>
-                <?php else: ?>
-                <?php foreach ($logs as $log): 
-                        // 1. Format the Date
-                        $dateObj = new DateTime($log['created_at']);
-                        $displayDate = $dateObj->format('M d, Y - h:i A');
-                        $filterDate = $dateObj->format('Y-m-d'); // Hidden attribute for the JS Date Picker
-
-                        // 2. Dynamic Color Coding
-                        $actionLower = strtolower($log['action']);
-                        $text_class = 'action-neutral'; // Default gray/blue
-
-                        if (strpos($actionLower, 'cancel') !== false || strpos($actionLower, 'delete') !== false || strpos($actionLower, 'refund') !== false || strpos($actionLower, 'reject') !== false) {
-                            $text_class = 'action-negative'; // Red
-                        } elseif (strpos($actionLower, 'confirm') !== false || strpos($actionLower, 'approve') !== false || strpos($actionLower, 'add') !== false || strpos($actionLower, 'success') !== false) {
-                            $text_class = 'action-positive'; // Green
-                        }
-                    ?>
-                <!-- data-date is used by the Javascript Date filter! -->
-                <tr data-date="<?php echo $filterDate; ?>">
-                    <td><?php echo $displayDate; ?></td>
-                    <td style="font-weight: 500;"><?php echo htmlspecialchars($log['staff_name']); ?></td>
-                    <td class="action-text <?php echo $text_class; ?>">
-                        <?php echo htmlspecialchars($log['action']); ?>
-                        <span style="display:block; font-size: 0.75rem; color: #888; font-weight: normal;">Module:
-                            <?php echo htmlspecialchars($log['module']); ?></span>
-                    </td>
-                    <td style="font-family: monospace; color: #666;"><?php echo htmlspecialchars($log['ip_address']); ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-                <?php endif; ?>
             </tbody>
         </table>
+
+        <!-- Server-Side Pagination Controls -->
+        <div class="pagination-controls pagination-wrapper" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+            <div class="pagination-info" style="font-size: 0.9rem; color: #666;">
+                Showing <span id="pag-total-rows" class="pagination-bold-dark" style="font-weight:600; color:#333;">0</span> logs
+            </div>
+            <div class="pagination-controls-right" style="display: flex; align-items: center; gap: 15px;">
+                <span class="pagination-page-label" style="font-size: 0.9rem; color: #666;">Page <span id="pag-current-page" class="text-gold-bold" style="font-weight:600; color:var(--color-gold);">1</span> of <span id="pag-total-pages">1</span></span>
+                <button id="btn-prev-page" class="btn-outline btn-pag" disabled style="padding: 6px 12px; border: 1px solid #ddd; background: #fff; cursor: pointer; border-radius: 4px;">&laquo; Prev</button>
+                <button id="btn-next-page" class="btn-outline btn-pag" disabled style="padding: 6px 12px; border: 1px solid #ddd; background: #fff; cursor: pointer; border-radius: 4px;">Next &raquo;</button>
+            </div>
+        </div>
     </div>
 </div>
