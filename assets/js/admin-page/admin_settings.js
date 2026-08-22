@@ -420,13 +420,13 @@ document.addEventListener("DOMContentLoaded", () => {
               const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
               const isRoom = row.classList.contains('room-row');
               const groupId = row.getAttribute('data-group-id');
-              const group = groupId ? document.querySelector(`.venue-group-row[aria-controls="hotel-group-${groupId}"]`) : null;
+              const group = groupId ? document.querySelector(`.venue-group-toggle[aria-controls="hotel-group-${groupId}"]`) : null;
               const groupText = group ? group.textContent.toLowerCase() : '';
               const matchesGroupSearch = groupText.includes(searchTerm);
-              const expanded = group?.querySelector('.venue-group-toggle')?.getAttribute('aria-expanded') === 'true';
+              const expanded = group?.getAttribute('aria-expanded') === 'true';
 
               if (isRoom) {
-                  row.style.display = matchesCategory && expanded && (matchesSearch || matchesGroupSearch) ? '' : 'none';
+                  row.classList.toggle('room-row-collapsed', !(matchesCategory && expanded && (matchesSearch || matchesGroupSearch)));
               } else {
                   row.style.display = matchesCategory && matchesSearch ? '' : 'none';
               }
@@ -453,6 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const countLabel = toggle.querySelector('.venue-group-count');
               if (countLabel) countLabel.textContent = expanded ? 'Rooms are collapsed' : `${children.length} room${children.length === 1 ? '' : 's'}`;
               applyFilters();
+              children.forEach(row => row.classList.toggle('room-row-collapsed', expanded));
           });
       });
 

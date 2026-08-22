@@ -201,7 +201,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                     if ($v['status'] === 'Maintenance') $badge_class = 'v-badge-maintenance';
                                     $group_id_attr = $v['category'] === 'Hotel Room' ? md5($group_key) : '';
                                 ?>
-                                <tr class="venue-row<?php echo $v['category'] === 'Hotel Room' ? ' room-row' : ''; ?>" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-group="<?php echo $group_attr; ?>" data-group-id="<?php echo $group_id_attr; ?>"<?php echo $v['category'] === 'Hotel Room' ? ' style="display:none"' : ''; ?>>
+                                <tr class="venue-row<?php echo $v['category'] === 'Hotel Room' ? ' room-row room-row-collapsed' : ''; ?>" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-group="<?php echo $group_attr; ?>" data-group-id="<?php echo $group_id_attr; ?>">
                                     <td style="font-weight: 500;">
                                         <?php echo $display_name; ?>
                                         <span class="venue-id-text">ID: #<?php echo $v['id']; ?></span>

@@ -38,7 +38,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'maintenance'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=<?= time() ?>">
     <?php elseif ($page === 'settings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_settings.css') ?>">
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
@@ -233,7 +233,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <?php elseif ($page === 'maintenance'): ?>
     <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'settings'): ?>
-    <script src="assets/js/admin-page/admin_settings.js?v=<?= time() ?>"></script>
+    <script src="assets/js/admin-page/admin_settings.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_settings.js') ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="assets/js/admin-page/admin_auditlog.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>

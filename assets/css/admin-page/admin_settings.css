@@ -323,6 +323,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .venue-group-arrow { width: 1rem; color: var(--color-gold); font-size: 1.15rem; }
 .venue-group-count { margin-left: auto; color: var(--color-dark-light); font-size: .82rem; font-weight: 400; }
 .room-row td:first-child { padding-left: 48px; }
+.room-row-collapsed { display: none; }
 
 /* Status Badges */
 .v-badge {
