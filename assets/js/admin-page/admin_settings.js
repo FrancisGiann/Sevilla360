@@ -137,6 +137,49 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
+  // 3B. PUBLIC SUPPORT CONTENT
+  // =========================================================
+  const supportForm = document.getElementById('form-support-content');
+  const supportFaqList = document.getElementById('support-faq-list');
+  const btnSaveSupport = document.getElementById('btn-save-support');
+
+  function addSupportFaqRow(question = '', answer = '') {
+    if (!supportFaqList) return;
+    const row = document.createElement('div');
+    row.className = 'support-faq-row';
+    row.innerHTML = `<input type="text" class="form-control support-faq-question" placeholder="Question" maxlength="240"><textarea class="form-control support-faq-answer" placeholder="Answer" rows="2"></textarea><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button>`;
+    row.querySelector('.support-faq-question').value = question;
+    row.querySelector('.support-faq-answer').value = answer;
+    supportFaqList.appendChild(row);
+    isFormDirty = true;
+  }
+  document.getElementById('btn-add-support-faq')?.addEventListener('click', () => addSupportFaqRow());
+  supportFaqList?.addEventListener('click', event => {
+    const button = event.target.closest('.btn-remove-support-faq');
+    if (button) { button.closest('.support-faq-row')?.remove(); isFormDirty = true; }
+  });
+  btnSaveSupport?.addEventListener('click', () => {
+    const originalText = btnSaveSupport.innerHTML;
+    const faqItems = [...(supportFaqList?.querySelectorAll('.support-faq-row') || [])].map(row => ({
+      question: row.querySelector('.support-faq-question')?.value.trim() || '',
+      answer: row.querySelector('.support-faq-answer')?.value.trim() || ''
+    })).filter(item => item.question || item.answer);
+    const formData = new FormData(supportForm);
+    formData.append('support_faq_json', JSON.stringify(faqItems));
+    btnSaveSupport.innerHTML = 'Saving...';
+    btnSaveSupport.disabled = true;
+    fetch('actions/admin/save_support_content.php', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: formData })
+      .then(res => res.json())
+      .then(data => {
+        btnSaveSupport.innerHTML = originalText;
+        btnSaveSupport.disabled = false;
+        if (data.success) { showToast(); isFormDirty = false; }
+        else if (window.showAlert) window.showAlert('Notice', data.message);
+      })
+      .catch(() => { btnSaveSupport.innerHTML = originalText; btnSaveSupport.disabled = false; if (window.showAlert) window.showAlert('Notice', 'System error. Could not save support content.'); });
+  });
+
+  // =========================================================
   // 4. UNSAVED CHANGES MODAL PROTECTION
   // =========================================================
   const unsavedModal = document.getElementById("unsaved-modal");
@@ -363,22 +406,28 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const venueFilters = document.querySelectorAll('#venueFilters .venue-filter-btn');
   const venueRows = document.querySelectorAll('.venue-row');
+  const buildingSelector = document.getElementById('hotel-building-selector');
+  const buildingSelect = document.getElementById('hotel-building-select');
 
   if (venueFilters.length > 0) {
       const searchInput = document.getElementById('venue-search-input');
       let currentFilter = 'all';
 
       function applyFilters() {
-          const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+      const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+          const selectedBuilding = buildingSelect ? buildingSelect.value : '';
+          if (buildingSelector) buildingSelector.hidden = currentFilter !== 'Hotel Room';
           
           venueRows.forEach(row => {
               const matchesCategory = currentFilter === 'all' || row.getAttribute('data-category') === currentFilter;
+              const isHotelRoom = row.getAttribute('data-category') === 'Hotel Room';
+              const matchesBuilding = !isHotelRoom || (currentFilter === 'Hotel Room' && selectedBuilding !== '' && row.getAttribute('data-building') === selectedBuilding);
               
               // The first td contains the venue name and ID text
               const rowText = row.querySelector('td').textContent.toLowerCase();
               const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
               
-              if (matchesCategory && matchesSearch) {
+              if (matchesCategory && matchesBuilding && matchesSearch) {
                   row.style.display = ''; 
               } else {
                   row.style.display = 'none'; 
@@ -391,6 +440,7 @@ document.addEventListener("DOMContentLoaded", () => {
               venueFilters.forEach(f => f.classList.remove('active'));
               btn.classList.add('active');
               currentFilter = btn.getAttribute('data-filter');
+              if (currentFilter === 'Hotel Room' && buildingSelect && !buildingSelect.value && buildingSelect.options.length > 1) buildingSelect.selectedIndex = 1;
               applyFilters();
           });
       });
@@ -398,5 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (searchInput) {
           searchInput.addEventListener('input', applyFilters);
       }
+      buildingSelect?.addEventListener('change', applyFilters);
+      applyFilters();
   }
 });

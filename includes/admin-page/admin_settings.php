@@ -14,6 +14,30 @@ $maintenance_checked = (isset($current_settings['maintenance_mode']) && $current
 $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
 $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
 $social_links = is_array($social_links) ? $social_links : [];
+$support_defaults = [
+    'support_intro' => 'Everything you need to plan your event or stay with confidence.',
+    'support_contact_heading' => 'We are here to help',
+    'support_contact_description' => 'Reach our team for booking questions, venue details, or help with an existing reservation.',
+    'support_faq_json' => json_encode([
+        ['question' => 'How long are online dates held?', 'answer' => 'Confirmed selections are temporarily locked while you complete a paid booking. If the lock expires, select the dates again.'],
+        ['question' => 'Are hotel rooms priced per night?', 'answer' => "Yes. Hotel stays require at least one night, and the checkout date may coincide with another guest's check-in."],
+        ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and contacts you about the final quotation and schedule. No online payment is required when the inquiry is submitted.'],
+        ['question' => 'Where can I see my booking status?', 'answer' => 'Sign in and open your User Dashboard to view status, payment information, notifications, and booking details.']
+    ], JSON_UNESCAPED_SLASHES),
+    'support_privacy' => "We collect the information needed to create and manage reservations, communicate with guests, process payments, and provide resort services.\n\nAccount and booking information is available only to the customer it belongs to and authorized resort staff or administrators. Contact us if you need help reviewing or correcting your information.",
+    'support_terms' => "Bookings are subject to availability and the selected payment or inquiry process.\nMaximum capacities and venue rules are enforced.\nCancellation and refund handling follows the applicable booking policy and administrator review.\nGuests are responsible for damage to resort property.\nVirtual showroom images are illustrative; actual arrangements and lighting may vary."
+];
+$support_content = [];
+foreach ($support_defaults as $key => $default) {
+    $support_content[$key] = $current_settings[$key] ?? $default;
+}
+$support_faq = json_decode($support_content['support_faq_json'], true);
+$support_faq = is_array($support_faq) && count($support_faq) ? $support_faq : [
+    ['question' => 'How long are online dates held?', 'answer' => 'Confirmed selections are temporarily locked while you complete a paid booking. If the lock expires, select the dates again.'],
+    ['question' => 'Are hotel rooms priced per night?', 'answer' => "Yes. Hotel stays require at least one night, and the checkout date may coincide with another guest's check-in."],
+    ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and contacts you about the final quotation and schedule. No online payment is required when the inquiry is submitted.'],
+    ['question' => 'Where can I see my booking status?', 'answer' => 'Sign in and open your User Dashboard to view status, payment information, notifications, and booking details.']
+];
 
 // 2. Fetch all Venues and their specific child-table data
 $venues_query = $conn->query("
@@ -35,6 +59,12 @@ if ($venues_query && $venues_query->num_rows > 0) {
         $all_venues[] = $row;
     }
 }
+$hotel_buildings = [];
+foreach ($all_venues as $venue) {
+    if ($venue['category'] === 'Hotel Room') $hotel_buildings[$venue['name']] = true;
+}
+$hotel_buildings = array_keys($hotel_buildings);
+sort($hotel_buildings, SORT_NATURAL | SORT_FLAG_CASE);
 ?>
 
 <!-- Pass venue data to JS for the Edit Modal -->
@@ -54,6 +84,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
             <button class="tab-link" data-target="panel-venues">Manage Venues</button>
+            <button class="tab-link" data-target="panel-support">Support &amp; Information</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
             <?php endif; ?>
         </div>
@@ -137,6 +168,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         <input type="text" id="venue-search-input" class="form-control" placeholder="Search venues..." style="max-width: 250px; border-radius: 20px; padding: 6px 15px; border: 1px solid var(--gray-border);">
                     </div>
                 </div>
+                <div class="hotel-building-selector" id="hotel-building-selector" hidden>
+                    <label for="hotel-building-select">Hotel building</label>
+                    <select id="hotel-building-select" class="form-control">
+                        <option value="">Select a building to view its rooms</option>
+                        <?php foreach ($hotel_buildings as $building): ?><option value="<?php echo htmlspecialchars($building, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($building); ?></option><?php endforeach; ?>
+                    </select>
+                </div>
 
                 <div class="venues-table-wrapper">
                     <table class="venues-table">
@@ -151,7 +189,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         <tbody>
                             <?php foreach($all_venues as $v): ?>
 
-                            <tr class="venue-row" data-category="<?php echo $v['category']; ?>">
+                            <tr class="venue-row" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-building="<?php echo htmlspecialchars($v['name'], ENT_QUOTES, 'UTF-8'); ?>">
 
                                 <?php 
                                     $display_name = htmlspecialchars($v['name']);
@@ -193,7 +231,48 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                 </div>
             </div>
 
-            <!-- PANEL 3: System Preferences -->
+            <!-- PANEL 3: Support & Information -->
+            <div class="settings-panel" id="panel-support">
+                <h2 class="panel-heading">Support &amp; Information</h2>
+                <p class="settings-section-note">Edit the content shown on the public Support &amp; Information page. Leave each FAQ on its own card and use one line per term.</p>
+                <form id="form-support-content" class="settings-form" onsubmit="return false;">
+                    <div class="form-grid">
+                        <div class="form-group support-field-wide">
+                            <label for="support-intro">Page introduction</label>
+                            <textarea id="support-intro" name="support_intro" class="form-control" rows="2"><?php echo htmlspecialchars($support_content['support_intro'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="support-contact-heading">Contact heading</label>
+                            <input id="support-contact-heading" name="support_contact_heading" class="form-control" value="<?php echo htmlspecialchars($support_content['support_contact_heading'], ENT_QUOTES, 'UTF-8'); ?>" maxlength="120">
+                        </div>
+                        <div class="form-group">
+                            <label for="support-contact-description">Contact description</label>
+                            <textarea id="support-contact-description" name="support_contact_description" class="form-control" rows="2"><?php echo htmlspecialchars($support_content['support_contact_description'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                    </div>
+
+                    <hr class="panel-divider">
+                    <div class="support-settings-heading"><div><h3 class="panel-subheading">Frequently Asked Questions</h3><p class="settings-section-note">Add, edit, or remove the questions shown on the public page.</p></div><button type="button" class="btn btn-outline" id="btn-add-support-faq">+ Add FAQ</button></div>
+                    <div id="support-faq-list">
+                        <?php foreach ($support_faq as $faq): ?><div class="support-faq-row"><input type="text" class="form-control support-faq-question" placeholder="Question" value="<?php echo htmlspecialchars((string)($faq['question'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" maxlength="240"><textarea class="form-control support-faq-answer" placeholder="Answer" rows="2"><?php echo htmlspecialchars((string)($faq['answer'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div><?php endforeach; ?>
+                    </div>
+
+                    <hr class="panel-divider">
+                    <div class="form-grid">
+                        <div class="form-group support-field-wide">
+                            <label for="support-privacy">Privacy policy <span class="field-help">Use a blank line between paragraphs.</span></label>
+                            <textarea id="support-privacy" name="support_privacy" class="form-control" rows="7"><?php echo htmlspecialchars($support_content['support_privacy'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                        <div class="form-group support-field-wide">
+                            <label for="support-terms">Terms and conditions <span class="field-help">Use one term per line.</span></label>
+                            <textarea id="support-terms" name="support_terms" class="form-control" rows="7"><?php echo htmlspecialchars($support_content['support_terms'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                        </div>
+                    </div>
+                    <div class="panel-footer"><button type="button" id="btn-save-support" class="btn btn-primary save-btn">Save Support Content</button></div>
+                </form>
+            </div>
+
+            <!-- PANEL 4: System Preferences -->
             <div class="settings-panel" id="panel-prefs">
                 <h2 class="panel-heading">System Preferences</h2>
 
