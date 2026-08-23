@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -45,25 +45,35 @@ if ($result->num_rows === 0) {
 
 $row = $result->fetch_assoc();
 $filename = $row['filename'];
-$filePath = __DIR__ . '/../../storage/backups/' . basename($filename);
-
-if (!file_exists($filePath)) {
+try { $filePath = BackupHelper::backupFilePath(basename($filename)); } catch (Throwable $e) {
     echo json_encode(['success' => false, 'error' => 'The physical backup file is missing from the server.']);
     exit;
 }
 
-$backupDir = __DIR__ . '/../../storage/backups';
+try { $backupDir = BackupHelper::resolveBackupDir(true); }
+catch (Throwable $e) {
+    error_log('Restore storage resolution failed: ' . get_class($e));
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Restore storage resolution failed', ?)");
+    if ($audit) { $auditAdmin = (int)($_SESSION['user_id'] ?? 0); $auditIp = request_client_ip(); $audit->bind_param('is', $auditAdmin, $auditIp); $audit->execute(); }
+    echo json_encode(['success' => false, 'error' => 'Backup storage is unavailable.']);
+    exit;
+}
 try {
     // MySQL DDL cannot be rolled back. Validate and execute the signed dump in
     // a disposable schema before the production safety backup/import.
     BackupHelper::preflightImport($conn, $filePath, $database);
 } catch (Throwable $e) {
+    error_log('Backup restore preflight failed: ' . get_class($e));
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Restore preflight failed', ?)");
+    if ($audit) { $auditAdmin = (int)($_SESSION['user_id'] ?? 0); $auditIp = request_client_ip(); $audit->bind_param('is', $auditAdmin, $auditIp); $audit->execute(); }
     echo json_encode(['success' => false, 'error' => 'Restore cancelled: isolated preflight failed. Production was not modified.']);
     exit;
 }
 
 $safetyBackup = BackupHelper::createBackupFile($conn, $database, $backupDir, 'sevilla360_pre_restore_');
 if ($safetyBackup === false) {
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Pre-restore safety backup creation failed', ?)");
+    if ($audit) { $auditAdmin = (int)($_SESSION['user_id'] ?? 0); $auditIp = request_client_ip(); $audit->bind_param('is', $auditAdmin, $auditIp); $audit->execute(); }
     echo json_encode(['success' => false, 'error' => 'Restore cancelled: the pre-restore safety backup could not be created.']);
     exit;
 }
@@ -98,6 +108,9 @@ if (BackupHelper::importDatabase($conn, $filePath)) {
     // Production import may have partially applied DDL. Immediately replay
     // the pre-restore snapshot and report the recovery result explicitly.
     $recovered = BackupHelper::importDatabase($conn, $safetyBackup['path']);
+    error_log('Backup restore/import failed; recovery attempted: ' . ($recovered ? 'yes' : 'no'));
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
+    if ($audit) { $auditAdmin = (int)($_SESSION['user_id'] ?? 0); $auditAction = $recovered ? 'Restore failed; safety backup replayed' : 'Restore and safety recovery failed'; $auditIp = request_client_ip(); $audit->bind_param('iss', $auditAdmin, $auditAction, $auditIp); $audit->execute(); }
     echo json_encode([
         'success' => false,
         'recovery_succeeded' => $recovered,

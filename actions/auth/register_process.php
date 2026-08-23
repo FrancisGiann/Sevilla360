@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 
@@ -40,12 +40,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
     //  Sanitize and retrieve POST data
-    $first_name = trim($_POST['first_name']);
-    $last_name = trim($_POST['last_name']);
-    $email = trim($_POST['email']);
+    $first_name = trim((string)($_POST['first_name'] ?? ''));
+    $last_name = trim((string)($_POST['last_name'] ?? ''));
+    $email = trim((string)($_POST['email'] ?? ''));
 
-    $password = $_POST['password'];
-    $confirm_password = $_POST['confirm_password'];
+    $password = (string)($_POST['password'] ?? '');
+    $confirm_password = (string)($_POST['confirm_password'] ?? '');
 
     //  Basic Validation
     if ($password !== $confirm_password) {
@@ -54,8 +54,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
-    if (empty($first_name) || empty($last_name) || empty($email) || empty($password)) {
+    if (empty($first_name) || empty($last_name) || empty($email) || empty($password) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Please fill in all required fields.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    if (strlen($password) < 8) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Password must be at least 8 characters.', 'type' => 'error'];
+        header("Location: ../../auth.php");
+        exit();
+    }
+    if (!isset($_POST['consent']) || $_POST['consent'] !== '1') {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'You must accept the Terms of Service and Privacy Policy.', 'type' => 'error'];
         header("Location: ../../auth.php");
         exit();
     }
@@ -92,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->begin_transaction();
 
         //  Insert into USERS table
-        $stmt1 = $conn->prepare("INSERT INTO users (email, password_hash, role, verification_code, verification_expires_at) VALUES (?, ?, 'customer', ?, ?)");
+        $stmt1 = $conn->prepare("INSERT INTO users (email, password_hash, role, verification_code, verification_expires_at, consented_at) VALUES (?, ?, 'customer', ?, ?, NOW())");
         $stmt1->bind_param("ssss", $email, $hashed_password, $verification_code, $expires_at);
         $stmt1->execute();
         

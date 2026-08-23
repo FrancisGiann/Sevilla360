@@ -240,13 +240,15 @@ document.addEventListener("DOMContentLoaded", () => {
           if (refundInfoBottom) refundInfoBottom.style.display = "none";
           if (unpaidInfo) unpaidInfo.style.display = "block";
       } else {
-          let fee = 461;
-          let refundAmt = amountPaid - fee;
-          if (refundAmt < 0) refundAmt = 0;
+          const feePercent = Number(window.refundFeePercent ?? 3);
+          const fee = Math.round(amountPaid * feePercent) / 100;
+          const refundAmt = Math.max(0, Math.round((amountPaid - fee) * 100) / 100);
 
           const cancelPaidEl = document.getElementById("cancel-paid");
           const cancelRefundTotalEl = document.getElementById("cancel-refund-total");
           if(cancelPaidEl) cancelPaidEl.textContent = `₱${amountPaid.toLocaleString()}`;
+          const cancelFeeLabel = document.getElementById("cancel-fee-label");
+          if(cancelFeeLabel) cancelFeeLabel.textContent = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)`;
           if(cancelRefundTotalEl) cancelRefundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
 
           if (refundInfoTop) refundInfoTop.style.display = "block";
@@ -273,7 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isChecked = confirmFee ? confirmFee.checked : false;
 
       if (reason === "") return showAlert("Missing Info", "Please provide a reason for the cancellation.", "error");
-      if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the non-refundable service fee by checking the box.", "error");
+      if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the payment-processing fee and refund amount shown above.", "error");
 
       const originalText = this.innerText;
       this.innerText = "Processing...";
@@ -642,6 +644,23 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- 7. Pay Now Button Logic ---
+  document.querySelectorAll('.btn-sync-payment').forEach(btn => {
+      btn.addEventListener('click', function() {
+          const originalText = this.innerText;
+          this.innerText = 'Syncing...';
+          this.disabled = true;
+          fetch('actions/user/sync_payment.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+              body: JSON.stringify({ booking_id: this.getAttribute('data-id') })
+          }).then(res => res.json()).then(data => {
+              showAlert(data.success ? 'Payment Updated' : 'Payment Not Updated', data.message || 'Payment status could not be refreshed.', data.success ? 'success' : 'error', data.success);
+              if (data.success) setTimeout(() => window.location.reload(), 800);
+              else { this.innerText = originalText; this.disabled = false; }
+          }).catch(() => { showAlert('Network Error', 'Payment status could not be refreshed.', 'error'); this.innerText = originalText; this.disabled = false; });
+      });
+  });
+
   document.querySelectorAll(".btn-pay-now").forEach(btn => {
       btn.addEventListener("click", function() {
           const bookingId = this.getAttribute('data-id');

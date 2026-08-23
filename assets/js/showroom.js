@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentRoomId = null; 
   let currentPanoIndex = 0; 
   let activePanoramas = []; 
+  let roomLoadToken = 0;
 
   let currentZoom = 1;
   let panX = 0;
@@ -38,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const amenitiesGrid = document.querySelector(".amenities-grid");
   const galleryTitle = document.getElementById("gallery-title");
   const btnViewPhotos = document.getElementById("btn-view-photos");
+  const btnSwitch = document.getElementById("btn-switch-mode");
   const currentSlideImg = document.getElementById("current-slide-img");
   const wrapper = document.getElementById("showroom-wrapper");
   const topRoomLabel = document.getElementById("top-room-label");
@@ -110,6 +112,63 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.addEventListener('fullscreenchange', () => setTimeout(() => viewer.onWindowResize(), 100));
 
+  function disposePanorama(pano) {
+      if (!pano) return;
+      try { viewer.remove(pano); } catch (e) { /* already removed */ }
+      try {
+          if (pano.material) {
+              if (pano.material.map) pano.material.map.dispose();
+              pano.material.dispose();
+          }
+          if (pano.geometry) pano.geometry.dispose();
+      } catch (e) { /* texture/geometry may already be disposed */ }
+  }
+
+  function showStandardFallback(room) {
+      const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
+      if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
+      if (interactionHint) interactionHint.classList.remove("hint-visible");
+      clearTimeout(hintTimeout);
+      no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
+      no360Wrapper.style.display = "flex";
+      panoContainer.style.visibility = "hidden";
+      if (viewerControls) viewerControls.style.display = "none";
+      if (btnSwitch) {
+          btnSwitch.disabled = true;
+          btnSwitch.style.display = "none";
+      }
+      const btnInfo = document.getElementById("btn-info");
+      if (btnInfo) {
+          btnInfo.disabled = true;
+          btnInfo.style.display = "none";
+      }
+      valTitle.textContent = room.title;
+  }
+
+  function handlePanoLoadFailure(roomId, loadToken, failedPano, panoramasRef) {
+      const room = dataMap[roomId];
+      if (!room) return;
+
+      const isCurrentLoad = currentRoomId === roomId && roomLoadToken === loadToken;
+      const cachedPanoramas = panoCache[roomId];
+      const ownsCache = cachedPanoramas === panoramasRef;
+      if (ownsCache) delete panoCache[roomId];
+
+      // Dispose every panorama from this load, but never tear down a newer
+      // load for the same room after a stale callback races with switching.
+      const panoramasToDispose = ownsCache
+          ? panoramasRef.slice()
+          : (isCurrentLoad ? panoramasRef.slice() : [failedPano]);
+      panoramasToDispose.forEach(disposePanorama);
+      if (!isCurrentLoad) return;
+
+      room.panoFailed = true;
+      roomLoadToken++;
+      activePanoramas = [];
+      currentPanoIndex = 0;
+      showStandardFallback(room);
+  }
+
 
 
   // Hard Reload (Memory Flush)
@@ -163,8 +222,12 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("click", (e) => { if (e.target === infoModal) infoModal.classList.remove("active"); });
 
 
-  function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef) {
+  function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef, roomData, isCurrentView) {
       if (!hotspotsArray || hotspotsArray.length === 0) return;
+
+      const escapeHotspotText = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+      }[char]));
 
       const spots = [];
 
@@ -177,12 +240,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
           if (isNav) {
               spot.addEventListener('click', () => {
-                  const idx = parseInt(h.target_pano_index);
-                  if (panoramasRef[idx]) viewerRef.setPanorama(panoramasRef[idx]);
+                  if (typeof isCurrentView === 'function' && !isCurrentView()) return;
+                  const targetMediaIds = Array.isArray(roomData?.pano_media_ids) ? roomData.pano_media_ids.map(Number) : [];
+                  const targetMediaId = Number(h.target_media_id);
+                  let idx = Number.isInteger(targetMediaId) && targetMediaId > 0
+                      ? targetMediaIds.indexOf(targetMediaId)
+                      : -1;
+                  if (idx < 0) {
+                      const legacyIndex = Number(h.target_pano_index);
+                      const legacyMediaIds = Array.isArray(roomData?.legacy_pano_media_ids)
+                          ? roomData.legacy_pano_media_ids.map(Number)
+                          : [];
+                      const legacyMediaId = Number.isInteger(legacyIndex) && legacyIndex >= 0
+                          ? legacyMediaIds[legacyIndex]
+                          : null;
+                      idx = Number.isInteger(legacyMediaId) ? targetMediaIds.indexOf(legacyMediaId) : -1;
+                  }
+                  if (idx >= 0 && idx < panoramasRef.length && panoramasRef[idx]) viewerRef.setPanorama(panoramasRef[idx]);
               });
           } else {
-              spot.addHoverText(h.title);
-              spot.addEventListener('click', () => showHotspotInfoModal(h.title, h.description));
+              spot.addHoverText(escapeHotspotText(h.title));
+              spot.addEventListener('click', () => {
+                  if (typeof isCurrentView === 'function' && !isCurrentView()) return;
+                  showHotspotInfoModal(h.title, h.description);
+              });
           }
 
           pano.add(spot);
@@ -220,6 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 7. Main Room Loading Logic ---
   function loadRoom(roomId) {
+    const loadToken = ++roomLoadToken;
     currentRoomId = roomId; 
     const room = dataMap[roomId];
     if (!room) return;
@@ -278,7 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentImageIndex = 0;
 
     // 360 Engine Routing
-    const panoUrls = room.pano_urls || [];
+    const panoUrls = room.panoFailed ? [] : (room.pano_urls || []);
     const btnInfo = document.getElementById("btn-info"); 
 
     if (panoUrls.length > 0) {
@@ -286,7 +368,11 @@ document.addEventListener("DOMContentLoaded", () => {
       no360Wrapper.style.display = "none";
       panoContainer.style.visibility = "visible";
       if (viewerControls) viewerControls.style.display = "flex"; 
-      if (btnInfo) btnInfo.style.display = "flex";
+      if (btnInfo) {
+          btnInfo.disabled = false;
+          btnInfo.style.display = "flex";
+      }
+      if (btnSwitch) btnSwitch.disabled = false;
 
       if (!panoCache[roomId]) {
         valTitle.textContent = "Loading 360...";
@@ -296,12 +382,48 @@ document.addEventListener("DOMContentLoaded", () => {
         let loadedCount = 0;
 
         panoUrls.forEach((url, index) => {
-            const pano = new PANOLENS.ImagePanorama(url);
+            if (roomLoadToken !== loadToken || room.panoFailed) return;
+            let pano;
+            try {
+                pano = new PANOLENS.ImagePanorama(url);
+            } catch (e) {
+                handlePanoLoadFailure(roomId, loadToken, null, panoramas);
+                return;
+            }
+            let failureHandled = false;
+            const handleError = () => {
+                if (failureHandled) return;
+                failureHandled = true;
+                handlePanoLoadFailure(roomId, loadToken, pano, panoramas);
+            };
+            // Panolens forwards Three/ImageLoader texture failures as an
+            // `error` event on the panorama.  Keep this listener separate from
+            // `load` so a 404 cannot leave the loading overlay indefinitely.
+            pano.addEventListener("error", handleError);
+            const bindTextureError = () => {
+                const textureImage = pano.image || (pano.material && pano.material.map && pano.material.map.image);
+                if (textureImage && typeof textureImage.addEventListener === "function") {
+                    textureImage.addEventListener("error", handleError, { once: true });
+                }
+            };
+            bindTextureError();
+            if (typeof queueMicrotask === "function") queueMicrotask(bindTextureError);
 
             const hotspotsForThisPano = (room.hotspots_by_pano_index && room.hotspots_by_pano_index[index]) || [];
-            attachHotspots(pano, hotspotsForThisPano, viewer, panoramas);
+            attachHotspots(
+                pano,
+                hotspotsForThisPano,
+                viewer,
+                panoramas,
+                room,
+                // A cached room may be revisited under a new load token. The
+                // room identity guards cross-room callbacks without disabling
+                // valid hotspot navigation on cached panoramas.
+                () => currentRoomId === roomId && !room.panoFailed
+            );
 
             pano.addEventListener("load", function () {
+                if (failureHandled || roomLoadToken !== loadToken || room.panoFailed) return;
                 loadedCount++;
                 if (index === 0 && panoLoadingOverlay) {
                     
@@ -335,26 +457,26 @@ document.addEventListener("DOMContentLoaded", () => {
             viewer.add(pano);
             panoramas.push(pano);
         });
-        panoCache[roomId] = panoramas; 
+        if (roomLoadToken !== loadToken) return;
+        if (room.panoFailed) {
+            if (panoCache[roomId] === panoramas) delete panoCache[roomId];
+            activePanoramas = [];
+        } else {
+            panoCache[roomId] = panoramas;
+            activePanoramas = panoCache[roomId];
+            currentPanoIndex = 0;
+            viewer.setPanorama(activePanoramas[currentPanoIndex]);
+        }
       } else {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
+        activePanoramas = panoCache[roomId];
+        currentPanoIndex = 0;
+        viewer.setPanorama(activePanoramas[currentPanoIndex]);
       }
 
-      activePanoramas = panoCache[roomId];
-      currentPanoIndex = 0;
-      viewer.setPanorama(activePanoramas[currentPanoIndex]);
-
     } else {
-      // Fallback: No 360 Uploaded
-      const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
-      no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
-      no360Wrapper.style.display = "flex";
-      
-      panoContainer.style.visibility = "hidden";
-      if (viewerControls) viewerControls.style.display = "none";
-      if (btnSwitch) btnSwitch.style.display = "none";
-      if (btnInfo) btnInfo.style.display = "none";
-      valTitle.textContent = room.title;
+      // Fallback: no 360 uploaded or a previous panorama load failed.
+      showStandardFallback(room);
     }
 
     // Photo Button Status

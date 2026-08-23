@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db_connect.php';
@@ -80,14 +80,18 @@ if (!hash_equals($expectedSignature, $providedSignature)) {
 }
 
 // File is authentic! Move it to storage
-$backupDir = __DIR__ . '/../../storage/backups';
-if (!is_dir($backupDir)) {
-    mkdir($backupDir, 0755, true);
+try { $backupDir = BackupHelper::resolveBackupDir(true); }
+catch (Throwable $e) {
+    error_log('Backup import storage resolution failed: ' . get_class($e));
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Backup import storage resolution failed', ?)");
+    if ($audit) { $adminId = (int)($_SESSION['user_id'] ?? 0); $audit->bind_param('is', $adminId, $ip); $audit->execute(); }
+    echo json_encode(['success' => false, 'error' => 'Backup storage is unavailable.']);
+    exit;
 }
 
 $timestamp = date('Y-m-d_H-i-s');
-$filename = "sevilla360_imported_{$timestamp}.sql";
-$destination = "{$backupDir}/{$filename}";
+$filename = "sevilla360_imported_{$timestamp}_" . bin2hex(random_bytes(4)) . ".sql";
+$destination = BackupHelper::backupFilePath($filename, false);
 
 if (move_uploaded_file($tmpPath, $destination)) {
     

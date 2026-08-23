@@ -205,7 +205,6 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         $mail->Password = $smtp_password;
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = 587;
-        $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Reservations');
         $mail->addAddress($customer_email, $customer_name);
         $mail->isHTML(true);
@@ -237,7 +236,6 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
 
-        $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
         $mail->addAddress($to_email, $to_name);
@@ -250,95 +248,82 @@ function send_custom_email($to_email, $to_name, $subject, $html_content) {
     } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
 }
 
-/**
- * Sends the branded notification used when a booking is cancelled or refunded.
- * This deliberately mirrors the booking itinerary so customers can quickly
- * identify the affected reservation and its final payment status.
- */
+/** Shared Sevilla360 status-email shell. Values are escaped here at the boundary. */
+function build_branded_booking_status_email(array $biz, array $booking, string $customer_name, string $title, string $message, string $status, string $status_color, array $extra_rows = [], string $note_title = '', string $note_html = '', string $reason = '', string $reason_label = 'Administrator note') {
+    $esc = static fn($value) => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    $check_in = date('F j, Y', strtotime((string)$booking['start_date']));
+    $check_out = date('F j, Y', strtotime((string)$booking['end_date']));
+    $stay_dates = $check_in === $check_out ? $check_in : "$check_in – $check_out";
+    $rows = "<tr><td style='padding:12px;border-bottom:1px solid #eee;width:42%;'><strong>Reference No:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;font-family:monospace;color:#d6a870;'><strong>{$esc($booking['reference_no'])}</strong></td></tr>";
+    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($booking['venue_name'])}</td></tr>";
+    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Stay / Event Date:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($stay_dates)}</td></tr>";
+    foreach ($extra_rows as $label => $value) {
+        $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>{$esc($label)}:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($value)}</td></tr>";
+    }
+    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>";
+    $rows .= "<tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px;text-align:right;color:" . $esc($status_color) . ";'><strong>{$esc($status)}</strong></td></tr>";
+    $reason_html = trim($reason) !== '' ? "<div style='margin-top:20px;padding:16px;background:#fff7f7;border-left:4px solid #c05a5a;color:#5d4545;font-size:14px;line-height:1.6;'><strong>" . $esc($reason_label) . "</strong><br>" . nl2br($esc(trim($reason))) . "</div>" : '';
+    $note_block = $note_title !== '' ? "<div style='margin-top:24px;padding:18px 20px;background:#f8f8f8;border-radius:6px;color:#555;font-size:14px;line-height:1.6;'><strong style='color:#2a2522;'>" . $esc($note_title) . "</strong><br>$note_html</div>" : '';
+    $policies = nl2br($esc($biz['biz_policies'] ?? ''));
+    return "<div style='background:#f4f4f4;padding:40px 0;font-family:Helvetica,Arial,sans-serif;'><div style='max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,.05);'><div style='background:#2a2522;padding:30px;text-align:center;'><h1 style='color:#d6a870;margin:0;font-size:28px;letter-spacing:2px;text-transform:uppercase;'>{$esc($biz['biz_name'])}</h1><p style='color:#a3a3a3;margin:5px 0 0;font-size:12px;letter-spacing:1px;text-transform:uppercase;'>{$esc($biz['biz_tagline'])}</p></div><div style='padding:40px;'><h2 style='color:#2a2522;margin:0;font-size:20px;'>{$esc($title)}</h2><p style='color:#555;font-size:15px;line-height:1.6;'>Hello <strong>{$esc($customer_name)}</strong>,<br>{$esc($message)}</p><div style='background:#faf9f7;border:1px solid #e5e5e5;border-radius:6px;padding:25px;margin-top:30px;'><table style='width:100%;border-collapse:collapse;font-size:15px;color:#2a2522;'>$rows</table></div>$reason_html$note_block<div style='margin-top:32px;border-top:1px solid #eee;padding-top:20px;font-size:12px;color:#888;line-height:1.6;'><strong>Policies</strong><br>$policies</div><div style='margin-top:20px;font-size:12px;color:#aaa;text-align:center;line-height:1.6;'>{$esc($biz['biz_address'])} | {$esc($biz['biz_phone'])} | {$esc($biz['biz_email'])}</div></div></div></div>";
+}
+
+/** Sends branded cancellation, refund, and pending-request updates. */
 function send_booking_cancellation_email($customer_email, $customer_name, $booking_id, $type, $refund_amount = null, $reason = '') {
     global $conn;
-
-    $stmt = $conn->prepare("
-        SELECT b.reference_no, b.start_date, b.end_date, b.guests_count, v.name AS venue_name
-        FROM bookings b
-        JOIN venues v ON b.venue_id = v.id
-        WHERE b.id = ?
-    ");
-    $stmt->bind_param("i", $booking_id);
+    $stmt = $conn->prepare("SELECT b.reference_no,b.start_date,b.end_date,b.guests_count,b.amount_paid,v.name AS venue_name FROM bookings b JOIN venues v ON b.venue_id=v.id WHERE b.id=?");
+    $stmt->bind_param('i', $booking_id);
     $stmt->execute();
     $booking = $stmt->get_result()->fetch_assoc();
-
-    if (!$booking) {
-        throw new Exception('Booking not found for cancellation email.');
-    }
-
+    if (!$booking) throw new Exception('Booking not found for cancellation email.');
+    $snapshot = null;
+    $snapshot_stmt = $conn->prepare("SELECT fee_percent,fee_deducted,refund_amount,status FROM cancellations WHERE booking_id=? ORDER BY id DESC LIMIT 1");
+    $snapshot_stmt->bind_param('i', $booking_id);
+    $snapshot_stmt->execute();
+    $snapshot = $snapshot_stmt->get_result()->fetch_assoc() ?: null;
+    $amount = $refund_amount !== null ? (float)$refund_amount : (float)($snapshot['refund_amount'] ?? 0);
     $biz = get_biz_info();
-    $is_refund = $type === 'refund';
-    $subject_ref_no = $booking['reference_no'];
-    $ref_no = htmlspecialchars($booking['reference_no'], ENT_QUOTES, 'UTF-8');
-    $venue_name = htmlspecialchars($booking['venue_name'], ENT_QUOTES, 'UTF-8');
-    $name = htmlspecialchars(trim($customer_name), ENT_QUOTES, 'UTF-8');
-    $check_in = date('F j, Y', strtotime($booking['start_date']));
-    $check_out = date('F j, Y', strtotime($booking['end_date']));
-    $stay_dates = $check_in === $check_out ? $check_in : "$check_in – $check_out";
-    $refund_text = $refund_amount !== null ? '₱' . number_format((float)$refund_amount, 2) : null;
-    $reason_html = trim($reason) !== ''
-        ? "<div style='margin-top:20px; padding:16px; background:#fff7f7; border-left:4px solid #c05a5a; color:#5d4545; font-size:14px; line-height:1.6;'><strong>Reason for cancellation</strong><br>" . nl2br(htmlspecialchars(trim($reason), ENT_QUOTES, 'UTF-8')) . "</div>"
-        : '';
-
-    if ($is_refund) {
-        $title = 'REFUND PROCESSED';
-        $message = 'Your cancellation request has been approved and your booking has been cancelled.';
-        $payment_note = $refund_text
-            ? "A refund of <strong style='color:#2f7d5d;'>$refund_text</strong> has been processed to your original payment method. Please allow 5–10 business days for it to appear in your account."
-            : 'Your refund has been processed to your original payment method. Please allow 5–10 business days for it to appear in your account.';
-        $status = 'Refunded & Cancelled';
-        $status_color = '#2f7d5d';
+    if ($type === 'cancellation_requested') {
+        $fee = (float)($snapshot['fee_deducted'] ?? 0);
+        $percent = (float)($snapshot['fee_percent'] ?? 3);
+        $note = 'Your booking remains active while the resort reviews this request. ' . ((float)$booking['amount_paid'] > 0
+            ? 'Paid amount: <strong>₱' . number_format((float)$booking['amount_paid'], 2) . '</strong>; payment-processing fee (' . number_format($percent, 2) . '%): <strong>₱' . number_format($fee, 2) . '</strong>; estimated refund: <strong>₱' . number_format($amount, 2) . '</strong>.'
+            : 'No payment has been recorded, so no refund is currently due.');
+        $title = 'REFUND REQUEST RECEIVED'; $message = 'Your refund request is pending resort review. It does not cancel the booking yet.'; $status = 'Pending refund review'; $color = '#b5884e'; $subject = "{$biz['biz_name']}: Refund Request Received [{$booking['reference_no']}]";
+    } elseif ($type === 'refund') {
+        $note = 'A refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been processed to your original payment method. Please allow 5–10 business days for it to appear.';
+        $title = 'REFUND PROCESSED'; $message = 'Your cancellation request was approved and the booking has been cancelled.'; $status = 'Refunded & Cancelled'; $color = '#2f7d5d'; $subject = "{$biz['biz_name']}: Refund Processed [{$booking['reference_no']}]";
+    } elseif ($type === 'customer_cancelled') {
+        $note = 'No payment has been recorded, so no refund is due.';
+        $title = 'BOOKING CANCELLED'; $message = 'Your booking has been cancelled as requested.'; $status = 'Cancelled'; $color = '#b5884e'; $subject = "{$biz['biz_name']}: Booking Cancelled [{$booking['reference_no']}]";
     } else {
-        $title = 'BOOKING CANCELLED';
-        $message = 'We regret to inform you that your booking has been cancelled by the administration.';
-        $payment_note = $refund_text
-            ? "A full refund of <strong style='color:#2f7d5d;'>$refund_text</strong> has been issued to your original payment method. Please allow 5–10 business days for it to appear in your account."
-            : 'If a refund applies to your reservation, it will be returned to your original payment method.';
-        $status = 'Cancelled';
-        $status_color = '#c05a5a';
+        $note = ((float)$booking['amount_paid'] > 0 && $amount > 0) ? 'A full refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been issued. The resort absorbs processing fees for this administrator-initiated cancellation.' : 'No refund is due for this booking.';
+        $title = 'BOOKING CANCELLED'; $message = 'We regret to inform you that your booking has been cancelled by the administration.'; $status = 'Cancelled'; $color = '#c05a5a'; $subject = "{$biz['biz_name']}: Booking Cancelled [{$booking['reference_no']}]";
     }
+    $reason_label = in_array($type, ['cancellation_requested', 'customer_cancelled'], true) ? 'Customer request reason' : 'Administrator note';
+    return send_custom_email($customer_email, $customer_name, $subject, build_branded_booking_status_email($biz, $booking, $customer_name, $title, $message, $status, $color, [], 'Payment update', $note, $reason, $reason_label));
+}
 
-    $html_content = "
-    <div style='background-color:#f4f4f4; padding:40px 0; font-family:Helvetica, Arial, sans-serif;'>
-        <div style='max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.05);'>
-            <div style='background-color:#2a2522; padding:30px; text-align:center;'>
-                <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
-                <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
-            </div>
-            <div style='padding:40px;'>
-                <h2 style='color:#2a2522; margin:0; font-size:20px;'>$title</h2>
-                <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$name</strong>,<br>$message</p>
-                <div style='background:#faf9f7; border:1px solid #e5e5e5; border-radius:6px; padding:25px; margin-top:30px;'>
-                    <table style='width:100%; border-collapse:collapse; font-size:15px; color:#2a2522;'>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee; width:42%;'><strong>Reference No:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right; font-family:monospace; font-size:16px; color:#d6a870;'><strong>$ref_no</strong></td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$venue_name</td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Stay / Event Date:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$stay_dates</td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>
-                        <tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px; text-align:right; color:$status_color;'><strong>$status</strong></td></tr>
-                    </table>
-                </div>
-                $reason_html
-                <div style='margin-top:24px; padding:18px 20px; background:#f8f8f8; border-radius:6px; color:#555; font-size:14px; line-height:1.6;'>
-                    <strong style='color:#2a2522;'>Payment update</strong><br>$payment_note
-                </div>
-                <div style='margin-top:32px; border-top:1px solid #eee; padding-top:20px; font-size:12px; color:#aaa; text-align:center; line-height:1.6;'>
-                    " . htmlspecialchars($biz['biz_address'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_phone'], ENT_QUOTES, 'UTF-8') . " | " . htmlspecialchars($biz['biz_email'], ENT_QUOTES, 'UTF-8') . "
-                </div>
-            </div>
-        </div>
-    </div>";
+/** Sends a branded rejection update for a reschedule request. */
+function send_reschedule_rejected_email($customer_email, $customer_name, $booking_id, $admin_reply = '') {
+    global $conn;
+    $stmt = $conn->prepare("SELECT b.reference_no,b.start_date,b.end_date,b.guests_count,v.name AS venue_name,rr.new_start_date,rr.new_end_date FROM bookings b JOIN venues v ON b.venue_id=v.id LEFT JOIN reschedule_requests rr ON rr.booking_id=b.id WHERE b.id=? ORDER BY rr.id DESC LIMIT 1");
+    $stmt->bind_param('i', $booking_id); $stmt->execute(); $booking = $stmt->get_result()->fetch_assoc();
+    if (!$booking) throw new Exception('Booking not found for reschedule email.');
+    $biz = get_biz_info();
+    $requested = $booking['new_start_date'] ? $booking['new_start_date'] . ($booking['new_end_date'] && $booking['new_end_date'] !== $booking['new_start_date'] ? ' – ' . $booking['new_end_date'] : '') : 'Not available';
+    $current = $booking['start_date'] . ($booking['end_date'] !== $booking['start_date'] ? ' – ' . $booking['end_date'] : '');
+    return send_custom_email($customer_email, $customer_name, "{$biz['biz_name']}: Reschedule Request Update [{$booking['reference_no']}]", build_branded_booking_status_email($biz, $booking, $customer_name, 'RESCHEDULE REQUEST UPDATE', 'Your reschedule request was not approved. Your booking remains on its original dates, and you may contact the resort for assistance.', 'Reschedule not approved', '#c05a5a', ['Original date' => $current, 'Requested date' => $requested], 'Administrator note', 'Please review the note below and contact the resort if you need help.', $admin_reply));
+}
 
-    $subject = $is_refund
-        ? "{$biz['biz_name']}: Refund Processed [$subject_ref_no]"
-        : "{$biz['biz_name']}: Booking Cancelled [$subject_ref_no]";
-
-    return send_custom_email($customer_email, $customer_name, $subject, $html_content);
+/** Sends a branded rejection update for a refund request. */
+function send_refund_rejected_email($customer_email, $customer_name, $booking_id, $admin_reply = '') {
+    global $conn;
+    $stmt = $conn->prepare("SELECT b.reference_no,b.start_date,b.end_date,b.guests_count,v.name AS venue_name FROM bookings b JOIN venues v ON b.venue_id=v.id WHERE b.id=?");
+    $stmt->bind_param('i', $booking_id); $stmt->execute(); $booking = $stmt->get_result()->fetch_assoc();
+    if (!$booking) throw new Exception('Booking not found for refund email.');
+    $biz = get_biz_info();
+    return send_custom_email($customer_email, $customer_name, "{$biz['biz_name']}: Refund Request Update [{$booking['reference_no']}]", build_branded_booking_status_email($biz, $booking, $customer_name, 'REFUND REQUEST UPDATE', 'Your refund request was not approved. The booking and payment remain unchanged, and you may submit a new request from your dashboard.', 'Refund request rejected', '#c05a5a', [], 'Administrator note', 'You may submit a new request after reviewing the note below.', $admin_reply));
 }
 
 /** Sends the branded confirmation for an approved reschedule request. */
@@ -512,7 +497,6 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
         $mail->Password   = $smtp_password;
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
-        $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
         $mail->addAddress($customer_email, $customer_name);
@@ -568,7 +552,6 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
         $mail->Password   = $smtp_password;
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
-        $mail->SMTPOptions = array('ssl' => array('verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true));
 
         $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
         $mail->addAddress($to_email, $to_name);

@@ -3,9 +3,8 @@ $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
 $extra_css = 'assets/css/index.css?v=' . time();
 $active_page = 'home';
 
+require_once 'includes/session_init.php';
 require_once 'config/db_connect.php';
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
-if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 
 // Fetch CMS images (same slots the old homepage used, so anything already
 // uploaded via Admin > Media CMS keeps working)

@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
@@ -450,7 +450,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             send_booking_receipt($_POST['guest_email'], $_POST['guest_name'], $ref_no, $_POST['room_name'], $amount_paid, 'Confirmed (Walk-in)');
         } catch (Exception $mail_e) {
             // Log silently, don't crash
-            file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
+            error_log('Walk-in booking email delivery failed: ' . get_class($mail_e));
         }
 
         $venue_display_name = $room_name; // from POST

@@ -19,6 +19,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let pendingPoint = null;
     let pendingSpot = null;
     let raycastEnabled = false;
+    let hotspotListRequestToken = 0;
+    let viewerRequestToken = 0;
 
     // ============================================================
     // DOM ELEMENTS
@@ -31,6 +33,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const descWrapper = document.getElementById("hs-desc-wrapper");
     const targetWrapper = document.getElementById("hs-target-wrapper");
     const targetSelect = document.getElementById("hs-target-index");
+    const formHeading = document.getElementById('hs-form-heading');
+    const saveLabel = document.getElementById('hs-save-label');
     
     // Admin view switcher dropdown
     const adminViewSelector = document.getElementById("hs-admin-view-selector");
@@ -40,6 +44,19 @@ document.addEventListener("DOMContentLoaded", () => {
     // ============================================================
     const HOTSPOT_INFO_ICON = "assets/img/hotspot-info.png";
     const HOTSPOT_ARROW_ICON = "assets/img/hotspot-arrow.png";
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>'"]/g, char => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[char]));
+    }
+
+    function setFormMode(editing) {
+        if (formHeading) formHeading.textContent = editing ? 'Edit Hotspot' : 'New Hotspot';
+        if (saveLabel) saveLabel.textContent = editing ? 'Update Pin' : 'Save Pin';
+        const saveButton = document.getElementById('btn-save-hotspot');
+        if (saveButton) saveButton.title = editing ? 'Update hotspot pin' : 'Save hotspot pin';
+    }
 
     // ============================================================
     // CREATE CUSTOM INFOSPOT
@@ -151,6 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // Open modal
             hotspotModal.classList.add("active");
             formWrapper.classList.add("hidden");
+            setFormMode(false);
             loadingEl.style.display = "flex";
 
             // Clear any old temporary pin
@@ -174,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
         currentPhotosArray.forEach((p, idx) => {
             if (idx === currentViewIndex) return; // Skip the current view
             const opt = document.createElement("option");
-            opt.value = idx;
+            opt.value = p.id;
             opt.innerText = `View ${idx + 1}`;
             targetSelect.appendChild(opt);
         });
@@ -231,6 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // INITIALIZE PANOLENS VIEWER
     // ============================================================
     function initViewer(imageUrl) {
+        const requestToken = ++viewerRequestToken;
         if (viewer) {
             viewer.dispose();
             viewer = null;
@@ -251,12 +270,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const pano = new PANOLENS.ImagePanorama(imageUrl);
 
         pano.addEventListener("load", () => {
+            if (requestToken !== viewerRequestToken || !hotspotModal.classList.contains('active')) return;
             loadingEl.style.display = "none";
             currentPanoMesh = pano;
             raycastEnabled = true;
 
             // Load saved hotspots for this specific view
             loadExistingHotspots(currentMediaId);
+        });
+        pano.addEventListener('error', () => {
+            if (requestToken !== viewerRequestToken) return;
+            loadingEl.style.display = 'none';
+            raycastEnabled = false;
+            showAlert('Notice', 'This panorama could not be loaded. Choose another view or try again.');
         });
 
         viewer.add(pano);
@@ -302,6 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
         formWrapper.classList.remove("hidden");
 
         if (wasHidden) {
+            setFormMode(false);
             document.getElementById("hs-title").value = "";
             document.getElementById("hs-description").value = "";
         }
@@ -328,6 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // ============================================================
     document.getElementById("btn-cancel-hotspot")?.addEventListener("click", () => {
         formWrapper.classList.add("hidden");
+        setFormMode(false);
         pendingPoint = null;
         removeTemporarySpot();
     });
@@ -358,7 +386,9 @@ document.addEventListener("DOMContentLoaded", () => {
             x: pendingPoint.x,
             y: pendingPoint.y,
             z: pendingPoint.z,
-            target_pano_index: selectedType === "nav" ? targetSelect.value : null
+            id: pendingSpot?.userData?.hotspotId || null,
+            target_media_id: selectedType === "nav" ? parseInt(targetSelect.value, 10) : null,
+            target_pano_index: null
         };
 
         fetch("actions/admin/save_hotspot.php", {
@@ -373,6 +403,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .then((data) => {
             if (data.success) {
                 formWrapper.classList.add("hidden");
+                setFormMode(false);
                 pendingPoint = null;
                 removeTemporarySpot();
                 loadExistingHotspots(currentMediaId);
@@ -389,9 +420,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // LOAD EXISTING HOTSPOTS
     // ============================================================
     function loadExistingHotspots(mediaId) {
+        const requestToken = ++hotspotListRequestToken;
         fetch(`actions/admin/get_hotspots.php?media_id=${mediaId}`)
         .then((res) => res.json())
         .then((data) => {
+            if (requestToken !== hotspotListRequestToken || String(mediaId) !== String(currentMediaId)) return;
             listEl.innerHTML = "";
 
             if (!data.success || data.hotspots.length === 0) {
@@ -403,18 +436,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 listEl.insertAdjacentHTML(
                     "beforeend",
                     `
-                    <div class="hotspot-list-item" data-id="${h.id}">
+                    <div class="hotspot-list-item" data-id="${escapeHtml(h.id)}">
                         <div class="hs-info">
-                            <span class="hs-type-badge ${h.type}">
-                                ${h.type}
+                            <span class="hs-type-badge ${h.type === 'nav' ? 'nav' : 'info'}">
+                                ${escapeHtml(h.type === 'nav' ? 'Navigation' : 'Info')}
                             </span>
                             <strong>
-                                ${h.title}
+                                ${escapeHtml(h.title)}
                             </strong>
                         </div>
-                        <button class="btn-delete-hotspot" data-id="${h.id}" title="Delete">
+                        <div class="hotspot-list-actions">
+                        <button type="button" class="hotspot-list-action btn-edit-hotspot" data-id="${escapeHtml(h.id)}" title="Edit or move hotspot" aria-label="Edit or move hotspot"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                        <button type="button" class="hotspot-list-action btn-delete-hotspot" data-id="${escapeHtml(h.id)}" title="Delete hotspot" aria-label="Delete hotspot">
                             <i class="fa-solid fa-trash"></i>
                         </button>
+                        </div>
                     </div>
                     `
                 );
@@ -427,12 +463,36 @@ document.addEventListener("DOMContentLoaded", () => {
                             z: parseFloat(h.position_z)
                         });
                         
-                        spot.addHoverText(h.title);
+                        spot.addHoverText(escapeHtml(h.title));
                         currentPanoMesh.add(spot);
                     } catch(err) {
                         console.error("Failed to render a hotspot in 3D: ", err);
                     }
                 }
+            });
+
+            document.querySelectorAll(".btn-edit-hotspot").forEach((btn) => {
+                btn.addEventListener("click", function () {
+                    const hotspot = data.hotspots.find(item => String(item.id) === String(btn.getAttribute("data-id")));
+                    if (!hotspot || !currentPanoMesh) return;
+                    document.getElementById("hs-title").value = hotspot.title || "";
+                    document.getElementById("hs-description").value = hotspot.description || "";
+                    typeSelect.value = hotspot.type === "nav" ? "nav" : "info";
+                    toggleTypeFields();
+                    if (hotspot.type === "nav") {
+                        const legacyPhotos = [...currentPhotosArray].sort((a, b) => Number(a.id) - Number(b.id));
+                        const legacyIndex = parseInt(hotspot.target_pano_index, 10);
+                        const legacyTarget = hotspot.target_media_id || legacyPhotos[Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyIndex : -1]?.id;
+                        if (legacyTarget) targetSelect.value = String(legacyTarget);
+                    }
+                    pendingPoint = new THREE.Vector3(parseFloat(hotspot.position_x), parseFloat(hotspot.position_y), parseFloat(hotspot.position_z));
+                    removeTemporarySpot();
+                    pendingSpot = createHotspotSpot(typeSelect.value, pendingPoint);
+                    pendingSpot.userData.hotspotId = hotspot.id;
+                    currentPanoMesh.add(pendingSpot);
+                    setFormMode(true);
+                    formWrapper.classList.remove("hidden");
+                });
             });
 
             document.querySelectorAll(".btn-delete-hotspot").forEach((btn) => {

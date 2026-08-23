@@ -56,10 +56,11 @@ if ($venues_query) {
 }
 
 // 2. Fetch Media from CMS and attach to the correct showroom venue
-// ORDER BY id ASC keeps pano_urls order deterministic, matching admin hotspot indexing.
-$media_query = $conn->query("SELECT id, slot_assignment, file_path, media_type FROM media_cms ORDER BY id ASC");
+// Primary panoramas are shown first; stable media IDs keep navigation intact.
+$media_query = $conn->query("SELECT id, slot_assignment, file_path, media_type, is_primary FROM media_cms ORDER BY is_primary DESC, id ASC");
 
 $pano_index_map = []; // [ base_id => [ media_id => pano_url_index ] ]
+$legacy_pano_media_ids = []; // [ base_id => media IDs in historical id-ascending order ]
 
 if ($media_query) {
     while ($m = $media_query->fetch_assoc()) {
@@ -70,11 +71,15 @@ if ($media_query) {
             if (isset($showroom_data[$base_id])) {
                 if (!isset($showroom_data[$base_id]['pano_urls'])) {
                     $showroom_data[$base_id]['pano_urls'] = [];
+                    $showroom_data[$base_id]['pano_media_ids'] = [];
                     $pano_index_map[$base_id] = [];
+                    $legacy_pano_media_ids[$base_id] = [];
                 }
                 $current_index = count($showroom_data[$base_id]['pano_urls']);
                 $showroom_data[$base_id]['pano_urls'][] = $m['file_path'];
+                $showroom_data[$base_id]['pano_media_ids'][] = (int)$m['id'];
                 $pano_index_map[$base_id][$m['id']] = $current_index;
+                $legacy_pano_media_ids[$base_id][] = (int)$m['id'];
             }
         }
         elseif ($m['media_type'] === 'standard' && preg_match('/^venue_/', $slot) && strpos($slot, '_std') === false) {
@@ -86,9 +91,20 @@ if ($media_query) {
     }
 }
 
+// Older hotspot records stored a positional index against the historical
+// id-ascending panorama list.  Keep that legacy list separate from the
+// current primary-first display order so a primary flag change cannot retarget
+// an existing navigation pin.
+foreach ($legacy_pano_media_ids as $base_id => $legacy_ids) {
+    sort($legacy_ids, SORT_NUMERIC);
+    if (isset($showroom_data[$base_id])) {
+        $showroom_data[$base_id]['legacy_pano_media_ids'] = $legacy_ids;
+    }
+}
+
 // 3. Fetch hotspots and group by venue + pano index
 $hotspots_query = $conn->query("
-    SELECT id, media_id, type, title, description, position_x, position_y, position_z, target_pano_index 
+    SELECT id, media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id
     FROM showroom_hotspots
 ");
 if ($hotspots_query) {
@@ -112,6 +128,7 @@ if ($hotspots_query) {
                     'position_y' => $h['position_y'],
                     'position_z' => $h['position_z'],
                     'target_pano_index' => $h['target_pano_index'],
+                    'target_media_id' => $h['target_media_id'],
                 ];
                 break;
             }

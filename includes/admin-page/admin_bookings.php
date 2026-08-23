@@ -95,7 +95,7 @@
                 <span class="label">Venue Type:</span> <span class="value">--</span>
                 <span class="label">Date:</span> <span class="value">--</span>
                 <span class="label">Total Paid by Guest:</span> <span class="value">₱0.00</span>
-                <span class="label">PayMongo Fee:</span> <span class="value">₱0.00</span>
+                <span class="label">Payment-processing fee:</span> <span class="value">₱0.00</span>
                 <span class="label">Reason:</span>
                 <span class="value text-sub-muted" id="modal-ref-reason">--</span>
             </div>
@@ -109,9 +109,14 @@
                 <span class="label">Refund Amount:</span>
                 <span class="value amount">₱0.00</span>
             </div>
+            <div class="refund-rejection-block" aria-labelledby="refund-rejection-label">
+                <label class="form-label-med" id="refund-rejection-label" for="refund-rejection-reason">Rejection reason <span class="text-sub-muted">(required only to reject)</span></label>
+                <textarea id="refund-rejection-reason" class="form-input-padded" rows="3" maxlength="500" placeholder="Explain why this request cannot be approved"></textarea>
+            </div>
             <div class="modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
-                <button class="btn-modal btn-modal-danger btn-modal-refund">Execute Refund</button>
+                <button class="btn-modal btn-modal-danger btn-modal-reject-refund" id="btn-reject-refund-inline">Reject Refund</button>
+                <button class="btn-modal btn-modal-primary btn-modal-refund">Execute Refund</button>
             </div>
         </div>
 

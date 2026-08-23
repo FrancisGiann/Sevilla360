@@ -168,7 +168,7 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
             </div>
             <div class="um-form-group">
                 <label>Password</label>
-                <input type="password" id="staff_password" placeholder="Enter password (leave blank to keep current)">
+                <input type="password" id="staff_password" minlength="8" placeholder="Enter password (leave blank to keep current)">
                 <small id="pw_hint" style="color:#888; font-size:0.8rem; display:none;">Leave blank to keep existing
                     password.</small>
             </div>

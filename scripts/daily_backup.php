@@ -18,7 +18,7 @@ try {
     $admin = $conn->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1")->fetch_assoc();
     if (!$admin) throw new RuntimeException('No active admin account is available for backup ownership.');
 
-    $backupDir = __DIR__ . '/../storage/backups';
+    $backupDir = BackupHelper::resolveBackupDir(true);
     $backup = BackupHelper::createBackupFile($conn, $database, $backupDir, 'sevilla360_auto_');
     if ($backup === false) throw new RuntimeException('Backup export failed.');
     if (!BackupHelper::registerBackup($conn, $backup['filename'], $backup['file_size'], (int)$admin['id'])) {
@@ -34,7 +34,15 @@ try {
     $audit->execute();
     echo "Daily backup created: {$backup['filename']}\n";
 } catch (Throwable $e) {
-    fwrite(STDERR, "Daily backup failed: {$e->getMessage()}\n");
+    error_log('Daily backup failed: ' . get_class($e));
+    try {
+        $adminId = (int)($admin['id'] ?? 0);
+        if ($adminId > 0) {
+            $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Automatic daily backup failed', '127.0.0.1')");
+            if ($audit) { $audit->bind_param('i', $adminId); $audit->execute(); }
+        }
+    } catch (Throwable $auditError) { error_log('Daily backup failure audit failed: ' . get_class($auditError)); }
+    fwrite(STDERR, "Daily backup failed. Check the private PHP error log.\n");
     exit(1);
 } finally {
     if (is_resource($lock)) {

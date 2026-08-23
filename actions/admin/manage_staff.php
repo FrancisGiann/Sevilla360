@@ -1,6 +1,6 @@
 <?php
 // actions/admin/manage_staff.php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
@@ -20,19 +20,51 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
+if (!is_array($data)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Invalid JSON request.']);
+    exit;
+}
 $action = $data['action'] ?? '';
+if (!in_array($action, ['add', 'edit', 'delete'], true)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Invalid staff action.']);
+    exit;
+}
+if ($action === 'add' || $action === 'edit') {
+    $inputName = trim((string)($data['name'] ?? ''));
+    $inputEmail = trim((string)($data['email'] ?? ''));
+    $inputRole = (string)($data['role'] ?? '');
+    $inputStatus = (string)($data['status'] ?? '');
+    $inputPassword = (string)($data['password'] ?? '');
+    if ($inputName === '' || strlen($inputName) > 150 || !filter_var($inputEmail, FILTER_VALIDATE_EMAIL) || !in_array($inputRole, ['admin', 'staff'], true) || !in_array($inputStatus, ['active', 'inactive'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Invalid staff name, email, role, or status.']);
+        exit;
+    }
+    if (($action === 'add' && strlen($inputPassword) < 8) || ($action === 'edit' && $inputPassword !== '' && strlen($inputPassword) < 8)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Password must be at least 8 characters.']);
+        exit;
+    }
+} elseif (!filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'A valid staff account is required.']);
+    exit;
+}
 
 try {
     $conn->begin_transaction();
 
     if ($action === 'add' || $action === 'edit') {
-        $name = trim($data['name']);
-        $email = trim($data['email']);
-        $role = $data['role'];
-        $status = $data['status'];
-        $password = $data['password'];
+        $name = trim((string)($data['name'] ?? ''));
+        $email = trim((string)($data['email'] ?? ''));
+        $role = (string)($data['role'] ?? '');
+        $status = (string)($data['status'] ?? '');
+        $password = (string)($data['password'] ?? '');
 
-        if (empty($name) || empty($email)) throw new Exception("Name and email are required.");
+        if ($name === '' || strlen($name) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("A valid name and email are required.");
+        if (!in_array($role, ['admin', 'staff'], true) || !in_array($status, ['active', 'inactive'], true)) throw new Exception("Invalid staff role or status.");
 
         if ($action === 'add') {
             // Check if email exists
@@ -41,7 +73,7 @@ try {
             $stmt->execute();
             if ($stmt->get_result()->num_rows > 0) throw new Exception("Email already exists.");
 
-            if (empty($password)) throw new Exception("Password is required for new staff.");
+            if (strlen($password) < 8) throw new Exception("Password must be at least 8 characters for new staff.");
             
             $hash = password_hash($password, PASSWORD_DEFAULT);
             
@@ -61,13 +93,16 @@ try {
 
         } else {
             // EDIT EXISTING
-            $user_id = intval($data['user_id']);
+            $user_id = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (!$user_id) throw new Exception('A valid staff account is required.');
             
             // Superadmin Safeguard for Demotion
             $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
             $check->bind_param("i", $user_id);
             $check->execute();
-            $current_role = $check->get_result()->fetch_assoc()['role'];
+            $current_user = $check->get_result()->fetch_assoc();
+            if (!$current_user) throw new Exception('Staff account not found.');
+            $current_role = $current_user['role'];
             
             if ($current_role === 'admin' && $role !== 'admin') {
                 $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
@@ -77,7 +112,8 @@ try {
             }
 
             // Update User
-            if (!empty($password)) {
+            if ($password !== '') {
+                if (strlen($password) < 8) throw new Exception("Password must be at least 8 characters.");
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt_u = $conn->prepare("UPDATE users SET email = ?, role = ?, password_hash = ? WHERE id = ?");
                 $stmt_u->bind_param("sssi", $email, $role, $hash, $user_id);
@@ -97,14 +133,17 @@ try {
         }
     } 
     elseif ($action === 'delete') {
-        $user_id = intval($data['user_id']);
+        $user_id = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$user_id) throw new Exception('A valid staff account is required.');
         if ($user_id === $_SESSION['user_id']) throw new Exception("You cannot delete yourself.");
 
         // Superadmin Safeguard for Deletion
         $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
         $check->bind_param("i", $user_id);
         $check->execute();
-        $target_role = $check->get_result()->fetch_assoc()['role'];
+        $target_user = $check->get_result()->fetch_assoc();
+        if (!$target_user) throw new Exception('Staff account not found.');
+        $target_role = $target_user['role'];
 
         if ($target_role === 'admin') {
             $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
@@ -145,6 +184,7 @@ try {
 
 } catch (Exception $e) {
     $conn->rollback();
+    error_log('Staff management action failed: ' . get_class($e));
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
 ?>

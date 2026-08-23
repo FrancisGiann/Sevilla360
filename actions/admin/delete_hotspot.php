@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 
@@ -16,10 +16,11 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
-$id = intval($data['id']);
+$id = filter_var(is_array($data) ? ($data['id'] ?? null) : null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$id) { http_response_code(422); echo json_encode(['success' => false, 'message' => 'A valid hotspot is required.']); exit; }
 
 $stmt = $conn->prepare("DELETE FROM showroom_hotspots WHERE id = ?");
 $stmt->bind_param("i", $id);
-$stmt->execute();
+if (!$stmt->execute()) { echo json_encode(['success' => false, 'message' => 'Unable to delete hotspot.']); exit; }
 
 echo json_encode(['success' => true]);

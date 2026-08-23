@@ -37,6 +37,8 @@ The application provides a digital resort experience that allows visitors to exp
 4. Import the project database schema and seed data if available.
 5. Open `index.php` in your browser through the configured local server.
 
+For backups, set `BACKUP_DIR` to an absolute writable directory outside the actual web/document root (for example `/var/lib/sevilla360/backups`) and grant the PHP/cron account access. The application fails closed when this value is missing, too broad, or points inside the project/document root. Configure the daily job to run `php scripts/daily_backup.php` under the same account; backup files and logs must remain on private filesystem paths.
+
 ## Project Structure
 
 - `index.php` - main landing page.

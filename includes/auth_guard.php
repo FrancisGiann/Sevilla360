@@ -1,7 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session_init.php';
 
 // Generate CSRF TOKEN
 if (empty($_SESSION['csrf_token'])) {
@@ -36,7 +34,7 @@ $account_status = ($account && in_array($account['role'], ['admin', 'staff'], tr
 if (!$account || strcasecmp((string) $account_status, 'active') !== 0) {
     session_unset();
     session_destroy();
-    session_start();
+    session_regenerate_id(true);
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     $_SESSION['auth_alert'] = [
         'title' => 'Account unavailable',
@@ -60,7 +58,7 @@ if (isset($_SESSION['last_activity'])) {
         session_destroy();
         
         // Start a fresh session for the alert message
-        session_start();
+        session_regenerate_id(true);
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         $_SESSION['auth_alert'] = [
             'title' => 'Session Expired', 

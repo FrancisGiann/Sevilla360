@@ -134,7 +134,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
                 create_user_notification($conn, $c_data['user_id'], "Payment Successful", "Your online payment of ₱" . number_format($amount_paid, 2) . " for " . $c_data['venue_name'] . " has been successfully processed.");
             }
         } catch (Exception $mail_e) {
-            file_put_contents(__DIR__ . '/email_error.log', "[" . date('Y-m-d H:i:s') . "] " . $mail_e->getMessage() . "\n", FILE_APPEND);
+            error_log('PayMongo receipt email delivery failed: ' . get_class($mail_e));
         }
 
         echo "SUCCESS: Updated Booking $reference_no to $status.";

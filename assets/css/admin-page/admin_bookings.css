@@ -379,6 +379,19 @@
   font-weight: 600;
 }
 
+.refund-rejection-block {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid rgba(192, 90, 90, .22);
+  border-radius: 7px;
+  background: #fffafa;
+}
+.refund-rejection-block .form-label-med { display: block; margin-bottom: 7px; }
+.refund-rejection-block textarea { width: 100%; min-height: 82px; resize: vertical; box-sizing: border-box; }
+.refund-rejection-block .text-sub-muted { font-size: .78rem; font-weight: 400; color: #777; text-transform: none; letter-spacing: 0; }
+.btn-modal-reject-refund { background: #a84646 !important; }
+.btn-modal-reject-refund:hover, .btn-modal-reject-refund:focus-visible { background: #8f3939 !important; }
+
 /* Custom Date Picker (Reschedule Modal) */
 .date-picker-wrapper {
   position: relative;

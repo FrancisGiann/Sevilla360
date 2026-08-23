@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 
 // 1. Auth Guard: Ensure only admins can execute this
@@ -18,6 +18,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/booking_rules.php';
 require_once __DIR__ . '/../../includes/request_context.php';
+require_once __DIR__ . '/../../includes/refund_helper.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -34,6 +35,7 @@ if (!isset($data['booking_id']) || !isset($data['action'])) {
 
 $booking_id = intval($data['booking_id']);
 $action = $data['action'];
+$postCommitActions = [];
 
 try {
     $conn->begin_transaction();
@@ -42,7 +44,7 @@ try {
     // FETCH CUSTOMER DATA FOR EMAILS
     // ==========================================
     $stmt_info = $conn->prepare("
-        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
+        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, b.amount_paid, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id
@@ -62,13 +64,28 @@ try {
     $c_user_id = $b_info['user_id'] ?? null;
     $is_pending_event_hall = ($b_info['category'] === 'Event Hall' && $b_info['booking_status'] === 'Pending');
 
+    // All booking/payment/cancellation paths acquire the booking row first.
+    // This deterministic order prevents a refund transition from racing a
+    // provider reconciliation or customer request that also locks bookings.
+    $stmt_booking_lock = $conn->prepare('SELECT id, booking_status, payment_status, amount_paid, total_amount FROM bookings WHERE id = ? FOR UPDATE');
+    $stmt_booking_lock->bind_param('i', $booking_id);
+    if (!$stmt_booking_lock->execute()) throw new Exception('Booking lock unavailable.');
+    $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
+    if (!$locked_booking) throw new Exception('Booking not found.');
+    // All state-dependent decisions below use this locked snapshot rather
+    // than the initial display query, which may have become stale.
+    $b_info['booking_status'] = $locked_booking['booking_status'];
+    $b_info['amount_paid'] = $locked_booking['amount_paid'];
+    $b_info['payment_status'] = $locked_booking['payment_status'];
+    $b_info['total_amount'] = $locked_booking['total_amount'];
+    $is_pending_event_hall = ($b_info['category'] === 'Event Hall' && $locked_booking['booking_status'] === 'Pending');
+
     // Serialize inventory decisions for this venue within the transaction.
     // This protects cooperating paths; a schema-level exclusion constraint is
     // still unavailable in the current MySQL schema.
     $stmt_venue_lock = $conn->prepare("SELECT id FROM venues WHERE id = ? FOR UPDATE");
     $stmt_venue_lock->bind_param('i', $b_info['venue_id']);
-    $stmt_venue_lock->execute();
-    if ($stmt_venue_lock->get_result()->num_rows === 0) throw new Exception('Venue not found.');
+    if (!$stmt_venue_lock->execute() || $stmt_venue_lock->get_result()->num_rows === 0) throw new Exception('Venue not found.');
 
     // ==========================================
     // ACTIONS
@@ -224,7 +241,7 @@ try {
             $dash_link = $domain . $_SERVER['HTTP_HOST'] . "/Sevilla360/user_dashboard.php";
             send_invoice_ready_email($c_email, $c_name, $ref_no, $new_total, $dash_link);
         } catch (Throwable $mail_e) {
-            error_log("Failed to send invoice email: " . $mail_e->getMessage());
+            error_log('Invoice email delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
         }
 
         create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Please review it on your dashboard.");
@@ -289,9 +306,9 @@ try {
         try {
             $email_status = ($new_payment_status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Manual Payment)';
             send_booking_receipt($c_email, $c_name, $ref_no, $v_name, $new_amount_paid, $email_status);
-        } catch (Exception $mail_e) {
+        } catch (Throwable $mail_e) {
             // Silently fail so the admin doesn't get an error popup if Gmail is slow
-            error_log("Failed to send admin payment receipt: " . $mail_e->getMessage());
+            error_log('Admin payment receipt delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
         }
 
         create_user_notification($conn, $c_user_id, "Payment Received", "A payment of ₱" . number_format($amount_to_add, 2) . " for your booking at $v_name has been confirmed.");
@@ -512,13 +529,21 @@ try {
 
         $message = "Booking #$ref_no successfully rescheduled to $new_start!";
 
-        // EMAIL NOTIFICATION
-        try { send_reschedule_approved_email($c_email, $c_name, $booking_id); } catch (Exception $e) {}
-
-        create_user_notification($conn, $c_user_id, "Reschedule Approved", "Your request to reschedule $v_name to $new_start has been approved.");
+        // External mail and customer-facing notifications are dispatched only
+        // after the date/allocation transaction commits successfully.
+        $postCommitActions[] = [
+            'kind' => 'reschedule_approved',
+            'email' => $c_email,
+            'name' => $c_name,
+            'booking_id' => $booking_id,
+            'user_id' => $c_user_id,
+            'venue_name' => $v_name,
+            'new_start' => $new_start
+        ];
     }
     elseif ($action === 'reject_reschedule') {
-        $admin_reply = isset($data['admin_reply']) ? trim($data['admin_reply']) : "No reason provided.";
+        $admin_reply = isset($data['admin_reply']) ? trim((string)$data['admin_reply']) : "No reason provided.";
+        if ($admin_reply === '' || strlen($admin_reply) > 500 || preg_match('/[\x00-\x1F\x7F]/', $admin_reply)) throw new Exception('A bounded rejection reason is required.');
 
         $stmt_req = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = ? WHERE booking_id = ? AND status = 'Pending'");
         $stmt_req->bind_param("si", $admin_reply, $booking_id);
@@ -526,28 +551,38 @@ try {
 
         $message = "Reschedule request for Booking #$ref_no rejected.";
 
-        // EMAIL NOTIFICATION
-        $html = "<div style='font-family:Arial; padding:20px;'><h2 style='color:#d6a870;'>Reschedule Update</h2><p>Hello $c_name,</p><p>Regarding your request to reschedule your booking at <strong>$v_name</strong>, the administration left the following note:</p><p style='padding:10px; background:#f4f4f4; border-left:3px solid #d6a870;'><em>$admin_reply</em></p><p>Your original dates remain secured.</p></div>";
-        try { send_custom_email($c_email, $c_name, "Reschedule Update - $ref_no", $html); } catch (Exception $e) {}
-
-        create_user_notification($conn, $c_user_id, "Reschedule Rejected", "Your request to reschedule $v_name was declined. Please check your email for details.");
+        $postCommitActions[] = [
+            'kind' => 'reschedule_rejected',
+            'email' => $c_email,
+            'name' => $c_name,
+            'booking_id' => $booking_id,
+            'user_id' => $c_user_id,
+            'venue_name' => $v_name,
+            'reason' => $admin_reply
+        ];
     }
     elseif ($action === 'refund') {
-        $stmt_refund = $conn->prepare("SELECT refund_amount FROM cancellations WHERE booking_id = ? LIMIT 1");
+        $stmt_refund = $conn->prepare("SELECT id, reason, refund_amount, fee_deducted, fee_percent, status FROM cancellations WHERE booking_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE");
         $stmt_refund->bind_param("i", $booking_id);
         $stmt_refund->execute();
         $refund_row = $stmt_refund->get_result()->fetch_assoc();
+        if (!$refund_row) throw new Exception('No pending refund request exists for this booking.');
         $refund_amount = $refund_row ? floatval($refund_row['refund_amount']) : null;
 
-        $refund_tx_id = isset($data['refund_transaction_id']) ? trim($data['refund_transaction_id']) : null;
+        $refund_tx_id = trim((string)($data['refund_transaction_id'] ?? ''));
+        if ($refund_tx_id === '' || strlen($refund_tx_id) > 160 || !preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:\/-]{0,159}\z/D', $refund_tx_id)) {
+            throw new Exception('A valid refund transaction/reference ID is required.');
+        }
 
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
 
-        $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Processed', refund_transaction_id = ? WHERE booking_id = ?");
-        $stmt_cancel->bind_param("si", $refund_tx_id, $booking_id);
+        $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Processed', refund_transaction_id = ? WHERE id = ? AND status = 'Pending'");
+        $stmt_cancel->bind_param("si", $refund_tx_id, $refund_row['id']);
         $stmt_cancel->execute();
+        if ($stmt_cancel->affected_rows !== 1) throw new Exception('Refund request changed before it could be processed.');
+        record_cancellation_history($conn, $booking_id, (int)$refund_row['id'], 'processed', (string)$refund_row['reason'], (float)$refund_row['refund_amount'], (float)$refund_row['fee_deducted'], (float)$refund_row['fee_percent'], null, (int)$_SESSION['user_id']);
 
         // Also clean up any pending reschedule request for this booking
         $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
@@ -556,21 +591,71 @@ try {
 
         $message = "Refund processed and Booking #$ref_no cancelled.";
 
-        // EMAIL NOTIFICATION
-        try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'refund', $refund_amount); } catch (Exception $e) {}
-
-        create_user_notification($conn, $c_user_id, "Refund Processed", "Your refund for $v_name has been processed. Your booking is cancelled.");
+        // Email and customer notifications are dispatched only after the
+        // booking/cancellation transaction commits below.
+        $postCommitActions[] = [
+            'kind' => 'refund_processed',
+            'email' => $c_email,
+            'name' => $c_name,
+            'booking_id' => $booking_id,
+            'refund_amount' => $refund_amount,
+            'user_id' => $c_user_id,
+            'venue_name' => $v_name
+        ];
+    }
+    elseif ($action === 'reject_refund') {
+        if ($_SESSION['role'] !== 'admin') throw new Exception('Only administrators may reject refund requests.');
+        $admin_reply = trim((string)($data['reason'] ?? ''));
+        if ($admin_reply === '' || strlen($admin_reply) > 500 || preg_match('/[\x00-\x1F\x7F]/', $admin_reply)) throw new Exception('A bounded rejection reason is required.');
+        $stmt_refund = $conn->prepare("SELECT id FROM cancellations WHERE booking_id = ? AND status = 'Pending' ORDER BY id DESC LIMIT 1 FOR UPDATE");
+        $stmt_refund->bind_param('i', $booking_id);
+        $stmt_refund->execute();
+        $refund_row = $stmt_refund->get_result()->fetch_assoc();
+        if (!$refund_row) throw new Exception('No pending refund request exists for this booking.');
+        $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Rejected', admin_reply = ? WHERE id = ? AND status = 'Pending'");
+        $stmt_cancel->bind_param('si', $admin_reply, $refund_row['id']);
+        if (!$stmt_cancel->execute() || $stmt_cancel->affected_rows !== 1) throw new Exception('Refund request changed before rejection could be saved.');
+        $stmt_snapshot = $conn->prepare('SELECT reason, refund_amount, fee_deducted, fee_percent FROM cancellations WHERE id = ? FOR UPDATE');
+        $stmt_snapshot->bind_param('i', $refund_row['id']); $stmt_snapshot->execute();
+        $snapshot = $stmt_snapshot->get_result()->fetch_assoc();
+        record_cancellation_history($conn, $booking_id, (int)$refund_row['id'], 'rejected', (string)($snapshot['reason'] ?? ''), (float)($snapshot['refund_amount'] ?? 0), (float)($snapshot['fee_deducted'] ?? 0), (float)($snapshot['fee_percent'] ?? 3), $admin_reply, (int)$_SESSION['user_id']);
+        $message = "Refund request for Booking #$ref_no rejected.";
+        // Email and customer notifications are dispatched only after the
+        // rejection transaction commits below.
+        $postCommitActions[] = [
+            'kind' => 'refund_rejected',
+            'email' => $c_email,
+            'name' => $c_name,
+            'reference' => $ref_no,
+            'venue_name' => $v_name,
+            'reason' => $admin_reply,
+            'user_id' => $c_user_id
+        ];
     }
     elseif ($action === 'admin_force_cancel') {
         if (!isset($data['reason'])) throw new Exception("Reason is required.");
 
-        $reason = trim($data['reason']);
-        $refund_amount = floatval($data['refund_amount']);
+        $reason = trim((string)$data['reason']);
+        if ($reason === '' || strlen($reason) > 500 || preg_match('/[\x00-\x1F\x7F]/', $reason)) throw new Exception('A bounded cancellation reason is required.');
+        // Force cancellation is always a full refund of the amount actually
+        // paid; never trust the client-provided display amount.
+        $refund_amount = max(0.0, (float)$locked_booking['amount_paid']);
         $fee = 0.00; // Resort shoulders the fee
 
-        $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status, admin_reply) VALUES (?, ?, ?, ?, 'Processed', 'Admin Initiated (Force Majeure)')");
-        $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee);
-        $stmt_cx->execute();
+        $stmt_cx = $conn->prepare("SELECT id, status FROM cancellations WHERE booking_id = ? LIMIT 1 FOR UPDATE");
+        $stmt_cx->bind_param('i', $booking_id); $stmt_cx->execute();
+        $current_cancellation = $stmt_cx->get_result()->fetch_assoc();
+        if ($current_cancellation && $current_cancellation['status'] === 'Processed') throw new Exception('This booking has already been refunded.');
+        if ($current_cancellation) {
+            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = 0, status = 'Processed', admin_reply = 'Admin Initiated (Force Majeure)', refund_transaction_id = NULL WHERE id = ?");
+            $stmt_cx->bind_param('sddi', $reason, $refund_amount, $fee, $current_cancellation['id']); $stmt_cx->execute();
+            $cancellation_id = (int)$current_cancellation['id'];
+        } else {
+            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, status, admin_reply) VALUES (?, ?, ?, ?, 0, 'Processed', 'Admin Initiated (Force Majeure)')");
+            $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee); $stmt_cx->execute();
+            $cancellation_id = (int)$conn->insert_id;
+        }
+        record_cancellation_history($conn, $booking_id, $cancellation_id, 'processed', $reason, $refund_amount, $fee, 0.0, 'Admin Initiated (Force Majeure)', (int)$_SESSION['user_id']);
 
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
@@ -583,10 +668,17 @@ try {
 
         $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
 
-        // EMAIL NOTIFICATION
-        try { send_booking_cancellation_email($c_email, $c_name, $booking_id, 'cancelled', $refund_amount, $reason); } catch (Exception $e) {}
-
-        create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name has been cancelled by the admin. Check your email for details.");
+        // Keep customer-facing refund/cancellation delivery after commit.
+        $postCommitActions[] = [
+            'kind' => 'force_cancelled',
+            'email' => $c_email,
+            'name' => $c_name,
+            'booking_id' => $booking_id,
+            'refund_amount' => $refund_amount,
+            'reason' => $reason,
+            'user_id' => $c_user_id,
+            'venue_name' => $v_name
+        ];
     }
     else {
         throw new Exception('Invalid action provided.');
@@ -606,12 +698,99 @@ try {
         $audit_stmt->execute();
     }
 
-    $conn->commit();
+    if (!$conn->commit()) throw new Exception('Unable to commit the booking update.');
+
+    // Nothing in this block can roll back the committed state.  Delivery or
+    // notification failures are logged with safe context and reported only as
+    // nonfatal post-commit warnings.
+    foreach ($postCommitActions as $postCommitAction) {
+        if ($postCommitAction['kind'] === 'refund_processed') {
+            try {
+                send_booking_cancellation_email(
+                    $postCommitAction['email'],
+                    $postCommitAction['name'],
+                    $postCommitAction['booking_id'],
+                    'refund',
+                    $postCommitAction['refund_amount']
+                );
+            } catch (Throwable $mailError) {
+                error_log('Refund processed email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+            }
+            try {
+                create_user_notification(
+                    $conn,
+                    $postCommitAction['user_id'],
+                    'Refund Processed',
+                    'Your refund for ' . $postCommitAction['venue_name'] . ' has been processed. Your booking is cancelled.'
+                );
+            } catch (Throwable $notificationError) {
+                error_log('Refund processed notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'refund_rejected') {
+            try {
+                send_refund_rejected_email(
+                    $postCommitAction['email'],
+                    $postCommitAction['name'],
+                    $postCommitAction['booking_id'],
+                    $postCommitAction['reason']
+                );
+            } catch (Throwable $mailError) {
+                error_log('Refund rejection email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+            }
+            try {
+                create_user_notification(
+                    $conn,
+                    $postCommitAction['user_id'],
+                    'Refund Request Rejected',
+                    'Your refund request for ' . $postCommitAction['venue_name'] . ' was rejected. You may submit a new request from your dashboard.'
+                );
+            } catch (Throwable $notificationError) {
+                error_log('Refund rejection notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'reschedule_approved') {
+            try {
+                send_reschedule_approved_email($postCommitAction['email'], $postCommitAction['name'], $postCommitAction['booking_id']);
+            } catch (Throwable $mailError) {
+                error_log('Reschedule approval email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+            }
+            try {
+                create_user_notification($conn, $postCommitAction['user_id'], 'Reschedule Approved', 'Your request to reschedule ' . $postCommitAction['venue_name'] . ' to ' . $postCommitAction['new_start'] . ' has been approved.');
+            } catch (Throwable $notificationError) {
+                error_log('Reschedule approval notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'reschedule_rejected') {
+            try {
+                send_reschedule_rejected_email($postCommitAction['email'], $postCommitAction['name'], $postCommitAction['booking_id'], $postCommitAction['reason']);
+            } catch (Throwable $mailError) {
+                error_log('Reschedule rejection email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+            }
+            try {
+                create_user_notification($conn, $postCommitAction['user_id'], 'Reschedule Rejected', 'Your request to reschedule ' . $postCommitAction['venue_name'] . ' was declined. Your original dates remain secured.');
+            } catch (Throwable $notificationError) {
+                error_log('Reschedule rejection notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'force_cancelled') {
+            try {
+                send_booking_cancellation_email($postCommitAction['email'], $postCommitAction['name'], $postCommitAction['booking_id'], 'cancelled', $postCommitAction['refund_amount'], $postCommitAction['reason']);
+            } catch (Throwable $mailError) {
+                error_log('Force cancellation email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+            }
+            try {
+                create_user_notification($conn, $postCommitAction['user_id'], 'Booking Cancelled', 'Your booking for ' . $postCommitAction['venue_name'] . ' has been cancelled by the admin.');
+            } catch (Throwable $notificationError) {
+                error_log('Force cancellation notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        }
+    }
+
     echo json_encode(['success' => true, 'message' => $message]);
 
 } catch (Exception $e) {
     $conn->rollback();
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    error_log('Admin booking action failed: ' . get_class($e));
+    $safeMessage = $e->getMessage();
+    if (str_contains(strtolower($safeMessage), 'sql') || str_contains(strtolower($safeMessage), 'query') || str_contains(strtolower($safeMessage), 'column')) $safeMessage = 'Unable to update the booking right now.';
+    echo json_encode(['success' => false, 'message' => $safeMessage]);
 }
 
 $conn->close();

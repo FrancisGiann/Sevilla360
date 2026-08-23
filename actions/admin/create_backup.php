@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -21,15 +21,16 @@ require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 
-$backupDir = __DIR__ . '/../../storage/backups';
+try {
+$backupDir = BackupHelper::resolveBackupDir(true);
 $signingKey = BackupHelper::getSigningKey();
 if ($signingKey === null) {
     echo json_encode(['success' => false, 'error' => 'Backup creation is unavailable: configure a strong APP_KEY (at least 32 randomly generated characters).']);
     exit;
 }
 $timestamp = date('Y-m-d_H-i-s');
-$filename = "sevilla360_backup_{$timestamp}.sql";
-$filePath = "{$backupDir}/{$filename}";
+$filename = "sevilla360_backup_{$timestamp}_" . bin2hex(random_bytes(4)) . ".sql";
+$filePath = BackupHelper::backupFilePath($filename, false);
 
 if (BackupHelper::exportDatabase($conn, $database, $filePath)) {
     $fileSize = filesize($filePath);
@@ -52,5 +53,11 @@ if (BackupHelper::exportDatabase($conn, $database, $filePath)) {
     }
 } else {
     echo json_encode(['success' => false, 'error' => 'Failed to generate backup file. Check directory permissions.']);
+}
+} catch (Throwable $e) {
+    error_log('Manual backup failed: ' . get_class($e));
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', 'Manual backup failed', ?)");
+    if ($audit) { $auditAdmin = (int)($_SESSION['user_id'] ?? 0); $auditIp = request_client_ip(); $audit->bind_param('is', $auditAdmin, $auditIp); $audit->execute(); }
+    echo json_encode(['success' => false, 'error' => 'Backup creation failed.']);
 }
 ?>

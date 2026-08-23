@@ -1,5 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/includes/session_init.php';
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 
 require_once 'config/db_connect.php';
@@ -129,7 +129,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="form-group">
                             <label>PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" required>
+                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" minlength="8" required>
                                 <span class="password-toggle">SHOW</span>
                             </div>
                             <div class="error-msg" id="err-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
@@ -138,7 +138,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="form-group">
                             <label>CONFIRM PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" required>
+                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" minlength="8" required>
                                 <span class="password-toggle">SHOW</span>
                             </div>
                             <div class="error-msg" id="err-confirm-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
@@ -160,7 +160,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         </div>
 
                         <div class="terms-checkbox-group">
-                            <input type="checkbox" id="agree-checkbox" required>
+                            <input type="checkbox" id="agree-checkbox" name="consent" value="1" required>
                             <label for="agree-checkbox">
                                 I agree to the <span class="terms-link" id="link-goto-terms" style="cursor: pointer;">Terms
                                     of Service</span> and
@@ -189,9 +189,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <div class="terms-content">
                     <ol>
                         <li><strong>Booking & Payments:</strong> All reservations require a valid payment method. A
-                            non-refundable deposit may apply depending on the venue.</li>
-                        <li><strong>Cancellation & Refunds:</strong> Cancellations made 72 hours prior to the event are
-                            eligible for a partial refund. Late cancellations are non-refundable.</li>
+                            booking is confirmed once the required payment is successfully processed.</li>
+                        <li><strong>Cancellation & Refunds:</strong> Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time. The fee percentage and refund amount are snapshotted when the request is submitted; admin-initiated force cancellations receive a 100% refund and the resort absorbs any processing fee.</li>
                         <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for
                             illustrative purposes. Actual arrangements and lighting may slightly vary.</li>
                         <li><strong>Resort Rules:</strong> Guests are expected to maintain the property. Damages

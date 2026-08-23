@@ -127,6 +127,7 @@ unset($villa);
                     <p><strong>Operating Hours:</strong> <span class="sum-val">Per Event Schedule</span></p>
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
                     <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">To Be Arranged</span></p>
+                    <p id="event-bundle-estimate" style="display:none; color:var(--color-gold);" aria-live="polite"><strong>Bundle:</strong> Estimated — final quote after resort review (<span id="event-bundle-estimate-amount">₱0.00</span> discount)</p>
                 </div>
 
                 <div class="summary-container" id="sum-hotel-rooms">
@@ -210,7 +211,7 @@ unset($villa);
                     </div>
 
                     <div class="terms-group">
-                        <input type="checkbox" id="terms-check">
+                        <input type="checkbox" id="terms-check" name="policy_consent" value="1">
                         <label for="terms-check">I agree to the <a href="#" id="open-terms">Terms &
                                 Conditions</a></label>
                     </div>

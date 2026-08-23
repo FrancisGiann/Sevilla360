@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 
@@ -84,7 +84,7 @@ try {
             c.first_name, c.last_name, 
             v.name AS venue_name, v.category AS venue_category,
             hr.room_type AS hotel_room_type,
-            cx.status AS cancel_status, cx.reason AS cancel_reason,
+            cx.status AS cancel_status, cx.reason AS cancel_reason, cx.fee_percent AS cancel_fee_percent, cx.fee_deducted AS cancel_fee, cx.refund_amount AS cancel_refund,
             rr.status AS resched_status, rr.new_start_date, rr.new_end_date, rr.reason AS resched_reason
             , EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled
             , EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status = 'created' AND bcs.provider_session_id IS NOT NULL) AS has_checkout_session

@@ -119,6 +119,13 @@ document.addEventListener("DOMContentLoaded", () => {
     formPrefs.addEventListener("change", () => isFormDirty = true);
 
     btnSavePrefs.addEventListener("click", () => {
+      const feeInput = document.getElementById('refund-fee-percent');
+      const feeValue = feeInput?.value.trim() || '';
+      if (feeInput && (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(feeValue) || Number(feeValue) < 0 || Number(feeValue) > 100 || !Number.isFinite(Number(feeValue)))) {
+        feeInput.focus();
+        if (window.showAlert) window.showAlert('Invalid fee', 'Enter a payment-processing fee between 0 and 100.', 'error');
+        return;
+      }
       const originalText = btnSavePrefs.innerHTML;
       btnSavePrefs.innerHTML = "Saving...";
       btnSavePrefs.style.opacity = "0.8";

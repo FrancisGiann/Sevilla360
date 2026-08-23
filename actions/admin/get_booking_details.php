@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 
@@ -98,7 +98,7 @@ try {
     $checkout_session = $st_checkout->get_result()->fetch_assoc();
 
     // Fetch Cancellation Data
-    $st_cx = $conn->prepare("SELECT refund_amount, refund_transaction_id FROM cancellations WHERE booking_id = ? LIMIT 1");
+    $st_cx = $conn->prepare("SELECT refund_amount, refund_transaction_id, fee_deducted, fee_percent, status, admin_reply FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
     $st_cx->bind_param("i", $booking_id);
     $st_cx->execute();
     $cx_res = $st_cx->get_result()->fetch_assoc();

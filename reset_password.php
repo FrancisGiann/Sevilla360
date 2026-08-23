@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/includes/session_init.php';
 require_once 'config/db_connect.php';
 
 $token = $_GET['token'] ?? '';
@@ -56,12 +56,12 @@ if (empty($token)) {
 
                         <div class="form-group">
                             <label>NEW PASSWORD</label>
-                            <input type="password" name="new_password" class="form-control" required minlength="6">
+                    <input type="password" name="new_password" class="form-control" required minlength="8">
                         </div>
                         
                         <div class="form-group">
                             <label>CONFIRM PASSWORD</label>
-                            <input type="password" name="confirm_password" class="form-control" required minlength="6">
+                    <input type="password" name="confirm_password" class="form-control" required minlength="8">
                         </div>
 
                         <button type="submit" class="btn btn-primary btn-full">RESET PASSWORD</button>

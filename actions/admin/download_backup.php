@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     die('Unauthorized access.');
@@ -7,6 +7,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
+require_once __DIR__ . '/../../includes/backup_helper.php';
 
 $filename = $_GET['file'] ?? '';
 if (empty($filename)) {
@@ -26,7 +27,10 @@ if ($result->num_rows === 0) {
 
 $row = $result->fetch_assoc();
 $safeFilename = basename($row['filename']);
-$filePath = __DIR__ . '/../../storage/backups/' . $safeFilename;
+try { $filePath = BackupHelper::backupFilePath($safeFilename); } catch (Throwable $e) {
+    http_response_code(404);
+    die('The physical backup file is unavailable.');
+}
 
 if (!file_exists($filePath)) {
     die('The physical backup file is missing from the server.');

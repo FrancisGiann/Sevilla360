@@ -193,7 +193,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
   
             if (b.booking_status !== 'Cancelled') {
-                if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Cancel Req.'; } 
+                if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Pending Refund'; }
                 else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
             }
   
@@ -214,7 +214,8 @@ document.addEventListener("DOMContentLoaded", () => {
             } 
             else if (b.booking_status === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-ref="${b.reference_no}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-reason="${b.cancel_reason || ''}">Refund Req</button>`;
+                    actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-ref="${b.reference_no}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent || window.refundFeePercent || 3}" data-fee="${b.cancel_fee || ''}" data-refund="${b.cancel_refund || ''}" data-reason="${b.cancel_reason || ''}">Refund Req</button>
+                                   `;
                 } else if (b.resched_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
                 } else {
@@ -241,7 +242,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Actions" class="action-cells">${actionBtns}</td>
             </tr>`;
         });
-  
+
         tbody.innerHTML = html;
     }
   
@@ -390,6 +391,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const closeModal = () => {
       modalOverlay.classList.remove("active");
       document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
+      const refundTx = document.getElementById('refund-transaction-id');
+      const refundReason = document.getElementById('refund-rejection-reason');
+      if (refundTx) { refundTx.value = ''; refundTx.required = false; }
+      if (refundReason) { refundReason.value = ''; refundReason.required = false; }
     };
   
     document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
@@ -440,17 +445,25 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       
         // REFUND MODAL
-        const refundModal = document.getElementById("refundModal");
+            const refundModal = document.getElementById("refundModal");
         document.querySelectorAll('.open-refund').forEach(btn => {
           btn.addEventListener('click', function() {
             const bookingId = this.getAttribute('data-id');
             const referenceId = this.getAttribute('data-ref') || bookingId;
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
-            let refundAmt = totalPaid - 461;
-            if (refundAmt < 0) refundAmt = 0; 
+            const feePercent = Number(this.getAttribute('data-fee-percent') || window.refundFeePercent || 3);
+            const feeAttr = this.getAttribute('data-fee');
+            const refundAttr = this.getAttribute('data-refund');
+            const fee = feeAttr !== null && feeAttr !== '' ? Number(feeAttr) : Math.round(totalPaid * feePercent) / 100;
+            const refundAmt = refundAttr !== null && refundAttr !== '' ? Number(refundAttr) : Math.max(0, Math.round((totalPaid - fee) * 100) / 100);
       
             const titleEl = document.querySelector('#refundModal .modal-main-title');
             if(titleEl) titleEl.innerText = `Process Refund - Booking #${referenceId}`;
+
+            const transactionInput = document.getElementById('refund-transaction-id');
+            const rejectionInput = document.getElementById('refund-rejection-reason');
+            if (transactionInput) { transactionInput.value = ''; transactionInput.required = false; }
+            if (rejectionInput) rejectionInput.value = '';
       
             const spans = document.querySelectorAll('#refundModal .summary-grid .value');
             if (spans.length >= 5) {
@@ -458,7 +471,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 spans[1].innerText = this.getAttribute('data-venue') || "Unknown";
                 spans[2].innerText = this.getAttribute('data-date') || "--";
                 spans[3].innerText = `₱${totalPaid.toLocaleString()}`;
-                spans[4].innerText = `₱461`;
+                spans[4].innerText = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}% )`;
             }
             
             const reasonEl = document.getElementById('modal-ref-reason');
@@ -467,12 +480,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const refundTotalEl = document.querySelector('#refundModal .refund-total .amount');
             if (refundTotalEl) refundTotalEl.innerText = `₱${refundAmt.toLocaleString()}`;
       
-            const executeBtn = document.querySelector('.btn-modal-refund');
+            const executeBtn = document.querySelector('#refundModal .btn-modal-refund');
             const newBtn = executeBtn.cloneNode(true);
             executeBtn.parentNode.replaceChild(newBtn, executeBtn);
             
             newBtn.setAttribute('data-id', bookingId);
             newBtn.addEventListener('click', function() {
+              if (transactionInput) transactionInput.required = true;
+              if (rejectionInput) rejectionInput.required = false;
               const refundTxId = document.getElementById('refund-transaction-id').value.trim();
               if (!refundTxId) {
                   showAlert("Missing Data", "Please enter the Refund Transaction / Reference ID.", "error");
@@ -482,6 +497,29 @@ document.addEventListener("DOMContentLoaded", () => {
                   processBookingAction(this.getAttribute('data-id'), 'refund', this, { refund_transaction_id: refundTxId });
               }, 'refundModal');
             });
+
+            const rejectBtn = document.getElementById('btn-reject-refund-inline');
+            if (rejectBtn) {
+              const newRejectBtn = rejectBtn.cloneNode(true);
+              rejectBtn.parentNode.replaceChild(newRejectBtn, rejectBtn);
+              newRejectBtn.setAttribute('data-id', bookingId);
+              newRejectBtn.addEventListener('click', function() {
+                if (transactionInput) transactionInput.required = false;
+                if (rejectionInput) rejectionInput.required = true;
+                const reason = document.getElementById('refund-rejection-reason')?.value.trim() || '';
+                if (!reason) {
+                  showAlert('Missing reason', 'A reason is required to reject a refund.', 'error', 'refundModal');
+                  return;
+                }
+                if (reason.length > 500) {
+                  showAlert('Invalid reason', 'The rejection reason must be 500 characters or fewer.', 'error', 'refundModal');
+                  return;
+                }
+                showConfirmModal('Reject this refund request? The booking and payment will remain unchanged.', () => {
+                  processBookingAction(this.getAttribute('data-id'), 'reject_refund', this, { reason });
+                }, 'refundModal');
+              });
+            }
       
             modalOverlay.classList.add('active');
             refundModal.classList.add('active');

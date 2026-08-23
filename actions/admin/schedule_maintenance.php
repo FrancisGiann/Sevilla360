@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/request_context.php';

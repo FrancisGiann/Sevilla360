@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 
@@ -44,6 +44,9 @@ try {
         }
         if ($newPass !== $confPass) {
             throw new Exception("New password and confirm password do not match.");
+        }
+        if (strlen($newPass) < 8) {
+            throw new Exception("New password must be at least 8 characters.");
         }
 
         // Verify current password

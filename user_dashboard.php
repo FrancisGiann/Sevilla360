@@ -2,6 +2,8 @@
 $required_role = 'customer';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
+require_once 'includes/refund_helper.php';
+$refund_fee_percent = get_refund_fee_percent($conn);
 
 // =========================================================================
 // DATABASE HYGIENE: Auto-Cancel Expired Unpaid Bookings
@@ -60,15 +62,14 @@ $stmt_bookings = $conn->prepare("
         cx.status AS cancel_status,
         rr.status AS resched_status,
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
-        p.transaction_id
+        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating','created','paid') AND bcs.provider_session_id IS NOT NULL) AS has_checkout_session,
+        (SELECT p2.transaction_id FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS transaction_id
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
     LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-    LEFT JOIN payments p ON b.id = p.booking_id
     WHERE b.customer_id = ?
-    GROUP BY b.id
     ORDER BY b.id DESC
     LIMIT ? OFFSET ?
 ");
@@ -80,6 +81,13 @@ $bookings = [];
 
 while ($row = $bookings_result->fetch_assoc()) {
     $bookings[] = $row;
+}
+$payment_sync_booking_id = null;
+foreach ($bookings as $booking_row) {
+    if (!empty($booking_row['has_checkout_session']) && $booking_row['booking_status'] !== 'Cancelled' && $booking_row['payment_status'] !== 'Paid') {
+        $payment_sync_booking_id = (int)$booking_row['id'];
+        break;
+    }
 }
 
 // 4. Fetch Notifications
@@ -123,6 +131,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 </head>
 
 <body class="dashboard-body">
+    <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="dashboard-layout">
         <!-- Sidebar Backdrop Overlay for Mobile -->
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
@@ -347,7 +356,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 
                                         // OVERRIDE TEXT IF A REQUEST IS PENDING
                                         if ($b['cancel_status'] === 'Pending') {
-                                            $status_text = 'Cancel Requested';
+                                            $status_text = 'Pending Refund';
                                             $badge_class = 'badge-cancelled'; 
                                         } elseif ($b['resched_status'] === 'Pending') {
                                             $status_text = 'Resched Requested';
@@ -370,7 +379,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                                         </td>
                                         <td data-label="Status">
                                             <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo ($b['cancel_status'] === 'Pending') ? 'Cancel Requested' : $status_text; ?>
+                                                <?php echo ($b['cancel_status'] === 'Pending') ? 'Pending Refund' : $status_text; ?>
                                             </span>
                                             <?php if (!empty($b['has_rescheduled']) && $b['booking_status'] === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
                                             <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
@@ -382,6 +391,9 @@ while ($row = $notifs_result->fetch_assoc()) {
                                                 <?php if (!$is_pending_inquiry): ?>
                                                 <button class="btn-action btn-pay btn-pay-now"
                                                     data-id="<?php echo $b['id']; ?>">Pay Now</button>
+                                                <?php endif; ?>
+                                                <?php if (!empty($b['has_checkout_session']) && $b['payment_status'] !== 'Paid' && $b['booking_status'] !== 'Cancelled'): ?>
+                                                <button class="btn-action btn-outline-action btn-sync-payment" data-id="<?php echo (int)$b['id']; ?>">Sync Payment</button>
                                                 <?php endif; ?>
                                                 <?php endif; ?>
 
@@ -515,12 +527,12 @@ while ($row = $notifs_result->fetch_assoc()) {
                                     <div class="form-group">
                                         <label>New Password</label>
                                         <input type="password" id="set-new-pass" class="form-control"
-                                            placeholder="Enter new password">
+                                            placeholder="Enter new password" minlength="8">
                                     </div>
                                     <div class="form-group">
                                         <label>Confirm New Password</label>
                                         <input type="password" id="set-confirm-pass" class="form-control"
-                                            placeholder="Re-enter new password">
+                                            placeholder="Re-enter new password" minlength="8">
                                     </div>
                                 </div>
                                 <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
@@ -564,13 +576,11 @@ while ($row = $notifs_result->fetch_assoc()) {
                     <span class="cancel-label tooltip-wrapper">
                         <div class="tooltip-container">
                             <i class="fa-regular fa-circle-question"></i>
-                            <div class="tooltip-text">As per our Terms and Conditions, the transaction fee processed by
-                                our payment gateway (PayMongo) is non-refundable. This fee is deducted from the total
-                                amount to cover the cost of the initial digital transaction.</div>
+                            <div class="tooltip-text">A payment-processing fee is deducted from the total amount paid before calculating your refund. The percentage and refund amount shown here are snapshotted for this request.</div>
                         </div>
-                        Non-refundable Service Fee:
+                        Payment-processing Fee:
                     </span>
-                    <span class="cancel-value">₱461</span>
+                    <span class="cancel-value" id="cancel-fee-label">0%</span>
                 </div>
             </div>
 
@@ -599,7 +609,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                 <div class="cancel-checkbox-group-ui">
                     <input type="checkbox" id="confirm-fee">
                     <label for="confirm-fee">
-                        <span class="check-title">I understand that the service fee is non-refundable</span>
+                        <span class="check-title">I understand the payment-processing fee and refund amount shown above.</span>
                         <span class="check-desc">Note: Refunds may take 5-10 business days to reflect in your account
                             depending on your provider.</span>
                     </label>
@@ -752,7 +762,9 @@ while ($row = $notifs_result->fetch_assoc()) {
         document.addEventListener('DOMContentLoaded', () => {
             const paymentResult = <?php echo json_encode($_GET['payment']); ?>;
             if (paymentResult === 'success') {
-                showAlert('Payment Submitted', 'Your payment was received by the payment provider. Your booking status will update after webhook verification.', 'success');
+                const syncButton = document.querySelector('.btn-sync-payment[data-id="<?php echo (int)($payment_sync_booking_id ?? 0); ?>"]');
+                if (syncButton) syncButton.click();
+                showAlert('Payment Submitted', 'Refreshing payment status from the payment provider.', 'success');
             } else {
                 showAlert('Payment Not Completed', 'No payment was completed. Your booking remains available for payment from the dashboard.', 'error');
             }

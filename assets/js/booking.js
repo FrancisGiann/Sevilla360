@@ -16,8 +16,14 @@ class BookingController {
             activeCalendar: null,
             timerInterval: null,
             timeLimit: 1800, 
-            summary: { total: 0, amountDue: 0, html: '' },
-            calendars: {} 
+            summary: { total: 0, amountDue: 0, html: '', bundleDiscount: 0 },
+            calendars: {},
+            addonConfirmedRange: null,
+            pendingDateConfirmation: null,
+            addonAvailabilityToken: 0,
+            addonAvailabilityPending: false,
+            addonAvailabilityReady: false,
+            addonAvailabilityRangeKey: ''
         };
 
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
@@ -273,6 +279,8 @@ class BookingController {
         // HOTEL ROOM ADD-ON: "Add" buttons on room group cards
         // =========================================================================
         document.querySelectorAll('.btn-add-room-group').forEach(btn => {
+            // Availability is unknown until a stay is explicitly confirmed.
+            btn.disabled = true;
             btn.addEventListener('click', (e) => {
                 const groupKey = e.target.dataset.groupKey;
                 this.addRoomGroupToSelection(groupKey);
@@ -300,25 +308,22 @@ class BookingController {
     // =========================================================================
 
     getAddonStayRange() {
-        const calendar = this.state.calendars.addonHotel;
-        if (!calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate) return null;
+        const confirmed = this.state.addonConfirmedRange;
+        if (!confirmed?.start || !confirmed?.end || confirmed.end <= confirmed.start) return null;
         return {
-            start: calendar.startDate,
-            end: calendar.endDate,
-            nights: Math.round((calendar.endDate - calendar.startDate) / 86400000)
+            start: new Date(confirmed.start),
+            end: new Date(confirmed.end),
+            nights: confirmed.nights
         };
     }
 
     handleAddonRangeSelected(start, end) {
-        const range = this.getAddonStayRange();
-        const display = this.getEl('addon-room-date-display');
-        if (!range) {
+        if (!start || !end || end <= start) {
+            const display = this.getEl('addon-room-date-display');
             if (display) display.textContent = 'Select a stay of at least 1 night';
             return;
         }
-        if (display) display.textContent = `${this.formatSafeDate(start)} to ${this.formatSafeDate(end)} (${range.nights} night${range.nights === 1 ? '' : 's'})`;
-        this.updateRoomAvailabilityLabels(start, end);
-        this.calculateSummary();
+        this.openAddonDateConfirmation(start, end);
     }
 
     suggestAddonStayDates() {
@@ -334,6 +339,14 @@ class BookingController {
     }
 
     resetAddonStayDates() {
+        this.state.pendingDateConfirmation = null;
+        this.state.addonConfirmedRange = null;
+        this.state.addonAvailabilityToken++;
+        this.state.addonAvailabilityPending = false;
+        this.state.addonAvailabilityReady = false;
+        this.state.addonAvailabilityRangeKey = '';
+        const selectedRoomGroups = this.getEl('selected-room-groups');
+        if (selectedRoomGroups) selectedRoomGroups.innerHTML = '';
         const calendar = this.state.calendars.addonHotel;
         if (calendar) {
             calendar.startDate = null;
@@ -344,14 +357,25 @@ class BookingController {
         if (display) display.textContent = 'Select a stay of at least 1 night';
         document.querySelectorAll('.room-group-card').forEach(card => {
             card.removeAttribute('data-available');
+            const addBtn = card.querySelector('.btn-add-room-group');
+            if (addBtn) addBtn.disabled = true;
             const label = card.querySelector('.room-avail-label');
             if (label) label.textContent = `${card.dataset.inventory || 0} total units — select dates to check availability`;
         });
+        this.calculateSummary();
     }
 
     addRoomGroupToSelection(groupKey) {
         const container = document.getElementById('selected-room-groups');
         if (!container) return;
+
+        const roomsEnabled = this.getEl('check-rooms')?.checked === true;
+        const confirmed = this.getAddonStayRange();
+        const rangeKey = confirmed ? `${this.formatSafeDate(confirmed.start)}|${this.formatSafeDate(confirmed.end)}` : '';
+        if (!roomsEnabled || !confirmed || this.state.addonAvailabilityPending || !this.state.addonAvailabilityReady || this.state.addonAvailabilityRangeKey !== rangeKey) {
+            showAlert('Notice', 'Confirm a hotel stay and wait for room availability before adding rooms.');
+            return;
+        }
 
         // Prevent duplicate entries for the same group
         if (container.querySelector(`[data-sel-key="${CSS.escape(groupKey)}"]`)) {
@@ -366,7 +390,11 @@ class BookingController {
         const building  = card.dataset.building;
         const roomType  = card.dataset.roomType;
         const rate      = parseFloat(card.dataset.rate);
-        const inventory = parseInt(card.dataset.available ?? card.dataset.inventory) || 1;
+        const inventory = Number.parseInt(card.dataset.available, 10);
+        if (!Number.isInteger(inventory) || inventory < 1) {
+            showAlert('Notice', 'No rooms are available for this group on the confirmed dates.');
+            return;
+        }
 
         const row = document.createElement('div');
         row.className = 'wi-row selected-room-row';
@@ -417,7 +445,18 @@ class BookingController {
         });
 
         window.addEventListener("click", (e) => {
-            if (e.target.classList.contains("modal-overlay")) e.target.classList.remove("active");
+            if (!e.target.classList.contains("modal-overlay")) return;
+            if (e.target.id === 'date-confirm-modal' && this.state.pendingDateConfirmation) {
+                this.cancelPendingDateConfirmation();
+                return;
+            }
+            e.target.classList.remove("active");
+        });
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.state.pendingDateConfirmation) {
+                e.preventDefault();
+                this.cancelPendingDateConfirmation();
+            }
         });
 
         this.getEl("btn-proceed")?.addEventListener("click", () => this.submitOnlineBooking());
@@ -624,6 +663,10 @@ class BookingController {
     }
 
     requestDateConfirmation(startDate, endDate, calendarInstance) {
+        if (calendarInstance === this.state.calendars.addonHotel) {
+            this.openAddonDateConfirmation(startDate, endDate);
+            return;
+        }
         this.state.activeCalendar = calendarInstance;
         const dateModal = this.getEl("date-confirm-modal");
         
@@ -631,6 +674,10 @@ class BookingController {
         const startStr = startDate.toLocaleDateString("en-US", opts);
         const endStr = endDate ? endDate.toLocaleDateString("en-US", opts) : startStr;
 
+        const title = dateModal?.querySelector('.modal-title');
+        const subtext = dateModal?.querySelector('.modal-subtext');
+        if (title) title.textContent = 'Confirm Dates';
+        if (subtext) subtext.textContent = 'Proceeding will lock these dates for 30 minutes while you complete your booking.';
         if (this.getEl("selected-date-text")) this.getEl("selected-date-text").innerText = `${startStr} — ${endStr}`;
         if (dateModal) dateModal.classList.add("active");
 
@@ -709,45 +756,172 @@ class BookingController {
         });
     }
 
+    openAddonDateConfirmation(startDate, endDate) {
+        const dateModal = this.getEl('date-confirm-modal');
+        const calendar = this.state.calendars.addonHotel;
+        if (!dateModal || !calendar || !startDate || !endDate || endDate <= startDate) return;
+
+        const previous = this.state.addonConfirmedRange;
+        this.state.pendingDateConfirmation = {
+            start: new Date(startDate),
+            end: new Date(endDate),
+            previous: previous ? { start: new Date(previous.start), end: new Date(previous.end), nights: previous.nights } : null,
+            previousAvailabilityReady: this.state.addonAvailabilityReady,
+            previousAvailabilityRangeKey: this.state.addonAvailabilityRangeKey
+        };
+        this.state.addonAvailabilityPending = true;
+        this.state.addonAvailabilityReady = false;
+        this.state.addonAvailabilityRangeKey = '';
+        this.state.addonAvailabilityToken++;
+        document.querySelectorAll('.room-group-card').forEach(card => {
+            const addBtn = card.querySelector('.btn-add-room-group');
+            if (addBtn) addBtn.disabled = true;
+            const label = card.querySelector('.room-avail-label');
+            if (label) label.textContent = 'Confirm dates to check availability';
+        });
+        const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+        const title = dateModal.querySelector('.modal-title');
+        const subtext = dateModal.querySelector('.modal-subtext');
+        if (title) title.textContent = 'Confirm Hotel Stay';
+        if (subtext) subtext.textContent = 'Confirming these dates checks room availability for this Event Hall add-on. Your event quote remains subject to resort review.';
+        if (this.getEl('selected-date-text')) this.getEl('selected-date-text').textContent = `${startDate.toLocaleDateString('en-US', opts)} — ${endDate.toLocaleDateString('en-US', opts)}`;
+        dateModal.classList.add('active');
+
+        const confirmBtn = this.replaceElement('btn-confirm-date');
+        const cancelBtn = this.replaceElement('btn-cancel-date');
+        if (confirmBtn) confirmBtn.addEventListener('click', () => this.confirmAddonDateRange());
+        if (cancelBtn) cancelBtn.addEventListener('click', () => this.cancelPendingDateConfirmation());
+    }
+
+    confirmAddonDateRange() {
+        const pending = this.state.pendingDateConfirmation;
+        const dateModal = this.getEl('date-confirm-modal');
+        if (!pending) return;
+        const nights = Math.round((pending.end - pending.start) / 86400000);
+        if (nights < 1) return;
+        this.state.addonConfirmedRange = { start: new Date(pending.start), end: new Date(pending.end), nights };
+        this.state.pendingDateConfirmation = null;
+        const calendar = this.state.calendars.addonHotel;
+        calendar?.setSelection(pending.start, pending.end);
+        if (dateModal) dateModal.classList.remove('active');
+        const display = this.getEl('addon-room-date-display');
+        if (display) display.textContent = `${this.formatSafeDate(pending.start)} to ${this.formatSafeDate(pending.end)} (${nights} night${nights === 1 ? '' : 's'})`;
+        this.updateRoomAvailabilityLabels(pending.start, pending.end);
+        this.calculateSummary();
+    }
+
+    cancelPendingDateConfirmation() {
+        const pending = this.state.pendingDateConfirmation;
+        const dateModal = this.getEl('date-confirm-modal');
+        if (!pending) {
+            dateModal?.classList.remove('active');
+            return;
+        }
+        this.state.pendingDateConfirmation = null;
+        const calendar = this.state.calendars.addonHotel;
+        if (pending.previous) {
+            this.state.addonConfirmedRange = pending.previous;
+            this.state.addonAvailabilityPending = false;
+            this.state.addonAvailabilityReady = pending.previousAvailabilityReady === true;
+            this.state.addonAvailabilityRangeKey = pending.previousAvailabilityRangeKey || '';
+            calendar?.setSelection(pending.previous.start, pending.previous.end);
+            const display = this.getEl('addon-room-date-display');
+            if (display) display.textContent = `${this.formatSafeDate(pending.previous.start)} to ${this.formatSafeDate(pending.previous.end)} (${pending.previous.nights} night${pending.previous.nights === 1 ? '' : 's'})`;
+            this.updateRoomAvailabilityLabels(pending.previous.start, pending.previous.end);
+        } else {
+            this.state.addonConfirmedRange = null;
+            this.state.addonAvailabilityPending = false;
+            this.state.addonAvailabilityReady = false;
+            this.state.addonAvailabilityRangeKey = '';
+            calendar?.clearSelectedRange();
+            const display = this.getEl('addon-room-date-display');
+            if (display) display.textContent = 'Select a stay of at least 1 night';
+            this.state.addonAvailabilityToken++;
+        }
+        dateModal?.classList.remove('active');
+        this.calculateSummary();
+    }
+
     // =========================================================================
     // After dates are locked, fetch real availability counts for room group cards
     // =========================================================================
     async updateRoomAvailabilityLabels(startDate, endDate) {
         if (!startDate) return;
+        const requestToken = ++this.state.addonAvailabilityToken;
         const start = this.formatSafeDate(startDate);
         const end   = endDate ? this.formatSafeDate(endDate) : start;
+        const rangeKey = `${start}|${end}`;
+        this.state.addonAvailabilityPending = true;
+        this.state.addonAvailabilityReady = false;
+        this.state.addonAvailabilityRangeKey = '';
+        const cards = Array.from(document.querySelectorAll('.room-group-card'));
+        cards.forEach(card => {
+            card.removeAttribute('data-available');
+            const addBtn = card.querySelector('.btn-add-room-group');
+            if (addBtn) addBtn.disabled = true;
+            const label = card.querySelector('.room-avail-label');
+            if (label) {
+                label.style.color = '';
+                label.textContent = 'Checking availability…';
+            }
+        });
 
-        document.querySelectorAll('.room-group-card').forEach(async (card) => {
+        const results = await Promise.all(cards.map(async (card) => {
             const building  = card.dataset.building;
             const roomType  = card.dataset.roomType;
             const label     = card.querySelector('.room-avail-label');
             const addBtn    = card.querySelector('.btn-add-room-group');
-            if (!label) return;
+            if (!label) return false;
 
             try {
                 const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
                 const res  = await fetch(url);
                 const data = await res.json();
-                if (data.success) {
+                const confirmed = this.getAddonStayRange();
+                if (requestToken !== this.state.addonAvailabilityToken || !confirmed || this.formatSafeDate(confirmed.start) !== start || this.formatSafeDate(confirmed.end) !== end) return false;
+                if (data.success && Number.isInteger(Number(data.available)) && Number(data.available) >= 0) {
                     const n = data.available;
                     label.style.color = n > 0 ? '#2a7a3b' : '#c0392b';
                     label.textContent = n > 0 ? `${n} room${n > 1 ? 's' : ''} available` : 'No rooms available for these dates';
-                    if (addBtn) addBtn.disabled = (n === 0);
+                    if (addBtn) addBtn.disabled = (n <= 0);
                     // Store available count on the card for quantity validation
                     card.dataset.available = n;
-                    const selectedQty = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"] .sel-room-qty`);
-                    if (selectedQty) {
+                    const selectedRow = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"]`);
+                    const selectedQty = selectedRow?.querySelector('.sel-room-qty');
+                    if (selectedRow && n === 0) {
+                        // A newly confirmed range may invalidate a previous
+                        // room choice. Remove it so unavailable inventory can
+                        // never be submitted or included in the estimate.
+                        selectedRow.remove();
+                        this.calculateSummary();
+                    } else if (selectedQty) {
                         selectedQty.max = Math.max(n, 1);
                         if (n > 0 && parseInt(selectedQty.value) > n) {
                             selectedQty.value = n;
                             this.calculateSummary();
                         }
                     }
+                    return true;
                 }
+                return false;
             } catch(e) {
-                // silently ignore
+                return false;
             }
-        });
+        }));
+        if (requestToken === this.state.addonAvailabilityToken && this.getAddonStayRange() && this.state.addonConfirmedRange && rangeKey === `${this.formatSafeDate(this.state.addonConfirmedRange.start)}|${this.formatSafeDate(this.state.addonConfirmedRange.end)}`) {
+            this.state.addonAvailabilityPending = false;
+            this.state.addonAvailabilityReady = results.length === cards.length && results.every(Boolean);
+            this.state.addonAvailabilityRangeKey = this.state.addonAvailabilityReady ? rangeKey : '';
+            if (!this.state.addonAvailabilityReady) {
+                cards.forEach(card => {
+                    const label = card.querySelector('.room-avail-label');
+                    const addBtn = card.querySelector('.btn-add-room-group');
+                    if (addBtn) addBtn.disabled = true;
+                    if (label) label.textContent = 'Availability could not be confirmed — choose dates again';
+                });
+                this.calculateSummary();
+            }
+        }
     }
     // =========================================================================
 
@@ -804,6 +978,7 @@ class BookingController {
     calculateSummary() {
         this.state.summary.total = 0;
         this.state.summary.html = '';
+        this.state.summary.bundleDiscount = 0;
 
         const breakdownEl = this.getEl('summary-breakdown');
         const totalValEl = this.getEl('summary-total-val');
@@ -870,6 +1045,14 @@ class BookingController {
         }
 
         if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
+
+        const bundleEstimateEl = this.getEl('event-bundle-estimate');
+        const bundleAmountEl = this.getEl('event-bundle-estimate-amount');
+        const bundleDiscount = this.state.summary.bundleDiscount;
+        if (bundleEstimateEl) {
+            bundleEstimateEl.style.display = this.state.activeTabId === 'event-hall' && bundleDiscount > 0 ? 'block' : 'none';
+        }
+        if (bundleAmountEl) bundleAmountEl.textContent = this.formatCurrency(bundleDiscount);
     }
 
     calcHotelMath() {
@@ -948,8 +1131,10 @@ class BookingController {
         if (cateringTotal > 0) this.syncSystemLineItem('catering', cateringName, cateringTotal);
 
         // HOTEL ROOM ADD-ON (Real inventory via selected-room-groups)
-        const addonStay = this.getAddonStayRange();
+        const roomsEnabled = this.getEl('check-rooms')?.checked === true;
+        const addonStay = roomsEnabled && !this.state.addonAvailabilityPending && this.state.addonAvailabilityReady ? this.getAddonStayRange() : null;
         const roomNights = addonStay?.nights || 0;
+        let roomSubtotal = 0;
         document.querySelectorAll('.selected-room-row').forEach(row => {
             const rate = parseFloat(row.dataset.rate) || 0;
             const qty  = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
@@ -957,10 +1142,21 @@ class BookingController {
             const roomType  = row.dataset.roomType;
             if (rate > 0 && qty > 0 && roomNights > 0) {
                 const lineTotal = rate * qty * roomNights;
+                roomSubtotal += lineTotal;
                 this.state.summary.total += lineTotal;
                 this.appendSummaryRow(`${building} — ${roomType} (×${qty} room${qty > 1 ? 's' : ''}, ×${roomNights} night${roomNights > 1 ? 's' : ''})`, lineTotal);
             }
         });
+
+        // Match the administrator's authoritative finalization rule: the
+        // 20% bundle estimate applies only to hall base + selected room
+        // subtotal. Staff still finalizes the quote server-side.
+        if (roomSubtotal > 0 && venue > 0) {
+            const estimatedDiscount = Math.round((venue + roomSubtotal) * 0.20 * 100) / 100;
+            this.state.summary.bundleDiscount = estimatedDiscount;
+            this.state.summary.total -= estimatedDiscount;
+            this.appendSummaryRow('Estimated — final quote after resort review: Event Hall + Hotel Bundle Discount (20%)', -estimatedDiscount);
+        }
 
         // A/V SETUP ADD-ON
         let avTotal = 0;
@@ -1047,7 +1243,8 @@ class BookingController {
             showAlert("Notice", "Please select dates on the calendar and confirm them first!");
             return;
         }
-        if (!this.getEl('terms-check')?.checked) {
+        const termsCheck = this.getEl('terms-check');
+        if (!termsCheck?.checked) {
             showAlert("Notice", "Please agree to the Terms & Conditions before proceeding.");
             return;
         }
@@ -1097,6 +1294,8 @@ class BookingController {
         formData.append("base_amount", context.baseAmt || 0);
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
+        formData.append("policy_consent", termsCheck.value === '1' ? "1" : "0");
+        formData.append("policy_version", "terms-v2-refund-fee");
         
         formData.append("contact_phone", phoneInput.value.trim());
         formData.append("save_contact_default", this.getEl('save-contact-default')?.checked ? '1' : '0');
@@ -1147,8 +1346,9 @@ class BookingController {
         formData.append('custom_line_items', JSON.stringify(customLineItems));
 
         // 3. Hotel Room Groups (real inventory — server allocates specific rooms)
+        const roomsEnabled = context.roomType === 'Event Hall' && this.getEl('check-rooms')?.checked === true;
         let roomGroups = [];
-        if (context.roomType === 'Event Hall') document.querySelectorAll('.selected-room-row').forEach(row => {
+        if (context.roomType === 'Event Hall' && roomsEnabled) document.querySelectorAll('.selected-room-row').forEach(row => {
             const building  = row.dataset.building;
             const roomType  = row.dataset.roomType;
             const qty       = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
@@ -1158,7 +1358,8 @@ class BookingController {
         });
         if (roomGroups.length > 0) {
             const stay = this.getAddonStayRange();
-            if (!stay) {
+            const rangeKey = stay ? `${this.formatSafeDate(stay.start)}|${this.formatSafeDate(stay.end)}` : '';
+            if (!stay || this.state.addonAvailabilityPending || !this.state.addonAvailabilityReady || this.state.addonAvailabilityRangeKey !== rangeKey) {
                 showAlert('Notice', 'Please select a hotel check-in and check-out date for the room add-on.');
                 return;
             }

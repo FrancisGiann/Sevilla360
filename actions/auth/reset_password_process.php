@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require_once '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 
@@ -35,8 +35,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
     
-    if (strlen($new_password) < 6) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Password must be at least 6 characters.', 'type' => 'error'];
+    if (strlen($new_password) < 8) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Password must be at least 8 characters.', 'type' => 'error'];
         header("Location: ../../auth.php");
         exit();
     }

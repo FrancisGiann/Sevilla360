@@ -421,7 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 else { badgeClass = 'badge-confirmed'; statusText = 'Fully Paid'; }
             } else if (booking.booking_status === 'Cancelled') { badgeClass = 'badge-cancelled'; statusText = 'Cancelled'; }
 
-            if (booking.cancel_status === 'Pending') { badgeClass = 'badge-action'; statusText = 'Cancel Req.'; } 
+            if (booking.cancel_status === 'Pending') { badgeClass = 'badge-action'; statusText = 'Pending Refund'; }
             else if (booking.resched_status === 'Pending') { badgeClass = 'badge-partial'; statusText = 'Resched Req.'; }
 
             const dateStr = new Date(booking.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });

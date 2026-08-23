@@ -98,7 +98,7 @@ $pano_asc_query = $conn->query("
     SELECT id, slot_assignment, file_path 
     FROM media_cms 
     WHERE media_type = '360' AND slot_assignment LIKE '%\\_360'
-    ORDER BY id ASC
+    ORDER BY is_primary DESC, id ASC
 ");
 $pano_venue_photos_ordered = [];
 if ($pano_asc_query) {
@@ -457,11 +457,11 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                 <div id="hotspot-form-wrapper" class="hidden" style="padding: 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">
                     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
                         <div style="width: 4px; height: 18px; background: var(--color-gold); border-radius: 2px;"></div>
-                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);">New Hotspot</h4>
+                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);"><span id="hs-form-heading">New Hotspot</span></h4>
                     </div>
 
                     <div style="margin-bottom: 12px;">
-                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Type</label>
+                        <label for="hs-type" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Type</label>
                         <select id="hs-type" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;">
                             <option value="info">Info — shows description</option>
                             <option value="nav">Navigation — walk to view</option>
@@ -469,23 +469,23 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                     </div>
 
                     <div style="margin-bottom: 12px;">
-                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Title</label>
+                        <label for="hs-title" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Title</label>
                         <input type="text" id="hs-title" placeholder="e.g. Poolside Entrance" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; outline: none; box-sizing: border-box;">
                     </div>
 
                     <div id="hs-desc-wrapper" style="margin-bottom: 12px;">
-                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Description</label>
+                        <label for="hs-description" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Description</label>
                         <textarea id="hs-description" rows="3" placeholder="Shown when guest clicks the pin" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; resize: none; outline: none; box-sizing: border-box;"></textarea>
                     </div>
 
                     <div class="hidden" id="hs-target-wrapper" style="margin-bottom: 12px;">
-                        <label style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Walk To</label>
+                        <label for="hs-target-index" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Walk To</label>
                         <select id="hs-target-index" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;"></select>
                     </div>
 
-                    <div style="display:flex; gap:8px; margin-top: 4px;">
-                        <button type="button" class="btn btn-outline" id="btn-cancel-hotspot" style="flex:1; padding: 9px; font-size: 0.85rem;">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="btn-save-hotspot" style="flex:1; padding: 9px; font-size: 0.85rem;">Save Pin</button>
+                    <div class="hotspot-form-actions">
+                        <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-cancel-hotspot" title="Cancel hotspot editing"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Cancel</span></button>
+                        <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-hotspot" title="Save hotspot pin"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span id="hs-save-label">Save Pin</span></button>
                     </div>
                 </div>
 

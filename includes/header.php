@@ -1,7 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/session_init.php';
 require_once __DIR__ . '/admin_notifications.php';
 $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css   = isset($extra_css) ? $extra_css : '';

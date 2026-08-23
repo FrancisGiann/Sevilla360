@@ -1,8 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/mailer.php';
+require_once '../../includes/rate_limit.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
@@ -15,6 +16,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     $email = trim($_POST['email']);
     $code = trim($_POST['verification_code']);
+    $otp_rate_key = 'verify_otp_' . substr(hash('sha256', strtolower($email)), 0, 48);
 
     // 1. Find the user by email and check their code and expiration
     $stmt = $conn->prepare("SELECT id, verification_code, verification_expires_at FROM users WHERE email = ? AND is_verified = FALSE");
@@ -28,6 +30,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 2. Check if the code has expired
         if ($current_time > $user['verification_expires_at']) {
+            check_rate_limit($conn, $otp_rate_key, 5, 15);
             $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'This verification code has expired. Please request a new one.', 'type' => 'error'];
             header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
@@ -59,6 +62,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             
             if ($update_stmt->execute()) {
+                clear_rate_limit($conn, $otp_rate_key);
                 
                 // 1. Create persistent In-App Welcome Notification upon successful OTP verification
                 $welcome_title = "Welcome to Sevilla360!";
@@ -95,6 +99,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         } else {
             // Code was wrong
+            if (!check_rate_limit($conn, $otp_rate_key, 5, 15)) {
+                $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many invalid verification attempts. Please request a new code later.', 'type' => 'error'];
+                header("Location: ../../auth.php?verify_email=" . urlencode($email));
+                exit();
+            }
             $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Invalid verification code. Please try again.', 'type' => 'error'];
             header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();

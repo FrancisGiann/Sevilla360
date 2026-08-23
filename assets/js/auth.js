@@ -108,8 +108,8 @@ document.addEventListener("DOMContentLoaded", () => {
               errPass.innerText = 'Password is required.';
               errPass.style.display = 'block';
               isValid = false;
-          } else if (pass.value.length < 6) {
-              errPass.innerText = 'Password must be at least 6 characters.';
+          } else if (pass.value.length < 8) {
+              errPass.innerText = 'Password must be at least 8 characters.';
               errPass.style.display = 'block';
               isValid = false;
           }

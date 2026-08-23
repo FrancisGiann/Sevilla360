@@ -38,7 +38,7 @@
         <div class="modal-body">
             <p>Welcome to Sevilla360 Booking System. By proceeding, you agree to our standard reservation rules,
                 cancellation policies, and resort etiquette guidelines.</p>
-            <p>1. All bookings are final upon payment processing.</p>
+            <p>1. Payment confirms the reservation subject to the displayed cancellation and refund policy.</p>
             <p>2. Maximum capacities are strictly implemented.</p>
             <p>3. Damage to resort property will be billed to the client's account.</p>
         </div>

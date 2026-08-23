@@ -362,10 +362,25 @@
 }
 .hs-type-badge.info { background: #dbeafe; color: #1e40af; }
 .hs-type-badge.nav { background: #dcfce7; color: #166534; }
-.hotspot-list-item .btn-delete-hotspot {
-  background: none; border: none; color: #c75c5c; cursor: pointer; font-size: 0.9rem; padding: 4px;
+.hotspot-list-actions { display: flex; align-items: center; gap: 6px; margin-left: 10px; }
+.hotspot-list-action,
+.hotspot-btn {
+  min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 7px; border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease, opacity .18s ease;
 }
-.hotspot-list-item .btn-delete-hotspot:hover { opacity: 0.7; }
+.hotspot-list-action { width: 44px; padding: 8px; border: 1px solid rgba(42,37,34,.16); background: #fff; color: var(--color-dark); }
+.hotspot-list-action:hover, .hotspot-list-action:focus-visible { border-color: var(--color-gold); color: #8c6635; background: #fffaf1; }
+.hotspot-list-action.btn-delete-hotspot { color: #a84646; }
+.hotspot-list-action.btn-delete-hotspot:hover, .hotspot-list-action.btn-delete-hotspot:focus-visible { border-color: #c75c5c; background: #fff4f4; }
+.hotspot-form-actions { display: flex; gap: 8px; margin-top: 4px; }
+.hotspot-btn { flex: 1; padding: 9px 12px; border: 1px solid transparent; }
+.hotspot-btn-primary { background: var(--color-gold); border-color: var(--color-gold); color: #fff; }
+.hotspot-btn-primary:hover, .hotspot-btn-primary:focus-visible { background: #b5884e; border-color: #b5884e; }
+.hotspot-btn-secondary { background: #fff; border-color: rgba(42,37,34,.2); color: var(--color-dark); }
+.hotspot-btn-secondary:hover, .hotspot-btn-secondary:focus-visible { background: #f5f4f1; border-color: var(--color-dark); }
+.hotspot-btn:disabled, .hotspot-list-action:disabled { cursor: not-allowed; opacity: .55; }
+.hotspot-btn:focus-visible, .hotspot-list-action:focus-visible { outline: 3px solid rgba(214,168,112,.38); outline-offset: 2px; }
 .btn-place-hotspots:hover { background: var(--color-gold) !important; color: var(--color-white) !important; }
 
 /* Animations & Responsive */

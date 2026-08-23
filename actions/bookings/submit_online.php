@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
@@ -26,6 +26,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $db_committed = false;
     try {
         $conn->begin_transaction();
+
+        if (($_POST['policy_consent'] ?? '') !== '1') {
+            throw new Exception('Please accept the booking terms before proceeding.');
+        }
+        // The accepted legal text is server-owned.  A posted version may be
+        // retained by older clients for compatibility, but it can never
+        // select which policy is recorded for this booking.
+        $policy_version = 'terms-v2-refund-fee';
 
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
@@ -165,12 +173,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $stmt_book = $conn->prepare("
-            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online')
+            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, source, policy_accepted_at, policy_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online', NOW(), ?)
         ");
-        $stmt_book->bind_param("siissisdds",
+        $stmt_book->bind_param("siissisddss",
             $ref_no, $customer_id, $venue_id, $sDate, $eDate,
-            $guests, $contact_phone, $base_amount, $true_total, $scheme
+            $guests, $contact_phone, $base_amount, $true_total, $scheme, $policy_version
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;
@@ -228,8 +236,33 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // REAL HOTEL ROOM ALLOCATION LOGIC
         // =========================================================================
         if (isset($_POST['room_groups']) && $venue_category === 'Event Hall') {
-            $room_groups = json_decode($_POST['room_groups'], true);
-            if (is_array($room_groups) && count($room_groups) > 0) {
+            $room_groups = json_decode((string)$_POST['room_groups'], true);
+            if (!is_array($room_groups) || array_keys($room_groups) !== range(0, count($room_groups) - 1) || count($room_groups) < 1 || count($room_groups) > 20) {
+                throw new Exception('Invalid hotel room selection.');
+            }
+            $normalized_room_groups = [];
+            $seen_group_keys = [];
+            $requested_room_total = 0;
+            foreach ($room_groups as $group) {
+                if (!is_array($group) || count($group) !== 3 || array_diff(['building_name', 'room_type', 'quantity'], array_keys($group)) !== []) {
+                    throw new Exception('Invalid hotel room selection.');
+                }
+                $building = trim((string)$group['building_name']);
+                $type = trim((string)$group['room_type']);
+                $qty = $group['quantity'];
+                if ($building === '' || $type === '' || strlen($building) > 120 || strlen($type) > 120 || preg_match('/[\x00-\x1F\x7F]/', $building . $type) || !is_int($qty) || $qty < 1 || $qty > 50) {
+                    throw new Exception('Invalid hotel room selection.');
+                }
+                $group_key = strtolower($building) . "\0" . strtolower($type);
+                if (isset($seen_group_keys[$group_key])) {
+                    throw new Exception('Duplicate hotel room groups are not allowed.');
+                }
+                $seen_group_keys[$group_key] = true;
+                $requested_room_total += $qty;
+                if ($requested_room_total > 50) throw new Exception('Too many hotel rooms requested.');
+                $normalized_room_groups[] = ['building_name' => $building, 'room_type' => $type, 'quantity' => $qty];
+            }
+            $room_groups = $normalized_room_groups;
 
                 $room_start = trim($_POST['room_start_date'] ?? '');
                 $room_end = trim($_POST['room_end_date'] ?? '');
@@ -275,40 +308,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     ORDER BY v.id
                     LIMIT ? FOR UPDATE
                 ");
+                if (!$stmt_alloc) throw new Exception('Unable to prepare room availability check.');
 
                 $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                if (!$stmt_insert) throw new Exception('Unable to prepare room allocation.');
+                $used_room_ids = [];
 
                 foreach ($room_groups as $group) {
-                    $building = trim($group['building_name']);
-                    $type = trim($group['room_type']);
-                    $qty = (int)$group['quantity'];
+                    $building = $group['building_name'];
+                    $type = $group['room_type'];
+                    $qty = $group['quantity'];
 
                     if ($qty > 0) {
-                        $stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $qty);
-                        $stmt_alloc->execute();
-                        $alloc_res = $stmt_alloc->get_result();
-
-                        if ($alloc_res->num_rows < $qty) {
-                            throw new Exception("Not enough inventory available for $building - $type. Please try again.");
+                        $allocation_limit = min(50, $qty + count($used_room_ids));
+                        if (!$stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $allocation_limit) || !$stmt_alloc->execute()) {
+                            throw new Exception('Unable to check hotel room availability.');
                         }
-
+                        $alloc_res = $stmt_alloc->get_result();
+                        if (!$alloc_res) throw new Exception('Unable to read hotel room availability.');
+                        $allocated_count = 0;
                         while ($room = $alloc_res->fetch_assoc()) {
-                            $r_venue_id = $room['id'];
+                            $r_venue_id = (int)$room['id'];
+                            if (isset($used_room_ids[$r_venue_id])) continue;
+                            $used_room_ids[$r_venue_id] = true;
+                            $allocated_count++;
                             $r_rate = floatval($room['nightly_rate']);
                             $r_line_total = $r_rate * $nights;
 
-                            $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total);
-                            $stmt_insert->execute();
+                            if (!$stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total) || !$stmt_insert->execute()) {
+                                throw new Exception('Unable to save hotel room allocation.');
+                            }
 
                             // Ensure calculated room add-on totals are saved in booking_line_items
                             $li_name = "Room Add-on: $building - $type";
                             $stmt_li_add = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
-                            $stmt_li_add->bind_param("isd", $booking_id, $li_name, $r_line_total);
-                            $stmt_li_add->execute();
+                            if (!$stmt_li_add || !$stmt_li_add->bind_param("isd", $booking_id, $li_name, $r_line_total) || !$stmt_li_add->execute()) {
+                                throw new Exception('Unable to save hotel room pricing.');
+                            }
+                            if ($allocated_count >= $qty) break;
                         }
+                        if ($allocated_count < $qty) throw new Exception("Not enough inventory available for $building - $type. Please try again.");
                     }
                 }
-            }
         }
         // =========================================================================
 
@@ -400,7 +441,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'], 0, 'Inquiry Sent (Pending)');
             create_user_notification($conn, $_SESSION['user_id'], "Booking Submitted", "Your inquiry for " . $_POST['room_name'] . " has been sent successfully. An admin will review it shortly.");
         } catch (Exception $mail_e) {
-            // Log silently
+            error_log('Online booking email delivery failed: ' . get_class($mail_e));
         }
 
         echo "Success|" . $ref_no;

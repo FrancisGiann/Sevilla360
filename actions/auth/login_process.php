@@ -1,6 +1,6 @@
 <?php
 // Start the session so we can remember the user after they log in
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 
 // Connect to the database
 require '../../config/db_connect.php';

@@ -1,6 +1,9 @@
 <?php
 $required_role = 'admin';
 require 'includes/auth_guard.php';
+require_once 'config/db_connect.php';
+require_once 'includes/refund_helper.php';
+$refund_fee_percent = get_refund_fee_percent($conn);
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
@@ -52,6 +55,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 </head>
 
 <body class="admin-body">
+    <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="admin-layout">
         <!-- Left Sidebar -->
         <aside class="sidebar" id="admin-sidebar">

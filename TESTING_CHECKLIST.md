@@ -72,7 +72,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 ## 5. Customer dashboard
 
 - [ ] Verify dashboard counts, booking cards, status labels, filters, and booking-details modal match actual test records.
-- [ ] Test every booking state: Pending, Confirmed/Unpaid, Confirmed/Partial, Confirmed/Paid, Cancel Requested, Cancelled, and Completed (where applicable).
+- [ ] Test every booking state: Pending, Confirmed/Unpaid, Confirmed/Partial, Confirmed/Paid, Pending Refund, Cancelled, and Completed (where applicable).
 - [ ] Pay an existing unpaid/partial eligible booking; verify remaining balance, payment status, receipt, notification, and duplicate-payment protection.
 - [ ] Request a cancellation for an unpaid booking and a paid/partial booking; verify reason capture, policy/refund messaging, status, staff visibility, and notifications.
 - [ ] Request a reschedule: test available and unavailable dates, then confirm the request appears for staff/admin without changing the original booking prematurely.
@@ -148,4 +148,3 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 | Test ID | Result | Browser/device | Evidence / defect link | Tester / date |
 |---|---|---|---|---|
 | Example: 4.8 | Pass / Fail / Blocked | Chrome / Windows | Screenshot or ticket | Name / YYYY-MM-DD |
-

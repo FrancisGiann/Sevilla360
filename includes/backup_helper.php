@@ -7,6 +7,83 @@
 
 class BackupHelper {
 
+    /** Resolve the configured private backup directory and fail closed. */
+    public static function resolveBackupDir(bool $create = false): string {
+        $configured = trim((string)($_ENV['BACKUP_DIR'] ?? getenv('BACKUP_DIR') ?: ''));
+        if ($configured === '' || $configured[0] !== '/' || str_contains($configured, "\0")) {
+            throw new RuntimeException('Private backup directory is not configured.');
+        }
+        $projectRoot = realpath(dirname(__DIR__));
+        if ($projectRoot === false) throw new RuntimeException('Application root could not be resolved.');
+        $candidate = rtrim($configured, '/');
+        $existing = realpath($candidate);
+        if ($existing === false) {
+            if (!$create) throw new RuntimeException('Private backup directory is unavailable.');
+            $unresolved = [];
+            $probe = $candidate;
+            while ($probe !== '' && !is_dir($probe)) {
+                $parentProbe = dirname($probe);
+                $unresolved[] = basename($probe);
+                if ($parentProbe === $probe) break;
+                $probe = $parentProbe;
+            }
+            $parent = realpath($probe);
+            if ($parent === false || !is_dir($parent)) throw new RuntimeException('Private backup directory parent is unavailable.');
+            foreach (array_reverse($unresolved) as $part) $parent .= '/' . $part;
+            $existing = $parent;
+        }
+        $resolved = rtrim($existing, '/');
+        $pathParts = array_values(array_filter(explode('/', $resolved), static fn($part) => $part !== ''));
+        if ($resolved === '' || $resolved === '/' || count($pathParts) < 3 || in_array($resolved, ['/var', '/var/www', '/var/www/html', '/tmp', '/home', '/root', '/usr', '/opt'], true)) {
+            throw new RuntimeException('Backup directory is too broad or unsafe.');
+        }
+        $documentRoots = [$projectRoot];
+        $configuredDocumentRoot = trim((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
+        if ($configuredDocumentRoot !== '' && $configuredDocumentRoot[0] === '/') {
+            $realDocumentRoot = realpath($configuredDocumentRoot);
+            if ($realDocumentRoot !== false && $realDocumentRoot !== '/') $documentRoots[] = rtrim($realDocumentRoot, '/');
+        }
+        $projectParent = realpath(dirname($projectRoot));
+        if ($projectParent !== false && $projectParent !== '/') $documentRoots[] = rtrim($projectParent, '/');
+        foreach (array_unique($documentRoots) as $documentRoot) {
+            $rootPrefix = rtrim($documentRoot, '/') . '/';
+            $configuredPath = rtrim(preg_replace('#/+#', '/', $configured), '/');
+            if ($resolved === $documentRoot || str_starts_with($resolved . '/', $rootPrefix) || $configuredPath === $documentRoot || str_starts_with($configuredPath . '/', $rootPrefix)) {
+                throw new RuntimeException('Backup directory must be outside the document root.');
+            }
+        }
+        if ($resolved === $projectRoot) {
+            throw new RuntimeException('Backup directory must be outside the document root.');
+        }
+        if (file_exists($resolved) && !is_dir($resolved)) throw new RuntimeException('Backup path is not a directory.');
+        if ($create && !is_dir($resolved) && !mkdir($resolved, 0700, true) && !is_dir($resolved)) {
+            throw new RuntimeException('Private backup directory could not be created.');
+        }
+        if (!is_dir($resolved) || !is_writable($resolved)) throw new RuntimeException('Private backup directory is not writable.');
+        return $resolved;
+    }
+
+    public static function backupFilePath(string $filename, bool $mustExist = true): string {
+        if ($filename === '' || basename($filename) !== $filename || !preg_match('/\A[A-Za-z0-9._-]+\.sql\z/D', $filename)) {
+            throw new RuntimeException('Invalid backup filename.');
+        }
+        $dir = self::resolveBackupDir(false);
+        $path = $dir . '/' . $filename;
+        if ($mustExist && !is_file($path)) throw new RuntimeException('Backup file is unavailable.');
+        $realDir = realpath($dir);
+        $realPath = realpath($path);
+        if ($realDir === false) throw new RuntimeException('Backup path is invalid.');
+        if ($mustExist && ($realPath === false || dirname($realPath) !== $realDir)) throw new RuntimeException('Backup path is invalid.');
+        if (!$mustExist && (is_link($path) || (file_exists($path) && ($realPath === false || dirname($realPath) !== $realDir)))) {
+            throw new RuntimeException('Backup path is invalid.');
+        }
+        return $path;
+    }
+
+    public static function isProtectedFilename(string $filename): bool {
+        return str_starts_with($filename, 'sevilla360_imported_') || str_starts_with($filename, 'sevilla360_pre_restore_');
+    }
+
     public static function maxBackupBytes(): int {
         $value = (int)($_ENV['BACKUP_MAX_BYTES'] ?? getenv('BACKUP_MAX_BYTES') ?: 52428800);
         return max(1048576, $value);
@@ -23,9 +100,10 @@ class BackupHelper {
     }
 
     public static function createBackupFile($conn, $database, $backupDir, $prefix) {
+        $backupDir = self::resolveBackupDir(true);
         $timestamp = date('Y-m-d_H-i-s');
-        $filename = $prefix . $timestamp . '.sql';
-        $filePath = rtrim($backupDir, '/') . '/' . $filename;
+        $filename = $prefix . $timestamp . '_' . bin2hex(random_bytes(4)) . '.sql';
+        $filePath = self::backupFilePath($filename, false);
         if (!self::exportDatabase($conn, $database, $filePath)) return false;
         $fileSize = filesize($filePath);
         if ($fileSize === false || $fileSize <= 0) return false;
@@ -40,6 +118,7 @@ class BackupHelper {
     }
 
     public static function cleanupNormalBackups($conn, $backupDir, $keep = 30) {
+        $backupDir = self::resolveBackupDir(false);
         $keep = max(1, (int)$keep);
         $result = $conn->query("SELECT id, filename FROM backups WHERE filename LIKE 'sevilla360_backup_%' OR filename LIKE 'sevilla360_auto_%' ORDER BY created_at DESC, id DESC");
         if (!$result) return 0;
@@ -48,7 +127,8 @@ class BackupHelper {
         while ($row = $result->fetch_assoc()) {
             $index++;
             if ($index <= $keep) continue;
-            $path = rtrim($backupDir, '/') . '/' . basename($row['filename']);
+            if (self::isProtectedFilename($row['filename'])) continue;
+            try { $path = self::backupFilePath((string)$row['filename'], false); } catch (Throwable $e) { continue; }
             if (file_exists($path) && !unlink($path)) continue;
             $stmt = $conn->prepare("DELETE FROM backups WHERE id = ?");
             $stmt->bind_param("i", $row['id']);
@@ -148,8 +228,16 @@ class BackupHelper {
             @unlink($tmpPath);
             return false;
         }
+        if (!chmod($tmpPath, 0640)) {
+            @unlink($tmpPath);
+            return false;
+        }
         if (!@rename($tmpPath, $filePath)) {
             @unlink($tmpPath);
+            return false;
+        }
+        if (!chmod($filePath, 0640)) {
+            if (is_file($filePath) && !is_link($filePath)) @unlink($filePath);
             return false;
         }
         return true;

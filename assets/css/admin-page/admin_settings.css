@@ -234,6 +234,12 @@
   margin: 0;
 }
 
+.settings-inline-field { min-width: 150px; margin: 0; }
+.settings-inline-field label { display: block; margin-bottom: 6px; font-size: .8rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: .04em; }
+.input-with-suffix { display: flex; align-items: center; gap: 8px; }
+.input-with-suffix .form-control { width: 112px; }
+.input-with-suffix > span { font-weight: 700; color: var(--color-dark); }
+
 .toggle-switch {
   position: relative;
   display: inline-block;

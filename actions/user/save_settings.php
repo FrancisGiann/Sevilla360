@@ -1,6 +1,6 @@
 <?php
 // actions/user/save_settings.php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 
@@ -59,8 +59,8 @@ try {
         if ($old_pass === '' || $new_pass === '' || $confirm_pass === '') {
             throw new Exception("Current password, new password, and confirmation are required.");
         }
-        if (strlen($new_pass) < 6) {
-            throw new Exception("New password must be at least 6 characters.");
+        if (strlen($new_pass) < 8) {
+        throw new Exception("New password must be at least 8 characters.");
         }
         if (!hash_equals($new_pass, $confirm_pass)) {
             throw new Exception("New password and confirmation do not match.");

@@ -69,4 +69,51 @@ function credit_verified_payment(mysqli $conn, string $reference_no, float $amou
         return ['duplicate' => false, 'status' => $status, 'amount_paid' => $new_amount, 'booking_id' => $id];
     } catch (Throwable $e) { $conn->rollback(); throw $e; }
 }
+
+/** Verify one locally recorded checkout session, then use the shared locked/idempotent credit path. */
+function reconcile_payment_for_booking(mysqli $conn, int $booking_id): array {
+    $stmt = $conn->prepare("SELECT b.id, b.reference_no, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, s.provider_session_id, s.amount AS checkout_amount, s.currency FROM bookings b JOIN booking_checkout_sessions s ON s.booking_id = b.id WHERE b.id = ? AND s.status IN ('creating','created','paid') ORDER BY s.id DESC LIMIT 1");
+    if (!$stmt) throw new RuntimeException('Unable to load checkout session.');
+    $stmt->bind_param('i', $booking_id);
+    if (!$stmt->execute()) throw new RuntimeException('Unable to load checkout session.');
+    $booking = $stmt->get_result()->fetch_assoc();
+    if (!$booking || empty($booking['provider_session_id'])) throw new RuntimeException('No PayMongo checkout session is recorded for this booking.');
+    if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') throw new RuntimeException('This booking is not eligible for reconciliation.');
+    $remaining_due = max(0.0, (float)$booking['total_amount'] - (float)$booking['amount_paid']);
+    if ((float)$booking['checkout_amount'] <= 0 || strtoupper((string)$booking['currency']) !== 'PHP') throw new RuntimeException('The recorded checkout amount is invalid.');
+    $checkout_exceeds_balance = (float)$booking['checkout_amount'] > $remaining_due + 0.01;
+    $provider = paymongo_fetch_checkout_session((string)$booking['provider_session_id']);
+    $attrs = $provider['attributes'] ?? [];
+    $provider_status = strtolower((string)($attrs['status'] ?? ''));
+    $raw_ref = (string)($attrs['reference_number'] ?? '');
+    $ref = $raw_ref;
+    if (str_contains($raw_ref, '_')) { $reference_parts = explode('_', $raw_ref); $ref = (string)end($reference_parts); }
+    if (!hash_equals((string)$booking['reference_no'], $ref)) throw new RuntimeException('Provider reference does not match this booking.');
+    $payment = [];
+    foreach (($attrs['payments'] ?? []) as $candidate) if (strtolower((string)($candidate['attributes']['status'] ?? '')) === 'paid') { $payment = $candidate; break; }
+    if (!$payment) {
+        if ($provider_status === 'expired') {
+            $terminal = $conn->prepare("UPDATE booking_checkout_sessions SET status = 'expired', provider_status = ? WHERE booking_id = ? AND provider_session_id = ?");
+            if (!$terminal) throw new RuntimeException('Unable to record the expired checkout session.');
+            $terminal->bind_param('sis', $provider_status, $booking_id, $booking['provider_session_id']);
+            $terminal->execute();
+        }
+        throw new RuntimeException('PayMongo has not returned a paid payment entry for this checkout session.');
+    }
+    if ($provider_status !== 'active' && $provider_status !== 'expired') throw new RuntimeException('PayMongo returned an unsupported checkout session status.');
+    $payment_attrs = $payment['attributes'] ?? [];
+    $transaction_id = (string)($payment['id'] ?? ($attrs['payment_intent']['id'] ?? ''));
+    $amount = ((int)($payment_attrs['amount'] ?? ($attrs['line_items'][0]['amount'] ?? 0))) / 100;
+    $currency = strtoupper((string)($payment_attrs['currency'] ?? ($attrs['line_items'][0]['currency'] ?? $booking['currency'])));
+    if ($transaction_id === '' || $amount <= 0 || $currency !== 'PHP') throw new RuntimeException('Provider payment details are incomplete or unsupported.');
+    if (abs($amount - (float)$booking['checkout_amount']) > 0.01) throw new RuntimeException('Provider amount does not match the recorded checkout amount.');
+    if ($checkout_exceeds_balance) {
+        $duplicate = $conn->prepare("SELECT id FROM payments WHERE booking_id = ? AND transaction_id = ? AND status = 'Success' LIMIT 1");
+        $duplicate->bind_param('is', $booking_id, $transaction_id); $duplicate->execute();
+        if ($duplicate->get_result()->num_rows === 0) throw new RuntimeException('The recorded checkout amount exceeds the current booking balance.');
+    }
+    $method = strtolower((string)($attrs['payment_method_used'] ?? ''));
+    $payment_method = str_contains($method, 'gcash') ? 'GCash' : (str_contains($method, 'paymaya') ? 'Maya' : 'PayMongo');
+    return credit_verified_payment($conn, (string)$booking['reference_no'], $amount, $transaction_id, $payment_method, (string)$booking['provider_session_id'], $currency);
+}
 ?>

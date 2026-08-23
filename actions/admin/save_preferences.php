@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -18,10 +18,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $maintenance_mode = isset($_POST['maintenance_mode']) ? 'true' : 'false';
     $allow_walkins = isset($_POST['allow_walkins']) ? 'true' : 'false';
 
+    $refund_fee_raw = $_POST['refund_fee_percent'] ?? null;
+    if (!is_string($refund_fee_raw)) {
+        echo "Error|Enter a payment-processing fee between 0 and 100."; exit;
+    }
+    $refund_fee_raw = trim($refund_fee_raw);
+    if (!preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refund_fee_raw)) {
+        echo "Error|Enter a valid payment-processing fee between 0 and 100."; exit;
+    }
+    $refund_fee_value = (float)$refund_fee_raw;
+    if (!is_finite($refund_fee_value) || $refund_fee_value < 0 || $refund_fee_value > 100) {
+        echo "Error|Enter a payment-processing fee between 0 and 100."; exit;
+    }
+    $refund_fee_percent = number_format($refund_fee_value, 2, '.', '');
+
     // Build our settings array
     $settings = [
         'maintenance_mode' => $maintenance_mode,
         'allow_walkins' => $allow_walkins,
+        'refund_fee_percent' => $refund_fee_percent,
 
         'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
         'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),

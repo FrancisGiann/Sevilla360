@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/env.php'; // Load environment variables
 require_once '../../config/db_connect.php';

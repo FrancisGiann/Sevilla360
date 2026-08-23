@@ -12,6 +12,10 @@ if ($settings_query) {
 
 $maintenance_checked = (isset($current_settings['maintenance_mode']) && $current_settings['maintenance_mode'] === 'true') ? 'checked' : '';
 $walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
+$refund_fee_raw = trim((string)($current_settings['refund_fee_percent'] ?? '3.00'));
+$refund_fee_percent = preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refund_fee_raw) && is_finite((float)$refund_fee_raw) && (float)$refund_fee_raw >= 0 && (float)$refund_fee_raw <= 100
+    ? number_format((float)$refund_fee_raw, 2, '.', '')
+    : '3.00';
 $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
 $social_links = is_array($social_links) ? $social_links : [];
 $support_defaults = [
@@ -146,11 +150,11 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         </div>
                         <div class="form-group">
                             <label for="prof-new-pass">New Password</label>
-                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-new-pass" name="new-password" autocomplete="new-password" placeholder="Enter new password" aria-describedby="password-help"><button type="button" class="password-toggle" data-target="prof-new-pass" aria-label="Show new password">Show</button></div>
+                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-new-pass" name="new-password" autocomplete="new-password" placeholder="Enter new password" minlength="8" aria-describedby="password-help"><button type="button" class="password-toggle" data-target="prof-new-pass" aria-label="Show new password">Show</button></div>
                         </div>
                         <div class="form-group">
                             <label for="prof-conf-pass">Confirm Password</label>
-                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-conf-pass" name="confirm-password" autocomplete="new-password" placeholder="Confirm new password"><button type="button" class="password-toggle" data-target="prof-conf-pass" aria-label="Show confirmation password">Show</button></div>
+                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-conf-pass" name="confirm-password" autocomplete="new-password" placeholder="Confirm new password" minlength="8"><button type="button" class="password-toggle" data-target="prof-conf-pass" aria-label="Show confirmation password">Show</button></div>
                         </div>
                     </div>
                     <small class="field-help" id="password-help">Use a strong password and do not reuse it on another account.</small>
@@ -310,6 +314,22 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         </label>
                     </div>
 
+                    <hr class="panel-divider">
+
+                    <div class="preference-item settings-section-card">
+                        <div class="preference-info">
+                            <h4>Payment-processing fee</h4>
+                            <p>This percentage is deducted from every paid customer cancellation/refund request and snapshotted when the request is submitted. Admin force cancellations remain 100% refunds.</p>
+                        </div>
+                        <div class="form-group settings-inline-field">
+                            <label for="refund-fee-percent">Fee percentage</label>
+                            <div class="input-with-suffix">
+                                <input type="number" id="refund-fee-percent" name="refund_fee_percent" class="form-control" min="0" max="100" step="0.01" inputmode="decimal" value="<?php echo htmlspecialchars($refund_fee_percent, ENT_QUOTES, 'UTF-8'); ?>" required>
+                                <span aria-hidden="true">%</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- NEW: BUSINESS INFORMATION CONFIGURATION -->
                     <hr class="panel-divider">
                     <div class="preference-item settings-section-card">
@@ -346,7 +366,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                             </div>
                             <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
-                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Cancellations made less than 7 days before arrival are subject to fees."); ?></textarea>
+                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time; the fee percentage and refund amount are snapshotted when the request is submitted.\n• Admin-initiated force cancellations receive a 100% refund; the resort absorbs any processing fee."); ?></textarea>
                             </div>
                         </div>
                         <div class="social-settings-block">

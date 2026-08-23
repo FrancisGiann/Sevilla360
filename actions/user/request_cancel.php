@@ -1,8 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once '../../includes/request_context.php';
+require_once '../../includes/refund_helper.php';
 
 // Auth Guard: Must be a logged-in customer
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -29,11 +30,15 @@ if (!isset($data['booking_id']) || !isset($data['reason'])) {
 }
 
 $booking_id = intval($data['booking_id']);
-$reason = trim($data['reason']);
+$reason = trim((string)$data['reason']);
+if ($booking_id < 1 || $reason === '' || strlen($reason) > 1000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $reason)) {
+    echo json_encode(['success' => false, 'message' => 'A valid cancellation reason is required.']);
+    exit;
+}
 
 // 1. Verify this booking actually belongs to this user! (Security Check)
 $stmt_check = $conn->prepare("
-    SELECT b.id, b.amount_paid FROM bookings b 
+    SELECT b.id, b.amount_paid, b.booking_status FROM bookings b
     JOIN customers c ON b.customer_id = c.id 
     WHERE b.id = ? AND c.user_id = ?
 ");
@@ -48,25 +53,56 @@ if ($res->num_rows === 0) {
 
 $booking = $res->fetch_assoc();
 $amount_paid = floatval($booking['amount_paid']);
+if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true)) {
+    echo json_encode(['success' => false, 'message' => 'This booking is no longer eligible for cancellation.']);
+    exit;
+}
 
-// 2. Calculate Refund Logic (If they paid, deduct the ₱461 fee. If they didn't pay, refund is 0)
-$fee = 461.00;
-$refund_amount = ($amount_paid > 0) ? ($amount_paid - $fee) : 0;
-if ($refund_amount < 0) $refund_amount = 0;
-$actual_fee = ($amount_paid > 0) ? $fee : 0;
+// 2. Snapshot the current fee and refund values on each request.
+$refund = calculate_refund_breakdown($conn, $amount_paid);
+$fee = $refund['fee'];
+$refund_amount = $refund['refund'];
+$fee_percent = $refund['fee_percent'];
 
 try {
     $conn->begin_transaction();
 
-    if ($amount_paid > 0) {
-        // SCENARIO A: They paid money. We must queue a Refund Request for the Admin.
-        $fee = 461.00;
-        $refund_amount = $amount_paid - $fee;
-        if ($refund_amount < 0) $refund_amount = 0;
+    $stmt_booking_lock = $conn->prepare('SELECT amount_paid, booking_status FROM bookings WHERE id = ? FOR UPDATE');
+    $stmt_booking_lock->bind_param('i', $booking_id);
+    $stmt_booking_lock->execute();
+    $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
+    if (!$locked_booking || !in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
+    $amount_paid = (float)$locked_booking['amount_paid'];
+    $refund = calculate_refund_breakdown($conn, $amount_paid);
+    $fee = $refund['fee'];
+    $refund_amount = $refund['refund'];
+    $fee_percent = $refund['fee_percent'];
 
-        $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, status) VALUES (?, ?, ?, ?, 'Pending')");
-        $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee);
-        $stmt_cx->execute();
+    $stmt_existing = $conn->prepare("SELECT id, status FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
+    $stmt_existing->bind_param('i', $booking_id);
+    $stmt_existing->execute();
+    $existing = $stmt_existing->get_result()->fetch_assoc();
+    if ($existing && $existing['status'] === 'Pending') throw new Exception('A cancellation request is already pending for this booking.');
+    if ($existing && $existing['status'] === 'Processed') throw new Exception('This booking has already been refunded.');
+
+    if ($amount_paid > 0) {
+        // SCENARIO A: Reopen the single current row after rejection; every
+        // prior state remains in cancellation_history.
+        if ($existing) {
+            if ($existing['status'] !== 'Rejected') throw new Exception('This booking is not eligible for another refund request.');
+            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
+            $stmt_cx->bind_param("sdddi", $reason, $refund_amount, $fee, $fee_percent, $existing['id']);
+            if (!$stmt_cx->execute() || $stmt_cx->affected_rows !== 1) throw new Exception('The prior refund request changed before it could be reopened.');
+            $cancellation_id = (int)$existing['id'];
+            $history_action = 'reopened';
+        } else {
+            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, status) VALUES (?, ?, ?, ?, ?, 'Pending')");
+            $stmt_cx->bind_param("isddd", $booking_id, $reason, $refund_amount, $fee, $fee_percent);
+            if (!$stmt_cx->execute()) throw new Exception('Unable to submit the refund request.');
+            $cancellation_id = (int)$conn->insert_id;
+            $history_action = 'requested';
+        }
+        record_cancellation_history($conn, $booking_id, $cancellation_id, $history_action, $reason, $refund_amount, $fee, $fee_percent, null, (int)$_SESSION['user_id']);
 
         $message = "Cancellation request submitted successfully. Our team will process your refund shortly.";
 
@@ -75,6 +111,7 @@ try {
         $stmt_cancel = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', updated_at = NOW() WHERE id = ?");
         $stmt_cancel->bind_param("i", $booking_id);
         $stmt_cancel->execute();
+        record_cancellation_history($conn, $booking_id, $existing ? (int)$existing['id'] : null, 'cancelled', $reason, 0.0, 0.0, $fee_percent, null, (int)$_SESSION['user_id']);
 
         $message = "Booking cancelled successfully. No refund necessary.";
     }
@@ -94,52 +131,50 @@ try {
     
     $conn->commit();
 
-    // 3. SEND EMAIL & IN-APP NOTIFICATION TO USER
-    require_once '../../includes/mailer.php';
-    require_once '../../includes/notifications.php';
+    // 3. Dispatch customer messages only after the transaction has committed.
+    // These failures must never turn a successful cancellation into a client
+    // error or expose provider/internal details.
+    try {
+        require_once '../../includes/mailer.php';
+        require_once '../../includes/notifications.php';
+        $stmt_info = $conn->prepare("SELECT c.first_name,c.last_name,c.email,c.user_id,b.reference_no,v.name AS venue_name FROM bookings b JOIN customers c ON b.customer_id=c.id JOIN venues v ON b.venue_id=v.id WHERE b.id=?");
+        if (!$stmt_info) throw new RuntimeException('customer message lookup unavailable');
+        $stmt_info->bind_param('i', $booking_id);
+        if (!$stmt_info->execute()) throw new RuntimeException('customer message lookup failed');
+        $info = $stmt_info->get_result()->fetch_assoc();
+        if ($info) {
+            $c_name = $info['first_name'] . ' ' . $info['last_name'];
+            $c_email = $info['email'];
+            $c_user_id = $info['user_id'];
+            $ref_no = $info['reference_no'];
+            $v_name = $info['venue_name'];
 
-    $stmt_info = $conn->prepare("
-        SELECT c.first_name, c.last_name, c.email, c.user_id, b.reference_no, v.name AS venue_name
-        FROM bookings b
-        JOIN customers c ON b.customer_id = c.id
-        JOIN venues v ON b.venue_id = v.id
-        WHERE b.id = ?
-    ");
-    $stmt_info->bind_param("i", $booking_id);
-    $stmt_info->execute();
-    $info = $stmt_info->get_result()->fetch_assoc();
+            try {
+                if ($amount_paid > 0) {
+                    create_user_notification($conn, $c_user_id, "Pending Refund", "Your refund request for $v_name (Ref: $ref_no) has been submitted for processing.");
+                } else {
+                    create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name (Ref: $ref_no) has been cancelled as requested.");
+                }
+            } catch (Throwable $notificationError) {
+                error_log('User cancellation notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
 
-    if ($info) {
-        $c_name = $info['first_name'] . ' ' . $info['last_name'];
-        $c_email = $info['email'];
-        $c_user_id = $info['user_id'];
-        $ref_no = $info['reference_no'];
-        $v_name = $info['venue_name'];
-
-        // In-App Notification
-        if ($amount_paid > 0) {
-            create_user_notification($conn, $c_user_id, "Cancellation Requested", "Your cancellation request for $v_name (Ref: $ref_no) has been submitted for refund processing.");
-        } else {
-            create_user_notification($conn, $c_user_id, "Booking Cancelled", "Your booking for $v_name (Ref: $ref_no) has been cancelled as requested.");
+            try {
+                send_booking_cancellation_email($c_email, $c_name, $booking_id, ($amount_paid > 0 ? 'cancellation_requested' : 'customer_cancelled'), $refund_amount, $reason);
+            } catch (Throwable $mail_err) {
+                error_log('User cancellation email delivery failed: ' . get_class($mail_err) . ' booking_id=' . (int)$booking_id);
+            }
         }
-
-        // Email Notification (Reusing existing mailer implementation)
-        try {
-            send_booking_cancellation_email($c_email, $c_name, $booking_id, ($amount_paid > 0 ? 'cancellation_requested' : 'cancelled'), $refund_amount, $reason);
-        } catch (Exception $mail_err) {
-            error_log("Failed to send user cancellation email: " . $mail_err->getMessage());
-        }
+    } catch (Throwable $postCommitError) {
+        error_log('Customer cancellation post-commit dispatch failed: ' . get_class($postCommitError) . ' booking_id=' . (int)$booking_id);
     }
 
     echo json_encode(['success' => true, 'message' => $message]);
 
 } catch (Exception $e) {
     $conn->rollback();
-    if ($conn->errno == 1062) {
-        echo json_encode(['success' => false, 'message' => 'A cancellation request is already pending for this booking.']);
-    } else {
-        echo json_encode(['success' => false, 'message' => 'Database error: ' . $e->getMessage()]);
-    }
+    if ($conn->errno == 1062) echo json_encode(['success' => false, 'message' => 'A cancellation request is already pending for this booking.']);
+    else echo json_encode(['success' => false, 'message' => 'Unable to submit the cancellation request.']);
 }
 $conn->close();
 ?>

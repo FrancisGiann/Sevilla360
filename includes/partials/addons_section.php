@@ -80,7 +80,7 @@ $addon_room_groups = $hotel_room_groups ?? [];
     <div class="addon-block">
         <label class="toggle-label"><input type="checkbox" id="check-rooms"> Reserve Hotel Rooms</label>
         <div class="addon-content hidden" id="rooms-options">
-            <p class="addon-note">Choose one shared hotel stay for every room in this event add-on. Rates are per room per night.</p>
+            <p class="addon-note">Choose one shared hotel stay for every room in this event add-on, then confirm the dates. Rates are per room per night; the resort confirms final availability and quote.</p>
             <div class="addon-room-calendar">
                 <div class="addon-room-calendar-heading">
                     <strong>Hotel check-in and check-out</strong>

@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
