@@ -62,7 +62,7 @@ $where_sql = implode(' AND ', $where_clauses);
 try {
     // 1. Get Total Row Count (for pagination math)
     $count_sql = "
-        SELECT COUNT(b.id) as total 
+        SELECT COUNT(DISTINCT b.id) as total
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id

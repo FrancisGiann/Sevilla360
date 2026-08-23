@@ -3,6 +3,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/admin_notifications.php';
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     http_response_code(403);
@@ -24,13 +25,23 @@ try {
     $response['maintenanceAlerts'] = $res->fetch_all(MYSQLI_ASSOC);
 
     // 2. ACTION REQUIRED
-    $res = $conn->query("SELECT COUNT(*) as c FROM bookings WHERE booking_status = 'Pending'");
-    $pendingBookings = (int)($res->fetch_assoc()['c'] ?? 0);
-    $res = $conn->query("SELECT COUNT(*) as c FROM cancellations cx JOIN bookings b ON cx.booking_id = b.id WHERE cx.status = 'Pending' AND b.booking_status != 'Cancelled'");
-    $pendingCancels = (int)($res->fetch_assoc()['c'] ?? 0);
-    $res = $conn->query("SELECT COUNT(*) as c FROM reschedule_requests rr JOIN bookings b ON rr.booking_id = b.id WHERE rr.status = 'Pending' AND b.booking_status != 'Cancelled'");
-    $pendingRescheds = (int)($res->fetch_assoc()['c'] ?? 0);
-    $response['actionRequired'] = $pendingBookings + $pendingCancels + $pendingRescheds;
+    $res = $conn->query("SELECT COUNT(DISTINCT b.id) as c
+        FROM bookings b
+        WHERE b.booking_status != 'Cancelled'
+          AND (
+              EXISTS (
+                  SELECT 1 FROM cancellations cx
+                  WHERE cx.booking_id = b.id AND cx.status = 'Pending'
+              )
+              OR EXISTS (
+                  SELECT 1 FROM reschedule_requests rr
+                  WHERE rr.booking_id = b.id AND rr.status = 'Pending'
+              )
+              OR b.booking_status = 'Pending'
+              OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid')
+          )
+    ");
+    $response['actionRequired'] = (int)($res->fetch_assoc()['c'] ?? 0);
 
     // 3. TODAY'S OCCUPANCY RATE
     $res = $conn->query("SELECT COUNT(*) as c FROM venues WHERE status != 'Inactive'");
@@ -158,19 +169,7 @@ try {
     $response['recentBookings'] = $res->fetch_all(MYSQLI_ASSOC);
 
     // 10. DEDICATED NOTIFICATIONS QUERY (Finds ALL pending actions, ignoring limits)
-    $res = $conn->query("
-        SELECT b.reference_no, b.start_date, v.name as venue_name, v.category as venue_category, 
-               b.booking_status, cx.status as cancel_status, rr.status as resched_status
-        FROM bookings b
-        JOIN venues v ON b.venue_id = v.id
-        LEFT JOIN cancellations cx ON b.id = cx.booking_id AND cx.status = 'Pending'
-        LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-        WHERE cx.status = 'Pending' 
-           OR rr.status = 'Pending' 
-           OR (v.category = 'Event Hall' AND b.booking_status = 'Pending')
-        ORDER BY b.id DESC
-    ");
-    $response['notifications'] = $res->fetch_all(MYSQLI_ASSOC);
+    $response['notifications'] = get_admin_action_notifications($conn);
     
     echo json_encode($response);
 

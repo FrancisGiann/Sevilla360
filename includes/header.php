@@ -2,6 +2,7 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+require_once __DIR__ . '/admin_notifications.php';
 $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css   = isset($extra_css) ? $extra_css : '';
 $active_page = isset($active_page) ? $active_page : '';
@@ -32,49 +33,43 @@ if ($isLoggedIn && isset($conn) && $conn instanceof mysqli) {
             $st_h_notifs->close();
         }
     } elseif ($isAdmin) {
-        $admin_notif_query = $conn->query("
-            SELECT b.id, b.reference_no, b.booking_status, b.start_date, v.name as venue_name, v.category as venue_category,
-                   cx.status as cancel_status, rr.status as resched_status
-            FROM bookings b
-            JOIN venues v ON b.venue_id = v.id
-            LEFT JOIN cancellations cx ON b.id = cx.booking_id
-            LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-            WHERE cx.status = 'Pending' OR rr.status = 'Pending' OR (v.category = 'Event Hall' AND b.booking_status = 'Pending')
-            ORDER BY b.id DESC LIMIT 10
-        ");
+        try {
+            $admin_notifications = get_admin_action_notifications($conn, 10);
+        } catch (Throwable $e) {
+            error_log('Unable to load admin homepage notifications: ' . $e->getMessage());
+            $admin_notifications = [];
+        }
 
-        if ($admin_notif_query) {
-            while ($b = $admin_notif_query->fetch_assoc()) {
-                $title = "Action Required";
-                $msg = "";
-                $url = "admin_dashboard.php?page=bookings&search=" . urlencode($b['reference_no']);
-                $date_str = date('M j, Y', strtotime($b['start_date']));
+        foreach ($admin_notifications as $b) {
+            $title = "Action Required";
+            $msg = "";
+            $url = "admin_dashboard.php?page=bookings&search=" . urlencode($b['reference_no']);
+            $date_str = date('M j, Y', strtotime($b['start_date']));
 
-                if ($b['cancel_status'] === 'Pending') {
-                    $title = "Refund Requested";
-                    $msg = "Refund request for {$b['venue_name']} (#{$b['reference_no']})";
-                    $hp_unread_count++;
-                } elseif ($b['resched_status'] === 'Pending') {
-                    $title = "Reschedule Requested";
-                    $msg = "Reschedule request for {$b['venue_name']} (#{$b['reference_no']})";
-                    $hp_unread_count++;
-                } elseif ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
-                    $title = "New Event Inquiry";
-                    $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
-                    $hp_unread_count++;
-                }
+            if ($b['cancel_status'] === 'Pending') {
+                $title = "Refund Requested";
+                $msg = "Refund request for {$b['venue_name']} (#{$b['reference_no']})";
+                $hp_unread_count++;
+            } elseif ($b['resched_status'] === 'Pending') {
+                $title = "Reschedule Requested";
+                $msg = "Reschedule request for {$b['venue_name']} (#{$b['reference_no']})";
+                $hp_unread_count++;
+            } elseif ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
+                $title = "New Event Inquiry";
+                $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
+                $hp_unread_count++;
+            }
 
-                if (!empty($msg)) {
-                    $hp_notifications[] = [
-                        'id' => $b['id'],
-                        'title' => $title,
-                        'message' => $msg,
-                        'url' => $url,
-                        'is_read' => 0,
-                        'created_at' => $date_str,
-                        'notif_type' => 'admin'
-                    ];
-                }
+            if (!empty($msg)) {
+                $hp_notifications[] = [
+                    'id' => $b['id'],
+                    'title' => $title,
+                    'message' => $msg,
+                    'url' => $url,
+                    'is_read' => 0,
+                    'created_at' => $date_str,
+                    'notif_type' => 'admin'
+                ];
             }
         }
     }

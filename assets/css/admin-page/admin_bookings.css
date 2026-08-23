@@ -1040,6 +1040,61 @@
   width: 100%;
 }
 
+/* Keep the booking details dialog within the viewport on narrow screens. */
+@media (max-width: 768px) {
+  #viewDetailsModal {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  #viewDetailsModal .vd-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  #viewDetailsModal .vd-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #viewDetailsModal #vd-status-badge {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  #viewDetailsModal .summary-grid > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  #viewDetailsModal .vd-summary-grid,
+  #viewDetailsModal .vd-addons-grid,
+  #viewDetailsModal .vd-financials-grid,
+  #viewDetailsModal .vd-paid-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #viewDetailsModal .vd-total-row {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
+  #viewDetailsModal .vd-modal-actions {
+    align-items: stretch;
+  }
+
+  #viewDetailsModal .vd-modal-actions .btn-modal {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 .text-line-through {
   text-decoration: line-through;
   color: #888;
