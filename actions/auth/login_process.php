@@ -5,6 +5,7 @@ session_start();
 // Connect to the database
 require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
+require_once '../../includes/request_context.php';
 
 // Check if the form was actually submitted
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -147,7 +148,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $login_action = 'Successful ' . $user['role'] . ' login: ' . $email;
                 $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Authentication', ?, ?)");
                 if ($audit) {
-                    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+                    $ip_address = request_client_ip();
                     $audit->bind_param("iss", $user['id'], $login_action, $ip_address);
                     $audit->execute();
                     $audit->close();

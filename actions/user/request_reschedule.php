@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once '../../includes/request_context.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -49,28 +50,30 @@ if ($res->num_rows === 0) {
 }
 
 $booking = $res->fetch_assoc();
-if ($booking['booking_status'] !== 'Confirmed') {
-    echo json_encode(['success' => false, 'message' => 'Only confirmed bookings can be rescheduled.']);
-    exit;
-}
-
-// Force strict duration rule for ALL bookings to prevent unauthorized extension/shortening
-$orig_start = new DateTime($booking['start_date']);
-$orig_end = new DateTime($booking['end_date']);
-$nights = $orig_start->diff($orig_end)->days;
-
-// Recalculate end date from the requested start date to prevent duration tampering
-$req_start = DateTime::createFromFormat('!Y-m-d', $new_start);
-if (!$req_start || $req_start->format('Y-m-d') !== $new_start || $req_start < new DateTime('today')) {
-    echo json_encode(['success' => false, 'message' => 'Please select a valid future reschedule date.']);
-    exit;
-}
-if ($nights > 0) {
-    $req_start->modify("+$nights days");
-}
-$new_end = $req_start->format('Y-m-d');
 
 try {
+    // Lock the owned booking before checking/inserting. Two concurrent tabs
+    // therefore produce one pending request deterministically.
+    if (!$conn->begin_transaction()) throw new Exception('Could not start the request transaction.');
+    $stmt_lock = $conn->prepare("SELECT b.id FROM bookings b JOIN customers c ON b.customer_id = c.id WHERE b.id = ? AND c.user_id = ? FOR UPDATE");
+    if (!$stmt_lock) throw new Exception('Could not lock the booking.');
+    $stmt_lock->bind_param('ii', $booking_id, $_SESSION['user_id']);
+    if (!$stmt_lock->execute() || $stmt_lock->get_result()->num_rows === 0) throw new Exception('Booking not found or access denied.');
+    // Re-fetch mutable booking state after acquiring the row lock so date,
+    // duration, and confirmation checks cannot use a stale snapshot.
+    $stmt_refresh = $conn->prepare("SELECT b.id, b.start_date, b.end_date, b.booking_status, v.category FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id WHERE b.id = ? AND c.user_id = ? FOR UPDATE");
+    if (!$stmt_refresh) throw new Exception('Could not refresh the booking.');
+    $stmt_refresh->bind_param('ii', $booking_id, $_SESSION['user_id']);
+    if (!$stmt_refresh->execute()) throw new Exception('Could not refresh the booking.');
+    $booking = $stmt_refresh->get_result()->fetch_assoc();
+    if (!$booking || $booking['booking_status'] !== 'Confirmed') throw new Exception('Only confirmed bookings can be rescheduled.');
+    $orig_start = new DateTime($booking['start_date']);
+    $orig_end = new DateTime($booking['end_date']);
+    $nights = $orig_start->diff($orig_end)->days;
+    $req_start = DateTime::createFromFormat('!Y-m-d', $new_start);
+    if (!$req_start || $req_start->format('Y-m-d') !== $new_start || $req_start < new DateTime('today')) throw new Exception('Please select a valid future reschedule date.');
+    if ($nights > 0) $req_start->modify("+$nights days");
+    $new_end = $req_start->format('Y-m-d');
     // Check if a request is already pending
     $chk_pending = $conn->prepare("SELECT id FROM reschedule_requests WHERE booking_id = ? AND status = 'Pending'");
     $chk_pending->bind_param("i", $booking_id);
@@ -85,14 +88,15 @@ try {
 
     $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Customer Reschedule', ?, ?)");
     $audit_action = "Requested reschedule for booking #{$booking_id} to {$new_start}";
-    $audit_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-    if ($audit) {
-        $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
-        $audit->execute();
-    }
+    $audit_ip = request_client_ip();
+    if (!$audit) throw new Exception('Could not prepare the request audit entry.');
+    $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
+    if (!$audit->execute()) throw new Exception('Could not record the request audit entry.');
 
+    if (!$conn->commit()) throw new Exception('Could not commit the reschedule request.');
     echo json_encode(['success' => true, 'message' => 'Reschedule request submitted successfully! Staff will review it shortly.']);
 } catch (Exception $e) {
+    $conn->rollback();
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
 ?>

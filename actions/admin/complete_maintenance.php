@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -70,7 +71,7 @@ try {
         $log_user = $_SESSION['user_id'];
         $log_module = 'Maintenance';
         $log_action = "Marked maintenance as Completed for $v_name"; 
-        $log_ip = $_SERVER['REMOTE_ADDR'];
+        $log_ip = request_client_ip();
 
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
         $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);

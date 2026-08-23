@@ -59,6 +59,7 @@ $stmt_bookings = $conn->prepare("
         hr.room_type AS hotel_room_type,
         cx.status AS cancel_status,
         rr.status AS resched_status,
+        EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
         p.transaction_id
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
@@ -371,6 +372,9 @@ while ($row = $notifs_result->fetch_assoc()) {
                                             <span class="badge <?php echo $badge_class; ?>">
                                                 <?php echo ($b['cancel_status'] === 'Pending') ? 'Cancel Requested' : $status_text; ?>
                                             </span>
+                                            <?php if (!empty($b['has_rescheduled']) && $b['booking_status'] === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
+                                            <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td data-label="Actions">
                                             <div class="action-cell">

@@ -579,7 +579,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         <input type="number" id="vm-vi-day" name="day_rate" class="form-control" step="0.01">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Overnight Rate (₱)</label>
+                        <label>Overnight Surcharge / Upgrade (₱, added to day rate)</label>
                         <input type="number" id="vm-vi-night" name="overnight_rate" class="form-control" step="0.01">
                     </div>
 

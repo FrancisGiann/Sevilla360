@@ -6,6 +6,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 $filename = $_GET['file'] ?? '';
 if (empty($filename)) {
@@ -35,7 +36,7 @@ if (!file_exists($filePath)) {
 $adminId = $_SESSION['user_id'];
 $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
 $details = "Downloaded database backup: {$safeFilename}";
-$ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$ip = request_client_ip();
 $auditStmt->bind_param("iss", $adminId, $details, $ip);
 $auditStmt->execute();
 

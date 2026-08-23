@@ -25,6 +25,7 @@ if (!$id) {
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 if (BackupHelper::getSigningKey() === null) {
     echo json_encode(['success' => false, 'error' => 'Restore is unavailable: configure a strong APP_KEY (at least 32 randomly generated characters).']);
@@ -33,8 +34,9 @@ if (BackupHelper::getSigningKey() === null) {
 
 // First fetch the filename securely from the DB
 $stmt = $conn->prepare("SELECT filename FROM backups WHERE id = ?");
+if (!$stmt) { echo json_encode(['success' => false, 'error' => 'Unable to load backup metadata.']); exit; }
 $stmt->bind_param("i", $id);
-$stmt->execute();
+if (!$stmt->execute()) { echo json_encode(['success' => false, 'error' => 'Unable to load backup metadata.']); exit; }
 $result = $stmt->get_result();
 if ($result->num_rows === 0) {
     echo json_encode(['success' => false, 'error' => 'Backup not found in database.']);
@@ -51,20 +53,32 @@ if (!file_exists($filePath)) {
 }
 
 $backupDir = __DIR__ . '/../../storage/backups';
+try {
+    // MySQL DDL cannot be rolled back. Validate and execute the signed dump in
+    // a disposable schema before the production safety backup/import.
+    BackupHelper::preflightImport($conn, $filePath, $database);
+} catch (Throwable $e) {
+    echo json_encode(['success' => false, 'error' => 'Restore cancelled: isolated preflight failed. Production was not modified.']);
+    exit;
+}
+
 $safetyBackup = BackupHelper::createBackupFile($conn, $database, $backupDir, 'sevilla360_pre_restore_');
 if ($safetyBackup === false) {
     echo json_encode(['success' => false, 'error' => 'Restore cancelled: the pre-restore safety backup could not be created.']);
     exit;
 }
 
-// Proceed with restore
+// Proceed with restore only after successful isolated preflight.
 if (BackupHelper::importDatabase($conn, $filePath)) {
     $adminId = (int)($_SESSION['user_id'] ?? 0);
     $adminCheck = $conn->prepare("SELECT id FROM users WHERE id = ? AND role = 'admin' LIMIT 1");
+    if (!$adminCheck) { echo json_encode(['success' => false, 'error' => 'Database restored, but administrator verification failed.']); exit; }
     $adminCheck->bind_param("i", $adminId);
-    $adminCheck->execute();
+    if (!$adminCheck->execute()) { echo json_encode(['success' => false, 'error' => 'Database restored, but administrator verification failed.']); exit; }
     if ($adminCheck->get_result()->num_rows === 0) {
-        $fallback = $conn->query("SELECT id FROM users WHERE role = 'admin' LIMIT 1")->fetch_assoc();
+        $fallback_result = $conn->query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+        if (!$fallback_result) { echo json_encode(['success' => false, 'error' => 'Database restored, but administrator verification failed.']); exit; }
+        $fallback = $fallback_result->fetch_assoc();
         $adminId = (int)($fallback['id'] ?? 0);
     }
     if ($adminId <= 0 || !BackupHelper::registerBackup($conn, $safetyBackup['filename'], $safetyBackup['file_size'], $adminId)) {
@@ -73,13 +87,23 @@ if (BackupHelper::importDatabase($conn, $filePath)) {
     }
 
     $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
+    if (!$auditStmt) { echo json_encode(['success' => false, 'error' => 'Database restored, but audit logging failed.']); exit; }
     $details = "Restored database from backup: {$filename}; safety backup: {$safetyBackup['filename']}";
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $ip = request_client_ip();
     $auditStmt->bind_param("iss", $adminId, $details, $ip);
-    $auditStmt->execute();
+    if (!$auditStmt->execute()) { echo json_encode(['success' => false, 'error' => 'Database restored, but audit logging failed.']); exit; }
 
     echo json_encode(['success' => true]);
 } else {
-    echo json_encode(['success' => false, 'error' => 'Database restore failed. The file might be corrupted.']);
+    // Production import may have partially applied DDL. Immediately replay
+    // the pre-restore snapshot and report the recovery result explicitly.
+    $recovered = BackupHelper::importDatabase($conn, $safetyBackup['path']);
+    echo json_encode([
+        'success' => false,
+        'recovery_succeeded' => $recovered,
+        'error' => $recovered
+            ? 'Database restore failed; production was recovered from the safety backup.'
+            : 'Database restore failed and automatic recovery also failed. Stop writes and restore the safety backup manually.'
+    ]);
 }
 ?>

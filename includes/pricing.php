@@ -36,6 +36,8 @@ function calculate_booking_price($conn, $venue_id, $venue_category, $start_date,
 
         $base_amount = floatval($villa['day_rate']);
         
+        // overnight_rate is an additive surcharge/upgrade on top of day_rate;
+        // keep the stored pricing semantics unchanged.
         $stay_upgrade = ($stay_type === 'Overnight') ? (floatval($villa['overnight_rate']) * $nights) : 0;
         $true_total = ($base_amount * $nights) + $stay_upgrade;
 

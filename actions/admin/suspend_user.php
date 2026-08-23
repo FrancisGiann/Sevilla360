@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
@@ -49,7 +50,8 @@ try {
     $action_word = ucfirst($new_status) === 'Suspended' ? "Suspended" : "Re-activated";
     $log_action = "$action_word customer account: $cust_name ($email, user ID: $target_user_id)";
     $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'User Management', ?, ?)");
-    $audit->bind_param("iss", $_SESSION['user_id'], $log_action, $_SERVER['REMOTE_ADDR']);
+        $audit_ip = request_client_ip();
+        $audit->bind_param("iss", $_SESSION['user_id'], $log_action, $audit_ip);
     $audit->execute();
 
     echo json_encode(['success' => true, 'message' => "Account successfully $new_status!"]);

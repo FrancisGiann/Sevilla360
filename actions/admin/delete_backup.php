@@ -24,6 +24,7 @@ if (!$id) {
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 // First fetch the filename
 $stmt = $conn->prepare("SELECT filename FROM backups WHERE id = ?");
@@ -53,7 +54,7 @@ if ($delStmt->execute()) {
     $adminId = $_SESSION['user_id'];
     $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
     $details = "Deleted database backup: {$filename}";
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $ip = request_client_ip();
     $auditStmt->bind_param("iss", $adminId, $details, $ip);
     $auditStmt->execute();
 

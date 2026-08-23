@@ -25,7 +25,8 @@ try {
             b.*,
             c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name AS venue_name, v.category AS venue_category,
-            hr.room_type, hr.room_number
+            hr.room_type, hr.room_number,
+            EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id

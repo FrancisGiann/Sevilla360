@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once '../../includes/request_context.php';
 
 // Auth Guard: Must be a logged-in customer
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -85,7 +86,7 @@ try {
 
     $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Customer Cancellation', ?, ?)");
     $audit_action = "Requested cancellation for booking #{$booking_id}";
-    $audit_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $audit_ip = request_client_ip();
     if ($audit) {
         $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
         $audit->execute();

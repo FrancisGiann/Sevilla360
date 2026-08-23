@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 // Auth check
 if (!isset($_SESSION['logged_in']) || $_SESSION['role'] !== 'admin') {
@@ -17,7 +18,7 @@ if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST[
     exit();
 }
 
-$ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$ip = request_client_ip();
 
 // Check if file was uploaded
 if (!isset($_FILES['sql_file']) || $_FILES['sql_file']['error'] !== UPLOAD_ERR_OK) {
@@ -31,6 +32,10 @@ $fileSize = $_FILES['sql_file']['size'];
 
 if (!str_ends_with(strtolower($originalName), '.sql')) {
     echo json_encode(['success' => false, 'error' => 'Invalid file type. Only .sql files are allowed.']);
+    exit();
+}
+if ($fileSize <= 0 || $fileSize > BackupHelper::maxBackupBytes()) {
+    echo json_encode(['success' => false, 'error' => 'Backup exceeds the configured maximum size.']);
     exit();
 }
 

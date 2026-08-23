@@ -226,6 +226,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
             actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
+            if (Number(b.has_checkout_session) === 1 && b.payment_status !== 'Paid' && b.booking_status !== 'Cancelled') {
+                actionBtns += `<button class="btn-action btn-confirm open-reconcile" data-id="${b.id}">Sync PayMongo</button>`;
+            }
   
             html += `
             <tr class="${b.booking_status === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
@@ -234,7 +237,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Customer">${customerName}</td>
                 <td data-label="Date">${dateStr}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
-                <td data-label="Status"><span class="status-badge ${badgeClass}">${statusText}</span></td>
+                <td data-label="Status"><span class="status-badge ${badgeClass}">${statusText}</span>${Number(b.has_rescheduled) === 1 && b.booking_status === 'Confirmed' ? ' <span class="status-badge status-reschedule">Rescheduled &amp; Confirmed</span>' : ''}</td>
                 <td data-label="Actions" class="action-cells">${actionBtns}</td>
             </tr>`;
         });
@@ -578,6 +581,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 paymentModal.classList.add('active');
             });
         });
+
+        document.querySelectorAll('.open-reconcile').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const button = this;
+                button.disabled = true;
+                button.textContent = 'Syncing...';
+                fetch('actions/admin/reconcile_payment.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ booking_id: button.getAttribute('data-id') })
+                }).then(r => r.json()).then(data => {
+                    if (data.success) showAlert('Payment Synced', data.message, 'success');
+                    else showAlert('Sync Failed', data.message || 'Unable to reconcile payment.', 'error');
+                    loadBookings();
+                }).catch(() => showAlert('Sync Failed', 'Network or server error.', 'error'))
+                  .finally(() => { button.disabled = false; button.textContent = 'Sync PayMongo'; });
+            });
+        });
       
         // REVIEW RESCHEDULE REQUEST MODAL
         const reviewReschedModal = document.getElementById("reviewReschedModal");
@@ -706,7 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
                   
                   const badge = document.getElementById('vd-status-badge');
-                  badge.innerText = data.booking_status;
+                  badge.innerText = data.booking_status + (Number(data.has_rescheduled) === 1 && data.booking_status === 'Confirmed' ? ' — Rescheduled & Confirmed' : '');
                   badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
       
                   document.getElementById('vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;

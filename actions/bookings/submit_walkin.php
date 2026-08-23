@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/request_context.php';
 
 function submit_walkin_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -432,7 +433,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $log_user = $_SESSION['user_id'];
             $log_module = 'Walk-in Bookings';
             $log_action = "Created walk-in booking $ref_no for " . $_POST['guest_name'];
-            $log_ip = $_SERVER['REMOTE_ADDR'];
+            $log_ip = request_client_ip();
 
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
             $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);

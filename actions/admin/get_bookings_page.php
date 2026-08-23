@@ -86,6 +86,8 @@ try {
             hr.room_type AS hotel_room_type,
             cx.status AS cancel_status, cx.reason AS cancel_reason,
             rr.status AS resched_status, rr.new_start_date, rr.new_end_date, rr.reason AS resched_reason
+            , EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled
+            , EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status = 'created' AND bcs.provider_session_id IS NOT NULL) AS has_checkout_session
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id

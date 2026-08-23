@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/paymongo.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -22,7 +23,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-
+    $db_committed = false;
     try {
         $conn->begin_transaction();
 
@@ -336,11 +337,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Error calculating price. Amount due cannot be zero for Hotels/Villas.");
         }
 
-        // TRIGGER PAYMONGO IF AMOUNT IS GREATER THAN ZERO
+        // Commit the booking before contacting PayMongo. The reservation is
+        // valid and retryable from the dashboard even if the provider is slow
+        // or unavailable.
         if ($amount_due > 0) {
-            // NOTE: Make sure you changed this to $_ENV['PAYMONGO_SECRET_KEY'] as discussed earlier!
-            $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY'];
-
             $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
             $domain = $_SERVER['HTTP_HOST'];
             $success_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=success";
@@ -379,40 +379,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ]
             ];
 
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, 'https://api.paymongo.com/v1/checkout_sessions');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'accept: application/json',
-                'Authorization: Basic ' . base64_encode($paymongo_sk . ':')
-            ]);
-
-            $response = curl_exec($ch);
-            $err = curl_error($ch);
-            curl_close($ch);
-
-            if ($err) throw new Exception("cURL Error: " . $err);
-
-            $res_data = json_decode($response, true);
-
-            if (isset($res_data['errors'])) throw new Exception("PayMongo API Error: " . $res_data['errors'][0]['detail']);
-
-            if (isset($res_data['data']['attributes']['checkout_url'])) {
-                $conn->commit();
-                echo "CheckoutUrl|" . $res_data['data']['attributes']['checkout_url'];
-                exit();
-            } else {
-                throw new Exception("Failed to generate PayMongo link. Unknown API response.");
+            if (!$conn->commit()) throw new Exception('Unable to save booking.');
+            $db_committed = true;
+            try {
+                $checkout = paymongo_create_or_reuse_checkout($conn, $booking_id, $amount_due, 0.0, $payload);
+                echo "CheckoutUrl|" . $checkout['checkout_url'];
+            } catch (Throwable $provider_error) {
+                echo "Error|Booking {$ref_no} was saved as Pending/Unpaid. Payment setup could not be completed; open your dashboard and retry. Reference: {$ref_no}";
             }
+            exit();
         }
 
-        $conn->commit();
+        if (!$conn->commit()) throw new Exception('Unable to save booking.');
+        $db_committed = true;
 
         // IF AMOUNT IS 0 (EVENT INQUIRY), SEND EMAIL AND SUCCESS
         try {
@@ -427,8 +406,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         echo "Success|" . $ref_no;
 
     } catch (Exception $e) {
-        $conn->rollback();
-        echo "Error|" . $e->getMessage();
+        if (!$db_committed) $conn->rollback();
+        $prefix = $db_committed && !empty($ref_no) ? "Booking {$ref_no} was saved. " : '';
+        echo "Error|" . $prefix . $e->getMessage();
     }
 }
 ?>

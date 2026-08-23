@@ -1,6 +1,7 @@
 <?php
 // includes/rate_limit.php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/request_context.php';
 
 /**
  * Checks if the current IP has exceeded the rate limit for a specific action.
@@ -18,7 +19,7 @@ function check_rate_limit($conn, $action_name, $max_attempts, $time_window_minut
     if ($max_attempts < 1 || $time_window_minutes < 1) return false;
 
     // Get client IP safely
-    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $ip_address = request_client_ip();
 
     // rate_limits has UNIQUE(ip_address, action_name). This single atomic
     // upsert closes the check-then-increment race without starting, committing,
@@ -45,7 +46,7 @@ function check_rate_limit($conn, $action_name, $max_attempts, $time_window_minut
  * Clears the rate limit (e.g., upon successful login)
  */
 function clear_rate_limit($conn, $action_name) {
-    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    $ip_address = request_client_ip();
     $stmt = $conn->prepare("DELETE FROM rate_limits WHERE action_name = ? AND ip_address = ?");
     $stmt->bind_param("ss", $action_name, $ip_address);
     $stmt->execute();

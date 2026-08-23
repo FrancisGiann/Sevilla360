@@ -37,7 +37,7 @@
             </label>
             <label>
                 <input type="radio" name="villa-stay" id="stay-night" value="Overnight">
-                <span class="stay-title">Villa Overnight — ₱6,500</span>
+                <span class="stay-title">Villa Overnight — day rate + overnight surcharge</span>
             </label>
         </div>
     </div>
@@ -67,7 +67,7 @@
                 <p>- Check in: 7AM Check out: 5PM</p>
             </div>
             <div class="rule-box hidden" id="rule-night">
-                <strong>VILLA OVERNIGHT</strong>
+                <strong>VILLA OVERNIGHT (ADDITIVE SURCHARGE)</strong>
                 <p>- ₱6500 for 4 persons</p>
                 <p>- Complimentary breakfast for 4 persons</p>
                 <p>- Check in: 2PM Check out: 12PM</p>

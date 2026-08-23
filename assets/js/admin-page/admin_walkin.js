@@ -1629,7 +1629,7 @@ class AdminWalkinController {
         
         this.state.summary.total += villa + stayTypePrice; 
         if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
-        if (stayTypePrice > 0) this.appendSummaryRow('Overnight Upgrade', stayTypePrice);
+        if (stayTypePrice > 0) this.appendSummaryRow('Overnight surcharge (added to day rate)', stayTypePrice);
         
         // Get extra pax from data attributes
         const villaSelect = this.getEl('villa-type');

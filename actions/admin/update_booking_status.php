@@ -17,6 +17,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/booking_rules.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -335,21 +336,31 @@ try {
             $stmt_inv = $conn->prepare("
                 SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
                 WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+                ORDER BY v.id
+                FOR UPDATE
             ");
+            if (!$stmt_inv) throw new Exception('Unable to lock candidate hotel rooms.');
             $stmt_inv->bind_param("ss", $r_type, $r_name);
-            $stmt_inv->execute();
+            if (!$stmt_inv->execute()) throw new Exception('Unable to lock candidate hotel rooms.');
             $res_inv = $stmt_inv->get_result();
 
             $assigned_venue_id = null;
             while ($row = $res_inv->fetch_assoc()) {
-                $vid = $row['id'];
+                $vid = (int)$row['id'];
 
                 // Check maintenance, direct bookings, and add-on bookings with
                 // prepared predicates; hotel checkout remains exclusive.
                 $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                if (!$maint) throw new Exception('Unable to check room maintenance.');
                 $maint->bind_param('iss', $vid, $new_end, $new_start);
-                $maint->execute();
+                if (!$maint->execute()) throw new Exception('Unable to check room maintenance.');
                 if ($maint->get_result()->num_rows > 0) continue;
+
+                $locks = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() AND " . booking_overlap_sql('Hotel Room') . " LIMIT 1");
+                if (!$locks) throw new Exception('Unable to check active room holds.');
+                $locks->bind_param('iss', $vid, $new_end, $new_start);
+                if (!$locks->execute()) throw new Exception('Unable to check active room holds.');
+                if ($locks->get_result()->num_rows > 0) continue;
 
                 $booking_overlap = booking_overlap_sql('Hotel Room');
                 $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND $booking_overlap");
@@ -392,6 +403,7 @@ try {
             JOIN venues v ON br.venue_id = v.id
             JOIN hotel_rooms h ON v.id = h.venue_id
             WHERE br.booking_id = ?
+            ORDER BY v.name, h.room_type, br.id
         ");
         $stmt_addons->bind_param("i", $booking_id);
         $stmt_addons->execute();
@@ -423,14 +435,17 @@ try {
             $stmt_inv = $conn->prepare("
                 SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
                 WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+                ORDER BY v.id
+                FOR UPDATE
             ");
+            if (!$stmt_inv) throw new Exception('Unable to lock candidate add-on rooms.');
             $stmt_inv->bind_param("ss", $r_type, $r_name);
-            $stmt_inv->execute();
+            if (!$stmt_inv->execute()) throw new Exception('Unable to lock candidate add-on rooms.');
             $res_inv = $stmt_inv->get_result();
 
             $assigned_venue_id = null;
             while ($row = $res_inv->fetch_assoc()) {
-                $vid = $row['id'];
+                $vid = (int)$row['id'];
 
                 // If we already assigned this $vid in this loop or for the main venue, skip it
                 if (in_array($vid, $reserved_addon_venues, true) || $vid === $venue_id) continue;
@@ -438,9 +453,16 @@ try {
                 // Check maintenance, direct bookings, and add-on bookings using
                 // bound values to prevent reschedule SQL injection.
                 $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                if (!$maint) throw new Exception('Unable to check add-on maintenance.');
                 $maint->bind_param('iss', $vid, $addon_new_end, $addon_new_start);
-                $maint->execute();
+                if (!$maint->execute()) throw new Exception('Unable to check add-on maintenance.');
                 if ($maint->get_result()->num_rows > 0) continue;
+
+                $locks = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() AND " . booking_overlap_sql('Hotel Room') . " LIMIT 1");
+                if (!$locks) throw new Exception('Unable to check active add-on room holds.');
+                $locks->bind_param('iss', $vid, $addon_new_end, $addon_new_start);
+                if (!$locks->execute()) throw new Exception('Unable to check active add-on room holds.');
+                if ($locks->get_result()->num_rows > 0) continue;
 
                 $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND " . booking_overlap_sql('Hotel Room'));
                 $bk->bind_param('iiss', $vid, $booking_id, $addon_new_end, $addon_new_start);
@@ -577,7 +599,7 @@ try {
         $log_user = $_SESSION['user_id'];
         $log_module = 'Booking Management';
         $log_action = $message;
-        $log_ip = $_SERVER['REMOTE_ADDR'];
+        $log_ip = request_client_ip();
 
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
         $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);

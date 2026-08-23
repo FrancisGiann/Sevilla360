@@ -1,5 +1,6 @@
 <?php
 require '../../config/db_connect.php';
+require_once '../../includes/payment_service.php';
 
 $payload = file_get_contents('php://input');
 if (empty($payload)) { http_response_code(400); echo "Empty"; exit(); }
@@ -63,7 +64,6 @@ $data = json_decode($payload, true);
 if (!$data || !isset($data['data']['attributes']['type'])) { http_response_code(400); echo "Invalid"; exit(); }
 
 if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
-    $transaction_started = false;
     try {
         $checkout = $data['data']['attributes']['data']['attributes'];
         $raw_ref = $checkout['reference_number'] ?? '';
@@ -81,10 +81,12 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             $amount_paid = (int)$payments[0]['attributes']['amount'] / 100;
             $transaction_id = (string)$payments[0]['id'];
             $method_str = $checkout['payment_method_used'] ?? 'card';
+            $currency = strtoupper((string)($payments[0]['attributes']['currency'] ?? ($checkout['line_items'][0]['currency'] ?? 'PHP')));
         } else {
             $amount_paid = isset($checkout['line_items'][0]['amount']) ? (int)$checkout['line_items'][0]['amount'] / 100 : 0;
             $transaction_id = (string)($checkout['payment_intent']['id'] ?? '');
             $method_str = 'card';
+            $currency = strtoupper((string)($checkout['line_items'][0]['currency'] ?? 'PHP'));
         }
 
         if ($amount_paid <= 0 || $transaction_id === '') {
@@ -101,66 +103,16 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         if (strpos($method_str, 'gcash') !== false) $payment_method = 'GCash';
         if (strpos($method_str, 'paymaya') !== false) $payment_method = 'Maya';
 
-        // 3. DATABASE UPDATE
-        $conn->begin_transaction();
-        $transaction_started = true;
-
-        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid, booking_status, payment_status FROM bookings WHERE reference_no = ? FOR UPDATE");
-        if (!$stmt_find) throw new Exception('Unable to load the booking for payment.');
-        $stmt_find->bind_param("s", $reference_no);
-        if (!$stmt_find->execute()) throw new Exception('Unable to load the booking for payment.');
-        $res = $stmt_find->get_result();
-        
-        if ($res->num_rows === 0) {
-            throw new Exception("Booking reference $reference_no was not found.");
-        }
-        $booking = $res->fetch_assoc();
-
-        // The booking row lock serializes retries for the same checkout. Check
-        // idempotency after acquiring it so concurrent duplicate webhooks see
-        // the first transaction's committed payment.
-        $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ? LIMIT 1");
-        if (!$stmt_dupe) throw new Exception('Unable to check payment idempotency.');
-        $stmt_dupe->bind_param("s", $transaction_id);
-        if (!$stmt_dupe->execute()) throw new Exception('Unable to check payment idempotency.');
-        if ($stmt_dupe->get_result()->num_rows > 0) {
-            $conn->rollback();
-            $transaction_started = false;
+        // The webhook and admin reconciliation share one locked/idempotent
+        // crediting path. Provider session ID is retained for reconciliation.
+        $provider_session_id = (string)($data['data']['attributes']['data']['id'] ?? '');
+        $credited = credit_verified_payment($conn, $reference_no, $amount_paid, $transaction_id, $payment_method, $provider_session_id !== '' ? $provider_session_id : null, $currency);
+        $status = $credited['status'];
+        $new_amount = (float)$credited['amount_paid'];
+        if ($credited['duplicate']) {
             echo "IGNORED: Duplicate webhook for transaction $transaction_id (already processed).";
             exit();
         }
-
-        if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') {
-            throw new Exception("This booking is no longer eligible for payment.");
-        }
-
-        $new_amount = floatval($booking['amount_paid']) + $amount_paid;
-        $remaining_due = max(0, floatval($booking['total_amount']) - floatval($booking['amount_paid']));
-        if ($remaining_due <= 0 || $amount_paid > $remaining_due + 0.01) {
-            throw new Exception('Payment exceeds the booking balance and was not credited.');
-        }
-        $status = ($new_amount >= floatval($booking['total_amount'])) ? 'Paid' : 'Partial';
-
-        $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
-        if (!$stmt_pay) throw new Exception('Unable to prepare the payment record.');
-        $stmt_pay->bind_param("issd", $booking['id'], $transaction_id, $payment_method, $amount_paid);
-        if (!$stmt_pay->execute()) throw new Exception('Unable to record the payment.');
-
-        $stmt_up = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed', payment_status = ?, amount_paid = ? WHERE id = ?");
-        if (!$stmt_up) throw new Exception('Unable to prepare the booking payment update.');
-        $stmt_up->bind_param("sdi", $status, $new_amount, $booking['id']);
-        if (!$stmt_up->execute()) throw new Exception('Unable to update the booking payment status.');
-
-        // 4. RECORD TO AUDIT LOG
-        $log_action = "Automated Webhook: Received ₱" . number_format($amount_paid, 2) . " via $payment_method for Booking $reference_no";
-        $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (NULL, 'PayMongo Webhook', ?, 'PayMongo Server')");
-        if (!$audit) throw new Exception('Unable to prepare the payment audit entry.');
-        $audit->bind_param("s", $log_action);
-        if (!$audit->execute()) throw new Exception('Unable to record the payment audit entry.');
-
-        // Commit database before sending email
-        if (!$conn->commit()) throw new Exception('Unable to commit the payment transaction.');
-        $transaction_started = false;
         
         // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)
         try {
@@ -188,7 +140,6 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         echo "SUCCESS: Updated Booking $reference_no to $status.";
 
     } catch (Exception $e) {
-        if ($transaction_started) $conn->rollback();
         echo "ERROR: " . $e->getMessage();
         http_response_code(400);
     }

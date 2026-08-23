@@ -19,6 +19,7 @@ if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST[
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 
 $backupDir = __DIR__ . '/../../storage/backups';
 $signingKey = BackupHelper::getSigningKey();
@@ -39,7 +40,7 @@ if (BackupHelper::exportDatabase($conn, $database, $filePath)) {
         // Log to audit
         $auditStmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Backup & Recovery', ?, ?)");
         $details = "Created database backup: {$filename}";
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $ip = request_client_ip();
         $auditStmt->bind_param("iss", $adminId, $details, $ip);
         $auditStmt->execute();
 
