@@ -96,13 +96,13 @@ if (isset($hp_notifications) && !empty($hp_notifications) && isset($isAdmin) && 
             }
             if (typeof showAlert === 'function') {
                 showAlert(
-                    "<?php echo addslashes($latest_unread_hp['title']); ?>",
-                    "<?php echo addslashes($latest_unread_hp['message']); ?>",
+                    <?php echo json_encode((string)$latest_unread_hp['title'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+                    <?php echo json_encode((string)$latest_unread_hp['message'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
                     "info"
                 );
             }
             // Mark this auto-popped notification as read so it doesn't repeatedly auto-popup on future refreshes
-            fetch("actions/user/mark_notifications_read.php?id=<?php echo (int)$latest_unread_hp['id']; ?>");
+            fetch("actions/user/mark_notifications_read.php", { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: "id=<?php echo (int)$latest_unread_hp['id']; ?>" });
         }, 500);
     });
 </script>

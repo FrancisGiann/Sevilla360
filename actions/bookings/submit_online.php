@@ -3,6 +3,7 @@ session_start();
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
+require_once '../../includes/booking_rules.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -73,13 +74,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
         }
 
+        // Find the true category before applying category-specific overlap rules.
+        $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ? FOR UPDATE");
+        $stmt_cat->bind_param("i", $venue_id);
+        $stmt_cat->execute();
+        $venue = $stmt_cat->get_result()->fetch_assoc();
+        if (!$venue) {
+            throw new Exception("Selected venue no longer exists.");
+        }
+        $venue_category = $venue['category'];
+
         // RE-VALIDATE DATE AVAILABILITY
+        $overlap_condition = booking_overlap_sql($venue_category);
+        // Event Hall submissions are inquiries until an administrator confirms
+        // them, so pending inquiries must not reserve the hall. Overnight
+        // venues retain their existing pending/confirmed/completed semantics.
+        $booking_status_filter = $venue_category === 'Event Hall'
+            ? "IN ('Confirmed', 'Completed')"
+            : "IN ('Pending', 'Confirmed', 'Completed')";
         $stmt_overlap = $conn->prepare("
             SELECT id FROM bookings
             WHERE venue_id = ?
-            AND booking_status IN ('Pending', 'Confirmed', 'Completed')
+            AND booking_status $booking_status_filter
             AND source <> 'Maintenance'
-            AND (start_date < ? AND end_date > ?)
+            AND $overlap_condition
         ");
         $stmt_overlap->bind_param("iss", $venue_id, $eDate, $sDate);
         $stmt_overlap->execute();
@@ -91,7 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_maint = $conn->prepare("
             SELECT id FROM maintenance
             WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled'
-            AND (start_date <= ? AND end_date >= ?)
+            AND " . maintenance_overlap_sql() . "
         ");
         $stmt_maint->bind_param("iss", $venue_id, $eDate, $sDate);
         $stmt_maint->execute();
@@ -99,15 +117,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("These dates are currently under maintenance. Please choose different dates.");
         }
 
-        // Find the true category
-        $stmt_cat = $conn->prepare("SELECT category FROM venues WHERE id = ?");
-        $stmt_cat->bind_param("i", $venue_id);
-        $stmt_cat->execute();
-        $venue = $stmt_cat->get_result()->fetch_assoc();
-        if (!$venue) {
-            throw new Exception("Selected venue no longer exists.");
-        }
-        $venue_category = $venue['category'];
         $ref_no = generate_booking_reference($conn, $venue_category);
         if ($venue_category !== 'Event Hall' && $end_dt <= $start_dt) {
             throw new Exception("Hotel and villa bookings must end after their start date.");
@@ -120,7 +129,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
 
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
-        if ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
+        if ($venue_category === 'Event Hall') {
+            $event_style = normalize_event_style($_POST['event_style_key'] ?? $_POST['event_style'] ?? null);
+            $style_capacity = get_event_style_capacity($conn, (int)$venue_id, $event_style);
+            if ($style_capacity === null || $style_capacity <= 0) {
+                throw new Exception("Please select a valid Event Hall seating style.");
+            }
+            if ($guests > $style_capacity) {
+                throw new Exception("Guest count exceeds the selected seating style's capacity of {$style_capacity}.");
+            }
+        } elseif ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
             throw new Exception("Guest count exceeds this venue's maximum capacity.");
         }
         $base_amount = $pricing['base_amount'];
@@ -136,9 +154,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 3. Save Booking
         // Check active locks before finalizing
-        $lock_overlap = ($venue_category === 'Hotel Room')
-            ? '(start_date < ? AND end_date > ?)'
-            : '(start_date <= ? AND end_date >= ?)';
+        $lock_overlap = booking_overlap_sql($venue_category);
         $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
         $sid = session_id();
         $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
@@ -161,7 +177,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // 4. Save Event/Villa Details
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
-        $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
+        $event_style = normalize_event_style($_POST['event_style_key'] ?? $_POST['event_style'] ?? null);
 
         if (!empty($custom_notes) || !empty($event_type) || !empty($event_style)) {
             $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes) VALUES (?, ?, ?, ?)");
@@ -244,7 +260,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       AND v.id NOT IN (
                           SELECT br.venue_id FROM booking_rooms br
                           JOIN bookings b2 ON br.booking_id = b2.id
+                          JOIN venues parent_v ON parent_v.id = b2.venue_id
                           WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
                             AND b2.source <> 'Maintenance'
                             AND (br.start_date < ? AND br.end_date > ?)
                       )

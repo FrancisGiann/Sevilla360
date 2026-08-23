@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnMarkRead) {
       btnMarkRead.addEventListener('click', () => {
-          fetch('actions/user/mark_notifications_read.php')
+          fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken } })
           .then(res => res.json())
           .then(data => {
               if(data.success) {
@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // Mark as read if unread
           if (item.classList.contains('unread')) {
-              fetch(`actions/user/mark_notifications_read.php?id=${id}`)
+              fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' }, body: `id=${encodeURIComponent(id)}` })
               .then(res => res.json())
               .then(data => {
                   if (data.success) {

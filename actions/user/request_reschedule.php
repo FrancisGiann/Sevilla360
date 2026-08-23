@@ -81,7 +81,15 @@ try {
 
     $stmt_insert = $conn->prepare("INSERT INTO reschedule_requests (booking_id, new_start_date, new_end_date, reason) VALUES (?, ?, ?, ?)");
     $stmt_insert->bind_param("isss", $booking_id, $new_start, $new_end, $reason);
-    $stmt_insert->execute();
+    if (!$stmt_insert->execute()) throw new Exception('Could not submit the reschedule request.');
+
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Customer Reschedule', ?, ?)");
+    $audit_action = "Requested reschedule for booking #{$booking_id} to {$new_start}";
+    $audit_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    if ($audit) {
+        $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
+        $audit->execute();
+    }
 
     echo json_encode(['success' => true, 'message' => 'Reschedule request submitted successfully! Staff will review it shortly.']);
 } catch (Exception $e) {

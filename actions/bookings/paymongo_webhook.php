@@ -37,6 +37,16 @@ foreach ($signature_parts as $part) {
     }
 }
 
+// PayMongo may retry a valid event after several minutes. Require a numeric
+// timestamp for HMAC construction, but rely on the signature plus the unique
+// transaction ID/database idempotency check below rather than rejecting a
+// delayed provider retry solely because it is old.
+if (!ctype_digit($timestamp)) {
+    http_response_code(400);
+    echo "Invalid Webhook Timestamp";
+    exit();
+}
+
 // Compute the expected HMAC-SHA256 signature
 $signature_payload = $timestamp . '.' . $payload;
 $computed_signature = hash_hmac('sha256', $signature_payload, $webhook_secret);
@@ -53,6 +63,7 @@ $data = json_decode($payload, true);
 if (!$data || !isset($data['data']['attributes']['type'])) { http_response_code(400); echo "Invalid"; exit(); }
 
 if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
+    $transaction_started = false;
     try {
         $checkout = $data['data']['attributes']['data']['attributes'];
         $raw_ref = $checkout['reference_number'] ?? '';
@@ -60,26 +71,30 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         // 1. EXTRACT REAL BOOKING REF (Chop off "BAL_123456_")
         $ref_array = explode('_', $raw_ref);
         $reference_no = end($ref_array); // Always grabs the last part (e.g., SV-123)
+        if ($raw_ref === '' || !preg_match('/^[A-Za-z0-9-]{3,80}$/', $reference_no)) {
+            throw new Exception('Webhook reference number is invalid.');
+        }
 
         // 2. GET AMOUNT AND ID
         $payments = $checkout['payments'] ?? [];
-        if (!empty($payments)) {
-            $amount_paid = floatval($payments[0]['attributes']['amount']) / 100;
-            $transaction_id = $payments[0]['id'];
+        if (!empty($payments) && isset($payments[0]['attributes']['amount'], $payments[0]['id'])) {
+            $amount_paid = (int)$payments[0]['attributes']['amount'] / 100;
+            $transaction_id = (string)$payments[0]['id'];
             $method_str = $checkout['payment_method_used'] ?? 'card';
         } else {
-            $amount_paid = floatval($checkout['line_items'][0]['amount']) / 100;
-            $transaction_id = $checkout['payment_intent']['id'] ?? 'PM_' . time();
+            $amount_paid = isset($checkout['line_items'][0]['amount']) ? (int)$checkout['line_items'][0]['amount'] / 100 : 0;
+            $transaction_id = (string)($checkout['payment_intent']['id'] ?? '');
             $method_str = 'card';
         }
 
-        // Idempotency check — prevent double-crediting on webhook retries
-        $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
-        $stmt_dupe->bind_param("s", $transaction_id);
-        $stmt_dupe->execute();
-        if ($stmt_dupe->get_result()->num_rows > 0) {
-            echo "IGNORED: Duplicate webhook for transaction $transaction_id (already processed).";
-            exit();
+        if ($amount_paid <= 0 || $transaction_id === '') {
+            throw new Exception('Webhook payment amount or transaction ID is invalid.');
+        }
+        if (isset($checkout['line_items'][0]['amount']) && $payments) {
+            $expected_checkout_amount = (int)$checkout['line_items'][0]['amount'] / 100;
+            if (abs($amount_paid - $expected_checkout_amount) > 0.01) {
+                throw new Exception('Webhook amount does not match the checkout amount.');
+            }
         }
 
         $payment_method = 'PayMongo'; 
@@ -88,40 +103,64 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
 
         // 3. DATABASE UPDATE
         $conn->begin_transaction();
-        
-        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid, booking_status, payment_status FROM bookings WHERE reference_no = ?");
+        $transaction_started = true;
+
+        $stmt_find = $conn->prepare("SELECT id, total_amount, amount_paid, booking_status, payment_status FROM bookings WHERE reference_no = ? FOR UPDATE");
+        if (!$stmt_find) throw new Exception('Unable to load the booking for payment.');
         $stmt_find->bind_param("s", $reference_no);
-        $stmt_find->execute();
+        if (!$stmt_find->execute()) throw new Exception('Unable to load the booking for payment.');
         $res = $stmt_find->get_result();
         
         if ($res->num_rows === 0) {
-            echo "FAILED: Ref $reference_no not found in DB."; http_response_code(400); exit(); 
+            throw new Exception("Booking reference $reference_no was not found.");
         }
         $booking = $res->fetch_assoc();
+
+        // The booking row lock serializes retries for the same checkout. Check
+        // idempotency after acquiring it so concurrent duplicate webhooks see
+        // the first transaction's committed payment.
+        $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ? LIMIT 1");
+        if (!$stmt_dupe) throw new Exception('Unable to check payment idempotency.');
+        $stmt_dupe->bind_param("s", $transaction_id);
+        if (!$stmt_dupe->execute()) throw new Exception('Unable to check payment idempotency.');
+        if ($stmt_dupe->get_result()->num_rows > 0) {
+            $conn->rollback();
+            $transaction_started = false;
+            echo "IGNORED: Duplicate webhook for transaction $transaction_id (already processed).";
+            exit();
+        }
 
         if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') {
             throw new Exception("This booking is no longer eligible for payment.");
         }
 
         $new_amount = floatval($booking['amount_paid']) + $amount_paid;
+        $remaining_due = max(0, floatval($booking['total_amount']) - floatval($booking['amount_paid']));
+        if ($remaining_due <= 0 || $amount_paid > $remaining_due + 0.01) {
+            throw new Exception('Payment exceeds the booking balance and was not credited.');
+        }
         $status = ($new_amount >= floatval($booking['total_amount'])) ? 'Paid' : 'Partial';
 
         $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
+        if (!$stmt_pay) throw new Exception('Unable to prepare the payment record.');
         $stmt_pay->bind_param("issd", $booking['id'], $transaction_id, $payment_method, $amount_paid);
-        $stmt_pay->execute();
+        if (!$stmt_pay->execute()) throw new Exception('Unable to record the payment.');
 
         $stmt_up = $conn->prepare("UPDATE bookings SET booking_status = 'Confirmed', payment_status = ?, amount_paid = ? WHERE id = ?");
+        if (!$stmt_up) throw new Exception('Unable to prepare the booking payment update.');
         $stmt_up->bind_param("sdi", $status, $new_amount, $booking['id']);
-        $stmt_up->execute();
+        if (!$stmt_up->execute()) throw new Exception('Unable to update the booking payment status.');
 
         // 4. RECORD TO AUDIT LOG
         $log_action = "Automated Webhook: Received ₱" . number_format($amount_paid, 2) . " via $payment_method for Booking $reference_no";
         $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (NULL, 'PayMongo Webhook', ?, 'PayMongo Server')");
+        if (!$audit) throw new Exception('Unable to prepare the payment audit entry.');
         $audit->bind_param("s", $log_action);
-        $audit->execute();
+        if (!$audit->execute()) throw new Exception('Unable to record the payment audit entry.');
 
         // Commit database before sending email
-        $conn->commit();
+        if (!$conn->commit()) throw new Exception('Unable to commit the payment transaction.');
+        $transaction_started = false;
         
         // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)
         try {
@@ -149,7 +188,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
         echo "SUCCESS: Updated Booking $reference_no to $status.";
 
     } catch (Exception $e) {
-        $conn->rollback();
+        if ($transaction_started) $conn->rollback();
         echo "ERROR: " . $e->getMessage();
         http_response_code(400);
     }

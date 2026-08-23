@@ -7,6 +7,16 @@
 
 class BackupHelper {
 
+    /** Backups must never be signed with a predictable or implicit key. */
+    public static function getSigningKey(): ?string {
+        $appKey = trim((string)($_ENV['APP_KEY'] ?? getenv('APP_KEY') ?: ''));
+        // Require a genuinely non-placeholder key while preserving support for
+        // existing deployments using a 32+ character APP_KEY. The diversity
+        // check also rejects obvious repeated-character placeholders.
+        if (strlen($appKey) < 32 || count(array_unique(str_split($appKey))) < 16 || preg_match('/^(.)\1+$/', $appKey)) return null;
+        return $appKey;
+    }
+
     public static function createBackupFile($conn, $database, $backupDir, $prefix) {
         $timestamp = date('Y-m-d_H-i-s');
         $filename = $prefix . $timestamp . '.sql';
@@ -113,8 +123,9 @@ class BackupHelper {
             file_put_contents($htaccessPath, "Order Deny,Allow\nDeny from all");
         }
 
-        // Generate HMAC Signature
-        $appKey = $_ENV['APP_KEY'] ?? 'fallback_key_if_missing';
+        // Generate HMAC Signature. Missing/weak APP_KEY fails closed.
+        $appKey = self::getSigningKey();
+        if ($appKey === null) return false;
         $signature = hash_hmac('sha256', $sqlScript, $appKey);
         
         $finalOutput = "-- Signature: " . $signature . "\n" . $sqlScript;
@@ -148,7 +159,8 @@ class BackupHelper {
         }
         
         $providedSignature = trim(substr($firstLine, 14));
-        $appKey = $_ENV['APP_KEY'] ?? 'fallback_key_if_missing';
+        $appKey = self::getSigningKey();
+        if ($appKey === null) return false;
         $expectedSignature = hash_hmac('sha256', $restOfContent, $appKey);
         
         if (!hash_equals($expectedSignature, $providedSignature)) {

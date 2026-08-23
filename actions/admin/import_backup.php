@@ -3,6 +3,7 @@ session_start();
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/backup_helper.php';
 
 // Auth check
 if (!isset($_SESSION['logged_in']) || $_SESSION['role'] !== 'admin') {
@@ -55,7 +56,11 @@ if (strpos($firstLine, '-- Signature: ') !== 0) {
 }
 
 $providedSignature = trim(substr($firstLine, 14));
-$appKey = $_ENV['APP_KEY'] ?? 'fallback_key_if_missing';
+$appKey = BackupHelper::getSigningKey();
+if ($appKey === null) {
+    echo json_encode(['success' => false, 'error' => 'Backup signing is unavailable: configure a strong APP_KEY (at least 32 randomly generated characters).']);
+    exit();
+}
 $expectedSignature = hash_hmac('sha256', $restOfContent, $appKey);
 
 if (!hash_equals($expectedSignature, $providedSignature)) {

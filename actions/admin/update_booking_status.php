@@ -16,6 +16,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_rules.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -58,13 +59,25 @@ try {
     $ref_no = $b_info['reference_no'] ?? '';
     $v_name = $b_info['venue_name'] ?? '';
     $c_user_id = $b_info['user_id'] ?? null;
+    $is_pending_event_hall = ($b_info['category'] === 'Event Hall' && $b_info['booking_status'] === 'Pending');
+
+    // Serialize inventory decisions for this venue within the transaction.
+    // This protects cooperating paths; a schema-level exclusion constraint is
+    // still unavailable in the current MySQL schema.
+    $stmt_venue_lock = $conn->prepare("SELECT id FROM venues WHERE id = ? FOR UPDATE");
+    $stmt_venue_lock->bind_param('i', $b_info['venue_id']);
+    $stmt_venue_lock->execute();
+    if ($stmt_venue_lock->get_result()->num_rows === 0) throw new Exception('Venue not found.');
 
     // ==========================================
     // ACTIONS
     // ==========================================
     if ($action === 'confirm') {
+        if ($is_pending_event_hall) {
+            throw new Exception('Finalize the Event Hall invoice first before approving this inquiry.');
+        }
         $was_already_confirmed = ($b_info['booking_status'] === 'Confirmed');
-        $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND source <> 'Maintenance' AND start_date < ? AND end_date > ? LIMIT 1");
+        $stmt_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND source <> 'Maintenance' AND " . booking_overlap_sql($b_info['category']) . " LIMIT 1");
         $stmt_conflict->bind_param("iiss", $b_info['venue_id'], $booking_id, $b_info['end_date'], $b_info['start_date']);
         $stmt_conflict->execute();
         if ($stmt_conflict->get_result()->num_rows > 0) {
@@ -101,16 +114,76 @@ try {
 
     }
     elseif ($action === 'finalize_event_invoice') {
+        if ($b_info['category'] !== 'Event Hall') throw new Exception('Only Event Hall bookings can receive an event quotation.');
+
+        // Finalizing an invoice confirms the inquiry, so re-check the same
+        // inclusive Event Hall inventory conditions as the explicit confirm
+        // action while the venue row remains locked by this transaction.
+        $stmt_event_conflict = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id != ? AND booking_status IN ('Confirmed', 'Completed') AND source <> 'Maintenance' AND " . booking_overlap_sql('Event Hall') . " LIMIT 1");
+        if (!$stmt_event_conflict) throw new Exception('Unable to validate Event Hall availability.');
+        $stmt_event_conflict->bind_param('iiss', $b_info['venue_id'], $booking_id, $b_info['end_date'], $b_info['start_date']);
+        if (!$stmt_event_conflict->execute()) throw new Exception('Unable to validate Event Hall availability.');
+        if ($stmt_event_conflict->get_result()->num_rows > 0) {
+            throw new Exception('This Event Hall is already confirmed for the selected dates.');
+        }
+
+        $stmt_event_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql() . " LIMIT 1");
+        if (!$stmt_event_maintenance) throw new Exception('Unable to validate Event Hall maintenance availability.');
+        $stmt_event_maintenance->bind_param('iss', $b_info['venue_id'], $b_info['end_date'], $b_info['start_date']);
+        if (!$stmt_event_maintenance->execute()) throw new Exception('Unable to validate Event Hall maintenance availability.');
+        if ($stmt_event_maintenance->get_result()->num_rows > 0) {
+            throw new Exception('This Event Hall is under maintenance for the selected dates.');
+        }
+
         $guests = intval($data['guests']);
-        $event_type = trim($data['event_type']);
+        $event_type = trim((string)($data['event_type'] ?? ''));
+        $event_style_key = normalize_event_style($data['event_style_key'] ?? null);
         $base_rate = floatval($data['base_rate']);
+        if ($guests < 1 || !is_finite($base_rate) || $base_rate < 0) throw new Exception('Invalid Event Hall quotation values.');
+
+        // Staff must choose a canonical style. Legacy decorative labels are
+        // intentionally not mapped to a capacity without an explicit choice.
+        $style_capacity = get_event_style_capacity($conn, (int)$b_info['venue_id'], $event_style_key);
+        if ($style_capacity === null || $style_capacity <= 0) {
+            throw new Exception('Select a canonical Event Hall seating style with a valid configured capacity.');
+        }
+        if ($guests > $style_capacity) {
+            throw new Exception("Guest count exceeds the selected seating style capacity of {$style_capacity}.");
+        }
         $scheme = $data['payment_scheme'] ?? '100% Full'; // <--- GRABS IT FROM JS
         $line_items = $data['line_items'] ?? [];
 
+        // Pending Event Hall add-ons are provisional requests. Reallocate them
+        // against currently available rooms before using their subtotal.
+        $room_subtotal = $b_info['booking_status'] === 'Pending'
+            ? reallocate_event_hall_addons($conn, $booking_id)
+            : 0.0;
+
         // 1. Calculate new math
         $addons_amount = 0;
+        $normalized_line_items = [];
         foreach ($line_items as $item) {
-            $addons_amount += floatval($item['amount']);
+            $name = trim((string)($item['name'] ?? ''));
+            $amount = (float)($item['amount'] ?? 0);
+            if ($name === '' || !is_finite($amount) || $amount < 0) continue;
+            // Allocated room inventory is authoritative; do not let an edited
+            // browser line item replace or duplicate its database subtotal.
+            if (str_starts_with($name, 'Room Add-on:') || $name === 'Hotel Add-on Rooms' || $name === 'Event Hall + Hotel Bundle Discount (20%)') continue;
+            $normalized_line_items[] = ['name' => $name, 'amount' => $amount];
+            $addons_amount += $amount;
+        }
+        if ($b_info['booking_status'] !== 'Pending') {
+            $stmt_rooms_total = $conn->prepare("SELECT COALESCE(SUM(line_total), 0) AS room_subtotal FROM booking_rooms WHERE booking_id = ?");
+            $stmt_rooms_total->bind_param('i', $booking_id);
+            $stmt_rooms_total->execute();
+            $room_subtotal = (float)($stmt_rooms_total->get_result()->fetch_assoc()['room_subtotal'] ?? 0);
+        }
+        if ($room_subtotal > 0) {
+            $normalized_line_items[] = ['name' => 'Hotel Add-on Rooms', 'amount' => $room_subtotal];
+            $addons_amount += $room_subtotal;
+            $bundle_discount = round(($base_rate + $room_subtotal) * 0.20, 2);
+            $normalized_line_items[] = ['name' => 'Event Hall + Hotel Bundle Discount (20%)', 'amount' => -$bundle_discount];
+            $addons_amount -= $bundle_discount;
         }
         $new_total = $base_rate + $addons_amount;
 
@@ -121,19 +194,23 @@ try {
 
         // 3. Update Event Details (including internal admin notes)
         $admin_notes = isset($data['admin_notes']) ? trim($data['admin_notes']) : null;
-        $stmt_e = $conn->prepare("UPDATE booking_event_details SET event_type = ?, admin_notes = ? WHERE booking_id = ?");
-        $stmt_e->bind_param("ssi", $event_type, $admin_notes, $booking_id);
+        $stmt_e = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, admin_notes) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_style = VALUES(event_style), event_type = VALUES(event_type), admin_notes = VALUES(admin_notes)");
+        $stmt_e->bind_param("isss", $booking_id, $event_style_key, $event_type, $admin_notes);
         $stmt_e->execute();
 
         // 4. Wipe old initial addons & rewrite new line items
-        $conn->query("DELETE FROM booking_addons WHERE booking_id = $booking_id");
-        $conn->query("DELETE FROM booking_line_items WHERE booking_id = $booking_id");
+        $stmt_delete_addons = $conn->prepare("DELETE FROM booking_addons WHERE booking_id = ?");
+        $stmt_delete_addons->bind_param('i', $booking_id);
+        $stmt_delete_addons->execute();
+        $stmt_delete_lines = $conn->prepare("DELETE FROM booking_line_items WHERE booking_id = ?");
+        $stmt_delete_lines->bind_param('i', $booking_id);
+        $stmt_delete_lines->execute();
 
-        if (!empty($line_items)) {
+        if (!empty($normalized_line_items)) {
             $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
-            foreach ($line_items as $item) {
-                $name = trim($item['name']);
-                $amt = floatval($item['amount']);
+            foreach ($normalized_line_items as $item) {
+                $name = $item['name'];
+                $amt = $item['amount'];
                 $stmt_li->bind_param("isd", $booking_id, $name, $amt);
                 $stmt_li->execute();
             }
@@ -164,6 +241,10 @@ try {
 
         if ($res->num_rows === 0) throw new Exception('Booking not found.');
         $booking = $res->fetch_assoc();
+
+        if ($is_pending_event_hall) {
+            throw new Exception('Finalize the Event Hall invoice first before recording payment for this inquiry.');
+        }
 
         // GUARD AGAINST OVERPAYMENT
         $current_paid = floatval($booking['amount_paid']);
@@ -263,22 +344,23 @@ try {
             while ($row = $res_inv->fetch_assoc()) {
                 $vid = $row['id'];
 
-                // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$new_end' AND end_date >= '$new_start')");
-                if ($maint->num_rows > 0) continue;
+                // Check maintenance, direct bookings, and add-on bookings with
+                // prepared predicates; hotel checkout remains exclusive.
+                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                $maint->bind_param('iss', $vid, $new_end, $new_start);
+                $maint->execute();
+                if ($maint->get_result()->num_rows > 0) continue;
 
-                // Check Bookings (Exclude this specific booking)
-                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$new_end' AND end_date > '$new_start')");
-                if ($bk->num_rows > 0) continue;
+                $booking_overlap = booking_overlap_sql('Hotel Room');
+                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND $booking_overlap");
+                $bk->bind_param('iiss', $vid, $booking_id, $new_end, $new_start);
+                $bk->execute();
+                if ($bk->get_result()->num_rows > 0) continue;
 
-                // Check Add-on Bookings
-                $addons = $conn->query("
-                    SELECT br.id FROM booking_rooms br
-                    JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance' AND b.id != $booking_id
-                    AND (br.start_date < '$new_end' AND br.end_date > '$new_start')
-                ");
-                if ($addons->num_rows > 0) continue;
+                $addons = $conn->prepare("SELECT br.id FROM booking_rooms br JOIN bookings b ON br.booking_id = b.id JOIN venues parent_v ON parent_v.id = b.venue_id WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall') AND b.source <> 'Maintenance' AND b.id != ? AND " . booking_overlap_sql('Hotel Room', 'br.start_date', 'br.end_date'));
+                $addons->bind_param('iiss', $vid, $booking_id, $new_end, $new_start);
+                $addons->execute();
+                if ($addons->get_result()->num_rows > 0) continue;
 
                 $assigned_venue_id = $vid;
                 break;
@@ -291,10 +373,10 @@ try {
 
         } else {
             // For Event Halls / Villas, just check the specific unit
-            $check_overlap = $conn->prepare("
-                SELECT id FROM bookings
-                WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND (start_date < ? AND end_date > ?)
-            ");
+            $reschedule_status_filter = $b_data['category'] === 'Event Hall'
+                ? "IN ('Confirmed', 'Completed')"
+                : "IN ('Pending', 'Confirmed')";
+            $check_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $reschedule_status_filter AND source <> 'Maintenance' AND id != ? AND " . booking_overlap_sql($b_data['category']));
             $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
             $check_overlap->execute();
 
@@ -353,22 +435,22 @@ try {
                 // If we already assigned this $vid in this loop or for the main venue, skip it
                 if (in_array($vid, $reserved_addon_venues, true) || $vid === $venue_id) continue;
 
-                // Check Maintenance
-                $maint = $conn->query("SELECT id FROM maintenance WHERE venue_id = $vid AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= '$addon_new_end' AND end_date >= '$addon_new_start')");
-                if ($maint->num_rows > 0) continue;
+                // Check maintenance, direct bookings, and add-on bookings using
+                // bound values to prevent reschedule SQL injection.
+                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                $maint->bind_param('iss', $vid, $addon_new_end, $addon_new_start);
+                $maint->execute();
+                if ($maint->get_result()->num_rows > 0) continue;
 
-                // Check Bookings
-                $bk = $conn->query("SELECT id FROM bookings WHERE venue_id = $vid AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != $booking_id AND (start_date < '$addon_new_end' AND end_date > '$addon_new_start')");
-                if ($bk->num_rows > 0) continue;
+                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND " . booking_overlap_sql('Hotel Room'));
+                $bk->bind_param('iiss', $vid, $booking_id, $addon_new_end, $addon_new_start);
+                $bk->execute();
+                if ($bk->get_result()->num_rows > 0) continue;
 
-                // Check Add-on Bookings
-                $addons_check = $conn->query("
-                    SELECT br.id FROM booking_rooms br
-                    JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = $vid AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance' AND b.id != $booking_id
-                    AND (br.start_date < '$addon_new_end' AND br.end_date > '$addon_new_start')
-                ");
-                if ($addons_check->num_rows > 0) continue;
+                $addons_check = $conn->prepare("SELECT br.id FROM booking_rooms br JOIN bookings b ON br.booking_id = b.id JOIN venues parent_v ON parent_v.id = b.venue_id WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall') AND b.source <> 'Maintenance' AND b.id != ? AND " . booking_overlap_sql('Hotel Room', 'br.start_date', 'br.end_date'));
+                $addons_check->bind_param('iiss', $vid, $booking_id, $addon_new_end, $addon_new_start);
+                $addons_check->execute();
+                if ($addons_check->get_result()->num_rows > 0) continue;
 
                 $assigned_venue_id = $vid;
                 break;

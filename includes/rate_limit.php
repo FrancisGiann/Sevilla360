@@ -13,49 +13,39 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
  * @return bool True if allowed, False if blocked
  */
 function check_rate_limit($conn, $action_name, $max_attempts, $time_window_minutes) {
+    $max_attempts = (int)$max_attempts;
+    $time_window_minutes = (int)$time_window_minutes;
+    if ($max_attempts < 1 || $time_window_minutes < 1) return false;
+
     // Get client IP safely
-    $ip_address = $_SERVER['HTTP_CLIENT_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
-    
-    // First, clean up old records for this action and IP to reset the window
-    $cleanup_stmt = $conn->prepare("DELETE FROM rate_limits WHERE action_name = ? AND ip_address = ? AND last_attempt < NOW() - INTERVAL ? MINUTE");
-    $cleanup_stmt->bind_param("ssi", $action_name, $ip_address, $time_window_minutes);
-    $cleanup_stmt->execute();
-    
-    // Check current attempts
-    $check_stmt = $conn->prepare("SELECT attempts FROM rate_limits WHERE action_name = ? AND ip_address = ?");
-    $check_stmt->bind_param("ss", $action_name, $ip_address);
-    $check_stmt->execute();
-    $res = $check_stmt->get_result();
-    
-    if ($res->num_rows > 0) {
-        $row = $res->fetch_assoc();
-        $current_attempts = $row['attempts'];
-        
-        if ($current_attempts >= $max_attempts) {
-            // Rate limit exceeded
-            return false;
-        }
-        
-        // Increment attempts
-        $update_stmt = $conn->prepare("UPDATE rate_limits SET attempts = attempts + 1, last_attempt = NOW() WHERE action_name = ? AND ip_address = ?");
-        $update_stmt->bind_param("ss", $action_name, $ip_address);
-        $update_stmt->execute();
-        
-    } else {
-        // First attempt in this time window
-        $insert_stmt = $conn->prepare("INSERT INTO rate_limits (ip_address, action_name, attempts) VALUES (?, ?, 1)");
-        $insert_stmt->bind_param("ss", $ip_address, $action_name);
-        $insert_stmt->execute();
-    }
-    
-    return true;
+    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+    // rate_limits has UNIQUE(ip_address, action_name). This single atomic
+    // upsert closes the check-then-increment race without starting, committing,
+    // or rolling back a transaction owned by the caller. attempts is capped at
+    // max+1 so repeated blocked requests cannot overflow the column; the
+    // sentinel value also keeps blocked requests from extending the window.
+    // The ordinal is assigned while the unique row lock is held. It is kept
+    // in a connection-local user variable so a later read cannot observe a
+    // different request's incremented value.
+    if (!$conn->query('SET @rate_limit_attempt = 1')) return false;
+    $stmt = $conn->prepare("\n        INSERT INTO rate_limits (ip_address, action_name, attempts, first_attempt, last_attempt)\n        VALUES (?, ?, 1, NOW(), NOW())\n        ON DUPLICATE KEY UPDATE\n            attempts = IF(\n                last_attempt < DATE_SUB(NOW(), INTERVAL ? MINUTE),\n                (@rate_limit_attempt := 1),\n                (@rate_limit_attempt := LEAST(attempts + 1, ?))\n            ),\n            first_attempt = IF(@rate_limit_attempt = 1, NOW(), first_attempt),\n            last_attempt = IF(@rate_limit_attempt > ?, last_attempt, NOW())\n    ");
+    if (!$stmt) return false;
+    $attempt_sentinel = $max_attempts + 1;
+    $stmt->bind_param('ssiii', $ip_address, $action_name, $time_window_minutes, $attempt_sentinel, $max_attempts);
+    if (!$stmt->execute()) return false;
+
+    $ordinal_result = $conn->query('SELECT @rate_limit_attempt AS attempts');
+    if (!$ordinal_result) return false;
+    $ordinal = $ordinal_result->fetch_assoc();
+    return $ordinal !== null && (int)$ordinal['attempts'] <= $max_attempts;
 }
 
 /**
  * Clears the rate limit (e.g., upon successful login)
  */
 function clear_rate_limit($conn, $action_name) {
-    $ip_address = $_SERVER['HTTP_CLIENT_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
+    $ip_address = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
     $stmt = $conn->prepare("DELETE FROM rate_limits WHERE action_name = ? AND ip_address = ?");
     $stmt->bind_param("ss", $action_name, $ip_address);
     $stmt->execute();

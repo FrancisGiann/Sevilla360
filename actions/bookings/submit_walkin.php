@@ -3,6 +3,7 @@ session_start();
 require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
+require_once '../../includes/booking_rules.php';
 
 function submit_walkin_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -70,8 +71,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $primary_lookup_id = $tracked_primary_venue > 0 ? $tracked_primary_venue : $posted_venue_id;
         if ($primary_lookup_id > 0) {
             $is_hotel_lookup = !($room_type === 'Event Hall' || $room_type === 'Resort Villa');
-            $booking_overlap = $is_hotel_lookup ? '(start_date < ? AND end_date > ?)' : '(start_date <= ? AND end_date >= ?)';
-            $stmt_room = $conn->prepare("SELECT v.id, v.category, v.name, h.room_type FROM venues v LEFT JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.id = ? AND v.status = 'Available' AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status IN ('Pending', 'Confirmed', 'Completed') AND source <> 'Maintenance' AND $booking_overlap) AND v.id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?)) FOR UPDATE");
+            $booking_overlap = booking_overlap_sql($is_hotel_lookup ? 'Hotel Room' : $room_type);
+            // Event Hall walk-ins are confirmations, while online Event Hall
+            // submissions remain non-exclusive inquiries until approved.
+            $booking_status_filter = $room_type === 'Event Hall'
+                ? "IN ('Confirmed', 'Completed')"
+                : "IN ('Pending', 'Confirmed', 'Completed')";
+            $stmt_room = $conn->prepare("SELECT v.id, v.category, v.name, h.room_type FROM venues v LEFT JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.id = ? AND v.status = 'Available' AND v.id NOT IN (SELECT venue_id FROM bookings WHERE booking_status $booking_status_filter AND source <> 'Maintenance' AND $booking_overlap) AND v.id NOT IN (SELECT venue_id FROM maintenance WHERE is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql() . ") FOR UPDATE");
             $stmt_room->bind_param('issss', $primary_lookup_id, $eDate, $sDate, $eDate, $sDate);
         } else {
             throw new Exception('The primary date hold is missing. Please select the dates again.');
@@ -184,7 +190,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
 
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
-        if ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
+        if ($venue_category === 'Event Hall') {
+            $event_style_key = normalize_event_style($_POST['event_style_key'] ?? $_POST['event_style'] ?? null);
+            $style_capacity = get_event_style_capacity($conn, (int)$venue_id, $event_style_key);
+            if ($style_capacity === null || $style_capacity <= 0) {
+                throw new Exception("Please select a valid Event Hall seating style.");
+            }
+            if ($guests > $style_capacity) {
+                throw new Exception("Guest count exceeds the selected seating style's capacity of {$style_capacity}.");
+            }
+        } elseif ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
             throw new Exception("Guest count exceeds this venue's maximum capacity.");
         }
         $base_amount = $pricing['base_amount'];
@@ -248,9 +263,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Check active locks before finalizing
-        $lock_overlap = ($venue_category === 'Hotel Room')
-            ? '(start_date < ? AND end_date > ?)'
-            : '(start_date <= ? AND end_date >= ?)';
+        $lock_overlap = booking_overlap_sql($venue_category);
         $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
         $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
         $stmt_check_lock->execute();
@@ -288,6 +301,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($venue_category === 'Event Hall' && $addon_room_groups) {
             $room_start = $addon_room_start;
             $room_end = $addon_room_end;
+            $room_addon_subtotal = 0.0;
             $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
             foreach ($addon_room_groups as $group) {
@@ -322,7 +336,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       AND v.id NOT IN (
                           SELECT br.venue_id FROM booking_rooms br
                           JOIN bookings b2 ON br.booking_id = b2.id
+                          JOIN venues parent_v ON parent_v.id = b2.venue_id
                           WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                            AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
                             AND b2.source <> 'Maintenance'
                             AND (br.start_date < ? AND br.end_date > ?)
                       )
@@ -346,6 +362,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $r_venue_id = (int)$room['id'];
                     $r_rate = (float)$room['nightly_rate'];
                     $r_line_total = $r_rate * $nights;
+                    $room_addon_subtotal += $r_line_total;
 
                     $stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total);
                     $stmt_insert->execute();
@@ -357,6 +374,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt_li_add->execute();
                 }
             }
+
+            // Apply the documented Event Hall + Hotel bundle once to the
+            // Event Hall base plus authoritative allocated-room subtotal.
+            if ($room_addon_subtotal > 0) {
+                $bundle_discount = round(($base_amount + $room_addon_subtotal) * 0.20, 2);
+                $true_total = round($true_total + $room_addon_subtotal - $bundle_discount, 2);
+                $total_addons_cost = round($total_addons_cost + $room_addon_subtotal - $bundle_discount, 2);
+                $amount_paid = 0;
+                if ($scheme === '100% Full') $amount_paid = $true_total;
+                elseif (strpos($scheme, '50%') !== false) $amount_paid = $true_total * 0.5;
+                elseif (strpos($scheme, '20%') !== false) $amount_paid = $true_total * 0.2;
+                $payment_status = ($amount_paid >= $true_total && $true_total > 0) ? 'Paid' : (($amount_paid > 0) ? 'Partial' : 'Unpaid');
+                $stmt_bundle = $conn->prepare("UPDATE bookings SET addons_amount = ?, total_amount = ?, amount_paid = ?, payment_status = ? WHERE id = ?");
+                $stmt_bundle->bind_param('dddsi', $total_addons_cost, $true_total, $amount_paid, $payment_status, $booking_id);
+                $stmt_bundle->execute();
+                $discount_name = 'Event Hall + Hotel Bundle Discount (20%)';
+                $stmt_discount = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+                $negative_discount = -$bundle_discount;
+                $stmt_discount->bind_param('isd', $booking_id, $discount_name, $negative_discount);
+                $stmt_discount->execute();
+            }
         }
         // =========================================================================
 
@@ -364,7 +402,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $custom_notes = isset($_POST['custom_notes']) ? trim($_POST['custom_notes']) : null;
         $admin_notes = isset($_POST['admin_notes']) ? trim($_POST['admin_notes']) : null;
         $event_type = isset($_POST['event_type']) ? trim($_POST['event_type']) : null;
-        $event_style = isset($_POST['event_style']) ? trim($_POST['event_style']) : null;
+        $event_style = normalize_event_style($_POST['event_style_key'] ?? $_POST['event_style'] ?? null);
 
         if ($venue_category === 'Event Hall' && (!empty($custom_notes) || !empty($admin_notes) || !empty($event_type) || !empty($event_style))) {
             $stmt_notes = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, custom_notes, admin_notes) VALUES (?, ?, ?, ?, ?)");

@@ -54,7 +54,7 @@
     <div class="form-group">
         <label>Number of Guests</label>
         <input type="number" id="villa-guests" min="1" max="8" value="4">
-        <small class="extra-pax-note">Additional ₱1,000 per head exceeding base capacity. <span
+        <small class="extra-pax-note">Additional <span id="villa-extra-rate">configured rate</span> per head exceeding base capacity. <span
                 id="villa-extra-fee"></span></small>
     </div>
 

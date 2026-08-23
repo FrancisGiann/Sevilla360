@@ -82,6 +82,14 @@ try {
     $stmt_rr = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Cancelled by Customer' WHERE booking_id = ? AND status = 'Pending'");
     $stmt_rr->bind_param("i", $booking_id);
     $stmt_rr->execute();
+
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Customer Cancellation', ?, ?)");
+    $audit_action = "Requested cancellation for booking #{$booking_id}";
+    $audit_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    if ($audit) {
+        $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
+        $audit->execute();
+    }
     
     $conn->commit();
 

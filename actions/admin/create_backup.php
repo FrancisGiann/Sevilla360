@@ -21,6 +21,11 @@ require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
 
 $backupDir = __DIR__ . '/../../storage/backups';
+$signingKey = BackupHelper::getSigningKey();
+if ($signingKey === null) {
+    echo json_encode(['success' => false, 'error' => 'Backup creation is unavailable: configure a strong APP_KEY (at least 32 randomly generated characters).']);
+    exit;
+}
 $timestamp = date('Y-m-d_H-i-s');
 $filename = "sevilla360_backup_{$timestamp}.sql";
 $filePath = "{$backupDir}/{$filename}";

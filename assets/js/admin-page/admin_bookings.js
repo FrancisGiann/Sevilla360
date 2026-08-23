@@ -202,10 +202,15 @@ document.addEventListener("DOMContentLoaded", () => {
             // Build Action Buttons
             let actionBtns = '';
             if (b.booking_status === 'Pending') {
-                actionBtns += `<button class="btn-action btn-confirm open-approve" data-id="${b.id}">Approve</button>
-                               <button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>
-                               <button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
-                               <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price</button>`;
+                if (isPendingInquiry) {
+                    actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
+                                   <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price / Finalize</button>`;
+                } else {
+                    actionBtns += `<button class="btn-action btn-confirm open-approve" data-id="${b.id}">Approve</button>
+                                   <button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>
+                                   <button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
+                                   <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price</button>`;
+                }
             } 
             else if (b.booking_status === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
@@ -844,6 +849,30 @@ document.addEventListener("DOMContentLoaded", () => {
         const lineItemsContainer = document.getElementById("ep-line-items");
         const baseRateInput = document.getElementById("ep-base-rate");
         const calcTotalDisplay = document.getElementById("ep-calc-total");
+        const eventStyleSelect = document.getElementById("ep-event-style");
+        const eventStyleHelp = document.getElementById("ep-event-style-help");
+
+        function normalizeEventStyle(style) {
+            const value = String(style || '').toLowerCase().replace(/[^a-z]/g, '');
+            if (value.startsWith('theater')) return 'theater';
+            if (value.startsWith('classroom')) return 'classroom';
+            if (value.startsWith('banquet')) return 'banquet';
+            return '';
+        }
+
+        function updateEventStyleCapacity(capacities) {
+            if (!eventStyleSelect) return;
+            const guestsInput = document.getElementById('ep-guests');
+            const capacity = parseInt(capacities?.[eventStyleSelect.value], 10) || 0;
+            if (guestsInput) guestsInput.max = capacity > 0 ? String(capacity) : '';
+            if (eventStyleHelp) {
+                eventStyleHelp.textContent = capacity > 0
+                    ? `Database capacity: ${capacity} guests.`
+                    : 'Select a canonical seating style with a configured database capacity.';
+            }
+        }
+
+        eventStyleSelect?.addEventListener('change', () => updateEventStyleCapacity(eventStyleSelect.dataset.capacities ? JSON.parse(eventStyleSelect.dataset.capacities) : {}));
       
         function calculateInvoiceTotal() {
             let total = parseFloat(baseRateInput.value) || 0;
@@ -897,10 +926,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     const specifics = res.data.specifics;
                     const addons = res.data.addons; 
                     const lineItems = res.data.line_items; 
+                    const eventStyleCapacities = res.data.event_style_capacities || {};
       
                     document.getElementById('ep-booking-id').innerText = `${data.reference_no}`;
                     document.getElementById('ep-guests').value = data.guests_count;
                     document.getElementById('ep-event-type').value = specifics ? specifics.event_type : "";
+                    if (eventStyleSelect) {
+                        eventStyleSelect.dataset.capacities = JSON.stringify(eventStyleCapacities);
+                        eventStyleSelect.value = normalizeEventStyle(specifics?.event_style);
+                        updateEventStyleCapacity(eventStyleCapacities);
+                    }
                     if (document.getElementById('ep-admin-notes')) {
                         document.getElementById('ep-admin-notes').value = specifics ? (specifics.admin_notes || "") : "";
                     }
@@ -926,6 +961,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     newBtn.addEventListener('click', function() {
                         const guests = document.getElementById('ep-guests').value;
                         const eventType = document.getElementById('ep-event-type').value;
+                        const eventStyleKey = eventStyleSelect?.value || '';
                         const baseRate = document.getElementById('ep-base-rate').value;
                         const scheme = document.getElementById('ep-payment-scheme').value;
                         const adminNotes = document.getElementById('ep-admin-notes') ? document.getElementById('ep-admin-notes').value.trim() : "";
@@ -936,11 +972,17 @@ document.addEventListener("DOMContentLoaded", () => {
                             const cost = parseFloat(row.querySelector(".ep-item-cost").value) || 0;
                             if (name !== "" && cost >= 0) lineItemsArr.push({ name: name, amount: cost });
                         });
+
+                        if (!eventStyleKey) {
+                            showAlert("Seating Style Required", "Select Theater, Classroom, or Banquet before finalizing this Event Hall invoice.", "error", false);
+                            return;
+                        }
                   
                         showConfirmModal(`Finalize invoice and email customer?`, () => {
                             processBookingAction(this.getAttribute('data-id'), 'finalize_event_invoice', this, { 
                                 guests: guests, 
                                 event_type: eventType, 
+                                event_style_key: eventStyleKey,
                                 base_rate: baseRate,
                                 payment_scheme: scheme,
                                 admin_notes: adminNotes,

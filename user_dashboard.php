@@ -743,6 +743,20 @@ while ($row = $notifs_result->fetch_assoc()) {
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
 
+    <?php if (isset($_GET['payment']) && in_array($_GET['payment'], ['success', 'failed'], true)): ?>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const paymentResult = <?php echo json_encode($_GET['payment']); ?>;
+            if (paymentResult === 'success') {
+                showAlert('Payment Submitted', 'Your payment was received by the payment provider. Your booking status will update after webhook verification.', 'success');
+            } else {
+                showAlert('Payment Not Completed', 'No payment was completed. Your booking remains available for payment from the dashboard.', 'error');
+            }
+            if (window.history?.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    </script>
+    <?php endif; ?>
+
     <?php if (!empty($latest_unread)): ?>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -751,12 +765,12 @@ while ($row = $notifs_result->fetch_assoc()) {
                     playNotificationChime();
                 }
                 showAlert(
-                    "<?php echo addslashes($latest_unread['title']); ?>",
-                    "<?php echo addslashes($latest_unread['message']); ?>",
+                    <?php echo json_encode((string)$latest_unread['title'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+                    <?php echo json_encode((string)$latest_unread['message'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
                     "info"
                 );
                 // Mark this auto-popped notification as read so it doesn't repeatedly auto-popup on future refreshes
-                fetch("actions/user/mark_notifications_read.php?id=<?php echo (int)$latest_unread['id']; ?>");
+                fetch("actions/user/mark_notifications_read.php", { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: "id=<?php echo (int)$latest_unread['id']; ?>" });
             }, 500);
         });
     </script>

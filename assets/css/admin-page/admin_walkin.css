@@ -34,6 +34,30 @@
   letter-spacing: 1px;
 }
 
+.walkin-lock-banner {
+  background-color: #d1fae5;
+  color: #065f46;
+  padding: 10px 15px;
+  border-radius: 6px;
+  border: 1px solid #10b981;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.walkin-lock-message {
+  flex: 1;
+}
+
+.walkin-lock-countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Booking Cards */
 .booking-card {
   background: var(--color-white);

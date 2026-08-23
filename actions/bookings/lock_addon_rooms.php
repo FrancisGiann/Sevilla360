@@ -10,13 +10,14 @@ function addon_bind_params(mysqli_stmt $statement, string $types, array $values)
     call_user_func_array([$statement, 'bind_param'], $params);
 }
 
-function addon_lock_response(bool $success, string $message, int $held_count = 0, int $status = 200): void
+function addon_lock_response(bool $success, string $message, int $held_count = 0, int $status = 200, ?int $expires_at = null): void
 {
     http_response_code($status);
     echo json_encode([
         'success' => $success,
         'message' => $message,
-        'held_count' => $held_count
+        'held_count' => $held_count,
+        'expires_at' => $expires_at
     ]);
     exit;
 }
@@ -115,9 +116,11 @@ try {
                 AND (b.start_date < ? AND b.end_date > ?)
           )
           AND v.id NOT IN (
-              SELECT br.venue_id FROM booking_rooms br
+            SELECT br.venue_id FROM booking_rooms br
               INNER JOIN bookings b2 ON b2.id = br.booking_id
+              INNER JOIN venues parent_v ON parent_v.id = b2.venue_id
               WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
                 AND b2.source <> 'Maintenance'
                 AND (br.start_date < ? AND br.end_date > ?)
           )
@@ -161,7 +164,7 @@ try {
 
     if (!$conn->commit()) throw new RuntimeException('Room holds could not be committed.');
     $_SESSION['walkin_addon_lock_ids'] = $new_lock_ids;
-    addon_lock_response(true, 'Selected hotel rooms are temporarily held for 60 minutes.', count($new_lock_ids));
+    addon_lock_response(true, 'Selected hotel rooms are temporarily held for 60 minutes.', count($new_lock_ids), 200, strtotime($expires_at));
 } catch (Throwable $error) {
     if ($transaction_started) $conn->rollback();
     addon_lock_response(false, $error instanceof InvalidArgumentException ? $error->getMessage() : 'The selected hotel rooms could not be temporarily held. Please try again.', 0, $error instanceof InvalidArgumentException ? 422 : 409);

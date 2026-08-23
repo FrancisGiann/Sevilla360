@@ -353,6 +353,17 @@
                 </div>
             </div>
 
+            <div class="ep-field-group">
+                <label class="ep-label" for="ep-event-style">Seating Style</label>
+                <select id="ep-event-style" class="ep-select" required>
+                    <option value="" disabled>Select a canonical seating style</option>
+                    <option value="theater">Theater</option>
+                    <option value="classroom">Classroom</option>
+                    <option value="banquet">Banquet</option>
+                </select>
+                <small class="ep-help-text" id="ep-event-style-help">Legacy styles must be replaced with a canonical seating style before finalization.</small>
+            </div>
+
             <div class="ep-base-rate-group">
                 <label class="ep-label">Venue Base Rate (₱)</label>
                 <input type="number" id="ep-base-rate" step="0.01" class="ep-calc-trigger ep-input-lg">

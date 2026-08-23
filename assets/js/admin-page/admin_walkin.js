@@ -19,6 +19,12 @@ class AdminWalkinController {
             addonConfirmedRange: null,
             addonCommittedSelection: [],
             addonLocksHeld: false,
+            primaryHoldExpiresAt: null,
+            addonHoldExpiresAt: null,
+            holdWarningShown: false,
+            holdWarningExpiryKey: null,
+            holdExpiryNoticeShown: false,
+            holdExpiryNoticeExpiryKey: null,
             summary: { total: 0, amountDue: 0, html: '' },
             calendars: {}
         };
@@ -35,7 +41,11 @@ class AdminWalkinController {
         this.tabSwitchPromise = null;
         this.addonQuantityTimers = new WeakMap();
         this.addonAvailabilityRequestId = 0;
-        this.lockRefreshPromise = null;
+        this.lockExtensionPromise = null;
+        this.holdWarningPromise = null;
+        this.holdWarningToken = null;
+        this.holdPromptDismissedUntil = 0;
+        this.lockCountdownInterval = null;
         this.dateModalEscapeBound = false;
         this.dateConfirmationInFlight = false;
         window.isDatesLocked = false;
@@ -125,9 +135,18 @@ class AdminWalkinController {
                 
                 const guestInput = this.getEl('event-guests');
                 if (guestInput) {
-                    const maxCap = Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet);
-                    guestInput.setAttribute('max', maxCap);
+                    const selectedCapacity = parseInt(opt.dataset[styleSelect.value], 10) || 0;
+                    guestInput.setAttribute('max', selectedCapacity || Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet));
                 }
+            }
+            const styleSelectForCapacity = this.getEl('event-style');
+            const eventGuestInput = this.getEl('event-guests');
+            if (styleSelectForCapacity && eventGuestInput) {
+                styleSelectForCapacity.onchange = () => {
+                    const selectedCapacity = parseInt(opt.dataset[styleSelectForCapacity.value], 10) || 0;
+                    eventGuestInput.setAttribute('max', selectedCapacity || '');
+                };
+                styleSelectForCapacity.dispatchEvent(new Event('change'));
             }
         });
 
@@ -139,6 +158,8 @@ class AdminWalkinController {
             const villaName = opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-vl-type");
             if (label) label.innerText = villaName;
+            const extraRateLabel = this.getEl('villa-extra-rate');
+            if (extraRateLabel) extraRateLabel.textContent = this.formatCurrency(parseFloat(opt.dataset.extraPax) || 0);
 
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
         });
@@ -281,10 +302,15 @@ class AdminWalkinController {
             this.state.addonConfirmedRange = null;
             this.state.addonCommittedSelection = [];
             this.state.addonLocksHeld = false;
+            this.state.addonHoldExpiresAt = null;
+            this.state.holdWarningShown = false;
+            this.state.holdWarningExpiryKey = null;
+            this.state.holdExpiryNoticeShown = false;
+            this.state.holdExpiryNoticeExpiryKey = null;
             this.addonCommittedRange = null;
             this.addonServerUncertain = false;
             this.calculateSummary();
-            if (!this.state.isDatesLocked) this.stopLockRefresh();
+            if (!this.state.isDatesLocked) this.stopHoldCountdown();
             return true;
         })();
         this.addonResetPromise = request;
@@ -471,7 +497,7 @@ class AdminWalkinController {
             if (!res.ok || !data?.success) {
                 return { ok: false, error: new Error(data?.message || 'The selected hotel rooms could not be temporarily held.') };
             }
-            return { ok: true };
+            return { ok: true, expiresAt: this.normalizeHoldExpiry(data.expires_at) };
         } catch (error) {
             return { ok: false, error };
         }
@@ -497,19 +523,32 @@ class AdminWalkinController {
         }
     }
 
-    commitAddonSnapshot(snapshot) {
+    commitAddonSnapshot(snapshot, expiresAt = undefined) {
         this.state.addonCommittedSelection = this.cloneAddonSelection(snapshot.selection);
         this.addonCommittedRange = this.state.addonCommittedSelection.length ? this.cloneAddonRange(snapshot.range) : null;
         this.state.addonLocksHeld = this.state.addonCommittedSelection.length > 0;
+        if (this.state.addonLocksHeld) {
+            if (expiresAt !== undefined) this.state.addonHoldExpiresAt = expiresAt;
+            if (!this.state.addonHoldExpiresAt) this.state.addonHoldExpiresAt = Date.now() + (60 * 60 * 1000);
+        } else {
+            this.state.addonHoldExpiresAt = null;
+        }
         this.addonServerUncertain = false;
+        if (this.state.addonLocksHeld) {
+            this.state.holdWarningShown = false;
+            this.state.holdWarningExpiryKey = null;
+            this.state.holdExpiryNoticeShown = false;
+            this.state.holdExpiryNoticeExpiryKey = null;
+        }
         this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
-        if (this.state.addonLocksHeld) this.startLockRefresh();
-        else if (!this.state.isDatesLocked) this.stopLockRefresh();
+        if (this.state.addonLocksHeld) this.startHoldCountdown();
+        else if (!this.state.isDatesLocked) this.stopHoldCountdown();
     }
 
     restoreCommittedAddonUI(snapshot) {
         this.restoreAddonSelection(snapshot.selection);
         this.state.addonLocksHeld = snapshot.selection.length > 0 && !this.addonServerUncertain;
+        if (!this.state.addonLocksHeld) this.state.addonHoldExpiresAt = null;
         this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
     }
 
@@ -523,9 +562,9 @@ class AdminWalkinController {
     }
 
     async reconcileAddonSnapshot(snapshot) {
-        if (!snapshot.selection.length) return (await this.postAddonRelease()).ok;
-        if (!snapshot.range) return false;
-        return (await this.postAddonBatch(snapshot)).ok;
+        if (!snapshot.selection.length) return this.postAddonRelease();
+        if (!snapshot.range) return { ok: false };
+        return this.postAddonBatch(snapshot);
     }
 
     async runAddonSyncQueue() {
@@ -537,15 +576,17 @@ class AdminWalkinController {
                 const response = await this.postAddonBatch(target);
                 let result;
                 if (response.ok) {
-                    this.commitAddonSnapshot(target);
+                    this.commitAddonSnapshot(target, response.expiresAt);
                     result = { ok: true, stale: false, blocked: false };
                 } else {
-                    const reconciled = await this.reconcileAddonSnapshot(previous);
+                    const reconciliation = await this.reconcileAddonSnapshot(previous);
+                    const reconciled = reconciliation.ok;
                     if (reconciled) {
-                        this.commitAddonSnapshot(previous);
+                        this.commitAddonSnapshot(previous, reconciliation.expiresAt);
                     } else {
                         this.addonServerUncertain = true;
                         this.state.addonLocksHeld = false;
+                        this.state.addonHoldExpiresAt = null;
                         this.toggleLockBanner(this.state.isDatesLocked);
                     }
                     // A newer generation may have changed the UI while this
@@ -556,16 +597,13 @@ class AdminWalkinController {
                         this.restoreCommittedAddonUI(previous);
                         if (!reconciled) {
                             this.state.addonLocksHeld = false;
+                            this.state.addonHoldExpiresAt = null;
                             this.toggleLockBanner(this.state.isDatesLocked);
                         }
                     }
                     result = { ok: false, stale: false, blocked: false, error: response.error };
                     if (!this.addonSyncDesired) {
-                        if (!target.silent) {
-                            showAlert('Room Hold Failed', response.error?.message || 'The selected hotel rooms could not be held.', 'error');
-                        } else {
-                            showAlert('Room Hold Refresh Failed', response.error?.message || 'The selected hotel rooms could not be refreshed.', 'error');
-                        }
+                        showAlert('Room Hold Failed', response.error?.message || 'The selected hotel rooms could not be held.', 'error');
                     }
                 }
 
@@ -580,14 +618,13 @@ class AdminWalkinController {
         }
     }
 
-    enqueueAddonSync(snapshot, reason, silent) {
+    enqueueAddonSync(snapshot, reason) {
         const generation = ++this.addonSyncGeneration;
         const target = {
             generation,
             selection: this.cloneAddonSelection(snapshot.selection),
             range: this.cloneAddonRange(snapshot.range),
-            reason,
-            silent
+            reason
         };
         const waiter = new Promise(resolve => this.addonSyncWaiters.push({ generation, resolve }));
         this.addonSyncDesired = target;
@@ -595,7 +632,7 @@ class AdminWalkinController {
         return waiter;
     }
 
-    async syncAddonSelection(reason = 'selection', rangeOverride = null, silent = false) {
+    async syncAddonSelection(reason = 'selection', rangeOverride = null) {
         if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) {
             return { ok: false, stale: false, blocked: true };
         }
@@ -606,11 +643,11 @@ class AdminWalkinController {
             return { ok: released, stale: false, blocked: false };
         }
         if (!range) {
-            if (!silent) showAlert('Notice', 'Confirm a valid hotel stay before holding room inventory.');
+            showAlert('Notice', 'Confirm a valid hotel stay before holding room inventory.');
             this.restoreAddonSelection(this.state.addonCommittedSelection);
             return { ok: false, stale: false, blocked: false };
         }
-        return this.enqueueAddonSync({ selection, range }, reason, silent);
+        return this.enqueueAddonSync({ selection, range }, reason);
     }
 
     async releaseAddonLocksAPI() {
@@ -630,11 +667,16 @@ class AdminWalkinController {
             const response = await this.postAddonRelease();
             if (response.ok) {
                 this.state.addonLocksHeld = false;
+                this.state.addonHoldExpiresAt = null;
+                this.state.holdWarningShown = false;
+                this.state.holdWarningExpiryKey = null;
+                this.state.holdExpiryNoticeShown = false;
+                this.state.holdExpiryNoticeExpiryKey = null;
                 this.state.addonCommittedSelection = [];
                 this.addonCommittedRange = null;
                 this.addonServerUncertain = false;
                 this.toggleLockBanner(this.state.isDatesLocked);
-                if (!this.state.isDatesLocked) this.stopLockRefresh();
+                if (!this.state.isDatesLocked) this.stopHoldCountdown();
                 this.addonReleasePromise = null;
                 return true;
             }
@@ -860,7 +902,7 @@ class AdminWalkinController {
         let success = false;
         try {
             if (pending.kind === 'addon') success = await this.confirmAddonDateRange(pending.start, pending.end, pending.calendar);
-            else success = await this.lockPrimaryDates(pending.start, pending.end, pending.calendar, false);
+            else success = await this.lockPrimaryDates(pending.start, pending.end, pending.calendar);
         } finally {
             if (this.state.pendingDateConfirmation === pending) this.state.pendingDateConfirmation = null;
             confirmBtn.disabled = false;
@@ -903,10 +945,10 @@ class AdminWalkinController {
         return true;
     }
 
-    async lockPrimaryDates(startDate, endDate, calendarInstance, silent = false) {
+    async lockPrimaryDates(startDate, endDate, calendarInstance) {
         const lockData = this.getTabContextData();
         if (!lockData.roomName && !lockData.venueId) {
-            if (!silent) showAlert('Notice', 'Please select a specific venue/room from the dropdown first!');
+            showAlert('Notice', 'Please select a specific venue/room from the dropdown first!');
             return false;
         }
         const formData = new FormData();
@@ -932,23 +974,27 @@ class AdminWalkinController {
 
             this.state.activeCalendar = calendarInstance;
             this.state.isDatesLocked = true;
+            this.state.primaryHoldExpiresAt = this.normalizeHoldExpiry(response[2]) || (Date.now() + (60 * 60 * 1000));
+            this.state.holdWarningShown = false;
+            this.state.holdWarningExpiryKey = null;
+            this.state.holdExpiryNoticeShown = false;
+            this.state.holdExpiryNoticeExpiryKey = null;
             window.isDatesLocked = true;
             calendarInstance?.updateDateDisplay();
             this.toggleLockBanner(true);
-            if (!silent) this.startLockRefresh();
+            this.startHoldCountdown();
             if (this.state.activeTabId === 'tab-event' && this.getEl('check-rooms')?.checked) this.suggestAddonStayDates();
             this.calculateSummary();
             return true;
         } catch (error) {
             this.state.isDatesLocked = false;
+            this.state.primaryHoldExpiresAt = null;
             window.isDatesLocked = false;
-            if (silent) {
-                if (this.state.addonLocksHeld && this.getAddonStayRange()) this.startLockRefresh();
-                else this.stopLockRefresh();
-            }
+            if (this.state.addonLocksHeld && this.getAddonStayRange()) this.startHoldCountdown();
+            else this.stopHoldCountdown();
             this.toggleLockBanner(this.state.addonLocksHeld);
             if (error.sessionExpired) showAlert('Session Expired', error.message, 'error', true);
-            else showAlert(silent ? 'Dates Hold Refresh Failed' : 'Dates Hold Failed', error.message || 'Dates could not be held.', 'error');
+            else showAlert('Dates Hold Failed', error.message || 'Dates could not be held.', 'error');
             if (calendarInstance) {
                 const context = this.getTabContextData();
                 calendarInstance.fetchBookedDates(context.roomType, context.roomName, context.venueId);
@@ -960,6 +1006,7 @@ class AdminWalkinController {
     async unlockDatesAPI() {
         if (this.fullUnlockPromise) return this.fullUnlockPromise;
         const request = (async () => {
+            this.cancelHoldExtensionPrompt();
             const pendingAddonSync = this.addonSyncPromise;
             if (pendingAddonSync) {
                 try { await pendingAddonSync; } catch (error) { /* continue with full release */ }
@@ -967,8 +1014,8 @@ class AdminWalkinController {
             if (this.addonReleasePromise) {
                 try { await this.addonReleasePromise; } catch (error) { /* full release still verifies its own response */ }
             }
-            if (this.lockRefreshPromise) {
-                try { await this.lockRefreshPromise; } catch (error) { /* the unlock request still verifies server state */ }
+            if (this.lockExtensionPromise) {
+                try { await this.lockExtensionPromise; } catch (error) { /* the unlock request still verifies server state */ }
             }
             try {
                 const res = await fetch('actions/bookings/unlock_dates.php', {
@@ -979,18 +1026,24 @@ class AdminWalkinController {
                 const response = text.split('|');
                 if (!res.ok || response[0] !== 'Success') throw new Error(response[1] || 'Temporary holds could not be released.');
                 this.state.isDatesLocked = false;
+                this.state.primaryHoldExpiresAt = null;
                 window.isDatesLocked = false;
                 this.state.addonLocksHeld = false;
+                this.state.addonHoldExpiresAt = null;
                 this.state.addonCommittedSelection = [];
                 this.state.addonConfirmedRange = null;
                 this.addonCommittedRange = null;
                 this.addonServerUncertain = false;
+                this.state.holdWarningShown = false;
+                this.state.holdWarningExpiryKey = null;
+                this.state.holdExpiryNoticeShown = false;
+                this.state.holdExpiryNoticeExpiryKey = null;
                 this.toggleLockBanner(false);
-                this.stopLockRefresh();
+                this.stopHoldCountdown();
                 return true;
             } catch (error) {
                 this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
-                showAlert('Release Failed', error.message || 'Temporary holds could not be released. Please try again.', 'error');
+                this.presentHoldAlert('Release Failed', error.message || 'Temporary holds could not be released. Please try again.', 'error');
                 return false;
             } finally {
                 this.fullUnlockPromise = null;
@@ -1000,34 +1053,280 @@ class AdminWalkinController {
         return request;
     }
 
-    stopLockRefresh() {
-        if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
-        this.lockRefreshInterval = null;
+    normalizeHoldExpiry(value) {
+        const timestamp = Number(value);
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+        // API responses use Unix seconds; accepting milliseconds keeps this
+        // helper safe if a future endpoint returns a JS-style timestamp.
+        return timestamp < 1e12 ? timestamp * 1000 : timestamp;
     }
 
-    startLockRefresh() {
-        this.stopLockRefresh();
-        // Refresh every 55 minutes to keep the 60-minute primary and add-on holds alive.
-        this.lockRefreshInterval = setInterval(() => {
-            if (this.lockRefreshPromise) return;
-            this.lockRefreshPromise = (async () => {
-                try {
-                    if (!this.state.isDatesLocked && !this.state.addonLocksHeld) {
-                        this.stopLockRefresh();
-                        return;
-                    }
-                    if (this.state.isDatesLocked && this.state.activeCalendar?.startDate) {
-                        const primaryOk = await this.lockPrimaryDates(this.state.activeCalendar.startDate, this.state.activeCalendar.endDate, this.state.activeCalendar, true);
-                        if (!primaryOk) return;
-                    }
-                    if (this.state.addonLocksHeld && this.getAddonStayRange()) {
-                        await this.syncAddonSelection('refresh', this.getAddonStayRange(), true);
-                    }
-                } finally {
-                    this.lockRefreshPromise = null;
+    formatLockCountdown(milliseconds) {
+        const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    getNearestHoldExpiry() {
+        const deadlines = [];
+        if (this.state.isDatesLocked && this.state.primaryHoldExpiresAt) deadlines.push(this.state.primaryHoldExpiresAt);
+        if (this.state.addonLocksHeld && this.state.addonHoldExpiresAt) deadlines.push(this.state.addonHoldExpiresAt);
+        return deadlines.length ? Math.min(...deadlines) : null;
+    }
+
+    cancelHoldExtensionPrompt() {
+        // Invalidate the continuation first, then dismiss the current global
+        // confirmation when available. A late Yes can never issue an extension
+        // after release, and callers can defer alerts until its hide animation
+        // has finished so they do not share a closing overlay.
+        const token = this.holdWarningToken;
+        this.holdWarningToken = null;
+        let dismissed = false;
+        if (token?.cancelButton?.click) {
+            this.holdPromptDismissedUntil = Date.now() + 400;
+            token.cancelButton.click();
+            dismissed = true;
+        }
+        return dismissed;
+    }
+
+    presentHoldAlert(title, message, type = 'error') {
+        const announce = () => showAlert(title, message, type);
+        const delay = Math.max(0, this.holdPromptDismissedUntil - Date.now());
+        if (delay > 0) setTimeout(announce, delay);
+        else announce();
+    }
+
+    clearAllHoldState() {
+        this.state.isDatesLocked = false;
+        this.state.primaryHoldExpiresAt = null;
+        window.isDatesLocked = false;
+        this.state.activeCalendar?.clearSelectedRange?.();
+        this.state.activeCalendar = null;
+        this.state.pendingDateConfirmation = null;
+        this.state.addonLocksHeld = false;
+        this.state.addonHoldExpiresAt = null;
+        this.addonServerUncertain = true;
+        this.state.holdWarningShown = false;
+        this.state.holdWarningExpiryKey = null;
+        this.state.holdExpiryNoticeShown = true;
+        this.state.holdExpiryNoticeExpiryKey = null;
+        this.toggleLockBanner(false);
+        this.stopHoldCountdown();
+        this.calculateSummary();
+    }
+
+    applyExtensionResponse(data) {
+        const primaryExpiry = this.normalizeHoldExpiry(data?.primary_expires_at);
+        const addonExpiry = this.normalizeHoldExpiry(data?.addon_expires_at);
+
+        if (primaryExpiry) {
+            this.state.isDatesLocked = true;
+            this.state.primaryHoldExpiresAt = primaryExpiry;
+            window.isDatesLocked = true;
+        } else if (this.state.isDatesLocked) {
+            this.state.isDatesLocked = false;
+            this.state.primaryHoldExpiresAt = null;
+            window.isDatesLocked = false;
+            this.state.activeCalendar?.clearSelectedRange?.();
+            this.state.activeCalendar = null;
+        }
+
+        if (addonExpiry) {
+            this.state.addonLocksHeld = true;
+            this.state.addonHoldExpiresAt = addonExpiry;
+        } else {
+            this.state.addonLocksHeld = false;
+            this.state.addonHoldExpiresAt = null;
+        }
+
+        this.addonServerUncertain = false;
+        this.state.holdWarningShown = false;
+        this.state.holdWarningExpiryKey = null;
+        this.state.holdExpiryNoticeShown = false;
+        this.state.holdExpiryNoticeExpiryKey = null;
+        this.calculateSummary();
+        this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+        if (this.state.isDatesLocked || this.state.addonLocksHeld) this.startHoldCountdown();
+        else this.stopHoldCountdown();
+        this.expireActiveHolds();
+    }
+
+    async extendWalkinLocksAPI() {
+        if (this.lockExtensionPromise) return this.lockExtensionPromise;
+        if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) {
+            return { ok: false, blocked: true };
+        }
+
+        const request = (async () => {
+            try {
+                const res = await fetch('actions/bookings/extend_walkin_locks.php', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': this.csrfToken }
+                });
+                const data = await res.json().catch(() => null);
+                if (!res.ok || !data?.success) {
+                    const noActive = res.status === 409 && /No active walk-in holds/i.test(data?.message || '');
+                    if (noActive) this.clearAllHoldState();
+                    return { ok: false, noActive, error: new Error(data?.message || 'Temporary holds could not be extended.') };
                 }
-            })();
-        }, 55 * 60 * 1000);
+                this.applyExtensionResponse(data);
+                return { ok: true, data };
+            } catch (error) {
+                return { ok: false, error };
+            }
+        })();
+        this.lockExtensionPromise = request;
+        request.then(() => {
+            if (this.lockExtensionPromise === request) this.lockExtensionPromise = null;
+        }, () => {
+            if (this.lockExtensionPromise === request) this.lockExtensionPromise = null;
+        });
+        return request;
+    }
+
+    maybePromptHoldExtension() {
+        const expiry = this.getNearestHoldExpiry();
+        if (!expiry) return;
+        if (this.state.holdWarningExpiryKey === expiry || this.holdWarningPromise || this.lockExtensionPromise) return;
+        const remaining = expiry - Date.now();
+        if (remaining <= 0 || remaining > 5 * 60 * 1000) return;
+
+        this.state.holdWarningShown = true;
+        this.state.holdWarningExpiryKey = expiry;
+        const token = {};
+        this.holdWarningToken = token;
+        const prompt = (async () => {
+            let confirmed = false;
+            try {
+                const confirmation = showConfirm(
+                    'Extend Temporary Hold?',
+                    `Only 5 minutes or less remain on the temporary hold (countdown: ${this.formatLockCountdown(remaining)}). Extend every active hold by 30 minutes?`
+                );
+                token.cancelButton = document.getElementById('gc-btn-cancel');
+                confirmed = await confirmation;
+            } catch (error) {
+                return { ok: false, error };
+            }
+            if (this.holdWarningToken !== token || !confirmed) return { ok: false, declined: !confirmed };
+
+            const result = await this.extendWalkinLocksAPI();
+            if (!result.ok && result.error) {
+                this.presentHoldAlert('Hold Extension Failed', result.error.message || 'Temporary holds could not be extended.', 'error');
+            }
+            return result;
+        })();
+        this.holdWarningPromise = prompt;
+        prompt.then(() => {
+            if (this.holdWarningPromise === prompt) {
+                this.holdWarningPromise = null;
+                this.holdWarningToken = null;
+            }
+        }, () => {
+            if (this.holdWarningPromise === prompt) {
+                this.holdWarningPromise = null;
+                this.holdWarningToken = null;
+            }
+        });
+    }
+
+    stopHoldCountdown() {
+        if (this.lockCountdownInterval) clearInterval(this.lockCountdownInterval);
+        this.lockCountdownInterval = null;
+    }
+
+    startHoldCountdown() {
+        if (!this.state.isDatesLocked && !this.state.addonLocksHeld) {
+            this.stopHoldCountdown();
+            return;
+        }
+        // A legacy response without expiry metadata still gets a visible,
+        // conservative countdown. Normal responses replace these fallbacks
+        // with the server's authoritative expiry immediately.
+        if (this.state.isDatesLocked && !this.state.primaryHoldExpiresAt) {
+            this.state.primaryHoldExpiresAt = Date.now() + (60 * 60 * 1000);
+        }
+        if (this.state.addonLocksHeld && !this.state.addonHoldExpiresAt) {
+            this.state.addonHoldExpiresAt = Date.now() + (60 * 60 * 1000);
+        }
+        this.updateLockCountdown();
+        if (!this.lockCountdownInterval) {
+            this.lockCountdownInterval = setInterval(() => this.updateLockCountdown(), 1000);
+        }
+    }
+
+    expireActiveHolds() {
+        const now = Date.now();
+        const expired = [];
+        if (this.state.isDatesLocked && this.state.primaryHoldExpiresAt && this.state.primaryHoldExpiresAt <= now) {
+            expired.push({ label: 'dates', expiry: this.state.primaryHoldExpiresAt });
+            this.state.isDatesLocked = false;
+            this.state.primaryHoldExpiresAt = null;
+            window.isDatesLocked = false;
+            this.state.activeCalendar?.clearSelectedRange?.();
+            this.state.activeCalendar = null;
+            this.state.pendingDateConfirmation = null;
+        }
+        if (this.state.addonLocksHeld && this.state.addonHoldExpiresAt && this.state.addonHoldExpiresAt <= now) {
+            expired.push({ label: 'hotel room', expiry: this.state.addonHoldExpiresAt });
+            this.state.addonLocksHeld = false;
+            this.state.addonHoldExpiresAt = null;
+            this.addonServerUncertain = true;
+        }
+        if (!expired.length) return false;
+
+        const expiredCycleKey = Math.min(...expired.map(item => item.expiry));
+        const survivorExpiry = this.getNearestHoldExpiry();
+        if (survivorExpiry) {
+            const survivorRemaining = survivorExpiry - now;
+            // A surviving hold gets its own future warning cycle. If it is
+            // already inside the warning window, mark that cycle as warned so
+            // the just-dismissed prompt is not duplicated immediately.
+            if (survivorRemaining > 0 && survivorRemaining <= 5 * 60 * 1000) {
+                this.state.holdWarningShown = true;
+                this.state.holdWarningExpiryKey = survivorExpiry;
+            } else {
+                this.state.holdWarningShown = false;
+                this.state.holdWarningExpiryKey = null;
+            }
+            this.state.holdExpiryNoticeShown = false;
+            this.state.holdExpiryNoticeExpiryKey = null;
+        } else {
+            this.state.holdWarningShown = false;
+            this.state.holdWarningExpiryKey = null;
+        }
+
+        this.calculateSummary();
+        const promptDismissed = this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+        if (!this.state.isDatesLocked && !this.state.addonLocksHeld) this.stopHoldCountdown();
+
+        if (this.state.holdExpiryNoticeExpiryKey !== expiredCycleKey) {
+            this.state.holdExpiryNoticeShown = true;
+            this.state.holdExpiryNoticeExpiryKey = expiredCycleKey;
+            const message = `The ${expired.map(item => item.label).join(' and ')} hold expired. Please reselect the dates or re-hold the rooms before submitting.`;
+            if (promptDismissed) this.presentHoldAlert('Temporary Hold Expired', message, 'error');
+            else showAlert('Temporary Hold Expired', message, 'error');
+        }
+        return true;
+    }
+
+    updateLockCountdown() {
+        if (this.expireActiveHolds()) return;
+        if (!this.state.isDatesLocked && !this.state.addonLocksHeld) {
+            this.stopHoldCountdown();
+            this.toggleLockBanner(false);
+            return;
+        }
+        this.maybePromptHoldExtension();
+        const banner = document.getElementById('walkin-lock-banner');
+        const timer = banner?.querySelector('[data-lock-countdown]');
+        if (!timer) return;
+        const expiry = this.getNearestHoldExpiry();
+        const remaining = expiry ? Math.max(0, expiry - Date.now()) : 60 * 60 * 1000;
+        const formatted = this.formatLockCountdown(remaining);
+        timer.textContent = formatted;
+        timer.setAttribute('aria-label', `${formatted} remaining on temporary hold`);
     }
 
     updateAddonDateDisplay() {
@@ -1045,25 +1344,33 @@ class AdminWalkinController {
         let banner = document.getElementById("walkin-lock-banner");
         const hasPrimaryHold = this.state.isDatesLocked;
         const hasAddonHold = this.state.addonLocksHeld;
-        if ((!show || (!hasPrimaryHold && !hasAddonHold)) && banner) {
+        if (!hasPrimaryHold && !hasAddonHold) {
+            if (banner) banner.remove();
+            const promptDismissed = this.cancelHoldExtensionPrompt();
+            this.stopHoldCountdown();
+            return promptDismissed;
+        }
+        if (!show && banner) {
             banner.remove();
-            return;
+            return false;
         }
         if (!banner && show) {
             banner = document.createElement("div");
             banner.id = "walkin-lock-banner";
-            banner.style.cssText = "background-color: #d1fae5; color: #065f46; padding: 10px 15px; border-radius: 6px; border: 1px solid #10b981; font-size: 0.9rem; font-weight: 500; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;";
-            banner.innerHTML = '<i class="fa-solid fa-lock" aria-hidden="true"></i><span></span>';
+            banner.className = 'walkin-lock-banner';
+            banner.setAttribute('role', 'status');
+            banner.innerHTML = '<i class="fa-solid fa-lock" aria-hidden="true"></i><span class="walkin-lock-message"></span><span class="walkin-lock-countdown" data-lock-countdown role="timer" aria-live="polite"></span>';
             const activeSummary = document.querySelector(".summary-container.active") || this.getEl('summary-breakdown')?.parentNode;
             activeSummary?.parentNode?.insertBefore(banner, activeSummary);
         }
         if (banner) {
             const message = hasPrimaryHold && hasAddonHold
-                ? 'Dates and selected hotel rooms are temporarily held for this booking form. (Auto-refreshes)'
+                ? 'Dates and selected hotel rooms are temporarily held for this booking form.'
                 : hasAddonHold
-                    ? 'Selected hotel rooms are temporarily held for this booking form. (Auto-refreshes)'
-                    : 'Dates are temporarily held for this booking form. (Auto-refreshes)';
-            banner.querySelector('span')?.replaceChildren(document.createTextNode(message));
+                    ? 'Selected hotel rooms are temporarily held for this booking form.'
+                    : 'Dates are temporarily held for this booking form.';
+            banner.querySelector('.walkin-lock-message')?.replaceChildren(document.createTextNode(message));
+            this.updateLockCountdown();
         }
     }
 
@@ -1372,6 +1679,8 @@ class AdminWalkinController {
         const guestEmail = this.getEl("guest-email")?.value.trim();
         const guestPhone = this.getEl("guest-phone")?.value.trim();
 
+        if (this.expireActiveHolds()) return;
+
         if (!guestName || !guestEmail || !guestPhone) {
             showAlert("Notice", "Please complete the Guest Information section.");
             return;
@@ -1382,10 +1691,14 @@ class AdminWalkinController {
             return;
         }
 
-        if (this.addonSyncPromise || this.lockRefreshPromise) {
+        if (this.holdWarningPromise && !this.lockExtensionPromise) {
+            showAlert('Notice', 'Please respond to the temporary hold extension prompt first.');
+            return;
+        }
+        if (this.addonSyncPromise || this.lockExtensionPromise) {
             try {
                 if (this.addonSyncPromise) await this.addonSyncPromise;
-                if (this.lockRefreshPromise) await this.lockRefreshPromise;
+                if (this.lockExtensionPromise) await this.lockExtensionPromise;
             } catch (error) {
                 showAlert('Notice', 'Please wait for the temporary room hold to finish updating.');
                 return;
@@ -1395,9 +1708,21 @@ class AdminWalkinController {
             showAlert('Notice', 'Please wait for the temporary room hold operation to finish.');
             return;
         }
+        if (this.expireActiveHolds()) return;
 
         const context = this.getTabContextData();
         if (!context.roomName && !context.venueId) { showAlert("Notice", "Please ensure a valid specific room/venue is selected."); return; }
+        if (context.roomType === 'Event Hall') {
+            const hallSelect = this.getEl('event-venue');
+            const hallOpt = hallSelect?.options[hallSelect.selectedIndex];
+            const styleKey = this.getEl('event-style')?.value || '';
+            const capacity = parseInt(hallOpt?.dataset?.[styleKey], 10) || 0;
+            const guests = parseInt(context.guests, 10) || 0;
+            if (!capacity || guests < 1 || guests > capacity) {
+                showAlert("Notice", "The guest count exceeds the selected seating style's capacity.");
+                return;
+            }
+        }
 
         const schemeVal = this.getEl("payment-scheme")?.value;
         let schemeEnum = "100% Full";
@@ -1446,6 +1771,7 @@ class AdminWalkinController {
             const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
             
             formData.append("event_type", evTypeTxt);
+            formData.append("event_style_key", evStyleSelect?.value || '');
             formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
             formData.append("admin_notes", this.getEl('admin-notes')?.value.trim() || "");
         }
@@ -1512,11 +1838,12 @@ class AdminWalkinController {
                 // submit_walkin.php has already deleted this session's locks;
                 // clear the client state without issuing a second unlock call.
                 this.state.isDatesLocked = false;
+                this.state.primaryHoldExpiresAt = null;
                 window.isDatesLocked = false;
                 this.state.activeCalendar?.clearSelectedRange();
                 this.state.activeCalendar = null;
                 this.state.pendingDateConfirmation = null;
-                this.stopLockRefresh();
+                this.stopHoldCountdown();
                 this.toggleLockBanner(false);
                 await this.resetAddonStayDates({ release: false });
                 

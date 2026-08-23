@@ -1,6 +1,7 @@
 <?php
 session_start();
 require '../../config/db_connect.php';
+require_once '../../includes/booking_rules.php';
 
 function lock_dates_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -37,10 +38,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $source     = $is_staff_booking ? 'walkin' : 'online'; // walkin or online
     $lock_mins  = ($source === 'walkin') ? 60 : 30; // 1 hour for walk-in, 30 min for online
 
+    $room_type = $_POST['room_type'] ?? '';
     // Validate date formats
     $start_dt = DateTime::createFromFormat('Y-m-d', $start_date);
     $end_dt   = DateTime::createFromFormat('Y-m-d', $end_date);
-    if (!$start_dt || !$end_dt || $end_dt < $start_dt) {
+    if (!$start_dt || !$end_dt || $end_dt < $start_dt || (($room_type ?? '') !== 'Event Hall' && $end_dt <= $start_dt)) {
         echo "Error|Invalid date range.";
         exit;
     }
@@ -53,11 +55,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->query("DELETE FROM booking_locks WHERE expires_at < NOW()");
 
         $venue_id = null;
-        $room_type = $_POST['room_type'] ?? '';
         $room_name = $_POST['room_name'] ?? '';
         $is_hotel = !($room_type === 'Event Hall' || $room_type === 'Resort Villa');
         
-        $overlap_cond = $is_hotel ? "(start_date < ? AND end_date > ?)" : "(start_date <= ? AND end_date >= ?)";
+        $overlap_cond = booking_overlap_sql($is_hotel ? 'Hotel Room' : $room_type);
 
         // Remove only the session's previous primary lock before taking venue
         // row locks. Add-on locks are tracked separately and must survive this
@@ -86,21 +87,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $venue_id = $result->fetch_assoc()['id'];
 
             // 1. Check Maintenance
-            $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?)");
+            $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
             $chk_maint->bind_param("iss", $venue_id, $end_date, $start_date);
             $chk_maint->execute();
             if ($chk_maint->get_result()->num_rows > 0) throw new Exception("These dates are currently under maintenance.");
 
             // 2. Check existing bookings
             $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
-            $chk_booking = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $status_filter AND source <> 'Maintenance' AND (start_date <= ? AND end_date >= ?)");
+            $chk_booking = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $status_filter AND source <> 'Maintenance' AND " . booking_overlap_sql($room_type));
             $chk_booking->bind_param("iss", $venue_id, $end_date, $start_date);
             $chk_booking->execute();
             if ($chk_booking->get_result()->num_rows > 0) throw new Exception("These dates are already booked.");
 
             // 3. Check active locks (Event Halls allow multiple locks)
             if ($room_type !== 'Event Hall') {
-                $chk_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND (start_date <= ? AND end_date >= ?)");
+                $chk_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND " . booking_overlap_sql($room_type));
                 $chk_lock->bind_param("isss", $venue_id, $session_id, $end_date, $start_date);
                 $chk_lock->execute();
                 if ($chk_lock->get_result()->num_rows > 0) throw new Exception("Another user is currently booking these dates.");
@@ -133,7 +134,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $vid = $row['id'];
                 
                 // Check Maintenance (maintenance ALWAYS blocks inclusively)
-                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND (start_date <= ? AND end_date >= ?)");
+                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
                 $maint->bind_param("iss", $vid, $end_date, $start_date);
                 $maint->execute();
                 if ($maint->get_result()->num_rows > 0) continue;
@@ -149,7 +150,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $addons = $conn->prepare("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed', 'Completed') AND b.source <> 'Maintenance'
+                    JOIN venues parent_v ON parent_v.id = b.venue_id
+                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                    AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
+                    AND b.source <> 'Maintenance'
                     AND $addons_overlap
                 ");
                 $addons->bind_param("iss", $vid, $end_date, $start_date);
@@ -187,7 +191,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         if (!$conn->commit()) throw new RuntimeException('Dates could not be held.');
         $_SESSION['locked_venue_id'] = $venue_id;
-        echo "Success|Dates locked.";
+        // Keep the legacy pipe-delimited response fields intact and append the
+        // authoritative expiry as a Unix timestamp for countdown consumers.
+        echo "Success|Dates locked|" . strtotime($expires_at);
 
     } catch (Exception $e) {
         if ($transaction_started) $conn->rollback();

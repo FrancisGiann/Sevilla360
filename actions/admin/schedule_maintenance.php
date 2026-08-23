@@ -1,6 +1,7 @@
 <?php
 session_start();
 require '../../config/db_connect.php';
+require_once '../../includes/booking_rules.php';
 
 // Security check
 if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
@@ -40,14 +41,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // Fetch actual venue name and category for the logs and messages
-        $stmt_venue = $conn->prepare("SELECT category, name FROM venues WHERE id = ?");
+        $stmt_venue = $conn->prepare("SELECT category, name FROM venues WHERE id = ? FOR UPDATE");
         $stmt_venue->bind_param("i", $venue_id);
         $stmt_venue->execute();
         $v_row = $stmt_venue->get_result()->fetch_assoc();
         if (!$v_row) throw new Exception("Venue not found.");
         
         $real_venue_name = $v_row['name'];
-        $is_hotel = ($v_row['category'] === 'Hotel Room');
+        $is_overnight = in_array($v_row['category'], ['Hotel Room', 'Resort Villa'], true);
 
         // Check against existing scheduled maintenance
         $maint_chk = $conn->prepare("
@@ -68,11 +69,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Check if dates are already booked by customers
             // If hotel room, use exclusive checkout interval (start_date < eDate AND end_date > sDate)
             // If event hall, use inclusive checkout interval (start_date <= eDate AND end_date >= sDate)
-            $overlap_condition = $is_hotel ? "(b.start_date < ? AND b.end_date > ?)" : "(b.start_date <= ? AND b.end_date >= ?)";
+            $overlap_condition = booking_overlap_sql($v_row['category'], 'b.start_date', 'b.end_date');
+            // A pending Event Hall row is an inquiry, not an exclusive
+            // reservation. Hotel/Villa pending bookings retain their current
+            // blocking behavior.
+            $booking_status_filter = $v_row['category'] === 'Event Hall'
+                ? "IN ('Confirmed', 'Completed')"
+                : "IN ('Pending', 'Confirmed', 'Completed')";
             
             $check_stmt = $conn->prepare("
                 SELECT id FROM bookings b
-                WHERE b.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance'
+                WHERE b.venue_id = ? AND b.booking_status $booking_status_filter AND b.source <> 'Maintenance'
                 AND $overlap_condition
             ");
             $check_stmt->bind_param("iss", $venue_id, $eDate, $sDate);
@@ -82,12 +89,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             // For hotel rooms, also check add-on rooms
-            if ($is_hotel) {
+            if ($is_overnight && $v_row['category'] === 'Hotel Room') {
                 $check_addon = $conn->prepare("
                     SELECT br.id FROM booking_rooms br
                     JOIN bookings b ON br.booking_id = b.id
-                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed') AND b.source <> 'Maintenance'
-                    AND " . ($is_hotel ? "(br.start_date < ? AND br.end_date > ?)" : "(br.start_date <= ? AND br.end_date >= ?)") . "
+                    JOIN venues parent_v ON parent_v.id = b.venue_id
+                    WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed')
+                    AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
+                    AND b.source <> 'Maintenance'
+                    AND " . booking_overlap_sql('Hotel Room', 'br.start_date', 'br.end_date') . "
                 ");
                 $check_addon->bind_param("iss", $venue_id, $eDate, $sDate);
                 $check_addon->execute();

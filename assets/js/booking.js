@@ -184,9 +184,18 @@ class BookingController {
                 
                 const guestInput = this.getEl('event-guests');
                 if (guestInput) {
-                    const maxCap = Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet);
-                    guestInput.setAttribute('max', maxCap);
+                    const selectedCapacity = parseInt(opt.dataset[styleSelect.value], 10) || 0;
+                    guestInput.setAttribute('max', selectedCapacity || Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet));
                 }
+            }
+            const styleSelectForCapacity = this.getEl('event-style');
+            const eventGuestInput = this.getEl('event-guests');
+            if (styleSelectForCapacity && eventGuestInput) {
+                styleSelectForCapacity.onchange = () => {
+                    const selectedCapacity = parseInt(opt.dataset[styleSelectForCapacity.value], 10) || 0;
+                    eventGuestInput.setAttribute('max', selectedCapacity || '');
+                };
+                styleSelectForCapacity.dispatchEvent(new Event('change'));
             }
         });
 
@@ -195,6 +204,8 @@ class BookingController {
             const villaName = opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-vl-type");
             if (label) label.innerText = villaName;
+            const extraRateLabel = this.getEl('villa-extra-rate');
+            if (extraRateLabel) extraRateLabel.textContent = this.formatCurrency(parseFloat(opt.dataset.extraPax) || 0);
 
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
         });
@@ -1052,6 +1063,17 @@ class BookingController {
         const context = this.getTabContextData();
         
         if (!context.roomName && !context.venueId) { showAlert("Notice", "Please ensure a valid room/venue is selected."); return; }
+        if (context.roomType === 'Event Hall') {
+            const hallSelect = this.getEl('event-venue');
+            const hallOpt = hallSelect?.options[hallSelect.selectedIndex];
+            const styleKey = this.getEl('event-style')?.value || '';
+            const capacity = parseInt(hallOpt?.dataset?.[styleKey], 10) || 0;
+            const guests = parseInt(context.guests, 10) || 0;
+            if (!capacity || guests < 1 || guests > capacity) {
+                showAlert("Notice", "The guest count exceeds the selected seating style's capacity.");
+                return;
+            }
+        }
 
         let schemeEnum = '100% Full';
         if (this.state.activeTabId === 'event-hall') {
@@ -1086,6 +1108,7 @@ class BookingController {
             const evStyleSelect = document.getElementById('event-style');
             const evStyleTxt = evStyleSelect ? evStyleSelect.options[evStyleSelect.selectedIndex].text : '';
             formData.append("event_type", evTypeTxt);
+            formData.append("event_style_key", evStyleSelect?.value || '');
             formData.append("event_style", evStyleTxt.split('-')[0].trim()); 
         }
 

@@ -167,7 +167,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             <!-- PANEL 2: Manage Venues (Super Admin Only) -->
             <!-- PANEL 2: Manage Venues (Super Admin Only) -->
             <div class="settings-panel" id="panel-venues">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="venue-panel-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 class="panel-heading" style="border: none; padding: 0; margin: 0;">Manage Venues</h2>
                     <button class="btn btn-primary" id="btn-add-venue">+ Add New Venue</button>
                 </div>
@@ -224,13 +224,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                     $group_id_attr = $v['category'] === 'Hotel Room' ? md5($group_key) : '';
                                 ?>
                                 <tr class="venue-row<?php echo $v['category'] === 'Hotel Room' ? ' room-row room-row-collapsed' : ''; ?>" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-group="<?php echo $group_attr; ?>" data-group-id="<?php echo $group_id_attr; ?>">
-                                    <td style="font-weight: 500;">
+                                    <td data-label="Venue Name" style="font-weight: 500;">
                                         <?php echo $display_name; ?>
                                         <span class="venue-id-text">ID: #<?php echo $v['id']; ?></span>
                                     </td>
-                                    <td style="color: var(--color-dark-light);"><?php echo $v['category']; ?></td>
-                                    <td><span class="v-badge <?php echo $badge_class; ?>"><?php echo $v['status']; ?></span></td>
-                                    <td><button class="btn-edit-venue" data-id="<?php echo $v['id']; ?>">Edit</button></td>
+                                    <td data-label="Category" style="color: var(--color-dark-light);"><?php echo $v['category']; ?></td>
+                                    <td data-label="Status"><span class="v-badge <?php echo $badge_class; ?>"><?php echo $v['status']; ?></span></td>
+                                    <td data-label="Actions"><button class="btn-edit-venue" data-id="<?php echo $v['id']; ?>">Edit</button></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -457,13 +457,13 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
 
 <!-- ADD/EDIT VENUE MODAL -->
 <div class="modal-overlay" id="venueModal">
-    <div class="modal-content" style="max-width: 600px; max-height: 85vh; overflow-y: auto;">
+    <div class="modal-content venue-modal-content">
         <h3 class="modal-title" id="vm-title">Add New Venue</h3>
 
         <form id="form-venue" onsubmit="return false;">
             <input type="hidden" id="vm-id" name="venue_id">
 
-            <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div class="form-grid venue-modal-grid" style="margin-bottom: 15px;">
                 <div class="form-group" style="margin-bottom: 0;">
                     <label>Venue Name</label>
                     <input type="text" id="vm-name" name="name" class="form-control" placeholder="e.g. Infinity Hall"
@@ -502,10 +502,10 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             </div>
 
             <!-- DYNAMIC SECTIONS: These hide/show based on category -->
-            <div style="padding: 15px; background: #faf9f7; border-radius: 8px; border: 1px solid #eee;">
+            <div class="venue-pricing-section" style="padding: 15px; background: #faf9f7; border-radius: 8px; border: 1px solid #eee;">
                 <h4 style="font-size: 1rem; margin-bottom: 15px; color: var(--color-dark);">Pricing & Capacities</h4>
 
-                <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-grid venue-pricing-grid">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label>Base Capacity (Pax)</label>
                         <input type="number" id="vm-base-cap" name="base_capacity" class="form-control" required>
@@ -550,9 +550,9 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     </div>
 
                     <!-- BULK HOTEL ROOM CREATION (Only shown on add) -->
-                    <div class="form-group vm-dynamic vm-hotel vm-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc; grid-column: span 2;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                            <div>
+                    <div class="form-group vm-dynamic vm-hotel vm-bulk-section venue-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc;">
+                        <div class="venue-bulk-header">
+                            <div class="venue-bulk-copy">
                                 <label style="margin: 0; color: #4338ca; font-weight: 600;">Bulk Create Rooms?</label>
                                 <p style="margin: 0; font-size: 0.8rem; color: #4f46e5;">Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
                             </div>
@@ -561,7 +561,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>
-                        <div id="vm-hr-bulk-fields" style="display: none; margin-top: 15px; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div id="vm-hr-bulk-fields" class="venue-bulk-fields" style="display: none; margin-top: 15px;">
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label style="color: #4338ca;">Quantity to Create</label>
                                 <input type="number" id="vm-hr-bulk-qty" name="bulk_quantity" class="form-control" min="1" max="100" placeholder="e.g. 5">
@@ -584,15 +584,15 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                     </div>
 
                     <!-- Shared Hotel/Villa -->
-                    <div class="form-group vm-dynamic vm-hotel vm-villa"
-                        style="display:none; margin-bottom: 0; grid-column: span 2;">
+                    <div class="form-group vm-dynamic vm-hotel vm-villa venue-extra-pax"
+                        style="display:none; margin-bottom: 0;">
                         <label>Extra Pax Rate (₱/head)</label>
                         <input type="number" id="vm-extra-pax" name="extra_pax_rate" class="form-control" step="0.01">
                     </div>
                 </div>
             </div>
 
-            <div class="modal-actions-center" style="margin-top: 25px;">
+            <div class="modal-actions-center venue-modal-actions">
                 <button type="button" class="btn btn-outline btn-modal-cancel" id="btn-close-vmodal">Cancel</button>
                 <button type="submit" class="btn btn-primary" id="btn-save-venue">Save Venue</button>
             </div>

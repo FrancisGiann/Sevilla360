@@ -226,7 +226,7 @@ window.process = {
             <!-- NEW: The Thumbnail Filmstrip -->
             <div class="thumbnail-strip ui-photos" id="thumbnail-strip"></div>
 
-            <button class="btn-back ui-photos" id="btn-back-to-360">Back to 360</button>
+            <button class="btn-back ui-photos" id="btn-back-to-360-gallery">Back to 360</button>
 
             <!-- === Sleek Dropdown Pill Navigation === -->
             <div class="room-navigation-wrapper ui-360">

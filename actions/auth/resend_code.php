@@ -2,6 +2,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once '../../includes/rate_limit.php';
 
 // ==========================================
 // CSRF PROTECTION GUARD
@@ -15,6 +16,17 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['email'])) {
     $email = trim($_POST['email']);
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Enter a valid email address.']);
+        exit;
+    }
+    if (!check_rate_limit($conn, 'resend_verification', 3, 15)) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Too many resend requests. Please wait a few minutes before trying again.']);
+        exit;
+    }
     
     // 1. Generate a new secure 6-digit code
     $new_code = sprintf("%06d", random_int(1, 999999));

@@ -257,7 +257,7 @@ $nav = [
             if (hpBtnMarkRead) {
                 hpBtnMarkRead.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    fetch('actions/user/mark_notifications_read.php')
+                    fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?> } })
                     .then(function(r) { return r.json(); })
                     .then(function(res) {
                         if (res.success) {
@@ -281,7 +281,7 @@ $nav = [
                     var msg = this.getAttribute('data-message');
                     var self = this;
                     
-                    fetch('actions/user/mark_notifications_read.php?id=' + id)
+                    fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'id=' + encodeURIComponent(id) })
                     .then(function() {
                         self.classList.remove('unread');
                     });

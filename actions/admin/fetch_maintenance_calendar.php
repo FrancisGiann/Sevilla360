@@ -38,8 +38,9 @@ try {
         $currentDate = new DateTime($row['start_date']);
         $endDate = new DateTime($row['end_date']);
         
-        // Hotel Rooms use exclusive checkouts (so checkout date isn't rendered as booked)
-        $is_hotel = ($venue_cat === 'Hotel Room');
+        // Overnight Hotel/Villa stays use exclusive checkout dates; Event Hall
+        // reservations occupy the inclusive calendar range.
+        $is_hotel = in_array($venue_cat, ['Hotel Room', 'Resort Villa'], true);
         
         while ($is_hotel ? $currentDate < $endDate : $currentDate <= $endDate) {
             $booked_dates[] = [
@@ -57,7 +58,10 @@ try {
             SELECT b.reference_no, br.start_date, br.end_date, b.booking_status 
             FROM booking_rooms br
             JOIN bookings b ON br.booking_id = b.id
-            WHERE br.venue_id = ? AND b.booking_status != 'Cancelled' AND b.source != 'Maintenance'
+            JOIN venues parent_v ON parent_v.id = b.venue_id
+            WHERE br.venue_id = ? AND b.booking_status != 'Cancelled'
+              AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
+              AND b.source != 'Maintenance'
         ");
         $stmt_addons->bind_param("i", $venue_id);
         $stmt_addons->execute();

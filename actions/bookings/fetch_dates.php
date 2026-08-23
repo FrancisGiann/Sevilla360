@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once '../../includes/booking_rules.php';
 
 try {
     // AUTOMATED CLEANUP: Cancel abandoned "Pending" online bookings older than 30 minutes
@@ -44,9 +45,11 @@ try {
             while ($row = $stmt_bookings->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                while ($currentDate <= $endDate) {
+                $date_is_occupied = ($room_type === 'Event Hall') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
+                while ($date_is_occupied) {
                     $bookedDates[] = $currentDate->format('Y-m-d');
                     $currentDate->modify('+1 day');
+                    $date_is_occupied = ($room_type === 'Event Hall') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
                 }
             }
 
@@ -72,7 +75,7 @@ try {
                 while ($row = $res_locks->fetch_assoc()) {
                     $currentDate = new DateTime($row['start_date']);
                     $endDate = new DateTime($row['end_date']);
-                    while ($currentDate <= $endDate) {
+                    while ($currentDate < $endDate) {
                         $bookedDates[] = $currentDate->format('Y-m-d');
                         $currentDate->modify('+1 day');
                     }
@@ -127,7 +130,10 @@ try {
                 SELECT br.start_date, br.end_date
                 FROM booking_rooms br
                 JOIN bookings b ON br.booking_id = b.id
-                WHERE br.venue_id IN ($v_ids_str) AND b.booking_status IN ('Pending', 'Confirmed', 'Completed') AND b.source <> 'Maintenance'
+                JOIN venues parent_v ON parent_v.id = b.venue_id
+                WHERE br.venue_id IN ($v_ids_str) AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                  AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
+                  AND b.source <> 'Maintenance'
             ");
             while ($row = $stmt_addon->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);

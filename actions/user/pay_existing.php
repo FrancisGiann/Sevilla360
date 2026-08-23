@@ -19,7 +19,17 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 $data = json_decode(file_get_contents('php://input'), true);
-$booking_id = intval($data['booking_id']);
+if (!is_array($data) || !isset($data['booking_id'])) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Invalid payment request.']);
+    exit;
+}
+$booking_id = filter_var($data['booking_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if (!$booking_id) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Invalid booking.']);
+    exit;
+}
 
 try {
     // 1. ADDED b.payment_scheme TO THE QUERY
@@ -69,12 +79,15 @@ try {
             $payment_label = 'Full Payment';
         }
     }
+    $amount_to_pay = min($amount_to_pay, $balance_due);
+    if ($amount_to_pay <= 0) throw new Exception('No payable balance remains for this booking.');
     // =========================================================================
 
     // BULLETPROOF UNIQUE ID: Example "BAL_169999_SV-123"
     $unique_ref = "BAL_" . time() . "_" . $booking['reference_no'];
 
-    $paymongo_sk = $_ENV['PAYMONGO_SECRET_KEY']; 
+    $paymongo_sk = trim((string)($_ENV['PAYMONGO_SECRET_KEY'] ?? ''));
+    if ($paymongo_sk === '') throw new Exception('Online payment is temporarily unavailable. Please contact support.');
     $domain = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https://" : "http://";
     $domain .= $_SERVER['HTTP_HOST'];
 
@@ -104,6 +117,7 @@ try {
     ];
 
     $ch = curl_init();
+    if ($ch === false) throw new Exception('Online payment is temporarily unavailable. Please try again later.');
     curl_setopt($ch, CURLOPT_URL, 'https://api.paymongo.com/v1/checkout_sessions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -115,12 +129,26 @@ try {
     ]);
 
     $response = curl_exec($ch);
+    $curl_error = curl_error($ch);
+    $http_status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+    if ($response === false || $curl_error !== '') {
+        throw new Exception('Unable to reach the payment provider. Please try again.');
+    }
+    if ($http_status < 200 || $http_status >= 300) {
+        throw new Exception('Payment provider rejected the checkout request. Please try again.');
+    }
     $res_data = json_decode($response, true);
+    if (!is_array($res_data)) throw new Exception('Payment provider returned an invalid response.');
 
-    if (isset($res_data['errors'])) throw new Exception("PayMongo: " . $res_data['errors'][0]['detail']);
+    if (isset($res_data['errors'])) {
+        $detail = $res_data['errors'][0]['detail'] ?? 'Checkout could not be created.';
+        throw new Exception("PayMongo: " . $detail);
+    }
     if (isset($res_data['data']['attributes']['checkout_url'])) {
         echo json_encode(['success' => true, 'checkout_url' => $res_data['data']['attributes']['checkout_url']]);
+    } else {
+        throw new Exception('Payment provider returned no checkout URL.');
     }
 
 } catch (Exception $e) {

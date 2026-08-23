@@ -43,7 +43,9 @@ try {
         }
 
         $endDateObj = new DateTime($row['end_date']);
-        $endDateObj->modify('+1 day'); 
+        // FullCalendar's end is exclusive: only inclusive Event Hall ranges
+        // need the extra day; overnight checkouts remain exclusive.
+        if ($cat === 'Event Hall') $endDateObj->modify('+1 day');
 
         // Build a descriptive venue label — include room number for hotel rooms
         $venue_label = $row['venue_name'];

@@ -26,6 +26,11 @@ if (!$id) {
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/backup_helper.php';
 
+if (BackupHelper::getSigningKey() === null) {
+    echo json_encode(['success' => false, 'error' => 'Restore is unavailable: configure a strong APP_KEY (at least 32 randomly generated characters).']);
+    exit;
+}
+
 // First fetch the filename securely from the DB
 $stmt = $conn->prepare("SELECT filename FROM backups WHERE id = ?");
 $stmt->bind_param("i", $id);

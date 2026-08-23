@@ -69,9 +69,9 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
         <div class="form-group">
             <label>Event Setup / Seating Style</label>
             <select id="event-style">
-                <option value="0">Theater Style</option>
-                <option value="0">Classroom Style</option>
-                <option value="0">Banquet Type</option>
+                <option value="theater">Theater Style</option>
+                <option value="classroom">Classroom Style</option>
+                <option value="banquet">Banquet Type</option>
             </select>
         </div>
     </div>

@@ -462,15 +462,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   // --- 9. Photo Gallery Swap Mode ---
-  const btnBackTo360 = document.getElementById("btn-back-to-360");
   btnViewPhotos.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "instant" });
     wrapper.classList.add("mode-photos");
     document.body.classList.add("no-scroll");
   });
-  btnBackTo360.addEventListener("click", () => {
+  const exitPhotoMode = () => {
     wrapper.classList.remove("mode-photos");
     document.body.classList.remove("no-scroll");
+  };
+  // Delegate so both static controls continue to work even if the gallery
+  // markup is replaced by a partial or browser interaction targets a child.
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest("#btn-back-to-360, #btn-back-to-360-gallery")
+      : null;
+    if (target) exitPhotoMode();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const target = event.target instanceof Element
+      ? event.target.closest("#btn-back-to-360, #btn-back-to-360-gallery")
+      : null;
+    if (!target) return;
+    event.preventDefault();
+    exitPhotoMode();
   });
 
   // --- 10. Photo Slider Logic ---

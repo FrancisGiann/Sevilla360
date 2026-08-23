@@ -36,11 +36,22 @@ try {
 
     // 2. Fetch Specifics
     $specifics = null;
+    $event_style_capacities = null;
     if ($booking['venue_category'] === 'Event Hall') {
         $st = $conn->prepare("SELECT event_style, event_type, custom_notes, admin_notes FROM booking_event_details WHERE booking_id = ?");
         $st->bind_param("i", $booking_id);
         $st->execute();
         $specifics = $st->get_result()->fetch_assoc();
+
+        $st_capacity = $conn->prepare("SELECT capacity_theater, capacity_classroom, capacity_banquet FROM event_halls WHERE venue_id = ? LIMIT 1");
+        $st_capacity->bind_param('i', $booking['venue_id']);
+        $st_capacity->execute();
+        $capacity_row = $st_capacity->get_result()->fetch_assoc();
+        $event_style_capacities = [
+            'theater' => (int)($capacity_row['capacity_theater'] ?? 0),
+            'classroom' => (int)($capacity_row['capacity_classroom'] ?? 0),
+            'banquet' => (int)($capacity_row['capacity_banquet'] ?? 0)
+        ];
     } elseif ($booking['venue_category'] === 'Resort Villa') {
         $st = $conn->prepare("SELECT stay_type FROM booking_villa_details WHERE booking_id = ?");
         $st->bind_param("i", $booking_id);
@@ -88,6 +99,7 @@ try {
     echo json_encode(['success' => true, 'data' => [
         'booking' => $booking,
         'specifics' => $specifics,
+        'event_style_capacities' => $event_style_capacities,
         'addons' => $addons,
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,

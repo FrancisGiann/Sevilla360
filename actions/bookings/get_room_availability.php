@@ -45,7 +45,9 @@ try {
           AND v.id NOT IN (
               SELECT br.venue_id FROM booking_rooms br
               JOIN bookings b2 ON br.booking_id = b2.id
+              JOIN venues parent_v ON parent_v.id = b2.venue_id
               WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
+                AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
                 AND b2.source <> 'Maintenance'
                 AND (br.start_date < ? AND br.end_date > ?)
           )
