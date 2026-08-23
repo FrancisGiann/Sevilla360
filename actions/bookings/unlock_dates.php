@@ -2,6 +2,18 @@
 session_start();
 require '../../config/db_connect.php';
 
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['customer', 'staff', 'admin'], true)) {
+    http_response_code(401);
+    echo "Error|Your session has expired. Please sign in again.";
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo "Error|POST is required.";
+    exit;
+}
+
 // ==========================================
 // CSRF PROTECTION GUARD (TEXT)
 // ==========================================
@@ -12,20 +24,21 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     exit;
 }
 
-// If the user has a locked room in their session, delete it from the database!
-if (isset($_SESSION['locked_venue_id'])) {
-    $venue_id = $_SESSION['locked_venue_id'];
-    $session_id = session_id();
-
-    $stmt = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
-    $stmt->bind_param("is", $venue_id, $session_id);
-    $stmt->execute();
+// Release every temporary hold for this session, including tracked add-on
+// room locks. Customer sessions use the same endpoint, so scope by session ID.
+$session_id = session_id();
+$stmt = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ?");
+$stmt->bind_param("s", $session_id);
+if (!$stmt->execute()) {
+    http_response_code(500);
+    echo "Error|Temporary holds could not be released.";
     $stmt->close();
-
-    unset($_SESSION['locked_venue_id']);
-    echo "Success|Unlocked";
-} else {
-    echo "Success|Nothing to unlock";
+    $conn->close();
+    exit;
 }
+$stmt->close();
+
+unset($_SESSION['locked_venue_id'], $_SESSION['walkin_addon_lock_ids']);
+echo "Success|Unlocked";
 $conn->close();
 ?>

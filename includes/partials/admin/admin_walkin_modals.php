@@ -1,10 +1,10 @@
 <!-- Confirm Dates Modal -->
 <div class="modal-overlay" id="confirm-dates-modal">
     <div class="modal-content">
-        <h2 class="modal-title">Confirm Dates</h2>
+        <h2 class="modal-title" id="confirm-dates-title">Confirm Dates</h2>
         <p class="modal-text">You have selected:</p>
         <h3 class="modal-highlight-date" id="confirm-date-display">--</h3>
-        <p class="modal-text">Proceeding will lock these dates for 30 minutes while you complete your booking.</p>
+        <p class="modal-text" id="confirm-dates-copy">Proceeding will temporarily hold these dates for 60 minutes while you complete this walk-in booking.</p>
         <div class="modal-actions">
             <button class="btn-modal-primary" id="btn-confirm-dates">CONFIRM</button>
             <button class="btn-modal-outline" id="btn-cancel-dates">CANCEL</button>

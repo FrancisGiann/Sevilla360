@@ -16,6 +16,7 @@ class SevillaCalendar {
     this.totalNights = 1;
     this.fixedDurationNights = null;
     this.requireHotelRules = options.requireHotelRules === true;
+    this.allowSelectionWhilePrimaryLocked = options.allowSelectionWhilePrimaryLocked === true;
     this.onRangeSelected = typeof options.onRangeSelected === 'function' ? options.onRangeSelected : null;
 
     this.bookedDatesList = [];
@@ -209,7 +210,7 @@ class SevillaCalendar {
 
         // Attach click listener ONLY for valid future dates
         cell.addEventListener("click", () => {
-          if (window.isDatesLocked && typeof window.showOverrideModal === "function") {
+          if (window.isDatesLocked && !this.allowSelectionWhilePrimaryLocked && typeof window.showOverrideModal === "function") {
             window.showOverrideModal(cellDate, this);
             return;
           }

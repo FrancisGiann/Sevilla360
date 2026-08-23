@@ -2,6 +2,13 @@
 session_start();
 require '../../config/db_connect.php';
 
+function lock_dates_bind_params(mysqli_stmt $statement, string $types, array $values): void
+{
+    $params = [$types];
+    foreach ($values as $index => $value) $params[] = &$values[$index];
+    call_user_func_array([$statement, 'bind_param'], $params);
+}
+
 $requested_source = $_POST['source'] ?? 'online';
 $is_staff_booking = ($requested_source === 'walkin');
 $is_authorized = $is_staff_booking
@@ -38,7 +45,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
+    $transaction_started = false;
     try {
+        $conn->begin_transaction();
+        $transaction_started = true;
         // HYGIENE: clean up expired locks
         $conn->query("DELETE FROM booking_locks WHERE expires_at < NOW()");
 
@@ -49,8 +59,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $overlap_cond = $is_hotel ? "(start_date < ? AND end_date > ?)" : "(start_date <= ? AND end_date >= ?)";
 
+        // Remove only the session's previous primary lock before taking venue
+        // row locks. Add-on locks are tracked separately and must survive this
+        // refresh; keeping this order aligned with the add-on synchronizer avoids
+        // lock-order inversions between the two endpoints.
+        $previous_primary_id = (int)($_SESSION['locked_venue_id'] ?? 0);
+        $tracked_addon_ids = array_values(array_filter(array_map('intval', (array)($_SESSION['walkin_addon_lock_ids'] ?? [])), static fn(int $id): bool => $id > 0));
+        if ($previous_primary_id > 0) {
+            if ($tracked_addon_ids) {
+                $placeholders = implode(',', array_fill(0, count($tracked_addon_ids), '?'));
+                $stmt_previous = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ? AND id NOT IN ($placeholders)");
+                lock_dates_bind_params($stmt_previous, 'is' . str_repeat('i', count($tracked_addon_ids)), [$previous_primary_id, $session_id, ...$tracked_addon_ids]);
+            } else {
+                $stmt_previous = $conn->prepare('DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?');
+                $stmt_previous->bind_param('is', $previous_primary_id, $session_id);
+            }
+            $stmt_previous->execute();
+        }
+
         if (!$is_hotel) {
-            $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
+            $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1 FOR UPDATE");
             $stmt->bind_param("ss", $room_type, $room_name);
             $stmt->execute();
             $result = $stmt->get_result();
@@ -82,7 +110,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // For Walk-in, venue_id might be explicitly provided
             if (!empty($_POST['venue_id'])) {
                 $explicit_vid = (int)$_POST['venue_id'];
-                $stmt_inv = $conn->prepare("SELECT id FROM venues WHERE id = ? AND status = 'Available'");
+                $stmt_inv = $conn->prepare("SELECT id FROM venues WHERE id = ? AND status = 'Available' FOR UPDATE");
                 $stmt_inv->bind_param("i", $explicit_vid);
             } else {
                 $stmt_inv = $conn->prepare("
@@ -90,6 +118,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     FROM venues v 
                     JOIN hotel_rooms h ON v.id = h.venue_id 
                     WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
+                    ORDER BY v.id
+                    FOR UPDATE
                 ");
                 $stmt_inv->bind_param("ss", $room_type, $room_name);
             }
@@ -146,20 +176,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $venue_id = $assigned_venue_id;
         }
 
-        // Insert or Update the temporary lock for this user's session
+        // Insert the temporary primary lock for this user's session.
         $expires_at = date('Y-m-d H:i:s', strtotime("+$lock_mins minutes"));
         $stmt_lock = $conn->prepare("
             INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) 
             VALUES (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE venue_id = VALUES(venue_id), start_date = VALUES(start_date), end_date = VALUES(end_date), expires_at = VALUES(expires_at), source = VALUES(source)
         ");
         $stmt_lock->bind_param("isssss", $venue_id, $session_id, $source, $start_date, $end_date, $expires_at);
         $stmt_lock->execute();
 
+        if (!$conn->commit()) throw new RuntimeException('Dates could not be held.');
         $_SESSION['locked_venue_id'] = $venue_id;
         echo "Success|Dates locked.";
 
     } catch (Exception $e) {
+        if ($transaction_started) $conn->rollback();
         echo "Error|" . $e->getMessage();
     }
 }

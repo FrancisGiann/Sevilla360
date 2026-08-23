@@ -843,3 +843,103 @@ textarea:focus {
 .addon-room-calendar { margin: 0 0 1rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; }
 .addon-room-calendar-heading { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; color: #374151; }
 .addon-room-calendar-heading span { color: #6b7280; font-size: .88rem; text-align: right; }
+
+/* Keep the hotel-room add-on calendar readable without changing standalone calendars. */
+@media (max-width: 768px) {
+  .checkout-summary .summary-total {
+    font-size: 1.1rem;
+  }
+
+  .checkout-summary .summary-total.payable {
+    font-size: 1.1rem;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .addons-section {
+    padding: 14px 12px;
+  }
+
+  #rooms-options.addon-content {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  #rooms-options .addon-room-calendar {
+    padding: 8px;
+  }
+
+  #rooms-options .addon-room-calendar-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: .35rem .75rem;
+  }
+
+  #rooms-options .addon-room-calendar-heading strong,
+  #rooms-options .addon-room-calendar-heading span {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  #rooms-options .addon-room-calendar-heading span {
+    text-align: left;
+  }
+
+  #rooms-options .addon-room-calendar > .calendar-ui {
+    padding: 12px 4px;
+    margin-bottom: 0;
+  }
+
+  #rooms-options .addon-room-calendar .cal-header {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+
+  #rooms-options .addon-room-calendar .cal-month-year {
+    min-width: 0;
+    font-size: 1.05rem;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #rooms-options .addon-room-calendar .cal-nav {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0 8px;
+  }
+
+  #rooms-options .addon-room-calendar .cal-weekdays {
+    font-size: .68rem;
+    letter-spacing: .02em;
+  }
+
+  #rooms-options .addon-room-calendar .cal-day-cell {
+    min-height: 44px;
+    height: 44px;
+    margin: 0 1px;
+    font-size: .9rem;
+  }
+
+  #rooms-options .addon-room-calendar .cal-legend {
+    justify-content: flex-start;
+    gap: .55rem .75rem;
+    padding-top: 16px;
+  }
+
+  #rooms-options .addon-room-calendar .legend-item {
+    gap: 5px;
+    font-size: .78rem;
+    line-height: 1.25;
+  }
+
+  #rooms-options .addon-room-calendar .dot {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+  }
+}

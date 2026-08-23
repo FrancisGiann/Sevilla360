@@ -15,9 +15,30 @@ class AdminWalkinController {
             activeTabId: 'tab-event',
             isDatesLocked: false,     
             activeCalendar: null,
+            pendingDateConfirmation: null,
+            addonConfirmedRange: null,
+            addonCommittedSelection: [],
+            addonLocksHeld: false,
             summary: { total: 0, amountDue: 0, html: '' },
             calendars: {}
         };
+
+        this.addonSyncPromise = null;
+        this.addonSyncDesired = null;
+        this.addonSyncWaiters = [];
+        this.addonSyncGeneration = 0;
+        this.addonCommittedRange = null;
+        this.addonServerUncertain = false;
+        this.addonReleasePromise = null;
+        this.addonResetPromise = null;
+        this.fullUnlockPromise = null;
+        this.tabSwitchPromise = null;
+        this.addonQuantityTimers = new WeakMap();
+        this.addonAvailabilityRequestId = 0;
+        this.lockRefreshPromise = null;
+        this.dateModalEscapeBound = false;
+        this.dateConfirmationInFlight = false;
+        window.isDatesLocked = false;
 
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
@@ -43,6 +64,7 @@ class AdminWalkinController {
             this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
             this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
                 requireHotelRules: true,
+                allowSelectionWhilePrimaryLocked: true,
                 onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
             });
         }
@@ -62,8 +84,8 @@ class AdminWalkinController {
         const hotelTypeSelect = this.getEl("hotel-room-type");
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
-            this.getEl("hotel-room-name").addEventListener('change', (e) => {
-                this.unlockDatesAPI();
+            this.getEl("hotel-room-name").addEventListener('change', async (e) => {
+                if (!await this.unlockDatesAPI()) return;
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
@@ -83,9 +105,10 @@ class AdminWalkinController {
             });
         }
 
-        this.getEl('event-venue')?.addEventListener('change', (e) => {
-            this.unlockDatesAPI();
+        this.getEl('event-venue')?.addEventListener('change', async (e) => {
+            if (!await this.unlockDatesAPI()) return;
             if (this.state.calendars.event) this.state.calendars.event.clearSelection();
+            await this.resetAddonStayDates({ release: false });
             
             const opt = e.target.options[e.target.selectedIndex];
             const venueName = opt.text.split('(')[0].trim();
@@ -108,8 +131,8 @@ class AdminWalkinController {
             }
         });
 
-        this.getEl('villa-type')?.addEventListener('change', (e) => {
-            this.unlockDatesAPI();
+        this.getEl('villa-type')?.addEventListener('change', async (e) => {
+            if (!await this.unlockDatesAPI()) return;
             if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
 
             const opt = e.target.options[e.target.selectedIndex];
@@ -140,9 +163,19 @@ class AdminWalkinController {
 
         this.setupToggle("check-catering", "catering-options");
         this.setupToggle("check-rooms", "rooms-options");
-        this.getEl('check-rooms')?.addEventListener('change', (e) => {
-            if (e.target.checked) this.suggestAddonStayDates();
-            else this.resetAddonStayDates();
+        this.getEl('check-rooms')?.addEventListener('change', async (e) => {
+            if (e.target.checked) {
+                if (this.addonReleasePromise || this.addonResetPromise) {
+                    e.target.checked = false;
+                    this.getEl('rooms-options')?.classList.add('hidden');
+                    return;
+                }
+                this.suggestAddonStayDates();
+            }
+            else if (!await this.resetAddonStayDates()) {
+                e.target.checked = true;
+                this.getEl('rooms-options')?.classList.remove('hidden');
+            }
         });
 
         document.querySelectorAll(".counter").forEach(counter => {
@@ -170,9 +203,9 @@ class AdminWalkinController {
         // HOTEL ROOM ADD-ON: "Add" buttons on room group cards
         // =========================================================================
         document.querySelectorAll('.btn-add-room-group').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const groupKey = e.target.dataset.groupKey;
-                this.addRoomGroupToSelection(groupKey);
+            btn.addEventListener('click', async (e) => {
+                const groupKey = e.currentTarget.dataset.groupKey;
+                await this.addRoomGroupToSelection(groupKey);
             });
         });
 
@@ -203,25 +236,25 @@ class AdminWalkinController {
     // HOTEL ROOM ADD-ON MANAGEMENT
     // =========================================================================
     getAddonStayRange() {
-        const calendar = this.state.calendars.addonHotel;
-        if (!calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate) return null;
-        return { start: calendar.startDate, end: calendar.endDate, nights: Math.round((calendar.endDate - calendar.startDate) / 86400000) };
+        const range = this.state.addonConfirmedRange;
+        if (!range?.start || !range?.end) return null;
+        const start = new Date(range.start);
+        const end = new Date(range.end);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
+        return { start, end, nights: Math.round((end - start) / 86400000) };
     }
 
     handleAddonRangeSelected(start, end) {
-        const range = this.getAddonStayRange();
-        const display = this.getEl('addon-room-date-display');
-        if (!range) {
-            if (display) display.textContent = 'Select a stay of at least 1 night';
+        if (!(start instanceof Date) || !(end instanceof Date) || end <= start) {
+            showAlert('Notice', 'Hotel room add-ons require a stay of at least one night.');
+            this.state.calendars.addonHotel?.clearSelectedRange();
             return;
         }
-        if (display) display.textContent = `${this.formatSafeDate(start)} to ${this.formatSafeDate(end)} (${range.nights} night${range.nights === 1 ? '' : 's'})`;
-        this.updateRoomAvailabilityLabels(start, end);
-        this.syncSelectedRoomLineItems();
-        this.calculateSummary();
+        this.openDateConfirmation('addon', start, end, this.state.calendars.addonHotel);
     }
 
     suggestAddonStayDates() {
+        if (this.addonReleasePromise || this.addonResetPromise) return;
         const calendar = this.state.calendars.addonHotel;
         if (!calendar || this.getAddonStayRange()) return;
         const event = this.state.calendars.event;
@@ -233,12 +266,30 @@ class AdminWalkinController {
         this.handleAddonRangeSelected(start, end);
     }
 
-    resetAddonStayDates() {
-        const calendar = this.state.calendars.addonHotel;
-        if (calendar) { calendar.startDate = null; calendar.endDate = null; calendar.render(); }
-        const display = this.getEl('addon-room-date-display');
-        if (display) display.textContent = 'Select a stay of at least 1 night';
-        this.syncSelectedRoomLineItems();
+    async resetAddonStayDates({ release = true } = {}) {
+        if (this.addonResetPromise) return this.addonResetPromise;
+        const request = (async () => {
+            if (release && !(await this.releaseAddonLocksAPI())) return false;
+            const calendar = this.state.calendars.addonHotel;
+            if (calendar) { calendar.startDate = null; calendar.endDate = null; calendar.render(); }
+            const display = this.getEl('addon-room-date-display');
+            if (display) display.textContent = 'Select a stay of at least 1 night';
+            document.querySelectorAll('.selected-room-row').forEach(row => {
+                this.syncSystemLineItem(`room_${row.dataset.selKey}`, '', 0);
+            });
+            this.getEl('selected-room-groups')?.replaceChildren();
+            this.state.addonConfirmedRange = null;
+            this.state.addonCommittedSelection = [];
+            this.state.addonLocksHeld = false;
+            this.addonCommittedRange = null;
+            this.addonServerUncertain = false;
+            this.calculateSummary();
+            if (!this.state.isDatesLocked) this.stopLockRefresh();
+            return true;
+        })();
+        this.addonResetPromise = request;
+        try { return await request; }
+        finally { this.addonResetPromise = null; }
     }
 
     syncSelectedRoomLineItems() {
@@ -251,61 +302,352 @@ class AdminWalkinController {
         });
     }
 
-    addRoomGroupToSelection(groupKey) {
+    captureAddonSelection() {
+        return Array.from(document.querySelectorAll('.selected-room-row')).map(row => ({
+            key: row.dataset.selKey || '',
+            building_name: row.dataset.building || '',
+            room_type: row.dataset.roomType || '',
+            rate: parseFloat(row.dataset.rate) || 0,
+            quantity: Math.max(1, parseInt(row.querySelector('.sel-room-qty')?.value, 10) || 1),
+            max: parseInt(row.querySelector('.sel-room-qty')?.max, 10) || 1
+        })).filter(item => item.key && item.building_name && item.room_type);
+    }
+
+    createSelectedRoomRow(selection) {
         const container = document.getElementById('selected-room-groups');
-        if (!container) return;
-
-        if (container.querySelector(`[data-sel-key="${CSS.escape(groupKey)}"]`)) {
-            showAlert('Notice', 'This room group is already selected. Adjust the quantity in the line items.');
-            return;
-        }
-
-        const card = document.querySelector(`.room-group-card[data-group-key="${CSS.escape(groupKey)}"]`);
-        if (!card) return;
-
-        const building  = card.dataset.building;
-        const roomType  = card.dataset.roomType;
-        const rate      = parseFloat(card.dataset.rate);
-        const inventory = parseInt(card.dataset.available ?? card.dataset.inventory) || 1;
+        if (!container || !selection?.key) return null;
 
         const row = document.createElement('div');
         row.className = 'wi-row selected-room-row';
-        row.setAttribute('data-sel-key', groupKey);
-        row.setAttribute('data-building', building);
-        row.setAttribute('data-room-type', roomType);
-        row.setAttribute('data-rate', rate);
+        row.setAttribute('data-sel-key', selection.key);
+        row.setAttribute('data-building', selection.building_name);
+        row.setAttribute('data-room-type', selection.room_type);
+        row.setAttribute('data-rate', selection.rate);
         row.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; align-items:center;';
         row.innerHTML = `
             <div style="flex:1; display:flex; flex-direction:column;">
-                <strong style="font-size:0.95rem; color:#333;">${building} — ${roomType}</strong>
-                <small style="color:#666;">₱${rate.toLocaleString()}/night</small>
+                <strong style="font-size:0.95rem; color:#333;"></strong>
+                <small style="color:#666;"></small>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
                 <label style="font-size:0.85rem; font-weight:600; color:#555;">Qty:</label>
-                <input type="number" class="sel-room-qty" min="1" max="${inventory}" value="1"
+                <input type="number" class="sel-room-qty" min="1" max="${selection.max || 1}" value="${selection.quantity || 1}"
                     style="width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
                 <button type="button" class="btn-remove-room-sel" style="width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;" title="Remove"><i class="fa-solid fa-times"></i></button>
             </div>
         `;
+        row.querySelector('strong').textContent = `${selection.building_name} — ${selection.room_type}`;
+        row.querySelector('small').textContent = `₱${selection.rate.toLocaleString()}/night`;
         container.appendChild(row);
 
-        // Also add to line items builder for admin negotiation
-        const nights = this.getAddonStayRange()?.nights || 0;
-        this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×1 room, ×${nights} nights)`, rate * nights);
-
-        row.querySelector('.sel-room-qty').addEventListener('input', (e) => {
-            const qty = parseInt(e.target.value) || 1;
-            const roomNights = this.getAddonStayRange()?.nights || 0;
-            this.syncSystemLineItem(`room_${groupKey}`, `${building} — ${roomType} (×${qty} rooms, ×${roomNights} nights)`, rate * qty * roomNights);
+        const qtyInput = row.querySelector('.sel-room-qty');
+        qtyInput.addEventListener('input', (e) => {
+            const max = parseInt(e.target.max, 10) || 1;
+            e.target.value = Math.min(max, Math.max(1, parseInt(e.target.value, 10) || 1));
+            this.syncSelectedRoomLineItems();
             this.calculateSummary();
+            clearTimeout(this.addonQuantityTimers.get(row));
+            this.addonQuantityTimers.set(row, setTimeout(async () => {
+                const outcome = await this.syncAddonSelection('quantity');
+                if (!outcome.ok && !outcome.stale && !outcome.blocked) {
+                    // The queue restores the committed snapshot on its final
+                    // failure; refresh derived line items after that rollback.
+                    this.syncSelectedRoomLineItems();
+                    this.calculateSummary();
+                }
+            }, 350));
         });
-        row.querySelector('.btn-remove-room-sel').addEventListener('click', () => {
+
+        row.querySelector('.btn-remove-room-sel').addEventListener('click', async () => {
+            const previous = this.state.addonCommittedSelection.map(item => ({ ...item }));
+            clearTimeout(this.addonQuantityTimers.get(row));
             row.remove();
-            this.syncSystemLineItem(`room_${groupKey}`, '', 0);
+            this.syncSystemLineItemsForSelection();
             this.calculateSummary();
+            const outcome = await this.syncAddonSelection('remove');
+            if (!outcome.ok && !outcome.stale && !outcome.blocked) this.restoreAddonSelection(previous);
         });
 
+        this.syncSelectedRoomLineItems();
+        return row;
+    }
+
+    syncSystemLineItemsForSelection() {
+        const selectedKeys = new Set();
+        this.captureAddonSelection().forEach(item => selectedKeys.add(`room_${item.key}`));
+        document.querySelectorAll('#wi-line-items .wi-row[data-system^="room_"]').forEach(row => {
+            if (!selectedKeys.has(row.dataset.system)) row.remove();
+        });
+        this.syncSelectedRoomLineItems();
+    }
+
+    restoreAddonSelection(selection) {
+        const container = this.getEl('selected-room-groups');
+        if (!container) return;
+        container.replaceChildren();
+        selection.forEach(item => this.createSelectedRoomRow(item));
+        this.state.addonCommittedSelection = selection.map(item => ({ ...item }));
+        this.syncSystemLineItemsForSelection();
         this.calculateSummary();
+    }
+
+    async addRoomGroupToSelection(groupKey) {
+        if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) return false;
+        const range = this.getAddonStayRange();
+        if (!range) {
+            showAlert('Notice', 'Confirm a hotel check-in and check-out range before adding rooms.');
+            return false;
+        }
+
+        const container = this.getEl('selected-room-groups');
+        if (!container) return false;
+        const escapedKey = CSS.escape(groupKey);
+        if (container.querySelector(`[data-sel-key="${escapedKey}"]`)) {
+            showAlert('Notice', 'This room group is already selected. Adjust the quantity in the line items.');
+            return false;
+        }
+
+        const card = document.querySelector(`.room-group-card[data-group-key="${escapedKey}"]`);
+        if (!card) return false;
+
+        const available = parseInt(card.dataset.available ?? card.dataset.inventory, 10) || 0;
+        if (available < 1) {
+            showAlert('Notice', 'No rooms are available for this hotel stay.');
+            return false;
+        }
+
+        const previous = this.state.addonCommittedSelection.map(item => ({ ...item }));
+        const selection = {
+            key: groupKey,
+            building_name: card.dataset.building || '',
+            room_type: card.dataset.roomType || '',
+            rate: parseFloat(card.dataset.rate) || 0,
+            quantity: 1,
+            max: available
+        };
+        this.createSelectedRoomRow(selection);
+        this.calculateSummary();
+        const outcome = await this.syncAddonSelection('add');
+        if (!outcome.ok && !outcome.stale && !outcome.blocked) this.restoreAddonSelection(previous);
+        return outcome.ok;
+    }
+
+    cloneAddonSelection(selection) {
+        return (selection || []).map(item => ({ ...item }));
+    }
+
+    cloneAddonRange(range) {
+        if (!range?.start || !range?.end) return null;
+        const start = new Date(range.start);
+        const end = new Date(range.end);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
+        return { start, end, nights: Math.round((end - start) / 86400000) };
+    }
+
+    getCommittedAddonSnapshot() {
+        return {
+            selection: this.cloneAddonSelection(this.state.addonCommittedSelection),
+            range: this.cloneAddonRange(this.addonCommittedRange)
+        };
+    }
+
+    async postAddonBatch(snapshot) {
+        const formData = new FormData();
+        formData.append('start_date', this.formatSafeDate(snapshot.range.start));
+        formData.append('end_date', this.formatSafeDate(snapshot.range.end));
+        formData.append('groups', JSON.stringify(snapshot.selection.map(item => ({
+            building_name: item.building_name,
+            room_type: item.room_type,
+            quantity: item.quantity
+        }))));
+        formData.append('source', 'walkin');
+        try {
+            const res = await fetch('actions/bookings/lock_addon_rooms.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken },
+                body: formData
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) {
+                return { ok: false, error: new Error(data?.message || 'The selected hotel rooms could not be temporarily held.') };
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error };
+        }
+    }
+
+    async postAddonRelease() {
+        const formData = new FormData();
+        formData.append('release_only', '1');
+        formData.append('source', 'walkin');
+        try {
+            const res = await fetch('actions/bookings/lock_addon_rooms.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken },
+                body: formData
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) {
+                return { ok: false, error: new Error(data?.message || 'Room holds could not be released.') };
+            }
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error };
+        }
+    }
+
+    commitAddonSnapshot(snapshot) {
+        this.state.addonCommittedSelection = this.cloneAddonSelection(snapshot.selection);
+        this.addonCommittedRange = this.state.addonCommittedSelection.length ? this.cloneAddonRange(snapshot.range) : null;
+        this.state.addonLocksHeld = this.state.addonCommittedSelection.length > 0;
+        this.addonServerUncertain = false;
+        this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+        if (this.state.addonLocksHeld) this.startLockRefresh();
+        else if (!this.state.isDatesLocked) this.stopLockRefresh();
+    }
+
+    restoreCommittedAddonUI(snapshot) {
+        this.restoreAddonSelection(snapshot.selection);
+        this.state.addonLocksHeld = snapshot.selection.length > 0 && !this.addonServerUncertain;
+        this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+    }
+
+    resolveAddonWaiters(generation, result) {
+        const remaining = [];
+        this.addonSyncWaiters.forEach(waiter => {
+            if (waiter.generation <= generation) waiter.resolve({ ...result });
+            else remaining.push(waiter);
+        });
+        this.addonSyncWaiters = remaining;
+    }
+
+    async reconcileAddonSnapshot(snapshot) {
+        if (!snapshot.selection.length) return (await this.postAddonRelease()).ok;
+        if (!snapshot.range) return false;
+        return (await this.postAddonBatch(snapshot)).ok;
+    }
+
+    async runAddonSyncQueue() {
+        try {
+            while (this.addonSyncDesired) {
+                const target = this.addonSyncDesired;
+                this.addonSyncDesired = null;
+                const previous = this.getCommittedAddonSnapshot();
+                const response = await this.postAddonBatch(target);
+                let result;
+                if (response.ok) {
+                    this.commitAddonSnapshot(target);
+                    result = { ok: true, stale: false, blocked: false };
+                } else {
+                    const reconciled = await this.reconcileAddonSnapshot(previous);
+                    if (reconciled) {
+                        this.commitAddonSnapshot(previous);
+                    } else {
+                        this.addonServerUncertain = true;
+                        this.state.addonLocksHeld = false;
+                        this.toggleLockBanner(this.state.isDatesLocked);
+                    }
+                    // A newer generation may have changed the UI while this
+                    // request and its reconciliation were in flight. Leave
+                    // that desired state intact; only the final failure may
+                    // roll the UI back to the server-confirmed snapshot.
+                    if (!this.addonSyncDesired) {
+                        this.restoreCommittedAddonUI(previous);
+                        if (!reconciled) {
+                            this.state.addonLocksHeld = false;
+                            this.toggleLockBanner(this.state.isDatesLocked);
+                        }
+                    }
+                    result = { ok: false, stale: false, blocked: false, error: response.error };
+                    if (!this.addonSyncDesired) {
+                        if (!target.silent) {
+                            showAlert('Room Hold Failed', response.error?.message || 'The selected hotel rooms could not be held.', 'error');
+                        } else {
+                            showAlert('Room Hold Refresh Failed', response.error?.message || 'The selected hotel rooms could not be refreshed.', 'error');
+                        }
+                    }
+                }
+
+                if (this.addonSyncDesired) {
+                    this.resolveAddonWaiters(target.generation, { ok: false, stale: true, blocked: false });
+                } else {
+                    this.resolveAddonWaiters(target.generation, result);
+                }
+            }
+        } finally {
+            this.addonSyncPromise = null;
+        }
+    }
+
+    enqueueAddonSync(snapshot, reason, silent) {
+        const generation = ++this.addonSyncGeneration;
+        const target = {
+            generation,
+            selection: this.cloneAddonSelection(snapshot.selection),
+            range: this.cloneAddonRange(snapshot.range),
+            reason,
+            silent
+        };
+        const waiter = new Promise(resolve => this.addonSyncWaiters.push({ generation, resolve }));
+        this.addonSyncDesired = target;
+        if (!this.addonSyncPromise) this.addonSyncPromise = this.runAddonSyncQueue();
+        return waiter;
+    }
+
+    async syncAddonSelection(reason = 'selection', rangeOverride = null, silent = false) {
+        if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) {
+            return { ok: false, stale: false, blocked: true };
+        }
+        const selection = this.captureAddonSelection();
+        const range = rangeOverride || this.getAddonStayRange();
+        if (!selection.length) {
+            const released = await this.releaseAddonLocksAPI();
+            return { ok: released, stale: false, blocked: false };
+        }
+        if (!range) {
+            if (!silent) showAlert('Notice', 'Confirm a valid hotel stay before holding room inventory.');
+            this.restoreAddonSelection(this.state.addonCommittedSelection);
+            return { ok: false, stale: false, blocked: false };
+        }
+        return this.enqueueAddonSync({ selection, range }, reason, silent);
+    }
+
+    async releaseAddonLocksAPI() {
+        if (this.addonReleasePromise) return this.addonReleasePromise;
+        const request = (async () => {
+            // Supersede any queued (not yet dispatched) batch. An in-flight
+            // request is allowed to finish; the release follows it on the same
+            // serialized chain so its response cannot be mistaken for success.
+            this.addonSyncDesired = null;
+            this.resolveAddonWaiters(Number.MAX_SAFE_INTEGER, { ok: false, stale: true, blocked: true });
+            const pending = this.addonSyncPromise;
+            if (pending) {
+                try { await pending; } catch (error) { /* release still needs to be attempted */ }
+            }
+            const previous = this.getCommittedAddonSnapshot();
+            const previousHeld = this.state.addonLocksHeld;
+            const response = await this.postAddonRelease();
+            if (response.ok) {
+                this.state.addonLocksHeld = false;
+                this.state.addonCommittedSelection = [];
+                this.addonCommittedRange = null;
+                this.addonServerUncertain = false;
+                this.toggleLockBanner(this.state.isDatesLocked);
+                if (!this.state.isDatesLocked) this.stopLockRefresh();
+                this.addonReleasePromise = null;
+                return true;
+            }
+            this.state.addonLocksHeld = previousHeld;
+            this.state.addonCommittedSelection = previous.selection;
+            this.addonCommittedRange = previous.range;
+            this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+            showAlert('Room Hold Release Failed', response.error?.message || 'Room holds could not be released. Please try again.', 'error');
+            this.addonReleasePromise = null;
+            return false;
+        })();
+        this.addonReleasePromise = request;
+        return request;
     }
     // =========================================================================
 
@@ -321,14 +663,20 @@ class AdminWalkinController {
         document.querySelector(".btn-cancel-walkin")?.addEventListener("click", () => {
             showConfirm("Confirm Cancellation", "Are you sure you want to clear this booking form?").then(async confirmed => {
                 if (confirmed) {
-                    await this.unlockDatesAPI();
-                    window.location.reload();
+                    if (await this.unlockDatesAPI()) window.location.reload();
                 }
             });
         });
     }
 
     getEl(id) { return document.getElementById(id); }
+    replaceElement(id) {
+        const oldElement = this.getEl(id);
+        if (!oldElement?.parentNode) return null;
+        const newElement = oldElement.cloneNode(true);
+        oldElement.parentNode.replaceChild(newElement, oldElement);
+        return newElement;
+    }
     safeFloat(val) { return parseFloat(val) || 0; }
     formatCurrency(amount) { return '₱' + this.safeFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     formatSafeDate(dateObj) { return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`; }
@@ -412,128 +760,310 @@ class AdminWalkinController {
         }
     }
 
-    handleTabSwitch(btn) {
-        if (btn.classList.contains("active")) return;
+    async handleTabSwitch(btn) {
+        if (btn.classList.contains("active") || this.tabSwitchPromise) return;
         const targetId = btn.getAttribute("data-target");
-        
-        this.unlockDatesAPI(); // Clear any active locks on tab switch
-        if (this.state.calendars.event) this.state.calendars.event.clearSelection();
-        if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
-        if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
-        this.resetAddonStayDates();
+        this.tabSwitchPromise = (async () => {
+            if (!await this.unlockDatesAPI()) return;
+            await this.resetAddonStayDates({ release: false });
+            if (this.state.calendars.event) this.state.calendars.event.clearSelection();
+            if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
+            if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
 
-        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+            document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
 
-        btn.classList.add("active");
-        this.getEl(targetId)?.classList.add("active");
-        this.state.activeTabId = targetId;
-        this.updateAdminNotesVisibility();
+            btn.classList.add("active");
+            this.getEl(targetId)?.classList.add("active");
+            this.state.activeTabId = targetId;
+            this.updateAdminNotesVisibility();
 
-        if (targetId === "tab-event" && this.state.calendars.event) this.state.calendars.event.updateDateDisplay();
-        if (targetId === "tab-hotel" && this.state.calendars.hotel) this.state.calendars.hotel.updateDateDisplay();
-        if (targetId === "tab-villa" && this.state.calendars.villa) this.state.calendars.villa.updateDateDisplay();
+            if (targetId === "tab-event" && this.state.calendars.event) this.state.calendars.event.updateDateDisplay();
+            if (targetId === "tab-hotel" && this.state.calendars.hotel) this.state.calendars.hotel.updateDateDisplay();
+            if (targetId === "tab-villa" && this.state.calendars.villa) this.state.calendars.villa.updateDateDisplay();
 
-        this.calculateSummary();
+            this.calculateSummary();
+        })();
+        try { await this.tabSwitchPromise; }
+        finally { this.tabSwitchPromise = null; }
     }
 
-    async requestDateConfirmation(startDate, endDate, calendarInstance) {
-        const lockData = this.getTabContextData();
-        if (!lockData.roomName && !lockData.venueId) {
-            showAlert("Notice", "Please select a specific venue/room from the dropdown first!");
-            calendarInstance.clearSelection();
-            return;
+    requestDateConfirmation(startDate, endDate, calendarInstance) {
+        this.openDateConfirmation('primary', startDate, endDate, calendarInstance);
+    }
+
+    openDateConfirmation(kind, startDate, endDate, calendarInstance) {
+        if (!(startDate instanceof Date) || Number.isNaN(startDate.getTime())) return;
+        const actualEnd = endDate instanceof Date && endDate > startDate ? endDate : startDate;
+        if (kind === 'primary') {
+            const lockData = this.getTabContextData();
+            if (!lockData.roomName && !lockData.venueId) {
+                showAlert('Notice', 'Please select a specific venue/room from the dropdown first!');
+                calendarInstance?.clearSelection();
+                return;
+            }
         }
 
+        const dateModal = this.getEl('confirm-dates-modal');
+        const dateDisplay = this.getEl('confirm-date-display');
+        const title = this.getEl('confirm-dates-title');
+        const copy = this.getEl('confirm-dates-copy');
+        if (!dateModal || !dateDisplay) return;
+
+        this.state.pendingDateConfirmation = { kind, start: new Date(startDate), end: new Date(actualEnd), calendar: calendarInstance };
+        const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+        dateDisplay.textContent = `${startDate.toLocaleDateString('en-US', opts)} — ${actualEnd.toLocaleDateString('en-US', opts)}`;
+        if (title) title.textContent = kind === 'addon' ? 'Confirm Hotel Stay' : 'Confirm Dates';
+        if (copy) copy.textContent = kind === 'addon'
+            ? 'Confirming accepts this hotel stay range. Concrete rooms will be temporarily held only after you add them.'
+            : 'Proceeding will temporarily hold these dates for 60 minutes while you complete this walk-in booking.';
+        dateModal.classList.add('active');
+
+        const confirmBtn = this.replaceElement('btn-confirm-dates');
+        const cancelBtn = this.replaceElement('btn-cancel-dates');
+        cancelBtn?.addEventListener('click', () => this.cancelPendingDateConfirmation());
+        confirmBtn?.addEventListener('click', () => this.confirmPendingDateConfirmation(confirmBtn));
+
+        if (!this.dateModalEscapeBound) {
+            this.dateModalEscapeBound = true;
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && this.getEl('confirm-dates-modal')?.classList.contains('active')) {
+                    this.cancelPendingDateConfirmation();
+                }
+            });
+        }
+    }
+
+    cancelPendingDateConfirmation() {
+        if (this.dateConfirmationInFlight) return;
+        const pending = this.state.pendingDateConfirmation;
+        this.state.pendingDateConfirmation = null;
+        this.getEl('confirm-dates-modal')?.classList.remove('active');
+        if (!pending?.calendar) return;
+        if (pending.kind === 'addon') {
+            const confirmed = this.getAddonStayRange();
+            if (confirmed) pending.calendar.setSelection(confirmed.start, confirmed.end);
+            else pending.calendar.clearSelectedRange();
+            this.updateAddonDateDisplay();
+        } else {
+            pending.calendar.clearSelectedRange();
+        }
+    }
+
+    async confirmPendingDateConfirmation(confirmBtn) {
+        const pending = this.state.pendingDateConfirmation;
+        if (!pending || !confirmBtn || confirmBtn.disabled) return;
+        this.dateConfirmationInFlight = true;
+        confirmBtn.disabled = true;
+        this.getEl('btn-cancel-dates')?.setAttribute('disabled', 'disabled');
+        confirmBtn.textContent = 'HOLDING...';
+        let success = false;
+        try {
+            if (pending.kind === 'addon') success = await this.confirmAddonDateRange(pending.start, pending.end, pending.calendar);
+            else success = await this.lockPrimaryDates(pending.start, pending.end, pending.calendar, false);
+        } finally {
+            if (this.state.pendingDateConfirmation === pending) this.state.pendingDateConfirmation = null;
+            confirmBtn.disabled = false;
+            this.getEl('btn-cancel-dates')?.removeAttribute('disabled');
+            confirmBtn.textContent = 'CONFIRM';
+            this.dateConfirmationInFlight = false;
+            if (success) this.getEl('confirm-dates-modal')?.classList.remove('active');
+            else {
+                this.getEl('confirm-dates-modal')?.classList.remove('active');
+                if (pending.kind === 'primary') pending.calendar?.clearSelectedRange();
+            }
+        }
+    }
+
+    async confirmAddonDateRange(startDate, endDate, calendarInstance) {
+        const previousRange = this.getAddonStayRange();
+        const selected = this.captureAddonSelection();
+        const proposed = { start: new Date(startDate), end: new Date(endDate), nights: Math.round((endDate - startDate) / 86400000) };
+        if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) {
+            if (previousRange) calendarInstance.setSelection(previousRange.start, previousRange.end);
+            else calendarInstance.clearSelectedRange();
+            this.updateAddonDateDisplay();
+            return false;
+        }
+        if (selected.length) {
+            const outcome = await this.syncAddonSelection('date-change', proposed);
+            if (!outcome.ok) {
+                this.state.addonConfirmedRange = previousRange ? { ...previousRange } : null;
+                if (previousRange) calendarInstance.setSelection(previousRange.start, previousRange.end);
+                else calendarInstance.clearSelectedRange();
+                this.updateAddonDateDisplay();
+                return false;
+            }
+        }
+        this.state.addonConfirmedRange = proposed;
+        this.updateAddonDateDisplay();
+        this.updateRoomAvailabilityLabels(startDate, endDate);
+        this.syncSelectedRoomLineItems();
+        this.calculateSummary();
+        return true;
+    }
+
+    async lockPrimaryDates(startDate, endDate, calendarInstance, silent = false) {
+        const lockData = this.getTabContextData();
+        if (!lockData.roomName && !lockData.venueId) {
+            if (!silent) showAlert('Notice', 'Please select a specific venue/room from the dropdown first!');
+            return false;
+        }
         const formData = new FormData();
         formData.append('start_date', this.formatSafeDate(startDate));
-        formData.append('end_date', endDate ? this.formatSafeDate(endDate) : this.formatSafeDate(startDate));
+        formData.append('end_date', this.formatSafeDate(endDate || startDate));
         formData.append('source', 'walkin');
-
-        if (lockData.venueId) {
-            formData.append('venue_id', lockData.venueId);
-        } else {
+        if (lockData.venueId) formData.append('venue_id', lockData.venueId);
+        else {
             formData.append('room_type', lockData.roomType);
             formData.append('room_name', lockData.roomName);
         }
 
         try {
-            const res = await fetch('actions/bookings/lock_dates.php', { 
-                method: 'POST', 
-                headers: { "X-CSRF-Token": this.csrfToken }, 
-                body: formData 
+            const res = await fetch('actions/bookings/lock_dates.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken },
+                body: formData
             });
-            if (res.status === 401) {
-                showAlert("Session Expired", "Your admin session has expired. Please sign in again.", "error", true);
-                return;
-            }
             const text = await res.text();
             const response = text.split('|');
+            if (res.status === 401) throw Object.assign(new Error('Your admin session has expired. Please sign in again.'), { sessionExpired: true });
+            if (!res.ok || response[0] !== 'Success') throw new Error(response[1] || 'Dates could not be held.');
 
-            if (response[0] === 'Success') {
-                this.state.activeCalendar = calendarInstance;
-                this.state.isDatesLocked = true; 
-                
-                if (this.state.activeCalendar) {
-                    this.state.activeCalendar.updateDateDisplay();
-                }
-
-                // Show lock banner
-                this.toggleLockBanner(true);
-                this.startLockRefresh();
-
-                // Update room availability labels in add-on panel
-                if (this.state.activeTabId === 'tab-event') this.suggestAddonStayDates();
-
-                this.calculateSummary();
-            } else {
-                calendarInstance.clearSelection();
-                throw new Error(response[1]);
+            this.state.activeCalendar = calendarInstance;
+            this.state.isDatesLocked = true;
+            window.isDatesLocked = true;
+            calendarInstance?.updateDateDisplay();
+            this.toggleLockBanner(true);
+            if (!silent) this.startLockRefresh();
+            if (this.state.activeTabId === 'tab-event' && this.getEl('check-rooms')?.checked) this.suggestAddonStayDates();
+            this.calculateSummary();
+            return true;
+        } catch (error) {
+            this.state.isDatesLocked = false;
+            window.isDatesLocked = false;
+            if (silent) {
+                if (this.state.addonLocksHeld && this.getAddonStayRange()) this.startLockRefresh();
+                else this.stopLockRefresh();
             }
-        } catch (err) {
-            showAlert("Notice", "Error: " + err.message);
+            this.toggleLockBanner(this.state.addonLocksHeld);
+            if (error.sessionExpired) showAlert('Session Expired', error.message, 'error', true);
+            else showAlert(silent ? 'Dates Hold Refresh Failed' : 'Dates Hold Failed', error.message || 'Dates could not be held.', 'error');
+            if (calendarInstance) {
+                const context = this.getTabContextData();
+                calendarInstance.fetchBookedDates(context.roomType, context.roomName, context.venueId);
+            }
+            return false;
         }
     }
 
     async unlockDatesAPI() {
-        if (!this.state.isDatesLocked) return;
-        try { 
-            await fetch('actions/bookings/unlock_dates.php', {
-                method: 'POST',
-                headers: { "X-CSRF-Token": this.csrfToken }
-            }); 
-            this.state.isDatesLocked = false;
-            this.toggleLockBanner(false);
-            if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
-        } 
-        catch (error) { console.error("Unlock failed", error); }
+        if (this.fullUnlockPromise) return this.fullUnlockPromise;
+        const request = (async () => {
+            const pendingAddonSync = this.addonSyncPromise;
+            if (pendingAddonSync) {
+                try { await pendingAddonSync; } catch (error) { /* continue with full release */ }
+            }
+            if (this.addonReleasePromise) {
+                try { await this.addonReleasePromise; } catch (error) { /* full release still verifies its own response */ }
+            }
+            if (this.lockRefreshPromise) {
+                try { await this.lockRefreshPromise; } catch (error) { /* the unlock request still verifies server state */ }
+            }
+            try {
+                const res = await fetch('actions/bookings/unlock_dates.php', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': this.csrfToken }
+                });
+                const text = await res.text();
+                const response = text.split('|');
+                if (!res.ok || response[0] !== 'Success') throw new Error(response[1] || 'Temporary holds could not be released.');
+                this.state.isDatesLocked = false;
+                window.isDatesLocked = false;
+                this.state.addonLocksHeld = false;
+                this.state.addonCommittedSelection = [];
+                this.state.addonConfirmedRange = null;
+                this.addonCommittedRange = null;
+                this.addonServerUncertain = false;
+                this.toggleLockBanner(false);
+                this.stopLockRefresh();
+                return true;
+            } catch (error) {
+                this.toggleLockBanner(this.state.isDatesLocked || this.state.addonLocksHeld);
+                showAlert('Release Failed', error.message || 'Temporary holds could not be released. Please try again.', 'error');
+                return false;
+            } finally {
+                this.fullUnlockPromise = null;
+            }
+        })();
+        this.fullUnlockPromise = request;
+        return request;
+    }
+
+    stopLockRefresh() {
+        if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
+        this.lockRefreshInterval = null;
     }
 
     startLockRefresh() {
-        if (this.lockRefreshInterval) clearInterval(this.lockRefreshInterval);
-        // Refresh every 55 minutes to keep the 60-min lock alive while admin works
+        this.stopLockRefresh();
+        // Refresh every 55 minutes to keep the 60-minute primary and add-on holds alive.
         this.lockRefreshInterval = setInterval(() => {
-            if (this.state.isDatesLocked && this.state.activeCalendar && this.state.activeCalendar.startDate) {
-                this.requestDateConfirmation(this.state.activeCalendar.startDate, this.state.activeCalendar.endDate, this.state.activeCalendar);
-            }
-        }, 55 * 60 * 1000); 
+            if (this.lockRefreshPromise) return;
+            this.lockRefreshPromise = (async () => {
+                try {
+                    if (!this.state.isDatesLocked && !this.state.addonLocksHeld) {
+                        this.stopLockRefresh();
+                        return;
+                    }
+                    if (this.state.isDatesLocked && this.state.activeCalendar?.startDate) {
+                        const primaryOk = await this.lockPrimaryDates(this.state.activeCalendar.startDate, this.state.activeCalendar.endDate, this.state.activeCalendar, true);
+                        if (!primaryOk) return;
+                    }
+                    if (this.state.addonLocksHeld && this.getAddonStayRange()) {
+                        await this.syncAddonSelection('refresh', this.getAddonStayRange(), true);
+                    }
+                } finally {
+                    this.lockRefreshPromise = null;
+                }
+            })();
+        }, 55 * 60 * 1000);
+    }
+
+    updateAddonDateDisplay() {
+        const display = this.getEl('addon-room-date-display');
+        const range = this.getAddonStayRange();
+        if (!display) return;
+        if (!range) {
+            display.textContent = 'Select a stay of at least 1 night';
+            return;
+        }
+        display.textContent = `${this.formatSafeDate(range.start)} to ${this.formatSafeDate(range.end)} (${range.nights} night${range.nights === 1 ? '' : 's'})`;
     }
 
     toggleLockBanner(show) {
         let banner = document.getElementById("walkin-lock-banner");
+        const hasPrimaryHold = this.state.isDatesLocked;
+        const hasAddonHold = this.state.addonLocksHeld;
+        if ((!show || (!hasPrimaryHold && !hasAddonHold)) && banner) {
+            banner.remove();
+            return;
+        }
         if (!banner && show) {
             banner = document.createElement("div");
             banner.id = "walkin-lock-banner";
             banner.style.cssText = "background-color: #d1fae5; color: #065f46; padding: 10px 15px; border-radius: 6px; border: 1px solid #10b981; font-size: 0.9rem; font-weight: 500; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;";
-            banner.innerHTML = '<i class="fa-solid fa-lock"></i> Dates temporarily held for this booking form. (Auto-refreshes)';
-            
-            // Insert it right before the active summary container
-            const activeSummary = document.querySelector(".summary-container.active");
-            if (activeSummary) {
-                activeSummary.parentNode.insertBefore(banner, activeSummary);
-            }
-        } else if (banner && !show) {
-            banner.remove();
+            banner.innerHTML = '<i class="fa-solid fa-lock" aria-hidden="true"></i><span></span>';
+            const activeSummary = document.querySelector(".summary-container.active") || this.getEl('summary-breakdown')?.parentNode;
+            activeSummary?.parentNode?.insertBefore(banner, activeSummary);
+        }
+        if (banner) {
+            const message = hasPrimaryHold && hasAddonHold
+                ? 'Dates and selected hotel rooms are temporarily held for this booking form. (Auto-refreshes)'
+                : hasAddonHold
+                    ? 'Selected hotel rooms are temporarily held for this booking form. (Auto-refreshes)'
+                    : 'Dates are temporarily held for this booking form. (Auto-refreshes)';
+            banner.querySelector('span')?.replaceChildren(document.createTextNode(message));
         }
     }
 
@@ -541,6 +1071,7 @@ class AdminWalkinController {
         if (!startDate) return;
         const start = this.formatSafeDate(startDate);
         const end   = endDate ? this.formatSafeDate(endDate) : start;
+        const requestId = ++this.addonAvailabilityRequestId;
 
         document.querySelectorAll('.room-group-card').forEach(async (card) => {
             const building = card.dataset.building;
@@ -553,7 +1084,7 @@ class AdminWalkinController {
                 const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
                 const res  = await fetch(url);
                 const data = await res.json();
-                if (data.success) {
+                if (requestId === this.addonAvailabilityRequestId && data.success) {
                     const n = data.available;
                     label.style.color = n > 0 ? '#2a7a3b' : '#c0392b';
                     label.textContent = n > 0 ? `${n} room${n > 1 ? 's' : ''} available` : 'No rooms available';
@@ -562,11 +1093,6 @@ class AdminWalkinController {
                     const selectedQty = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"] .sel-room-qty`);
                     if (selectedQty) {
                         selectedQty.max = Math.max(n, 1);
-                        if (n > 0 && parseInt(selectedQty.value) > n) {
-                            selectedQty.value = n;
-                            this.syncSelectedRoomLineItems();
-                            this.calculateSummary();
-                        }
                     }
                 }
             } catch(e) {}
@@ -574,15 +1100,33 @@ class AdminWalkinController {
     }
 
     showOverrideModal(newDate, calendarInstance) {
-        this.state.isDatesLocked = false;
-        this.state.activeCalendar = calendarInstance;
-        
-        calendarInstance.clearSelection();
-        calendarInstance.startDate = newDate;
-        calendarInstance.endDate = null;
-        calendarInstance.render();
-        calendarInstance.updateDateDisplay();
-        this.calculateSummary();
+        const overrideModal = this.getEl('change-dates-modal');
+        if (!overrideModal) return;
+        overrideModal.classList.add('active');
+
+        const cancelBtn = this.replaceElement('btn-override-no');
+        const confirmBtn = this.replaceElement('btn-override-yes');
+        cancelBtn?.addEventListener('click', () => overrideModal.classList.remove('active'));
+        confirmBtn?.addEventListener('click', async () => {
+            if (confirmBtn.disabled) return;
+            confirmBtn.disabled = true;
+            let changed = false;
+            try {
+                if (!await this.unlockDatesAPI()) return;
+                await this.resetAddonStayDates({ release: false });
+                this.state.activeCalendar = calendarInstance;
+                calendarInstance.clearSelection();
+                calendarInstance.startDate = newDate;
+                calendarInstance.endDate = null;
+                calendarInstance.render();
+                calendarInstance.updateDateDisplay();
+                this.calculateSummary();
+                changed = true;
+            } finally {
+                confirmBtn.disabled = false;
+                if (changed) overrideModal.classList.remove('active');
+            }
+        });
     }
 
     appendSummaryRow(label, amount) {
@@ -833,8 +1377,22 @@ class AdminWalkinController {
             return;
         }
 
-        if (!this.state.activeCalendar || !this.state.activeCalendar.startDate) {
+        if (!this.state.isDatesLocked || !this.state.activeCalendar || !this.state.activeCalendar.startDate) {
             showAlert("Notice", "Please select dates on the calendar first!");
+            return;
+        }
+
+        if (this.addonSyncPromise || this.lockRefreshPromise) {
+            try {
+                if (this.addonSyncPromise) await this.addonSyncPromise;
+                if (this.lockRefreshPromise) await this.lockRefreshPromise;
+            } catch (error) {
+                showAlert('Notice', 'Please wait for the temporary room hold to finish updating.');
+                return;
+            }
+        }
+        if (this.addonReleasePromise || this.addonResetPromise || this.fullUnlockPromise) {
+            showAlert('Notice', 'Please wait for the temporary room hold operation to finish.');
             return;
         }
 
@@ -927,6 +1485,10 @@ class AdminWalkinController {
                 showAlert('Notice', 'Please select a hotel check-in and check-out date for the room add-on.');
                 return;
             }
+            if (!this.state.addonLocksHeld) {
+                showAlert('Notice', 'Please wait for the selected hotel rooms to be temporarily held, then try again.');
+                return;
+            }
             formData.append('room_groups', JSON.stringify(roomGroups));
             formData.append('room_start_date', this.formatSafeDate(stay.start));
             formData.append('room_end_date', this.formatSafeDate(stay.end));
@@ -946,6 +1508,17 @@ class AdminWalkinController {
 
             if (response[0] === "Success") {
                 const [status, refNo, guest, venue, dates, payStatus] = response;
+
+                // submit_walkin.php has already deleted this session's locks;
+                // clear the client state without issuing a second unlock call.
+                this.state.isDatesLocked = false;
+                window.isDatesLocked = false;
+                this.state.activeCalendar?.clearSelectedRange();
+                this.state.activeCalendar = null;
+                this.state.pendingDateConfirmation = null;
+                this.stopLockRefresh();
+                this.toggleLockBanner(false);
+                await this.resetAddonStayDates({ release: false });
                 
                 const escapeHtml = (unsafe) => {
                     return (unsafe || "").toString()

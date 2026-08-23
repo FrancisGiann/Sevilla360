@@ -202,4 +202,4 @@ unset($villa);
 </div>
 
 <!-- Admin Walk-in Modals Partial -->
-<?php include 'includes/partials/admin-page/admin_walkin_modals.php'; ?>
+<?php include 'includes/partials/admin/admin_walkin_modals.php'; ?>
