@@ -4,6 +4,14 @@ require_once __DIR__ . '/admin_notifications.php';
 $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css   = isset($extra_css) ? $extra_css : '';
 $active_page = isset($active_page) ? $active_page : '';
+$current_route = basename((string)(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ''));
+if ($active_page === '') {
+    $active_page = match ($current_route) {
+        '', 'index.php' => 'home',
+        'showroom.php' => 'showroom',
+        default => ''
+    };
+}
 
 $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
@@ -52,9 +60,14 @@ if ($isLoggedIn && isset($conn) && $conn instanceof mysqli) {
                 $title = "Reschedule Requested";
                 $msg = "Reschedule request for {$b['venue_name']} (#{$b['reference_no']})";
                 $hp_unread_count++;
-            } elseif ($b['venue_category'] === 'Event Hall' && $b['booking_status'] === 'Pending') {
-                $title = "New Event Inquiry";
-                $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
+            } elseif ($b['source'] === 'Online' && $b['booking_status'] === 'Pending') {
+                if ($b['venue_category'] === 'Event Hall') {
+                    $title = "New Event Inquiry";
+                    $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
+                } else {
+                    $title = "New Booking Request";
+                    $msg = "Booking request for {$b['venue_name']} (#{$b['reference_no']})";
+                }
                 $hp_unread_count++;
             }
 

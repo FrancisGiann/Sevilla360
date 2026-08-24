@@ -38,13 +38,60 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $source     = $is_staff_booking ? 'walkin' : 'online'; // walkin or online
     $lock_mins  = ($source === 'walkin') ? 60 : 30; // 1 hour for walk-in, 30 min for online
 
-    $room_type = $_POST['room_type'] ?? '';
+    $room_type = trim((string)($_POST['room_type'] ?? ''));
+    $room_name = trim((string)($_POST['room_name'] ?? ''));
+    $explicit_venue_raw = trim((string)($_POST['venue_id'] ?? ''));
+    $explicit_venue_id = null;
+    if ($explicit_venue_raw !== '') {
+        $validated_venue_id = filter_var($explicit_venue_raw, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+        if ($validated_venue_id === false) {
+            http_response_code(422);
+            echo "Error|Invalid venue selection.";
+            exit;
+        }
+        $explicit_venue_id = (int)$validated_venue_id;
+    }
     // Validate date formats
     $start_dt = DateTime::createFromFormat('Y-m-d', $start_date);
     $end_dt   = DateTime::createFromFormat('Y-m-d', $end_date);
     if (!$start_dt || !$end_dt || $end_dt < $start_dt || (($room_type ?? '') !== 'Event Hall' && $end_dt <= $start_dt)) {
         echo "Error|Invalid date range.";
         exit;
+    }
+
+    // Event Hall customer submissions are inquiries, not reservations. They
+    // are checked again when submitted and must never create a primary hold.
+    // Staff walk-in bookings retain their operational hold flow.
+    if (!$is_staff_booking && $room_type === 'Event Hall') {
+        http_response_code(422);
+        echo "Error|Event Hall inquiries do not create date locks.";
+        exit;
+    }
+
+    // Customers may select a concrete hotel unit, but the posted ID is only
+    // an input to this authoritative lookup. Never allow an Event Hall,
+    // villa, unavailable unit, or mismatched room type/name to be locked.
+    if (!$is_staff_booking && $explicit_venue_id !== null) {
+        $customer_venue = $conn->prepare(
+            "SELECT v.id
+             FROM venues v
+             INNER JOIN hotel_rooms h ON h.venue_id = v.id
+             WHERE v.id = ?
+               AND v.category = 'Hotel Room'
+               AND v.status = 'Available'
+               AND v.name = ?
+               AND h.room_type = ?
+             LIMIT 1"
+        );
+        $customer_venue->bind_param('iss', $explicit_venue_id, $room_name, $room_type);
+        $customer_venue->execute();
+        if ($customer_venue->get_result()->num_rows === 0) {
+            http_response_code(422);
+            echo "Error|The selected hotel room is invalid or unavailable.";
+            exit;
+        }
     }
 
     $transaction_started = false;
@@ -55,7 +102,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->query("DELETE FROM booking_locks WHERE expires_at < NOW()");
 
         $venue_id = null;
-        $room_name = $_POST['room_name'] ?? '';
         $is_hotel = !($room_type === 'Event Hall' || $room_type === 'Resort Villa');
         
         $overlap_cond = booking_overlap_sql($is_hotel ? 'Hotel Room' : $room_type);
@@ -109,10 +155,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             // HOTEL ROOM: Find any available unit in the group
             // For Walk-in, venue_id might be explicitly provided
-            if (!empty($_POST['venue_id'])) {
-                $explicit_vid = (int)$_POST['venue_id'];
-                $stmt_inv = $conn->prepare("SELECT id FROM venues WHERE id = ? AND status = 'Available' FOR UPDATE");
-                $stmt_inv->bind_param("i", $explicit_vid);
+            if ($explicit_venue_id !== null) {
+                $explicit_vid = $explicit_venue_id;
+                if ($is_staff_booking) {
+                    $stmt_inv = $conn->prepare("SELECT id FROM venues WHERE id = ? AND status = 'Available' FOR UPDATE");
+                    $stmt_inv->bind_param("i", $explicit_vid);
+                } else {
+                    // Re-check the full customer selection under the row lock
+                    // so a concurrent status/category change cannot turn a
+                    // previously valid request into a lock on another unit.
+                    $stmt_inv = $conn->prepare(
+                        "SELECT v.id
+                         FROM venues v
+                         INNER JOIN hotel_rooms h ON h.venue_id = v.id
+                         WHERE v.id = ?
+                           AND v.category = 'Hotel Room'
+                           AND v.status = 'Available'
+                           AND v.name = ?
+                           AND h.room_type = ?
+                         LIMIT 1
+                         FOR UPDATE"
+                    );
+                    $stmt_inv->bind_param("iss", $explicit_vid, $room_name, $room_type);
+                }
             } else {
                 $stmt_inv = $conn->prepare("
                     SELECT v.id 
@@ -171,7 +236,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
 
             if (!$assigned_venue_id) {
-                if ($source === 'walkin' && !empty($_POST['venue_id'])) {
+                if ($source === 'walkin' && $explicit_venue_id !== null) {
                     throw new Exception("This specific unit is fully booked or locked on these dates.");
                 } else {
                     throw new Exception("All rooms in this category are fully booked or locked on these dates.");

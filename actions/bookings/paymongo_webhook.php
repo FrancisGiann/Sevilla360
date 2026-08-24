@@ -10,16 +10,16 @@ if (empty($payload)) { http_response_code(400); echo "Empty"; exit(); }
 // =========================================================================
 $signature_header = $_SERVER['HTTP_PAYMONGO_SIGNATURE'] ?? '';
 
-if (empty($signature_header)) { 
-    http_response_code(400); 
-    echo "Missing Paymongo-Signature header"; 
-    exit(); 
+if (empty($signature_header)) {
+    http_response_code(400);
+    echo "Missing Paymongo-Signature header";
+    exit();
 }
 
 $webhook_secret = $_ENV['PAYMONGO_WEBHOOK_SECRET'] ?? '';
 if (empty($webhook_secret)) {
-    http_response_code(500); 
-    echo "Server Misconfiguration: Webhook secret not set."; 
+    http_response_code(500);
+    echo "Server Misconfiguration: Webhook secret not set.";
     exit();
 }
 
@@ -54,8 +54,8 @@ $computed_signature = hash_hmac('sha256', $signature_payload, $webhook_secret);
 
 // Validate (Secure comparison against both test and live signatures)
 if (!hash_equals($computed_signature, $test_signature) && !hash_equals($computed_signature, $live_signature)) {
-    http_response_code(400); 
-    echo "Invalid Webhook Signature"; 
+    http_response_code(400);
+    echo "Invalid Webhook Signature";
     exit();
 }
 // =========================================================================
@@ -67,7 +67,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
     try {
         $checkout = $data['data']['attributes']['data']['attributes'];
         $raw_ref = $checkout['reference_number'] ?? '';
-        
+
         // 1. EXTRACT REAL BOOKING REF (Chop off "BAL_123456_")
         $ref_array = explode('_', $raw_ref);
         $reference_no = end($ref_array); // Always grabs the last part (e.g., SV-123)
@@ -99,7 +99,7 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             }
         }
 
-        $payment_method = 'PayMongo'; 
+        $payment_method = 'PayMongo';
         if (strpos($method_str, 'gcash') !== false) $payment_method = 'GCash';
         if (strpos($method_str, 'paymaya') !== false) $payment_method = 'Maya';
 
@@ -113,12 +113,12 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
             echo "IGNORED: Duplicate webhook for transaction $transaction_id (already processed).";
             exit();
         }
-        
+
         // 5. SEND AUTOMATED EMAIL RECEIPT (Now it reads the committed data!)
         try {
             require_once '../../includes/mailer.php';
             require_once '../../includes/notifications.php';
-            
+
             // We need to fetch the customer name and email again since we committed
             $stmt_cust = $conn->prepare("SELECT c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id WHERE b.reference_no = ?");
             $stmt_cust->bind_param("s", $reference_no);
@@ -127,9 +127,9 @@ if ($data['data']['attributes']['type'] === 'checkout_session.payment.paid') {
 
             $customer_name = $c_data['first_name'] . ' ' . $c_data['last_name'];
             $email_status = ($status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Downpayment)';
-            
+
             send_booking_receipt($c_data['email'], $customer_name, $reference_no, $c_data['venue_name'], $new_amount, $email_status);
-            
+
             if (!empty($c_data['user_id'])) {
                 create_user_notification($conn, $c_data['user_id'], "Payment Successful", "Your online payment of ₱" . number_format($amount_paid, 2) . " for " . $c_data['venue_name'] . " has been successfully processed.");
             }

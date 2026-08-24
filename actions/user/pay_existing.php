@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
-require_once '../../config/env.php'; // Load environment variables
+require_once '../../config/env.php';
 require_once '../../config/db_connect.php';
 require_once '../../includes/paymongo.php';
 
@@ -9,9 +9,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
 }
 
-// ==========================================
-// CSRF PROTECTION GUARD (JSON)
-// ==========================================
 $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     http_response_code(403);
@@ -33,12 +30,11 @@ if (!$booking_id) {
 }
 
 try {
-    // 1. ADDED b.payment_scheme TO THE QUERY
     $stmt = $conn->prepare("
         SELECT b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, v.category,
-               c.first_name, c.last_name, c.email 
-        FROM bookings b 
-        JOIN customers c ON b.customer_id = c.id 
+               c.first_name, c.last_name, c.email
+        FROM bookings b
+        JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id
         WHERE b.id = ? AND c.user_id = ?
     ");
@@ -59,17 +55,12 @@ try {
     $total_amount = floatval($booking['total_amount']);
     $amount_paid = floatval($booking['amount_paid']);
     $balance_due = $total_amount - $amount_paid;
-    
     if ($balance_due <= 0) throw new Exception("This booking is already fully paid.");
 
-    // Respect chosen payment scheme on first payment
-    $amount_to_pay = $balance_due; // Default to the full remaining balance
+    $amount_to_pay = $balance_due;
     $payment_label = 'Balance Payment';
-
-    // If they haven't paid anything yet, respect their chosen payment scheme!
     if ($amount_paid == 0) {
         $scheme = $booking['payment_scheme'];
-        
         if (strpos($scheme, '50%') !== false) {
             $amount_to_pay = $total_amount * 0.50;
             $payment_label = '50% Downpayment';
@@ -82,43 +73,35 @@ try {
     }
     $amount_to_pay = min($amount_to_pay, $balance_due);
     if ($amount_to_pay <= 0) throw new Exception('No payable balance remains for this booking.');
-    // =========================================================================
 
-    // Stable reference and checkout key let repeated clicks/tabs reuse the
-    // same payable session for this exact remaining-balance amount.
     $unique_ref = "BAL_" . $booking_id . "_" . $booking['reference_no'];
-
     $domain = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https://" : "http://";
     $domain .= $_SERVER['HTTP_HOST'];
-
     $payload = [
-        'data' => [
-            'attributes' => [
-                'billing' => [
-                    'name' => trim($booking['first_name'] . ' ' . $booking['last_name']),
-                    'email' => $booking['email'],
-                    'phone' => '09171234567' // Forced to bypass strict validation
-                ],
-                'send_email_receipt' => false,
-                'show_description' => false,
-                'show_line_items' => true,
-                'line_items' => [[
-                    'currency' => 'PHP',
-                    'amount' => (int) round($amount_to_pay * 100), // USE THE CALCULATED AMOUNT!
-                    'name' => $payment_label,
-                    'quantity' => 1
-                ]],
-                'payment_method_types' => ['card', 'gcash', 'paymaya'],
-                'reference_number' => $unique_ref,
-                'success_url' => $domain . "/Sevilla360/user_dashboard.php?payment=success",
-                'cancel_url' => $domain . "/Sevilla360/user_dashboard.php?payment=failed"
-            ]
-        ]
+        'data' => ['attributes' => [
+            'billing' => [
+                'name' => trim($booking['first_name'] . ' ' . $booking['last_name']),
+                'email' => $booking['email'],
+                'phone' => '09171234567'
+            ],
+            'send_email_receipt' => false,
+            'show_description' => false,
+            'show_line_items' => true,
+            'line_items' => [[
+                'currency' => 'PHP',
+                'amount' => (int) round($amount_to_pay * 100),
+                'name' => $payment_label,
+                'quantity' => 1
+            ]],
+            'payment_method_types' => ['card', 'gcash', 'paymaya'],
+            'reference_number' => $unique_ref,
+            'success_url' => $domain . "/Sevilla360/user_dashboard.php?payment=success",
+            'cancel_url' => $domain . "/Sevilla360/user_dashboard.php?payment=failed"
+        ]]
     ];
 
     $checkout = paymongo_create_or_reuse_checkout($conn, $booking_id, $amount_to_pay, $amount_paid, $payload);
     echo json_encode(['success' => true, 'checkout_url' => $checkout['checkout_url'], 'reused' => $checkout['reused']]);
-
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

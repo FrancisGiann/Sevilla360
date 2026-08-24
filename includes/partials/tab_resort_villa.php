@@ -20,12 +20,25 @@
                 data-base-cap="<?php echo $villa['base_capacity']; ?>"
                 data-max-cap="<?php echo $villa['max_capacity']; ?>"
                 data-extra-pax="<?php echo $villa['extra_pax_rate']; ?>"
+                data-description="<?php echo htmlspecialchars($villa['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                data-amenities="<?php echo htmlspecialchars($villa['amenities'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                 data-img="<?php echo htmlspecialchars($villa['image']); ?>">
                 <?php echo htmlspecialchars($villa['name']); ?> (₱<?php echo number_format($villa['base_rate']); ?>)
             </option>
             <?php endforeach; ?>
         </select>
-        <small class="capacity-note">Base Capacity: 4 Pax | Maximum: 8 Pax</small>
+        <small class="capacity-note" id="villa-capacity-note">Select a villa to view its configured capacity.</small>
+    </div>
+
+    <div class="inclusions-card venue-information-card" id="villa-venue-information">
+        <div class="inc-col">
+            <h4>Villa Information</h4>
+            <p id="villa-description">Select a villa to view its description.</p>
+        </div>
+        <div class="inc-col">
+            <h4>Amenities</h4>
+            <ul id="villa-amenities"><li>Select a villa to view its amenities.</li></ul>
+        </div>
     </div>
 
     <div class="form-group">
@@ -54,7 +67,7 @@
     <!-- 3. WHO & EXTRAS: GUESTS AND INCLUSIONS -->
     <div class="form-group">
         <label>Number of Guests</label>
-        <input type="number" id="villa-guests" min="1" max="8" value="4">
+        <input type="number" id="villa-guests" min="1" max="1" value="1">
         <small class="extra-pax-note">Additional <span id="villa-extra-rate">configured rate</span> per head exceeding base capacity. <span
                 id="villa-extra-fee"></span></small>
     </div>

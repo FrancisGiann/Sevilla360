@@ -67,7 +67,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         //Verify the typed password against the encrypted one in the database
-        if (password_verify($password, $user['password_hash'])) {
+        if (is_string($user['password_hash']) && $user['password_hash'] !== '' && password_verify($password, $user['password_hash'])) {
 
             $account_status = in_array($user['role'], ['admin', 'staff'], true)
                 ? ($user['staff_status'] ?? '')

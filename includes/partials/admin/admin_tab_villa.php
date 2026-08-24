@@ -24,7 +24,7 @@
             </option>
             <?php endforeach; ?>
         </select>
-        <small class="capacity-note">Base Capacity: 4 Pax | Maximum: 8 Pax</small>
+        <small class="capacity-note" id="villa-capacity-note">Select a villa to view its configured capacity.</small>
     </div>
 
     <div class="form-group">
@@ -53,7 +53,7 @@
     <!-- 3. WHO: GUESTS -->
     <div class="form-group">
         <label>Number of Guests</label>
-        <input type="number" id="villa-guests" min="1" max="8" value="4">
+        <input type="number" id="villa-guests" min="1" max="1" value="1">
         <small class="extra-pax-note">Additional <span id="villa-extra-rate">configured rate</span> per head exceeding base capacity. <span
                 id="villa-extra-fee"></span></small>
     </div>

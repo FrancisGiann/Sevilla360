@@ -18,7 +18,12 @@
 
 /* --- Left Column: Tabs & Main Content --- */
 .booking-main {
-  background: var(--color-white);
+  background: var(--color-beige);
+  min-width: 0;
+  padding: 2rem;
+  border: 1px solid rgba(42, 37, 34, 0.1);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
 }
 
 .booking-tabs {
@@ -569,6 +574,20 @@ textarea:focus {
   background-color: var(--color-gold-hover);
 }
 
+.estimate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 1.25rem 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(214, 168, 112, .55);
+  border-radius: 8px;
+  background: var(--color-white);
+  color: var(--color-dark);
+}
+.estimate-card span { color: var(--color-dark); font-size: 1.25rem; font-weight: 700; }
+.estimate-card small { color: var(--color-dark-light); }
+
 .btn-cancel {
   width: 100%;
   background-color: transparent;
@@ -602,6 +621,10 @@ textarea:focus {
     flex-direction: column;
     gap: 0;
   }
+
+  .booking-main {
+    padding: 1.5rem;
+  }
 }
 
 @media (max-width: 768px) {
@@ -613,5 +636,10 @@ textarea:focus {
     flex-direction: column;
     align-items: flex-start;
     gap: 15px;
+  }
+
+  .booking-main {
+    padding: 1rem;
+    border-radius: 6px;
   }
 }

@@ -3,10 +3,14 @@ $required_role = 'admin';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
 require_once 'includes/refund_helper.php';
+require_once 'includes/realtime.php';
 $refund_fee_percent = get_refund_fee_percent($conn);
+$realtime_client_config = realtime_client_config();
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
+$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'settings', 'auditlog', 'usermanagement', 'cms'];
+if (!in_array($page, $allowed_pages, true)) $page = 'overview';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -49,12 +53,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
     <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
-    <?php elseif ($page === 'backups' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_backups.css?v=<?= time() ?>">
     <?php endif; ?>
 </head>
 
 <body class="admin-body">
+    <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
+    <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
     <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="admin-layout">
         <!-- Left Sidebar -->
@@ -116,11 +120,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                             class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>"><i
                                 class="fa-solid fa-images"></i> Media CMS</a>
                     </li>
-                    <li class="nav-item">
-                        <a href="admin_dashboard.php?page=backups"
-                            class="nav-link <?php echo $page === 'backups' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-database"></i> Backup & Recovery</a>
-                    </li>
                     <?php endif; ?>
 
                     <li class="nav-item">
@@ -157,7 +156,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                         elseif ($page === 'auditlog') echo 'System Audit Log';
                         elseif ($page === 'usermanagement') echo 'User Management';
                         elseif ($page === 'cms') echo 'Media CMS';
-                        elseif ($page === 'backups') echo 'Database Backup & Recovery';
                     ?>
                     </h2>
                 </div>
@@ -215,9 +213,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } elseif ($page === 'cms') {
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_cms.php';
-                    else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
-                } elseif ($page === 'backups') {
-                    if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_backups.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } else {
                     include 'includes/admin-page/admin_overview.php';

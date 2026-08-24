@@ -4,6 +4,9 @@
 # Ignore Composer Vendor folder (Standard PHP practice)
 vendor/
 
+# Ignore locally installed realtime gateway dependencies
+realtime/node_modules/
+
 # Ignore error logs
 error_log
 *.log

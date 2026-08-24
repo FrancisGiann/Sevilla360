@@ -5,18 +5,6 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 
 try {
-    // AUTOMATED CLEANUP: Cancel abandoned "Pending" online bookings older than 30 minutes
-    $conn->query("
-        UPDATE bookings b
-        JOIN venues v ON v.id = b.venue_id
-        SET b.booking_status = 'Cancelled'
-        WHERE b.booking_status = 'Pending'
-          AND payment_status = 'Unpaid'
-          AND source = 'Online'
-          AND created_at < NOW() - INTERVAL 30 MINUTE
-          AND v.category <> 'Event Hall'
-    ");
-
     $bookedDates = [];
     $hardBlockedDates = [];
     $current_session = session_id();

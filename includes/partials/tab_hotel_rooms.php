@@ -39,7 +39,7 @@
     <!-- 3. WHO & EXTRAS: GUESTS AND INCLUSIONS -->
     <div class="form-group">
         <label>Number of Guests</label>
-        <input type="number" id="hotel-guests" min="1" max="4" value="2">
+        <input type="number" id="hotel-guests" min="1" max="1" value="1">
         <small class="extra-pax-note">Additional charge per head exceeding base capacity. <span
                 id="hotel-extra-fee"></span></small>
     </div>

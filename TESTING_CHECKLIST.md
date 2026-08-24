@@ -13,6 +13,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Prepare dates that are: available, already booked, under blocking maintenance, past, today, and a multi-night range.
 - [ ] Record the initial booking/payment/venue counts so test data can be identified and cleaned up safely.
 - [ ] In browser developer tools, keep Console and Network open; verify there are no unexpected JavaScript errors or failed requests during every flow.
+- [ ] If realtime is enabled in staging, verify Redis and the gateway are provisioned with TLS, exact `REALTIME_ALLOWED_ORIGINS`, and redacted WebSocket/auth logs; otherwise record realtime as infrastructure-blocked and verify polling fallback.
 
 ## 1. Public site and showroom
 
@@ -32,6 +33,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Verify the account using the emailed code; valid code succeeds and an invalid, expired, reused, or malformed code fails safely.
 - [ ] Test resend-code: email arrives, rate limiting prevents repeated rapid sends, and the most recent valid code works.
 - [ ] Log in as a verified customer; confirm redirect to the user dashboard and an authenticated session is established.
+- [ ] When configured, test Google sign-in with state mismatch, expired state, nonce mismatch, unverified email, wrong audience/issuer, suspended/staff email, first-time verified customer, and returning account with the same Google `sub`; no privilege escalation or duplicate customer is allowed.
 - [ ] Attempt customer login with wrong password, unknown email, unverified account, and suspended account; errors must not reveal unnecessary account details.
 - [ ] Attempt to use the customer login as staff/admin and the admin login as customer; each is rejected or sent to its correct area.
 - [ ] Log in as staff and admin; confirm each sees only permitted dashboard functions.
@@ -51,7 +53,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Let a booking lock expire; verify the dates become available again and the expired session cannot submit unexpectedly.
 - [ ] For a Hotel Room, verify nightly total, base capacity, extra-person rate, add-ons, and multi-night total against the admin-configured values.
 - [ ] For a Villa, verify day-time versus overnight selection, overnight surcharge, base capacity, extra-person rate, add-ons, and multi-day total.
-- [ ] For an Event Hall, verify inquiry behavior, event type/style/notes, room-group selection and allocation, and the expected upfront payment amount.
+- [ ] For an Event Hall, verify inquiry behavior, event type/style/notes, room-group selection and allocation, the labeled estimate, and zero upfront payment while awaiting staff confirmation.
 - [ ] Change dates, guests, stay type, room groups, and add-ons repeatedly; totals and UI must update correctly with no duplicate add-ons/rooms.
 - [ ] Confirm the final review shows correct customer, venue, dates, guest count, notes, payment scheme, itemized price, and total.
 
@@ -62,27 +64,35 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Submit after selecting conflicting dates in another browser; submission must fail cleanly and must not create a partial booking.
 - [ ] Submit with altered client-side values (price, venue ID, guests, dates, add-on amount) using browser developer tools; the server must reject or recalculate values correctly.
 - [ ] Verify booking status, payment status, amount paid, total, source, add-ons, event/villa details, and allocated rooms in the dashboard/database match the submitted booking.
+- [ ] For each supported payment scheme, test staff-recorded manual payment references. Verify booking confirmation, payment record, receipt email, notification, and amount.
 - [ ] For each supported payment scheme, test successful payment using PayMongo test mode. Verify redirect/return behavior, booking confirmation, payment record, receipt email, notification, and amount.
-- [ ] Test failed, cancelled, abandoned, delayed, and partial/downpayment payments; status and amount must remain accurate and the customer must be able to pay the remaining balance where allowed.
+- [ ] Test failed, cancelled, abandoned, delayed, and partial/downpayment manual payments; status and amount must remain accurate and staff can record approved references for remaining balances where allowed.
+- [ ] Test failed, cancelled, abandoned, delayed, and partial/downpayment PayMongo payments; status and amount must remain accurate and the customer must be able to pay the remaining balance where allowed.
+- [ ] Submit the same manual payment reference twice and verify duplicate transaction protection.
 - [ ] Deliver the same PayMongo webhook twice; payment must be recorded only once.
 - [ ] Send a webhook with missing, invalid, or expired signature, malformed JSON, unknown reference, and non-payment event; it must not update a booking.
 - [ ] Verify event-hall inquiry does not incorrectly require/record an online payment.
 - [ ] Verify receipt content: recipient, reference, venue, payment status, amount, currency, and no incorrect guest data.
+- [ ] Open an eligible customer/staff receipt and verify the response is an inline `application/pdf` document, the PDF text contains authoritative booking/payment details, allocated rooms, successful transaction IDs, totals, balance, and the verification reference, and no external fonts/assets are requested.
+- [ ] Confirm owner mismatch, unknown IDs, Pending/Cancelled bookings, and `To Be Arranged` bookings cannot generate a receipt PDF.
 
 ## 5. Customer dashboard
 
 - [ ] Verify dashboard counts, booking cards, status labels, filters, and booking-details modal match actual test records.
 - [ ] Test every booking state: Pending, Confirmed/Unpaid, Confirmed/Partial, Confirmed/Paid, Pending Refund, Cancelled, and Completed (where applicable).
+- [ ] Have staff record an approved manual payment reference for an existing unpaid/partial booking; verify remaining balance, payment status, receipt, notification, and duplicate-reference protection.
 - [ ] Pay an existing unpaid/partial eligible booking; verify remaining balance, payment status, receipt, notification, and duplicate-payment protection.
 - [ ] Request a cancellation for an unpaid booking and a paid/partial booking; verify reason capture, policy/refund messaging, status, staff visibility, and notifications.
 - [ ] Request a reschedule: test available and unavailable dates, then confirm the request appears for staff/admin without changing the original booking prematurely.
 - [ ] Update profile/settings with valid values, blank values, malformed email/phone, and password changes if offered; verify only intended fields change.
 - [ ] Mark notifications read; check it persists after refresh and that one customer cannot access another customer's booking details by changing an ID in the request.
+- [ ] Submit a customer booking and confirm the admin notification list refreshes immediately through WebSocket when enabled, or within the documented polling interval otherwise; no homepage toast/popup appears.
+- [ ] Change booking status, payment, cancellation, and reschedule state as staff/admin and confirm only the affected customer's notification list refreshes; replay one event and verify bounded client deduplication.
 
 ## 6. Staff and admin booking operations
 
 - [ ] As staff, open Overview, Bookings, Walk-in, Calendar, Maintenance, and Settings. All permitted pages/actions load and save correctly.
-- [ ] As admin, also test Users, Audit Log, CMS, and Backups.
+- [ ] As admin, also test Users, Audit Log, CMS, and authorized backup endpoints/scripts.
 - [ ] Confirm a staff account cannot access admin-only pages or call admin-only action URLs directly.
 - [ ] Search, filter, paginate, and open booking details; results must be correct and no records should be skipped or duplicated.
 - [ ] Change booking status through each permitted transition; verify customer dashboard, calendar, counts, audit log, and notifications update consistently.
@@ -132,6 +142,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Check sensitive responses, redirects, HTML, browser storage, logs, and error messages for passwords, database credentials, API keys, webhook secrets, or full payment data.
 - [ ] Confirm production uses HTTPS, secure cookies, appropriate session expiry, and logout invalidates the session.
 - [ ] Trigger invalid requests/server-side errors; users receive safe messages and the app does not expose stack traces or SQL errors.
+- [ ] Run `node --test realtime/test/*.test.mjs` and `php scripts/test_google_oauth.php`; record live Redis/WebSocket and Google credential checks separately because they require deployment infrastructure/configuration.
 - [ ] Verify rate limiting for login, registration/verification resend, password reset, and payment-related actions behaves as intended without locking legitimate users permanently.
 
 ## 11. Compatibility, accessibility, and final release pass

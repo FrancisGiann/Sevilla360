@@ -44,6 +44,25 @@
         </div>
     </div>
 
+    <div class="overview-ops-grid">
+        <section class="overview-module overview-mini-calendar" aria-labelledby="overview-calendar-title">
+            <div class="module-heading">
+                <h3 id="overview-calendar-title"><i class="fa-solid fa-calendar-days"></i> Schedule Snapshot</h3>
+                <a href="admin_dashboard.php?page=calendar">Full calendar</a>
+            </div>
+            <div id="overview-mini-calendar" class="mini-calendar-grid" aria-live="polite"></div>
+        </section>
+        <section class="overview-module overview-maintenance" aria-labelledby="overview-maintenance-title">
+            <div class="module-heading">
+                <h3 id="overview-maintenance-title"><i class="fa-solid fa-screwdriver-wrench"></i> Maintenance</h3>
+                <a href="admin_dashboard.php?page=maintenance">Manage maintenance</a>
+            </div>
+            <div id="overview-maintenance-summary" class="maintenance-summary-list">
+                <p class="widget-placeholder-text">Loading maintenance…</p>
+            </div>
+        </section>
+    </div>
+
     <!-- Charts Section (Revenue & Booking Pipeline) -->
     <div class="charts-grid-2">
         <div class="chart-card bar-card chart-card-relative">

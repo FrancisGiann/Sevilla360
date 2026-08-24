@@ -5,7 +5,7 @@
 
 /* Admin Body Override */
 .admin-body {
-  background-color: var(--color-beige);
+  background-color: #faf9f7;
   margin: 0;
   padding: 0;
 }
@@ -218,6 +218,25 @@
   gap: 24px;
   margin-bottom: 30px;
 }
+
+.overview-ops-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:24px; margin-bottom:24px; }
+.overview-module { background:var(--color-white); border:1px solid rgba(42,37,34,.09); border-radius:8px; box-shadow:var(--shadow-soft); padding:20px; min-width:0; }
+.module-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.module-heading h3 { margin:0; font-size:1rem; color:var(--color-dark); }
+.module-heading h3 i { color:var(--color-gold); margin-right:6px; }
+.module-heading a { color:var(--color-gold); font-size:.78rem; font-weight:600; text-decoration:none; }
+.mini-calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+.mini-calendar-grid .mini-heading { color:var(--color-dark-light); font-size:.65rem; font-weight:700; text-align:center; }
+.mini-calendar-grid .mini-calendar-month { grid-column:1/-1; color:var(--color-dark); font-weight:700; font-size:.82rem; margin-bottom:2px; }
+.mini-calendar-grid .mini-day { min-height:30px; border:1px solid rgba(42,37,34,.08); border-radius:4px; padding:5px; background:#faf9f7; color:var(--color-dark); font-size:.75rem; text-align:center; box-shadow:inset 0 1px 2px rgba(42,37,34,.04); }
+.mini-calendar-grid .mini-day.has-booking { background:#dce9e2; }
+.mini-calendar-grid .mini-day.has-maintenance { background:#f4d7cf; color:#7b2d26; }
+.mini-calendar-grid .mini-day.today { outline:2px solid var(--color-gold); outline-offset:-2px; font-weight:700; }
+.maintenance-summary-list { display:flex; flex-direction:column; gap:8px; max-height:220px; overflow:auto; }
+.maintenance-summary-item { padding:10px 12px; border:1px solid rgba(194,124,124,.24); border-left:3px solid #c27c7c; background:#fffaf1; font-size:.8rem; box-shadow:inset 0 1px 2px rgba(42,37,34,.04); }
+.maintenance-summary-item strong,.maintenance-summary-item span { display:block; }
+.maintenance-summary-item span { color:var(--color-dark-light); margin-top:3px; }
+@media (max-width: 900px) { .overview-ops-grid { grid-template-columns:1fr; } }
 
 .stat-card {
   background: var(--color-white);

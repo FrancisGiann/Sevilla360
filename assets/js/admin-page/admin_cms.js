@@ -131,7 +131,23 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           const submitBtn = this.querySelector('button[type="submit"]');
+          if (!submitBtn) {
+              showAlert("Error", "The upload form is unavailable. Please refresh and try again.", "error", false);
+              return;
+          }
           const originalText = submitBtn.innerText;
+          const resetUploadUi = () => {
+              submitBtn.innerText = originalText;
+              submitBtn.disabled = false;
+              if (progContainer) progContainer.style.display = 'none';
+              if (progBar) progBar.style.width = '0%';
+              if (progText) progText.innerText = '0%';
+          };
+          const showUploadError = (title, message) => {
+              resetUploadUi();
+              showAlert(title, message, "error", false);
+          };
+
           submitBtn.innerText = "Uploading...";
           submitBtn.disabled = true;
 
@@ -144,50 +160,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
           // Use XMLHttpRequest for actual progress tracking!
           const xhr = new XMLHttpRequest();
-          xhr.open("POST", "actions/admin/upload_media.php", true);
-          xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+          try {
+              xhr.open("POST", "actions/admin/upload_media.php", true);
+              xhr.setRequestHeader("X-CSRF-Token", csrfToken);
 
-          // Track Upload Progress
-          xhr.upload.addEventListener("progress", (event) => {
-              if (event.lengthComputable) {
-                  let percentComplete = Math.round((event.loaded / event.total) * 100);
-                  progBar.style.width = percentComplete + '%';
-                  progText.innerText = percentComplete + '%';
-              }
-          });
-
-          // Handle Completion
-          xhr.onload = function() {
-              if (xhr.status === 200) {
-                  try {
-                      const data = JSON.parse(xhr.responseText);
-                      if (data.success) {
-                          uploadModal.classList.remove('active');
-                          showAlert("Success", data.message, "success", true);
-                      } else {
-                          showAlert("Error", data.message, "error", false);
-                          submitBtn.innerText = originalText;
-                          submitBtn.disabled = false;
-                      }
-                  } catch(e) {
-                      showAlert("Error", "Server returned an invalid response.", "error", false);
-                      submitBtn.innerText = originalText;
-                      submitBtn.disabled = false;
+              // Track Upload Progress
+              xhr.upload.addEventListener("progress", (event) => {
+                  if (event.lengthComputable) {
+                      let percentComplete = Math.round((event.loaded / event.total) * 100);
+                      progBar.style.width = percentComplete + '%';
+                      progText.innerText = percentComplete + '%';
                   }
-              } else {
-                  showAlert("Error", "Server Error: " + xhr.status, "error", false);
-                  submitBtn.innerText = originalText;
-                  submitBtn.disabled = false;
-              }
-          };
+              });
 
-          xhr.onerror = function() {
-              showAlert("Network Error", "A network error occurred during upload.", "error", false);
-              submitBtn.innerText = originalText;
-              submitBtn.disabled = false;
-          };
+              // Handle Completion
+              xhr.onload = function() {
+                  let data = null;
+                  try {
+                      data = JSON.parse(xhr.responseText);
+                  } catch (e) {
+                      // Fall back to the HTTP status below when the server did not
+                      // return a JSON response.
+                  }
 
-          xhr.send(formData);
+                  const serverMessage = data && typeof data.message === 'string' ? data.message.trim() : '';
+                  if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true) {
+                      resetUploadUi();
+                      uploadModal.classList.remove('active');
+                      showAlert("Success", serverMessage || "Media uploaded successfully.", "success", true);
+                  } else {
+                      showUploadError("Error", serverMessage || "Server Error: " + xhr.status);
+                  }
+              };
+
+              xhr.onerror = function() {
+                  showUploadError("Network Error", "A network error occurred during upload.");
+              };
+
+              xhr.onabort = function() {
+                  showUploadError("Upload Cancelled", "The upload was cancelled before it finished.");
+              };
+
+              xhr.ontimeout = function() {
+                  showUploadError("Network Error", "The upload timed out. Please try again.");
+              };
+
+              xhr.send(formData);
+          } catch (error) {
+              showUploadError("Network Error", "The upload could not be started. Please try again.");
+          }
       });
   }
 

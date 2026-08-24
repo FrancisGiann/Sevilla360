@@ -5,6 +5,8 @@ require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/paymongo.php';
+require_once '../../includes/realtime.php';
+require_once '../../includes/notifications.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -37,6 +39,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
+        $room_type = trim((string)($_POST['room_type'] ?? ''));
         $scheme = $_POST['payment_scheme'] ?? '';
         $guests = (int)$_POST['guests'];
 
@@ -69,18 +72,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_phone->execute();
         }
 
-        if (!isset($_SESSION['locked_venue_id'])) {
+        $posted_venue_id = filter_var($_POST['venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $is_event_request = (($room_type ?? '') === 'Event Hall');
+        if ($is_event_request) {
+            if (!$posted_venue_id) throw new Exception('Please select an Event Hall before submitting the inquiry.');
+            $venue_id = (int)$posted_venue_id;
+            $stmt_event_venue = $conn->prepare("SELECT id FROM venues WHERE id = ? AND category = 'Event Hall' AND status = 'Available' LIMIT 1");
+            $stmt_event_venue->bind_param('i', $venue_id);
+            $stmt_event_venue->execute();
+            if ($stmt_event_venue->get_result()->num_rows !== 1) throw new Exception('The selected Event Hall is no longer available.');
+        } elseif (!isset($_SESSION['locked_venue_id'])) {
             throw new Exception("Session expired or dates were not locked properly.");
-        }
-        $venue_id = $_SESSION['locked_venue_id'];
-
-        // The final request must match an active lock created by this session.
-        $sid = session_id();
-        $stmt_own_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id = ? AND start_date = ? AND end_date = ? AND expires_at > NOW()");
-        $stmt_own_lock->bind_param("isss", $venue_id, $sid, $sDate, $eDate);
-        $stmt_own_lock->execute();
-        if ($stmt_own_lock->get_result()->num_rows === 0) {
-            throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
+        } else {
+            $venue_id = (int)$_SESSION['locked_venue_id'];
         }
 
         // Find the true category before applying category-specific overlap rules.
@@ -92,6 +96,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Selected venue no longer exists.");
         }
         $venue_category = $venue['category'];
+
+        // The final request must match an active lock created by this session
+        // for overnight inventory. Event Hall inquiries are non-exclusive and
+        // intentionally neither require nor honor booking_locks; use the
+        // server-derived venue category rather than the posted room_type.
+        $sid = session_id();
+        if ($venue_category !== 'Event Hall') {
+            $stmt_own_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id = ? AND start_date = ? AND end_date = ? AND expires_at > NOW()");
+            $stmt_own_lock->bind_param("isss", $venue_id, $sid, $sDate, $eDate);
+            $stmt_own_lock->execute();
+            if ($stmt_own_lock->get_result()->num_rows === 0) {
+                throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
+            }
+        }
 
         // RE-VALIDATE DATE AVAILABILITY
         $overlap_condition = booking_overlap_sql($venue_category);
@@ -147,8 +165,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($guests > $style_capacity) {
                 throw new Exception("Guest count exceeds the selected seating style's capacity of {$style_capacity}.");
             }
-        } elseif ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
-            throw new Exception("Guest count exceeds this venue's maximum capacity.");
+        } elseif ($pricing['max_capacity'] <= 0) {
+            throw new Exception("This venue has no valid guest capacity configured.");
+        } elseif ($guests > $pricing['max_capacity']) {
+            throw new Exception("Guest count exceeds this venue's maximum capacity of {$pricing['max_capacity']}.");
         }
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];
@@ -162,14 +182,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
         // 3. Save Booking
-        // Check active locks before finalizing
-        $lock_overlap = booking_overlap_sql($venue_category);
-        $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
+        // Check active locks before finalizing overnight requests. Event Hall
+        // inquiries intentionally do not honor booking_locks because they are
+        // non-exclusive availability inquiries until staff confirmation.
         $sid = session_id();
-        $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
-        $stmt_check_lock->execute();
-        if ($stmt_check_lock->get_result()->num_rows > 0) {
-            throw new Exception("Another user is currently booking this room for these dates. Please try again.");
+        if ($venue_category !== 'Event Hall') {
+            $lock_overlap = booking_overlap_sql($venue_category);
+            $stmt_check_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND $lock_overlap");
+            $stmt_check_lock->bind_param("isss", $venue_id, $sid, $eDate, $sDate);
+            $stmt_check_lock->execute();
+            if ($stmt_check_lock->get_result()->num_rows > 0) {
+                throw new Exception("Another user is currently booking this room for these dates. Please try again.");
+            }
         }
 
         $stmt_book = $conn->prepare("
@@ -360,91 +384,84 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_unlock->execute();
         unset($_SESSION['locked_venue_id']);
 
-        // =========================================================================
-        // PAYMONGO CHECKOUT INTEGRATION
-        // =========================================================================
-
-        $amount_due = 0;
-
-        // Only calculate amount due if venue is not an Event Hall
+        // Online hotel/villa requests still use PayMongo. Event Hall remains
+        // an inquiry with an estimated quote and no upfront payment.
+        $amount_due = 0.0;
         if ($venue_category !== 'Event Hall') {
             if ($scheme === '100% Full') $amount_due = $true_total;
             elseif (strpos($scheme, '50%') !== false) $amount_due = $true_total * 0.5;
             elseif (strpos($scheme, '20%') !== false) $amount_due = $true_total * 0.2;
+            if ($amount_due <= 0) throw new Exception('Error calculating price. Amount due cannot be zero for Hotels/Villas.');
         }
 
-        // STRICT GUARD: Prevent bypassing PayMongo if it's a Hotel or Villa
-        if ($venue_category !== 'Event Hall' && $amount_due <= 0) {
-            throw new Exception("Error calculating price. Amount due cannot be zero for Hotels/Villas.");
-        }
-
-        // Commit the booking before contacting PayMongo. The reservation is
-        // valid and retryable from the dashboard even if the provider is slow
-        // or unavailable.
         if ($amount_due > 0) {
-            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
             $domain = $_SERVER['HTTP_HOST'];
-            $success_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=success";
-            $cancel_url = $protocol . "://" . $domain . "/Sevilla360/user_dashboard.php?payment=failed";
-
+            $success_url = $protocol . '://' . $domain . '/Sevilla360/user_dashboard.php?payment=success';
+            $cancel_url = $protocol . '://' . $domain . '/Sevilla360/user_dashboard.php?payment=failed';
             $centavos = (int)round($amount_due * 100);
-            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', $_POST['room_type']);
+            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', (string)($_POST['room_type'] ?? $venue_category));
             $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
+            $payload = ['data' => ['attributes' => [
+                'billing' => ['name' => $customer_name, 'email' => $customer_email, 'phone' => $safe_phone],
+                'send_email_receipt' => false,
+                'show_description' => false,
+                'show_line_items' => true,
+                'description' => "Sevilla360 Booking: $ref_no",
+                'line_items' => [[
+                    'currency' => 'PHP',
+                    'amount' => $centavos,
+                    'name' => "Booking Deposit ($scheme)",
+                    'description' => $safe_room_name,
+                    'quantity' => 1
+                ]],
+                'payment_method_types' => ['card', 'gcash', 'paymaya'],
+                'reference_number' => $ref_no,
+                'success_url' => $success_url,
+                'cancel_url' => $cancel_url
+            ]]];
 
-            $payload = [
-                'data' => [
-                    'attributes' => [
-                        'billing' => [
-                            'name' => $customer_name,
-                            'email' => $customer_email,
-                            'phone' => $safe_phone
-                        ],
-                        'send_email_receipt' => false,
-                        'show_description' => false,
-                        'show_line_items' => true,
-                        'description' => "Sevilla360 Booking: $ref_no",
-                        'line_items' => [
-                            [
-                                'currency' => 'PHP',
-                                'amount' => $centavos,
-                                'name' => "Booking Deposit ($scheme)",
-                                'description' => $safe_room_name,
-                                'quantity' => 1
-                            ]
-                        ],
-                        'payment_method_types' => ['card', 'gcash', 'paymaya'],
-                        'reference_number' => $ref_no,
-                        'success_url' => $success_url,
-                        'cancel_url' => $cancel_url
-                    ]
-                ]
-            ];
-
+            create_user_notification(
+                $conn,
+                $_SESSION['user_id'],
+                'Booking Submitted',
+                "Your booking request for " . trim((string)($_POST['room_name'] ?? $venue_category)) . " has been saved. Complete the PayMongo payment to confirm it."
+            );
+            realtime_enqueue_event($conn, 'admin', 'booking.created', [
+                'booking_id' => (int)$booking_id,
+                'reference_no' => (string)$ref_no,
+                'customer_id' => (int)$_SESSION['user_id'],
+                'venue_category' => (string)$venue_category,
+            ]);
             if (!$conn->commit()) throw new Exception('Unable to save booking.');
             $db_committed = true;
             try {
                 $checkout = paymongo_create_or_reuse_checkout($conn, $booking_id, $amount_due, 0.0, $payload);
-                echo "CheckoutUrl|" . $checkout['checkout_url'];
+                echo 'CheckoutUrl|' . $checkout['checkout_url'];
             } catch (Throwable $provider_error) {
+                error_log('Online PayMongo checkout creation failed: ' . get_class($provider_error));
                 echo "Error|Booking {$ref_no} was saved as Pending/Unpaid. Payment setup could not be completed; open your dashboard and retry. Reference: {$ref_no}";
             }
             exit();
         }
 
+        $event_message = "Your event inquiry for " . trim((string)($_POST['room_name'] ?? 'Event Hall')) . " has been sent successfully. An admin will review it shortly.";
+        create_user_notification($conn, $_SESSION['user_id'], 'Booking Submitted', $event_message);
+        realtime_enqueue_event($conn, 'admin', 'booking.created', [
+            'booking_id' => (int)$booking_id,
+            'reference_no' => (string)$ref_no,
+            'customer_id' => (int)$_SESSION['user_id'],
+            'venue_category' => (string)$venue_category,
+        ]);
         if (!$conn->commit()) throw new Exception('Unable to save booking.');
         $db_committed = true;
-
-        // IF AMOUNT IS 0 (EVENT INQUIRY), SEND EMAIL AND SUCCESS
         try {
             require_once '../../includes/mailer.php';
-            require_once '../../includes/notifications.php';
-            send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'], 0, 'Inquiry Sent (Pending)');
-            create_user_notification($conn, $_SESSION['user_id'], "Booking Submitted", "Your inquiry for " . $_POST['room_name'] . " has been sent successfully. An admin will review it shortly.");
+            send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'] ?? 'Event Hall', 0, 'Inquiry Sent (Pending)');
         } catch (Exception $mail_e) {
             error_log('Online booking email delivery failed: ' . get_class($mail_e));
         }
-
-        echo "Success|" . $ref_no;
+        echo 'Success|' . $ref_no;
 
     } catch (Exception $e) {
         if (!$db_committed) $conn->rollback();

@@ -48,7 +48,47 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnNotifs = document.getElementById('btn-notifications');
   const notifDropdown = document.getElementById('notif-dropdown');
   const btnMarkRead = document.getElementById('btn-mark-read');
-  const notifBadge = document.getElementById('notif-badge');
+  let notifBadge = document.getElementById('notif-badge');
+  const notifListBody = document.querySelector('.notif-list-body');
+
+  function refreshNotifications() {
+      if (!notifListBody) return;
+      fetch('actions/user/get_notifications.php', { headers: { 'Accept': 'application/json' } })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+              if (!data?.success) return;
+              const unreadCount = Number(data.unread_count) || 0;
+              if (!notifBadge && unreadCount > 0 && btnNotifs) {
+                  notifBadge = document.createElement('span');
+                  notifBadge.id = 'notif-badge';
+                  btnNotifs.appendChild(notifBadge);
+              }
+              if (notifBadge) {
+                  notifBadge.textContent = unreadCount;
+                  notifBadge.style.display = unreadCount > 0 ? '' : 'none';
+              }
+              if (!data.notifications.length) {
+                  notifListBody.innerHTML = '<div class="notif-empty-state">No notifications yet.</div>';
+                  return;
+              }
+              notifListBody.innerHTML = data.notifications.map(item =>
+                  '<div class="notif-item ' + (Number(item.is_read) ? '' : 'unread') + '" data-id="' + String(item.id) + '" data-title="' + escapeHtml(item.title) + '" data-message="' + escapeHtml(item.message) + '">' +
+                  '<div><h5 class="notif-item-title">' + escapeHtml(item.title) + '</h5><p class="notif-item-msg">' + escapeHtml(item.message) + '</p><span class="notif-item-time">' + escapeHtml(item.created_at) + '</span></div></div>'
+              ).join('');
+              bindNotificationItems();
+          })
+          .catch(() => {});
+  }
+
+  // Realtime delivery refreshes the same authorized notification endpoint;
+  // it never opens a popup or trusts event payloads as display data.
+  window.addEventListener('SevillaRealtimeEvent', event => {
+      if (String(event.detail?.channel || '').startsWith('customer:')) refreshNotifications();
+  });
+
+  function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+  }
 
   if (btnNotifs && notifDropdown) {
       // Toggle dropdown
@@ -89,8 +129,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- Individual Notification Clicks ---
-  const notifItems = document.querySelectorAll('.notif-item');
-  notifItems.forEach(item => {
+  function bindNotificationItems() {
+  document.querySelectorAll('.notif-item').forEach(item => {
       item.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = item.getAttribute('data-id');
@@ -128,6 +168,20 @@ document.addEventListener("DOMContentLoaded", () => {
           }
       });
   });
+  }
+  bindNotificationItems();
+
+  let notificationPollTimer = null;
+  const scheduleNotificationPoll = () => {
+      clearTimeout(notificationPollTimer);
+      notificationPollTimer = setTimeout(() => {
+          refreshNotifications();
+          scheduleNotificationPoll();
+      }, document.visibilityState === 'visible' ? 30000 : 120000);
+  };
+  document.addEventListener('visibilitychange', scheduleNotificationPoll);
+  refreshNotifications();
+  scheduleNotificationPoll();
   
   // --- 1. Tab Switching Logic ---
   const navItems = document.querySelectorAll(".nav-item");
@@ -643,7 +697,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, this);
   });
 
-  // --- 7. Pay Now Button Logic ---
+  // --- 7. PayMongo Payment Actions ---
   document.querySelectorAll('.btn-sync-payment').forEach(btn => {
       btn.addEventListener('click', function() {
           const originalText = this.innerText;
@@ -657,37 +711,37 @@ document.addEventListener("DOMContentLoaded", () => {
               showAlert(data.success ? 'Payment Updated' : 'Payment Not Updated', data.message || 'Payment status could not be refreshed.', data.success ? 'success' : 'error', data.success);
               if (data.success) setTimeout(() => window.location.reload(), 800);
               else { this.innerText = originalText; this.disabled = false; }
-          }).catch(() => { showAlert('Network Error', 'Payment status could not be refreshed.', 'error'); this.innerText = originalText; this.disabled = false; });
+          }).catch(() => {
+              showAlert('Network Error', 'Payment status could not be refreshed.', 'error');
+              this.innerText = originalText;
+              this.disabled = false;
+          });
       });
   });
 
-  document.querySelectorAll(".btn-pay-now").forEach(btn => {
-      btn.addEventListener("click", function() {
+  document.querySelectorAll('.btn-pay-now').forEach(btn => {
+      btn.addEventListener('click', function() {
           const bookingId = this.getAttribute('data-id');
           const originalText = this.innerText;
-
           this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
           this.disabled = true;
-
-          fetch("actions/user/pay_existing.php", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+          fetch('actions/user/pay_existing.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
               body: JSON.stringify({ booking_id: bookingId })
-          })
-          .then(res => res.json())
-          .then(data => {
+          }).then(res => res.json()).then(data => {
               if (data.success) window.location.href = data.checkout_url;
               else {
-                  showAlert("Payment Error", data.message, "error");
+                  showAlert('Payment Error', data.message, 'error');
                   this.innerHTML = originalText;
                   this.disabled = false;
               }
-          })
-          .catch(err => {
-              showAlert("Network Error", "Network error occurred.", "error");
+          }).catch(() => {
+              showAlert('Network Error', 'Network error occurred.', 'error');
               this.innerHTML = originalText;
               this.disabled = false;
           });
       });
   });
+
 });

@@ -1,5 +1,24 @@
 document.addEventListener("DOMContentLoaded", () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+    async function parseBackupResponse(response) {
+        const responseText = await response.text();
+        let data = null;
+        try {
+            data = JSON.parse(responseText);
+        } catch (parseError) {
+            // Callers use the HTTP status when the server did not return JSON.
+        }
+        const rawMessage = data && typeof data.error === 'string'
+            ? data.error
+            : (data && typeof data.message === 'string' ? data.message : '');
+        return {
+            data,
+            message: rawMessage.trim(),
+            success: response.ok && !!data && data.success === true,
+            fallback: `Server Error: ${response.status}`
+        };
+    }
     
     // --- SEARCH FUNCTIONALITY ---
     const searchInput = document.getElementById('backupSearch');
@@ -35,21 +54,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     method: 'POST',
                     body: formData
                 });
-                
-                const data = await res.json();
-                
-                if (data.success) {
+
+                const parsed = await parseBackupResponse(res);
+
+                if (parsed.success) {
                     if (window.showAlert) {
-                        window.showAlert('Success', data.message, 'success');
+                        window.showAlert('Success', parsed.message || 'Backup created successfully!', 'success');
                     } else {
-                        alert(data.message);
+                        alert(parsed.message || 'Backup created successfully!');
                     }
                     setTimeout(() => window.location.reload(), 1500);
                 } else {
+                    const message = parsed.message || parsed.fallback;
                     if (window.showAlert) {
-                        window.showAlert('Error', data.error || 'Failed to create backup.', 'error');
+                        window.showAlert('Error', message, 'error');
                     } else {
-                        alert(data.error || 'Failed to create backup.');
+                        alert(message);
                     }
                 }
             } catch (err) {
@@ -99,20 +119,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: formData
                 });
                 
-                const data = await res.json();
+                const parsed = await parseBackupResponse(res);
                 
-                if (data.success) {
+                if (parsed.success) {
                     if (window.showAlert) {
-                        window.showAlert('Success', data.message, 'success');
+                        window.showAlert('Success', parsed.message || 'Backup imported successfully!', 'success');
                     } else {
-                        alert(data.message);
+                        alert(parsed.message || 'Backup imported successfully!');
                     }
                     setTimeout(() => window.location.reload(), 1500);
                 } else {
+                    const message = parsed.message || parsed.fallback;
                     if (window.showAlert) {
-                        window.showAlert('Error', data.error || 'Failed to import backup.', 'error');
+                        window.showAlert('Error', message, 'error');
                     } else {
-                        alert(data.error || 'Failed to import backup.');
+                        alert(message);
                     }
                 }
             } catch (err) {
@@ -167,12 +188,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: 'POST',
                 body: formData
             });
-            const data = await res.json();
+            const parsed = await parseBackupResponse(res);
             
-            if (data.success) {
+            if (parsed.success) {
                 window.location.reload();
             } else {
-                if (window.showAlert) window.showAlert('Error', data.error || 'Delete failed', 'error');
+                if (window.showAlert) window.showAlert('Error', parsed.message || parsed.fallback, 'error');
             }
         } catch (err) {
             console.error(err);
@@ -242,9 +263,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: formData
                 });
                 
-                const data = await res.json();
+                const parsed = await parseBackupResponse(res);
                 
-                if (data.success) {
+                if (parsed.success) {
                     if (window.showAlert) {
                         window.showAlert('Success', 'Database restored successfully!', 'success');
                     } else {
@@ -252,10 +273,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     setTimeout(() => window.location.reload(), 1500);
                 } else {
+                    const message = parsed.message || parsed.fallback;
                     if (window.showAlert) {
-                        window.showAlert('Error', data.error || 'Failed to restore database.', 'error');
+                        window.showAlert('Error', message, 'error');
                     } else {
-                        alert(data.error || 'Failed to restore database.');
+                        alert(message);
                     }
                 }
             } catch (err) {

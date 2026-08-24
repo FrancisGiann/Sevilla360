@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once '../../includes/request_context.php';
+require_once '../../includes/realtime.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -92,6 +93,12 @@ try {
     if (!$audit) throw new Exception('Could not prepare the request audit entry.');
     $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
     if (!$audit->execute()) throw new Exception('Could not record the request audit entry.');
+
+    realtime_enqueue_event($conn, 'admin', 'reschedule.requested', [
+        'booking_id' => $booking_id,
+        'new_start_date' => $new_start,
+        'new_end_date' => $new_end,
+    ]);
 
     if (!$conn->commit()) throw new Exception('Could not commit the reschedule request.');
     echo json_encode(['success' => true, 'message' => 'Reschedule request submitted successfully! Staff will review it shortly.']);

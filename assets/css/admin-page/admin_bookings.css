@@ -171,7 +171,28 @@
   width: 100%;
   border-collapse: collapse;
   text-align: left; 
-  min-width: 760px;
+  table-layout: fixed;
+  min-width: 0;
+}
+
+/* Keep the desktop table inside its card even when customer or venue names
+   are unusually long. The Actions cell stays a real table cell; its inner
+   wrapper owns the flexible button layout. */
+@media (min-width: 1025px) {
+  .bookings-table th:nth-child(1),
+  .bookings-table td:nth-child(1) { width: 11%; }
+  .bookings-table th:nth-child(2),
+  .bookings-table td:nth-child(2) { width: 14%; }
+  .bookings-table th:nth-child(3),
+  .bookings-table td:nth-child(3) { width: 18%; }
+  .bookings-table th:nth-child(4),
+  .bookings-table td:nth-child(4) { width: 14%; }
+  .bookings-table th:nth-child(5),
+  .bookings-table td:nth-child(5) { width: 10%; }
+  .bookings-table th:nth-child(6),
+  .bookings-table td:nth-child(6) { width: 13%; }
+  .bookings-table th:nth-child(7),
+  .bookings-table td:nth-child(7) { width: 20%; }
 }
 
 .bookings-table th {
@@ -191,6 +212,20 @@
   border-bottom: 1px solid rgba(42, 37, 34, 0.12); /* Darkened from 0.05 to 0.12 */
   vertical-align: middle;
   color: var(--color-dark);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bookings-table th {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.bookings-table .status-badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bookings-table tbody tr:last-child td {
@@ -224,15 +259,27 @@
 
 /* --- Action Buttons --- */
 .action-cells {
-  display: flex;
-  flex-wrap: wrap;
+  width: 20%;
+  min-width: 0;
+  max-width: none;
+}
+
+.action-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   gap: 6px;
-  min-width: 180px;
-  max-width: 240px;
+  width: 100%;
+  min-width: 0;
+}
+
+.action-buttons .btn-view {
+  grid-column: 1 / -1;
 }
 
 .btn-action {
-  flex: 1 1 calc(50% - 6px); /* Forces buttons into a neat 2-column grid */
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -246,7 +293,11 @@
   transition: var(--transition-snappy);
   color: var(--color-white);
   margin: 0; /* Clears old margins */
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  line-height: 1.25;
 }
 
 .btn-action:hover {
@@ -281,13 +332,6 @@
 }
 
 .btn-icon:hover { color: var(--color-dark); }
-
-@media (min-width: 1101px) {
-  .action-cells {
-    min-width: 150px;
-    max-width: 210px;
-  }
-}
 
 /* --- Modals System --- */
 .modal-overlay {
@@ -871,7 +915,7 @@
 
   .bookings-table td.action-cells {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     width: 100%;
     max-width: none;
     box-sizing: border-box;
@@ -881,8 +925,16 @@
     border-top: 1px solid rgba(42, 37, 34, .08);
   }
 
+  .bookings-table td.action-cells .action-buttons {
+    display: grid;
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+    gap: 7px;
+  }
+
   .bookings-table td.action-cells::before {
-    grid-column: 1 / -1;
+    grid-column: 1;
   }
 
   .action-cells .btn-action {
@@ -894,8 +946,9 @@
     height: auto;
     line-height: 1.2;
     white-space: normal;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
     letter-spacing: .12em;
     box-sizing: border-box;
   }
@@ -911,23 +964,6 @@
   .pagination-controls-right {
     justify-content: space-between;
     flex-wrap: wrap;
-  }
-}
-
-@media (max-width: 480px) {
-  /* Give action labels enough width to remain readable on phone cards. */
-  .bookings-table td.action-cells {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .action-cells .btn-action,
-  .action-cells .btn-view {
-    grid-column: 1 / -1;
-    white-space: nowrap;
-    overflow-wrap: normal;
-    word-break: normal;
-    letter-spacing: .16em;
-    padding: 9px 10px;
   }
 }
 

@@ -230,7 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (Number(b.has_checkout_session) === 1 && b.payment_status !== 'Paid' && b.booking_status !== 'Cancelled') {
                 actionBtns += `<button class="btn-action btn-confirm open-reconcile" data-id="${b.id}">Sync PayMongo</button>`;
             }
-  
+
             html += `
             <tr class="${b.booking_status === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
                 <td data-label="Booking ID" style="font-weight: 600; color: var(--color-gold);">${b.reference_no}</td>
@@ -239,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Date">${dateStr}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
                 <td data-label="Status"><span class="status-badge ${badgeClass}">${statusText}</span>${Number(b.has_rescheduled) === 1 && b.booking_status === 'Confirmed' ? ' <span class="status-badge status-reschedule">Rescheduled &amp; Confirmed</span>' : ''}</td>
-                <td data-label="Actions" class="action-cells">${actionBtns}</td>
+                <td data-label="Actions" class="action-cells"><div class="action-buttons">${actionBtns}</div></td>
             </tr>`;
         });
 
@@ -267,10 +267,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (searchInput) {
         searchInput.addEventListener("input", () => {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => { currentPage = 1; loadBookings(); }, 400); // 400ms typing delay
+            searchTimeout = setTimeout(() => { currentPage = 1; updateExportLink(); loadBookings(); }, 400); // 400ms typing delay
         });
     }
-    if (venueFilter) venueFilter.addEventListener("change", () => { currentPage = 1; loadBookings(); });
+    if (venueFilter) venueFilter.addEventListener("change", () => { currentPage = 1; updateExportLink(); loadBookings(); });
     if (btnPrev) btnPrev.addEventListener("click", () => { if (currentPage > 1) { currentPage--; loadBookings(); } });
     if (btnNext) btnNext.addEventListener("click", () => { currentPage++; loadBookings(); });
   
@@ -280,6 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
             tab.classList.add("active");
             if (bookingFilterSelect) bookingFilterSelect.value = tab.dataset.filter;
             currentPage = 1;
+            updateExportLink();
             loadBookings();
         });
     });
@@ -288,10 +289,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const selected = bookingFilterSelect.value;
         tabFilters.forEach(tab => tab.classList.toggle("active", tab.dataset.filter === selected));
         currentPage = 1;
+        updateExportLink();
         loadBookings();
     });
 
     const btnRefresh = document.getElementById('btn-refresh-bookings');
+    const btnExport = document.getElementById('btn-export-bookings');
+    function updateExportLink() {
+        if (!btnExport) return;
+        const activeTab = document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all";
+        const params = new URLSearchParams({ search: searchInput?.value.trim() || '', venue: venueFilter?.value || 'All', status: activeTab });
+        btnExport.href = 'actions/admin/export_bookings.php?' + params.toString();
+    }
+    updateExportLink();
     if (btnRefresh) {
         btnRefresh.addEventListener("click", () => {
             const icon = btnRefresh.querySelector('i');
@@ -323,6 +333,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (urlSearch && searchInput) {
         searchInput.value = urlSearch;
     }
+    updateExportLink();
   
     function highlightRow(refNo) {
         const row = document.querySelector(`tr[data-ref="${refNo.toLowerCase()}"]`);
@@ -620,6 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
 
+
         document.querySelectorAll('.open-reconcile').forEach(btn => {
             btn.addEventListener('click', function() {
                 const button = this;
@@ -637,9 +649,9 @@ document.addEventListener("DOMContentLoaded", () => {
                   .finally(() => { button.disabled = false; button.textContent = 'Sync PayMongo'; });
             });
         });
-      
-        // REVIEW RESCHEDULE REQUEST MODAL
-        const reviewReschedModal = document.getElementById("reviewReschedModal");
+
+       // REVIEW RESCHEDULE REQUEST MODAL
+       const reviewReschedModal = document.getElementById("reviewReschedModal");
       
         document.querySelectorAll('.open-review-resched').forEach(btn => {
             btn.addEventListener('click', function() {

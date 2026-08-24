@@ -16,6 +16,7 @@ $rooms_query = $conn->query("
         h.room_type, 
         v.name AS building_name,
         h.base_capacity,
+        h.max_capacity,
         h.nightly_rate,
         h.extra_pax_rate,
         v.description AS venue_description,
@@ -24,7 +25,7 @@ $rooms_query = $conn->query("
     FROM venues v 
     JOIN hotel_rooms h ON v.id = h.venue_id 
     WHERE v.status = 'Available'
-    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
+    GROUP BY h.room_type, v.name, h.base_capacity, h.max_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
     ORDER BY h.room_type, v.name
 ");
 $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);

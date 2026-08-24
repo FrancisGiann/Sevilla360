@@ -3,23 +3,9 @@ $required_role = 'customer';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
 require_once 'includes/refund_helper.php';
+require_once 'includes/realtime.php';
 $refund_fee_percent = get_refund_fee_percent($conn);
-
-// =========================================================================
-// DATABASE HYGIENE: Auto-Cancel Expired Unpaid Bookings
-// =========================================================================
-$cleanup_stmt = $conn->prepare("
-    UPDATE bookings b
-    JOIN venues v ON b.venue_id = v.id
-    SET b.booking_status = 'Cancelled', b.updated_at = NOW() 
-    WHERE b.booking_status = 'Pending' 
-    AND b.payment_status = 'Unpaid'
-    AND v.category != 'Event Hall'
-    AND b.created_at < DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-");
-$cleanup_stmt->execute();
-$cleanup_stmt->close();
-// =========================================================================
+$realtime_client_config = realtime_client_config();
 
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
@@ -44,6 +30,24 @@ $stat_total = (int) ($booking_stats['total'] ?? 0);
 $stat_pending = (int) ($booking_stats['pending'] ?? 0);
 $stat_confirmed = (int) ($booking_stats['confirmed'] ?? 0);
 $stmt_stats->close();
+
+$stmt_upcoming = $conn->prepare("
+    SELECT b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid, v.name AS venue_name
+    FROM bookings b
+    INNER JOIN venues v ON v.id = b.venue_id
+    WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE()
+    ORDER BY b.start_date ASC LIMIT 1
+");
+$stmt_upcoming->bind_param('i', $customer_id);
+$stmt_upcoming->execute();
+$upcoming_booking = $stmt_upcoming->get_result()->fetch_assoc() ?: null;
+$stmt_upcoming->close();
+
+$stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(total_amount - amount_paid, 0)), 0) AS balance_due FROM bookings WHERE customer_id = ? AND booking_status <> 'Cancelled'");
+$stmt_balance->bind_param('i', $customer_id);
+$stmt_balance->execute();
+$balance_due = (float)($stmt_balance->get_result()->fetch_assoc()['balance_due'] ?? 0);
+$stmt_balance->close();
 
 $booking_limit = 10;
 $booking_page = filter_input(INPUT_GET, 'booking_page', FILTER_VALIDATE_INT);
@@ -131,6 +135,8 @@ while ($row = $notifs_result->fetch_assoc()) {
 </head>
 
 <body class="dashboard-body">
+    <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
+    <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
     <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="dashboard-layout">
         <!-- Sidebar Backdrop Overlay for Mobile -->
@@ -240,6 +246,29 @@ while ($row = $notifs_result->fetch_assoc()) {
             </header>
 
             <div class="dashboard-content">
+
+                <section class="dashboard-summary-grid" aria-label="Booking overview">
+                    <div class="dashboard-summary-card">
+                        <span class="summary-card-label">Total bookings</span>
+                        <strong><?php echo $stat_total; ?></strong>
+                        <small><?php echo $stat_confirmed; ?> confirmed · <?php echo $stat_pending; ?> pending</small>
+                    </div>
+                    <div class="dashboard-summary-card">
+                        <span class="summary-card-label">Upcoming stay</span>
+                        <strong><?php echo $upcoming_booking ? htmlspecialchars(date('M j', strtotime($upcoming_booking['start_date']))) : 'None'; ?></strong>
+                        <small><?php echo $upcoming_booking ? htmlspecialchars($upcoming_booking['venue_name']) : 'Book a venue when you are ready'; ?></small>
+                    </div>
+                    <div class="dashboard-summary-card">
+                        <span class="summary-card-label">Balance due</span>
+                        <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
+                        <small>Updated from your booking records</small>
+                    </div>
+                    <div class="dashboard-summary-card dashboard-summary-actions">
+                        <span class="summary-card-label">Quick links</span>
+                        <a href="booking.php">Start a booking</a>
+                        <a href="support.php#contact">Contact support</a>
+                    </div>
+                </section>
 
                 <!-- ================= TAB: MY BOOKINGS ================= -->
                 <div id="tab-bookings" class="tab-pane active">
@@ -456,8 +485,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                         </nav>
                         <?php endif; ?>
                     </div>
-                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to
-                        complete.</p>
+                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to complete.</p>
                 </div>
 
                 <!-- ================= TAB: SETTINGS ================= -->
@@ -727,7 +755,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 
             <div class="modal-actions center-actions details-modal-actions">
                 <button class="btn-modal btn-go-back close-modal btn-modal-150">Close</button>
-                <button class="btn-modal btn-confirm btn-modal-print-150" id="btn-print-receipt"><i class="fa-solid fa-print"></i> Print Receipt</button>
+                <button class="btn-modal btn-confirm btn-modal-print-150" id="btn-print-receipt" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> Open PDF Receipt</button>
             </div>
         </div>
     </div>
@@ -773,24 +801,6 @@ while ($row = $notifs_result->fetch_assoc()) {
     </script>
     <?php endif; ?>
 
-    <?php if (!empty($latest_unread)): ?>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                if (typeof playNotificationChime === 'function') {
-                    playNotificationChime();
-                }
-                showAlert(
-                    <?php echo json_encode((string)$latest_unread['title'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-                    <?php echo json_encode((string)$latest_unread['message'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-                    "info"
-                );
-                // Mark this auto-popped notification as read so it doesn't repeatedly auto-popup on future refreshes
-                fetch("actions/user/mark_notifications_read.php", { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: "id=<?php echo (int)$latest_unread['id']; ?>" });
-            }, 500);
-        });
-    </script>
-    <?php endif; ?>
 </body>
 
 </html>

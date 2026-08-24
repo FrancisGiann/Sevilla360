@@ -24,6 +24,9 @@
             <button id="btn-refresh-bookings" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
                 <i class="fa-solid fa-arrows-rotate"></i> Refresh Bookings
             </button>
+            <a id="btn-export-bookings" class="btn btn-outline" href="actions/admin/export_bookings.php" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
+                <i class="fa-solid fa-file-csv"></i> Export CSV
+            </a>
         </div>
 
         <!-- Booking Status Filter Tabs -->
@@ -201,7 +204,7 @@
 
             <div class="modal-actions vd-modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Close</button>
-                <button class="btn-modal btn-gold" id="btn-admin-print"><i class="fa-solid fa-print"></i> <span>Print</span></button>
+                <button class="btn-modal btn-gold" id="btn-admin-print" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> <span>Open PDF Receipt</span></button>
                 <button class="btn-modal btn-dark" id="btn-admin-resend"><i class="fa-solid fa-envelope"></i> <span>Resend Email</span></button>
             </div>
         </div>

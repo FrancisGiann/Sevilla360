@@ -17,7 +17,7 @@ $saved_contact_phone = (string)($phone_stmt->get_result()->fetch_assoc()['phone'
 $phone_stmt->close();
 
 // Fetch Event Halls with CMS image
-$halls_query = $conn->query("SELECT v.id, v.name, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
+$halls_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
 $event_halls = $halls_query->fetch_all(MYSQLI_ASSOC);
 foreach ($event_halls as &$hall) {
     $hall['image'] = get_venue_image($conn, $hall['name']);
@@ -31,6 +31,7 @@ $rooms_query = $conn->query("
         h.room_type, 
         v.name AS building_name,
         h.base_capacity,
+        h.max_capacity,
         h.nightly_rate,
         h.extra_pax_rate,
         v.description AS venue_description,
@@ -39,7 +40,7 @@ $rooms_query = $conn->query("
     FROM venues v 
     JOIN hotel_rooms h ON v.id = h.venue_id 
     WHERE v.status = 'Available'
-    GROUP BY h.room_type, v.name, h.base_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
+    GROUP BY h.room_type, v.name, h.base_capacity, h.max_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
     ORDER BY h.room_type, v.name
 ");
 $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
@@ -79,7 +80,7 @@ foreach ($hotel_room_groups as &$grp) {
 unset($grp);
 
 // Fetch Villas with CMS image
-$villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
+$villas_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate AS base_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
 $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 foreach ($villas as &$villa) {
     $villa['image'] = get_venue_image($conn, $villa['name']);
@@ -128,6 +129,11 @@ unset($villa);
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
                     <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">To Be Arranged</span></p>
                     <p id="event-bundle-estimate" style="display:none; color:var(--color-gold);" aria-live="polite"><strong>Bundle:</strong> Estimated — final quote after resort review (<span id="event-bundle-estimate-amount">₱0.00</span> discount)</p>
+                    <div class="estimate-card" id="event-estimate-card" role="status" aria-live="polite">
+                        <strong>Estimated total</strong>
+                        <span id="event-estimate-total">₱0.00</span>
+                        <small>Estimate only; final event quotation is subject to resort confirmation.</small>
+                    </div>
                 </div>
 
                 <div class="summary-container" id="sum-hotel-rooms">
@@ -217,7 +223,7 @@ unset($villa);
                     </div>
 
                     <!-- Action Buttons -->
-                    <button class="btn btn-paymongo" id="btn-proceed">PROCEED VIA PAYMONGO</button>
+                    <button class="btn btn-paymongo" id="btn-proceed">PROCEED TO PAYMENT</button>
                     <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
                 </div>
             </div>

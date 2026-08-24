@@ -31,12 +31,12 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
         <h4 style="margin-top: 0; margin-bottom: 10px; color: var(--color-dark); font-size: 1rem;">📅 How Event Booking
             Works:</h4>
         <ol style="margin: 0; padding-left: 20px; font-size: 0.9rem; color: var(--color-dark); line-height: 1.6;">
-            <li><strong>Hold the Date:</strong> Submit this inquiry to temporarily flag your date (No payment required
-                yet).</li>
+            <li><strong>Check availability:</strong> Submit this inquiry for an availability check; inquiries do not
+                lock the date and no payment is required yet.</li>
             <li><strong>Consultation:</strong> We will call you within 24 hours to discuss menus, themes, and exact
                 guest counts.</li>
-            <li><strong>Downpayment:</strong> Once details are finalized, you can pay your downpayment via your User
-                Dashboard.</li>
+            <li><strong>Payment:</strong> Once details are finalized, our team will provide the approved manual
+                payment/reference instructions.</li>
         </ol>
     </div>
 
@@ -55,6 +55,8 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
                 <?php foreach($event_halls as $hall): ?>
                 <option value="<?php echo $hall['base_rate']; ?>" data-id="<?php echo $hall['id']; ?>"
                     data-name="<?php echo htmlspecialchars($hall['name']); ?>" data-type="Event Hall"
+                    data-description="<?php echo htmlspecialchars($hall['description'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                    data-amenities="<?php echo htmlspecialchars($hall['amenities'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                     data-theater="<?php echo $hall['capacity_theater'] ?? 0; ?>"
                     data-classroom="<?php echo $hall['capacity_classroom'] ?? 0; ?>"
                     data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>"
@@ -73,6 +75,17 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
                 <option value="classroom">Classroom Style</option>
                 <option value="banquet">Banquet Type</option>
             </select>
+        </div>
+    </div>
+
+    <div class="inclusions-card venue-information-card" id="event-venue-information">
+        <div class="inc-col">
+            <h4>Venue Information</h4>
+            <p id="event-venue-description">Select an event hall to view its description.</p>
+        </div>
+        <div class="inc-col">
+            <h4>Amenities</h4>
+            <ul id="event-venue-amenities"><li>Select an event hall to view its amenities.</li></ul>
         </div>
     </div>
 

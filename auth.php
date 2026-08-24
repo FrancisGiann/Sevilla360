@@ -3,6 +3,8 @@ require_once __DIR__ . '/includes/session_init.php';
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 
 require_once 'config/db_connect.php';
+require_once 'includes/google_oauth.php';
+$google_oauth_enabled = google_oauth_is_configured();
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
@@ -90,6 +92,10 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">SIGN IN &rarr;</button>
+                    <?php if ($google_oauth_enabled): ?>
+                    <a class="btn btn-secondary btn-full google-login-btn" href="actions/auth/google_start.php">Continue with Google</a>
+                    <small class="auth-consent-note">By continuing, you agree to our Terms of Service and Privacy Policy.</small>
+                    <?php endif; ?>
                     <button type="button" class="btn btn-secondary btn-full" id="btn-goto-admin">ADMIN LOGIN</button>
                 </form>
 

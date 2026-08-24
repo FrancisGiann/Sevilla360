@@ -100,6 +100,11 @@ class AdminWalkinController {
                 this.calculateSummary();
                 const opt = e.target.options[e.target.selectedIndex];
                 this.updateHotelInformation(opt);
+                const hotelGuests = this.getEl('hotel-guests');
+                if (hotelGuests) {
+                    hotelGuests.max = String(parseInt(opt.dataset.maxCap, 10) || 1);
+                    if (parseInt(hotelGuests.value, 10) > parseInt(hotelGuests.max, 10)) hotelGuests.value = hotelGuests.max;
+                }
                 const label = document.getElementById("sum-ht-type");
                 if (label) label.innerText = opt.dataset.display || opt.dataset.name || opt.text.split('(')[0].trim();
                 // Update hotel image from data-img (CMS-backed)
@@ -160,6 +165,13 @@ class AdminWalkinController {
             if (label) label.innerText = villaName;
             const extraRateLabel = this.getEl('villa-extra-rate');
             if (extraRateLabel) extraRateLabel.textContent = this.formatCurrency(parseFloat(opt.dataset.extraPax) || 0);
+            const villaCapacityNote = this.getEl('villa-capacity-note');
+            if (villaCapacityNote) villaCapacityNote.textContent = `Base Capacity: ${parseInt(opt.dataset.baseCap, 10) || 0} Pax | Maximum: ${parseInt(opt.dataset.maxCap, 10) || 0} Pax`;
+            const villaGuests = this.getEl('villa-guests');
+            if (villaGuests) {
+                villaGuests.max = String(parseInt(opt.dataset.maxCap, 10) || 1);
+                if (parseInt(villaGuests.value, 10) > parseInt(villaGuests.max, 10)) villaGuests.value = villaGuests.max;
+            }
 
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
         });
@@ -772,6 +784,7 @@ class AdminWalkinController {
             opt.dataset.img      = room.image || 'assets/img/placeholder.jpg';
             opt.dataset.display  = `${room.building_name}`;
             opt.dataset.baseCap  = room.base_capacity;
+            opt.dataset.maxCap   = room.max_capacity;
             opt.dataset.extraPax = room.extra_pax_rate;
             opt.dataset.description = room.venue_description || '';
             opt.dataset.amenities = room.venue_amenities || '';

@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test test/*.test.mjs", "start": "node gateway.mjs" },
+  "dependencies": {
+    "mysql2": "^3.11.5",
+    "redis": "^4.7.0",
+    "ws": "^8.18.0"
+  }
+}

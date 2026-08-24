@@ -200,8 +200,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($guests > $style_capacity) {
                 throw new Exception("Guest count exceeds the selected seating style's capacity of {$style_capacity}.");
             }
-        } elseif ($pricing['max_capacity'] > 0 && $guests > $pricing['max_capacity']) {
-            throw new Exception("Guest count exceeds this venue's maximum capacity.");
+        } elseif ($pricing['max_capacity'] <= 0) {
+            throw new Exception("This venue has no valid guest capacity configured.");
+        } elseif ($guests > $pricing['max_capacity']) {
+            throw new Exception("Guest count exceeds this venue's maximum capacity of {$pricing['max_capacity']}.");
         }
         $base_amount = $pricing['base_amount'];
         $true_total = $pricing['true_total'];

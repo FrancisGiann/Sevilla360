@@ -11,6 +11,79 @@ document.addEventListener("DOMContentLoaded", () => {
         return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
     }
 
+    function renderMiniCalendar(events) {
+        const target = document.getElementById('overview-mini-calendar');
+        if (!target) return;
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const monthStart = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const bookingDates = new Set();
+        const maintenanceDates = new Set();
+        const markEventDates = (event, targetSet) => {
+            const startValue = event?.start || event?.extendedProps?.startDate;
+            const endValue = event?.end || event?.extendedProps?.endDate;
+            if (!startValue || !endValue) return;
+            const start = new Date(`${startValue}T00:00:00`);
+            const end = new Date(`${endValue}T00:00:00`);
+            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+            for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+                if (day.getFullYear() === year && day.getMonth() === month) targetSet.add(day.getDate());
+            }
+        };
+        (events || []).forEach(event => {
+            const type = event?.extendedProps?.type;
+            markEventDates(event, type === 'maintenance' ? maintenanceDates : bookingDates);
+        });
+        const headings = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(day => '<span class="mini-heading">' + day + '</span>').join('');
+        const blanks = Array.from({ length: monthStart.getDay() }, () => '<span aria-hidden="true"></span>').join('');
+        const days = Array.from({ length: daysInMonth }, (_, index) => {
+            const day = index + 1;
+            const classes = ['mini-day'];
+            if (bookingDates.has(day)) classes.push('has-booking');
+            if (maintenanceDates.has(day)) classes.push('has-maintenance');
+            if (day === now.getDate()) classes.push('today');
+            const label = maintenanceDates.has(day) ? 'Maintenance scheduled' : (bookingDates.has(day) ? 'Booking scheduled' : 'Available');
+            return '<span class="' + classes.join(' ') + '" title="' + label + '">' + day + '</span>';
+        }).join('');
+        target.innerHTML = '<span class="mini-calendar-month">' + now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + '</span>' + headings + blanks + days;
+    }
+
+    function renderMaintenanceSummary(maintenance) {
+        const target = document.getElementById('overview-maintenance-summary');
+        if (!target) return;
+        if (!maintenance?.length) {
+            target.innerHTML = '<p class="widget-placeholder-text">No active maintenance alerts.</p>';
+            return;
+        }
+        target.innerHTML = maintenance.slice(0, 5).map(item => {
+            const props = item.extendedProps || {};
+            const name = item.name || item.venue_name || item.title || 'Maintenance';
+            const type = item.maintenance_type || props.task || 'Maintenance';
+            const start = item.start || props.startDate || '';
+            const end = props.endDate || item.end || start;
+            const dates = String(start) + ' – ' + String(end);
+            return '<a class="maintenance-summary-item" href="admin_dashboard.php?page=maintenance" style="text-decoration:none;color:inherit"><strong>' + escapeHTML(name) + '</strong><span>' + escapeHTML(type) + ' · ' + escapeHTML(dates) + '</span></a>';
+        }).join('');
+    }
+
+    function loadOverviewCalendar() {
+        fetch('actions/admin/get_master_calendar.php', { headers: { 'Accept': 'application/json' } })
+            .then(response => response.ok ? response.json() : null)
+            .then(events => {
+                if (!Array.isArray(events)) throw new Error('Calendar data unavailable');
+                renderMiniCalendar(events);
+                renderMaintenanceSummary(events.filter(event => event?.extendedProps?.type === 'maintenance'));
+            })
+            .catch(() => {
+                const calendar = document.getElementById('overview-mini-calendar');
+                if (calendar) calendar.innerHTML = '<p class="widget-placeholder-text">Calendar data unavailable.</p>';
+                const maintenance = document.getElementById('overview-maintenance-summary');
+                if (maintenance) maintenance.innerHTML = '<p class="widget-placeholder-text">Maintenance data unavailable.</p>';
+            });
+    }
+
     // =========================================================
     // 1. IN-PLACE OVERVIEW MODAL BRIDGES
     // =========================================================
@@ -236,7 +309,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
         }
-
         const revStat = document.getElementById('stat-monthly-revenue');
         if (revStat) {
             if (data.monthlyRevenue === null || data.userRole === 'staff') {
@@ -254,6 +326,8 @@ document.addEventListener("DOMContentLoaded", () => {
         renderUpcomingEvents(data.upcomingEvents);
         renderRecentBookings(data.recentBookings);
     });
+
+    loadOverviewCalendar();
   
     function renderCharts(chartsData, userRole) {
         let revChart = Chart.getChart("revenueChart");

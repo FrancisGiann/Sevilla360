@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/refund_helper.php';
+require_once '../../includes/realtime.php';
 
 // Auth Guard: Must be a logged-in customer
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -67,7 +68,7 @@ $fee_percent = $refund['fee_percent'];
 try {
     $conn->begin_transaction();
 
-    $stmt_booking_lock = $conn->prepare('SELECT amount_paid, booking_status FROM bookings WHERE id = ? FOR UPDATE');
+    $stmt_booking_lock = $conn->prepare('SELECT b.amount_paid, b.booking_status, b.reference_no, v.category FROM bookings b INNER JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE');
     $stmt_booking_lock->bind_param('i', $booking_id);
     $stmt_booking_lock->execute();
     $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
@@ -128,6 +129,13 @@ try {
         $audit->bind_param('iss', $_SESSION['user_id'], $audit_action, $audit_ip);
         $audit->execute();
     }
+
+    realtime_enqueue_event($conn, 'admin', 'cancellation.requested', [
+        'booking_id' => $booking_id,
+        'reference_no' => (string)($locked_booking['reference_no'] ?? ''),
+        'venue_category' => (string)($locked_booking['category'] ?? ''),
+        'status' => $amount_paid > 0 ? 'Pending Refund' : 'Cancelled',
+    ]);
     
     $conn->commit();
 

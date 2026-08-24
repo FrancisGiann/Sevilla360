@@ -1,10 +1,11 @@
 <?php
 /** Shared, idempotent payment crediting path for webhooks and reconciliation. */
+require_once __DIR__ . '/realtime.php';
 function credit_verified_payment(mysqli $conn, string $reference_no, float $amount_paid, string $transaction_id, string $payment_method = 'PayMongo', ?string $provider_session_id = null, string $currency = 'PHP'): array {
     if ($reference_no === '' || $amount_paid <= 0 || $transaction_id === '' || $currency !== 'PHP') throw new RuntimeException('Payment payload is invalid.');
     if (!$conn->begin_transaction()) throw new RuntimeException('Unable to start the payment transaction.');
     try {
-        $stmt = $conn->prepare("SELECT id, total_amount, amount_paid, booking_status, payment_status FROM bookings WHERE reference_no = ? FOR UPDATE");
+        $stmt = $conn->prepare("SELECT b.id, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, c.user_id FROM bookings b LEFT JOIN customers c ON c.id = b.customer_id WHERE b.reference_no = ? FOR UPDATE");
         if (!$stmt) throw new RuntimeException('Unable to load the booking for payment.');
         $stmt->bind_param('s', $reference_no); if (!$stmt->execute()) throw new RuntimeException('Unable to load the booking for payment.');
         $booking = $stmt->get_result()->fetch_assoc(); if (!$booking) throw new RuntimeException('Booking reference was not found.');
@@ -65,6 +66,21 @@ function credit_verified_payment(mysqli $conn, string $reference_no, float $amou
         $stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (NULL, 'PayMongo Payment', ?, 'PayMongo Server')");
         if (!$stmt) throw new RuntimeException('Unable to prepare the payment audit entry.');
         $stmt->bind_param('s', $action); if (!$stmt->execute()) throw new RuntimeException('Unable to record the payment audit entry.');
+        realtime_enqueue_event($conn, 'admin', 'payment.received', [
+            'booking_id' => $id,
+            'reference_no' => $reference_no,
+            'payment_status' => $status,
+            'amount_paid' => $new_amount,
+        ]);
+        $customer_user_id = (int)($booking['user_id'] ?? 0);
+        if ($customer_user_id > 0) {
+            realtime_enqueue_event($conn, 'customer:' . $customer_user_id, 'payment.received', [
+                'booking_id' => $id,
+                'reference_no' => $reference_no,
+                'payment_status' => $status,
+                'amount_paid' => $new_amount,
+            ]);
+        }
         if (!$conn->commit()) throw new RuntimeException('Unable to commit the payment transaction.');
         return ['duplicate' => false, 'status' => $status, 'amount_paid' => $new_amount, 'booking_id' => $id];
     } catch (Throwable $e) { $conn->rollback(); throw $e; }

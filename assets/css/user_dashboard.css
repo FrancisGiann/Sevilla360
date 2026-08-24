@@ -1762,3 +1762,11 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
     letter-spacing: 0.06em;
   }
 }
+.dashboard-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:24px; }
+.dashboard-summary-card { background:var(--color-white,#fff); border:1px solid rgba(42,37,34,.08); border-radius:10px; padding:16px; box-shadow:0 5px 18px rgba(42,37,34,.05); min-width:0; }
+.summary-card-label { display:block; color:var(--color-dark-light,#666); font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.dashboard-summary-card strong { display:block; margin:8px 0 4px; color:var(--color-dark,#2a2522); font-family:var(--font-heading,serif); font-size:1.65rem; }
+.dashboard-summary-card small { display:block; color:var(--color-dark-light,#666); line-height:1.4; overflow-wrap:anywhere; }
+.dashboard-summary-actions a { display:block; margin-top:8px; color:var(--color-gold,#b5884e); font-size:.85rem; font-weight:600; text-decoration:none; }
+@media (max-width: 900px) { .dashboard-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width: 560px) { .dashboard-summary-grid { grid-template-columns:1fr; } }

@@ -497,7 +497,7 @@ textarea:focus {
   color: white;
   cursor: not-allowed;
 }
-.cal-day-cell.booked.checkout-boundary{cursor:pointer;outline:2px dashed rgba(255,255,255,.9);outline-offset:-5px}.cal-day-cell.booked.checkout-boundary:hover{background:#c95151}.dot.checkout-dot{outline:2px dashed #fff;outline-offset:-2px}.hotel-calendar-help{margin:.75rem 0 0;color:#777;font-size:.82rem;line-height:1.5}
+.cal-day-cell.booked.checkout-boundary{cursor:pointer;background:#d6a870;color:#2a2522;outline:2px dashed #8b5e2c;outline-offset:-5px}.cal-day-cell.booked.checkout-boundary:hover{background:#c9955b}.dot.checkout-boundary-dot{background:#d6a870;border:2px dashed #8b5e2c;box-sizing:border-box}.hotel-calendar-help{margin:.75rem 0 0;color:#777;font-size:.82rem;line-height:1.5}
 .cal-day-cell.unavailable {
   background: #e0e0e0;
   color: #999;

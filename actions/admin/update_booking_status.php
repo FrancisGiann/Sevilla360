@@ -19,6 +19,7 @@ require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/booking_rules.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/refund_helper.php';
+require_once __DIR__ . '/../../includes/realtime.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -696,6 +697,16 @@ try {
         $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
         $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
         $audit_stmt->execute();
+    }
+
+    $realtime_payload = [
+        'booking_id' => $booking_id,
+        'reference_no' => (string)$ref_no,
+        'action' => (string)$action,
+    ];
+    realtime_enqueue_event($conn, 'admin', 'booking.updated', $realtime_payload);
+    if ((int)$c_user_id > 0) {
+        realtime_enqueue_event($conn, 'customer:' . (int)$c_user_id, 'booking.updated', $realtime_payload);
     }
 
     if (!$conn->commit()) throw new Exception('Unable to commit the booking update.');
