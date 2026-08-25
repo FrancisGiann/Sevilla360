@@ -87,11 +87,11 @@ if ($isLoggedIn && isset($conn) && $conn instanceof mysqli) {
 }
 
 $nav = [
-    'home'           => ['label' => 'Home',             'url' => 'index.php'],
-    'about'          => ['label' => 'About',            'url' => 'index.php#about'],
-    'events'         => ['label' => 'Events',           'url' => 'index.php#experiences'],
-    'accommodations' => ['label' => 'Accommodations',   'url' => 'index.php#accommodations'],
-    'showroom'       => ['label' => 'Virtual Showroom', 'url' => 'showroom.php'],
+    'home'            => ['label' => 'Home',             'url' => 'index.php',              'target' => 'home'],
+    'about'           => ['label' => 'About',            'url' => 'index.php#about',         'target' => 'about'],
+    'experiences'     => ['label' => 'Events',           'url' => 'index.php#experiences',   'target' => 'experiences'],
+    'accommodations'  => ['label' => 'Accommodations',   'url' => 'index.php#accommodations','target' => 'accommodations'],
+    'showroom'        => ['label' => 'Virtual Showroom', 'url' => 'showroom.php',            'target' => 'showroom'],
 ];
 ?>
 <!DOCTYPE html>
@@ -127,7 +127,11 @@ $nav = [
             <ul class="s-links">
                 <?php foreach ($nav as $key => $item): ?>
                 <li>
-                    <a href="<?php echo $item['url']; ?>" class="<?php echo $active_page === $key ? 'active' : ''; ?>">
+                    <a href="<?php echo htmlspecialchars($item['url']); ?>"
+                        class="<?php echo $active_page === $key ? 'active' : ''; ?>"
+                        data-nav-key="<?php echo htmlspecialchars($key); ?>"
+                        data-nav-target="<?php echo htmlspecialchars($item['target']); ?>"
+                        <?php echo $active_page === $key ? 'aria-current="page"' : ''; ?>>
                         <?php echo htmlspecialchars($item['label']); ?>
                     </a>
                 </li>
@@ -211,7 +215,10 @@ $nav = [
 
         <div class="s-mobile">
             <?php foreach ($nav as $key => $item): ?>
-            <a href="<?php echo $item['url']; ?>"><?php echo htmlspecialchars($item['label']); ?></a>
+            <a href="<?php echo htmlspecialchars($item['url']); ?>"
+                data-nav-key="<?php echo htmlspecialchars($key); ?>"
+                data-nav-target="<?php echo htmlspecialchars($item['target']); ?>"
+                <?php echo $active_page === $key ? 'class="active" aria-current="page"' : ''; ?>><?php echo htmlspecialchars($item['label']); ?></a>
             <?php endforeach; ?>
 
             <?php if (!$isLoggedIn): ?>
@@ -238,6 +245,15 @@ $nav = [
         burger.addEventListener('click', function() {
             var open = header.classList.toggle('is-open');
             burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+
+        // Keep the mobile drawer usable for both regular page links and
+        // homepage section links. The homepage scroll-spy owns active state.
+        header.querySelectorAll('.s-mobile a').forEach(function(link) {
+            link.addEventListener('click', function() {
+                header.classList.remove('is-open');
+                burger.setAttribute('aria-expanded', 'false');
+            });
         });
 
         if (userMenu) {

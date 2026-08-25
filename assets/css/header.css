@@ -196,6 +196,19 @@
   transition: color .25s ease;
 }
 .s-mobile a:hover { color: var(--s-gold); }
+.s-mobile a.active {
+  color: var(--s-gold);
+  border-left: 2px solid var(--s-gold);
+  padding-left: 12px;
+}
+.s-links a:focus-visible,
+.s-mobile a:focus-visible,
+.s-burger:focus-visible,
+.s-user__btn:focus-visible,
+.s-notif-btn:focus-visible {
+  outline: 2px solid var(--s-gold);
+  outline-offset: 4px;
+}
 .s-mobile .s-cta {
   margin-top: 10px;
   text-align: center;

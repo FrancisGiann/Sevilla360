@@ -31,53 +31,92 @@ document.addEventListener("DOMContentLoaded", function () {
     revealOnScroll.observe(reveal);
   });
 
-  // --- 2. Mobile Hamburger Menu Logic ---
-  const hamburger = document.getElementById("hamburger");
-  const navLinks = document.getElementById("nav-links");
+  // --- 2. Homepage section-aware navigation ---
+  // Header markup is shared by every route; only the homepage owns a
+  // scroll-spy. Real pages retain their server-rendered active route.
+  const homePage = document.querySelector(".idx-page");
+  const navLinks = Array.from(document.querySelectorAll("[data-nav-target]"));
+  const sectionKeys = ["about", "experiences", "accommodations"];
 
-  if (hamburger && navLinks) {
-    // Toggle main menu
-    hamburger.addEventListener("click", function () {
-      this.classList.toggle("active");
-      navLinks.classList.toggle("active");
+  if (homePage && navLinks.length) {
+    const sections = sectionKeys
+      .map((key) => document.getElementById(key))
+      .filter(Boolean);
+    let requestedSection = null;
+    let scrollFrame = null;
 
-      // Prevent background scrolling
-      if (navLinks.classList.contains("active")) {
-        document.body.style.overflow = "hidden";
-      } else {
-        document.body.style.overflow = "auto";
-      }
-    });
+    const setActiveNav = (target) => {
+      const activeTarget = target === "showroom" ? "showroom" : target || "home";
+      navLinks.forEach((link) => {
+        const active = link.dataset.navTarget === activeTarget;
+        link.classList.toggle("active", active);
+        if (active) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      });
+    };
 
-    // Close menu when clicking standard links
-    const navItems = navLinks.querySelectorAll("a");
-    navItems.forEach((item) => {
-      item.addEventListener("click", () => {
-        hamburger.classList.remove("active");
-        navLinks.classList.remove("active");
-        document.body.style.overflow = "auto";
+    const sectionFromUrl = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      return sectionKeys.includes(hash) ? hash : "home";
+    };
+
+    const sectionAtViewport = () => {
+      // A section becomes active once it reaches the visual reading line
+      // below the fixed header. This remains stable for short sections.
+      const readingLine = Math.min(window.innerHeight * 0.34, 300);
+      let current = "home";
+      sections.forEach((section) => {
+        if (section.getBoundingClientRect().top <= readingLine) current = section.id;
+      });
+      return current;
+    };
+
+    const updateFromScroll = () => {
+      if (requestedSection) return;
+      setActiveNav(sectionAtViewport());
+    };
+
+    const scheduleScrollUpdate = () => {
+      if (scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null;
+        updateFromScroll();
+      });
+    };
+
+    const clearRequestedSection = () => {
+      requestedSection = null;
+      scheduleScrollUpdate();
+    };
+
+    const handleHashChange = () => {
+      const target = sectionFromUrl();
+      requestedSection = target === "home" && !window.location.hash ? null : target;
+      setActiveNav(target);
+      // Allow the browser's anchor positioning to finish before handing
+      // control back to the scroll-spy.
+      window.setTimeout(clearRequestedSection, 450);
+    };
+
+    navLinks.forEach((link) => {
+      link.addEventListener("click", () => {
+        const target = link.dataset.navTarget;
+        if (target && target !== "showroom") {
+          requestedSection = target;
+          setActiveNav(target);
+          window.setTimeout(clearRequestedSection, 500);
+        }
       });
     });
-  }
 
-  // --- 3. Mobile Dropdown Toggle (For the new My Account button) ---
-  const dropdownBtn = document.querySelector(".btn-user-menu");
-  const dropdownMenu = document.querySelector(".nav-dropdown-menu");
+    window.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
+    window.addEventListener("resize", scheduleScrollUpdate, { passive: true });
+    window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handleHashChange);
 
-  if (dropdownBtn && dropdownMenu) {
-    dropdownBtn.addEventListener("click", function (e) {
-      // Only run this on mobile/tablet view
-      if (window.innerWidth <= 992) {
-        e.preventDefault(); // Stop default button behavior
-        dropdownMenu.classList.toggle("active-mobile");
-        
-        // Flip the arrow icon
-        const arrow = this.querySelector(".dropdown-arrow");
-        if(arrow) {
-          arrow.style.transform = dropdownMenu.classList.contains("active-mobile") ? "rotate(180deg)" : "rotate(0deg)";
-        }
-      }
-    });
+    // Hash navigation can be restored after DOMContentLoaded, so make the
+    // first state explicit and then let the scroll-spy take over.
+    handleHashChange();
   }
 
 });
