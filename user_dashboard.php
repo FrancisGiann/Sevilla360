@@ -32,7 +32,11 @@ $stat_confirmed = (int) ($booking_stats['confirmed'] ?? 0);
 $stmt_stats->close();
 
 $stmt_upcoming = $conn->prepare("
-    SELECT b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid, v.name AS venue_name
+    SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
+        b.booking_status, b.payment_status, v.name AS venue_name,
+        EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
+        EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
+        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE()
@@ -42,6 +46,12 @@ $stmt_upcoming->bind_param('i', $customer_id);
 $stmt_upcoming->execute();
 $upcoming_booking = $stmt_upcoming->get_result()->fetch_assoc() ?: null;
 $stmt_upcoming->close();
+
+$stmt_upcoming_count = $conn->prepare("SELECT COUNT(*) AS upcoming_count FROM bookings WHERE customer_id = ? AND booking_status = 'Confirmed' AND start_date >= CURDATE()");
+$stmt_upcoming_count->bind_param('i', $customer_id);
+$stmt_upcoming_count->execute();
+$upcoming_count = (int)($stmt_upcoming_count->get_result()->fetch_assoc()['upcoming_count'] ?? 0);
+$stmt_upcoming_count->close();
 
 $stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(total_amount - amount_paid, 0)), 0) AS balance_due FROM bookings WHERE customer_id = ? AND booking_status <> 'Cancelled'");
 $stmt_balance->bind_param('i', $customer_id);
@@ -112,6 +122,75 @@ while ($row = $notifs_result->fetch_assoc()) {
         }
     }
 }
+
+// Overview-only previews stay customer-scoped and deliberately remain
+// separate from the paginated booking-management query below.
+$stmt_overview_recent = $conn->prepare("
+    SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
+        b.booking_status, b.payment_status, v.name AS venue_name,
+        EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
+        EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
+        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
+    FROM bookings b
+    INNER JOIN venues v ON v.id = b.venue_id
+    WHERE b.customer_id = ?
+    ORDER BY b.id DESC
+    LIMIT 4
+");
+$stmt_overview_recent->bind_param('i', $customer_id);
+$stmt_overview_recent->execute();
+$overview_recent = $stmt_overview_recent->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_overview_recent->close();
+
+$stmt_attention = $conn->prepare("
+    SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
+        b.booking_status, b.payment_status, v.name AS venue_name,
+        EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
+        EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
+        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
+    FROM bookings b
+    INNER JOIN venues v ON v.id = b.venue_id
+    WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled'
+      AND (
+        b.booking_status = 'Pending'
+        OR (b.booking_status = 'Confirmed' AND b.payment_status IN ('Unpaid', 'Partial'))
+        OR (b.payment_status IN ('Unpaid', 'Partial') AND EXISTS (
+            SELECT 1 FROM booking_checkout_sessions bcs_pending
+            WHERE bcs_pending.booking_id = b.id
+              AND bcs_pending.status IN ('creating', 'created', 'paid')
+              AND bcs_pending.provider_session_id IS NOT NULL
+        ))
+        OR EXISTS (SELECT 1 FROM cancellations cx2 WHERE cx2.booking_id = b.id AND cx2.status = 'Pending')
+        OR EXISTS (SELECT 1 FROM reschedule_requests rr2 WHERE rr2.booking_id = b.id AND rr2.status = 'Pending')
+      )
+    ORDER BY b.start_date ASC, b.id DESC
+    LIMIT 5
+");
+$stmt_attention->bind_param('i', $customer_id);
+$stmt_attention->execute();
+$attention_items = $stmt_attention->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_attention->close();
+
+$initial_section = $_GET['section'] ?? 'overview';
+if (!in_array($initial_section, ['overview', 'bookings', 'settings'], true)) {
+    $initial_section = 'overview';
+}
+$format_dashboard_date = static function ($start, $end = null): string {
+    if (empty($start)) return 'Date to be arranged';
+    $start_date = new DateTime($start);
+    if (empty($end) || $start === $end) return $start_date->format('M j, Y');
+    return $start_date->format('M j') . ' – ' . (new DateTime($end))->format('M j, Y');
+};
+$dashboard_status = static function (array $booking): array {
+    if (!empty($booking['cancel_pending'])) return ['Pending refund', 'badge-cancelled'];
+    if (!empty($booking['resched_pending'])) return ['Reschedule requested', 'badge-reschedule'];
+    if ($booking['booking_status'] === 'Cancelled') return ['Cancelled', 'badge-cancelled'];
+    if (!empty($booking['checkout_pending']) && in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return ['Payment in progress', 'badge-pending'];
+    if ($booking['booking_status'] === 'Pending') return ['Pending review', 'badge-pending'];
+    if ($booking['payment_status'] === 'Paid') return ['Fully paid', 'badge-paid'];
+    if ($booking['payment_status'] === 'Partial') return ['Partially paid', 'badge-partial'];
+    return ['Payment due', 'badge-pending'];
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -165,11 +244,14 @@ while ($row = $notifs_result->fetch_assoc()) {
             <nav class="sidebar-nav">
                 <p class="nav-heading">MENU</p>
                 <ul class="nav-list">
-                    <li class="nav-item active" data-tab="bookings">
-                        <a href="#" class="nav-link"><i class="fa-solid fa-bars"></i><span>My Bookings</span></a>
+                    <li class="nav-item <?php echo $initial_section === 'overview' ? 'active' : ''; ?>" data-tab="overview">
+                        <a href="user_dashboard.php?section=overview" class="nav-link" <?php echo $initial_section === 'overview' ? 'aria-current="page"' : ''; ?>><i class="fa-solid fa-chart-line"></i><span>Overview</span></a>
                     </li>
-                    <li class="nav-item" data-tab="settings">
-                        <a href="#" class="nav-link"><i class="fa-regular fa-user"></i><span>Settings</span></a>
+                    <li class="nav-item <?php echo $initial_section === 'bookings' ? 'active' : ''; ?>" data-tab="bookings">
+                        <a href="user_dashboard.php?section=bookings" class="nav-link" <?php echo $initial_section === 'bookings' ? 'aria-current="page"' : ''; ?>><i class="fa-solid fa-bars"></i><span>My Bookings</span></a>
+                    </li>
+                    <li class="nav-item <?php echo $initial_section === 'settings' ? 'active' : ''; ?>" data-tab="settings">
+                        <a href="user_dashboard.php?section=settings" class="nav-link" <?php echo $initial_section === 'settings' ? 'aria-current="page"' : ''; ?>><i class="fa-regular fa-user"></i><span>Settings</span></a>
                     </li>
                 </ul>
             </nav>
@@ -247,31 +329,134 @@ while ($row = $notifs_result->fetch_assoc()) {
 
             <div class="dashboard-content">
 
-                <section class="dashboard-summary-grid" aria-label="Booking overview">
-                    <div class="dashboard-summary-card">
-                        <span class="summary-card-label">Total bookings</span>
-                        <strong><?php echo $stat_total; ?></strong>
-                        <small><?php echo $stat_confirmed; ?> confirmed · <?php echo $stat_pending; ?> pending</small>
+                <!-- ================= TAB: OVERVIEW ================= -->
+                <section id="tab-overview" class="tab-pane dashboard-overview <?php echo $initial_section === 'overview' ? 'active' : ''; ?>" aria-labelledby="overview-title">
+                    <div class="overview-welcome">
+                        <div>
+                            <p class="overview-eyebrow">YOUR SEVILLA360 DASHBOARD</p>
+                            <h1 id="overview-title">Welcome back, <?php echo htmlspecialchars($customer['first_name']); ?>.</h1>
+                            <p class="overview-intro">Keep your reservations, payments and preferences in one considered place.</p>
+                        </div>
+                        <a href="booking.php" class="btn-primary-dash overview-primary-cta"><i class="fa-solid fa-plus"></i> Book a Venue</a>
                     </div>
-                    <div class="dashboard-summary-card">
-                        <span class="summary-card-label">Upcoming stay</span>
-                        <strong><?php echo $upcoming_booking ? htmlspecialchars(date('M j', strtotime($upcoming_booking['start_date']))) : 'None'; ?></strong>
-                        <small><?php echo $upcoming_booking ? htmlspecialchars($upcoming_booking['venue_name']) : 'Book a venue when you are ready'; ?></small>
+
+                    <section class="dashboard-summary-grid overview-kpis" aria-label="Booking overview">
+                        <div class="dashboard-summary-card">
+                            <span class="summary-card-label">Upcoming</span>
+                            <strong><?php echo $upcoming_count; ?></strong>
+                            <small><?php echo $upcoming_count ? 'Confirmed booking' . ($upcoming_count === 1 ? '' : 's') . ' ahead' : 'No upcoming bookings'; ?></small>
+                        </div>
+                        <div class="dashboard-summary-card">
+                            <span class="summary-card-label">Pending</span>
+                            <strong><?php echo $stat_pending; ?></strong>
+                            <small>Awaiting confirmation or payment</small>
+                        </div>
+                        <div class="dashboard-summary-card">
+                            <span class="summary-card-label">Confirmed</span>
+                            <strong><?php echo $stat_confirmed; ?></strong>
+                            <small><?php echo $stat_total; ?> total booking<?php echo $stat_total === 1 ? '' : 's'; ?></small>
+                        </div>
+                        <div class="dashboard-summary-card">
+                            <span class="summary-card-label">Outstanding balance</span>
+                            <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
+                            <small><?php echo $balance_due > 0 ? 'Payment action may be needed' : 'You are all caught up'; ?></small>
+                        </div>
+                    </section>
+
+                    <div class="overview-main-grid">
+                        <section class="overview-card next-booking-card" aria-labelledby="next-booking-title">
+                            <div class="overview-card-heading">
+                                <div>
+                                    <p class="overview-eyebrow">NEXT BOOKING</p>
+                                    <h2 id="next-booking-title">Your upcoming stay</h2>
+                                </div>
+                                <?php if ($upcoming_booking) { [$next_status_text, $next_status_class] = $dashboard_status($upcoming_booking); } ?>
+                                <span class="badge <?php echo $upcoming_booking ? $next_status_class : 'badge-pending'; ?>"><?php echo htmlspecialchars($upcoming_booking ? $next_status_text : 'None yet'); ?></span>
+                            </div>
+                            <?php if ($upcoming_booking): ?>
+                            <div class="next-booking-details">
+                                <strong><?php echo htmlspecialchars($upcoming_booking['venue_name']); ?></strong>
+                                <span><i class="fa-regular fa-calendar"></i> <?php echo htmlspecialchars($format_dashboard_date($upcoming_booking['start_date'], $upcoming_booking['end_date'])); ?></span>
+                                <span><i class="fa-solid fa-receipt"></i> <?php echo $upcoming_booking['total_amount'] > 0 ? '₱' . number_format((float)$upcoming_booking['total_amount'], 2) : 'Amount to be arranged'; ?> · <?php echo htmlspecialchars($upcoming_booking['payment_status']); ?></span>
+                            </div>
+                            <div class="overview-card-actions">
+                                <button type="button" class="btn-outline-dash btn-details" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><i class="fa-solid fa-file-invoice"></i> View details</button>
+                                <?php if ($upcoming_booking['payment_status'] !== 'Paid' && $upcoming_booking['booking_status'] !== 'Cancelled'): ?>
+                                <button type="button" class="btn-primary-dash btn-pay-now" data-id="<?php echo (int)$upcoming_booking['id']; ?>">Pay now</button>
+                                <?php endif; ?>
+                            </div>
+                            <?php else: ?>
+                            <div class="overview-empty-state"><i class="fa-regular fa-calendar"></i><p>No upcoming booking yet.</p><a href="booking.php" class="btn-primary-dash">Find your venue</a></div>
+                            <?php endif; ?>
+                        </section>
+
+                        <section class="overview-card attention-card" aria-labelledby="attention-title">
+                            <div class="overview-card-heading">
+                                <div>
+                                    <p class="overview-eyebrow">ACTION NEEDED</p>
+                                    <h2 id="attention-title">A little attention</h2>
+                                </div>
+                            </div>
+                            <?php if (empty($attention_items)): ?>
+                            <div class="overview-empty-state compact"><i class="fa-solid fa-check"></i><p>Nothing needs your attention right now.</p></div>
+                            <?php else: ?>
+                            <ul class="attention-list">
+                                <?php foreach ($attention_items as $attention): [$attention_text, $attention_class] = $dashboard_status($attention); ?>
+                                <li>
+                                    <div><span class="badge <?php echo $attention_class; ?>"><?php echo htmlspecialchars($attention_text); ?></span><strong><?php echo htmlspecialchars($attention['venue_name']); ?></strong><small><?php echo htmlspecialchars($format_dashboard_date($attention['start_date'], $attention['end_date'])); ?></small></div>
+                                    <a href="user_dashboard.php?section=bookings#booking-<?php echo (int)$attention['id']; ?>" data-dashboard-section="bookings" aria-label="Open booking <?php echo htmlspecialchars($attention['reference_no'] ?: (string)$attention['id']); ?>">View</a>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php endif; ?>
+                        </section>
                     </div>
-                    <div class="dashboard-summary-card">
-                        <span class="summary-card-label">Balance due</span>
-                        <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
-                        <small>Updated from your booking records</small>
-                    </div>
-                    <div class="dashboard-summary-card dashboard-summary-actions">
-                        <span class="summary-card-label">Quick links</span>
-                        <a href="booking.php">Start a booking</a>
-                        <a href="support.php#contact">Contact support</a>
+
+                    <section class="overview-card quick-actions-card" aria-labelledby="quick-actions-title">
+                        <div class="overview-card-heading"><div><p class="overview-eyebrow">SHORTCUTS</p><h2 id="quick-actions-title">Quick actions</h2></div></div>
+                        <div class="quick-actions-grid">
+                            <a href="booking.php"><i class="fa-solid fa-plus"></i><span>Book a venue</span><small>Start a new reservation</small></a>
+                            <a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings"><i class="fa-solid fa-clock-rotate-left"></i><span>View booking history</span><small>See all reservations</small></a>
+                            <a href="user_dashboard.php?section=settings" data-dashboard-section="settings"><i class="fa-regular fa-user"></i><span>Update profile</span><small>Preferences and security</small></a>
+                            <a href="support.php#contact"><i class="fa-regular fa-comment-dots"></i><span>Contact support</span><small>We are happy to help</small></a>
+                        </div>
+                    </section>
+
+                    <div class="overview-lower-grid">
+                        <section class="overview-card recent-bookings-card" aria-labelledby="recent-bookings-title">
+                            <div class="overview-card-heading"><div><p class="overview-eyebrow">RECENT</p><h2 id="recent-bookings-title">Recent bookings</h2></div><a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">View all</a></div>
+                            <?php if (empty($overview_recent)): ?>
+                            <div class="overview-empty-state compact"><i class="fa-regular fa-calendar-xmark"></i><p>No bookings yet.</p><a href="booking.php" class="text-link">Book your first venue</a></div>
+                            <?php else: ?>
+                            <div class="recent-bookings-list">
+                                <?php foreach ($overview_recent as $recent): [$recent_status_text, $recent_status_class] = $dashboard_status($recent); ?>
+                                <article class="recent-booking-row" id="overview-booking-<?php echo (int)$recent['id']; ?>">
+                                    <div><strong><?php echo htmlspecialchars($recent['venue_name']); ?></strong><small><?php echo htmlspecialchars($format_dashboard_date($recent['start_date'], $recent['end_date'])); ?></small></div>
+                                    <span class="badge <?php echo $recent_status_class; ?>"><?php echo htmlspecialchars($recent_status_text); ?></span>
+                                    <button type="button" class="btn-icon-link btn-details" data-id="<?php echo (int)$recent['id']; ?>" aria-label="View details for <?php echo htmlspecialchars($recent['venue_name']); ?>"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
+                                </article>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+                        </section>
+
+                        <section class="overview-card recent-notifications-card" aria-labelledby="recent-notifications-title">
+                            <div class="overview-card-heading"><div><p class="overview-eyebrow">UPDATES</p><h2 id="recent-notifications-title">Recent activity</h2></div><button type="button" class="btn-icon-link" id="overview-open-notifications" aria-label="Open notifications"><i class="fa-regular fa-bell"></i></button></div>
+                            <?php if (empty($notifications)): ?>
+                            <div class="overview-empty-state compact"><i class="fa-regular fa-bell-slash"></i><p>No notifications yet.</p></div>
+                            <?php else: ?>
+                            <ul class="recent-notifications-list">
+                                <?php foreach (array_slice($notifications, 0, 4) as $activity): ?>
+                                <li class="<?php echo $activity['is_read'] ? '' : 'is-unread'; ?>"><span class="activity-dot"></span><div><strong><?php echo htmlspecialchars($activity['title']); ?></strong><small><?php echo htmlspecialchars($activity['message']); ?></small><time datetime="<?php echo htmlspecialchars($activity['created_at']); ?>"><?php echo htmlspecialchars(date('M j, Y', strtotime($activity['created_at']))); ?></time></div></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php endif; ?>
+                        </section>
                     </div>
                 </section>
 
                 <!-- ================= TAB: MY BOOKINGS ================= -->
-                <div id="tab-bookings" class="tab-pane active">
+                <div id="tab-bookings" class="tab-pane <?php echo $initial_section === 'bookings' ? 'active' : ''; ?>">
                     <div class="content-header">
                         <div class="header-titles">
                             <h1 class="page-title">MY BOOKINGS</h1>
@@ -394,7 +579,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 
                                         $display_id = !empty($b['reference_no']) ? htmlspecialchars($b['reference_no']) : '#' . $b['id'];
                                     ?>
-                                    <tr data-status="<?php echo $filter_data; ?>">
+                                    <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo $filter_data; ?>">
 
                                         <td class="booking-ref-id" data-label="Booking ID">
                                             <?php echo $display_id; ?>
@@ -473,13 +658,13 @@ while ($row = $notifs_result->fetch_assoc()) {
                             </span>
                             <div class="pagination-controls">
                                 <?php if ($booking_page > 1): ?>
-                                <a class="pagination-link" href="user_dashboard.php?booking_page=<?php echo $booking_page - 1; ?>" aria-label="Previous page">&larr; Previous</a>
+                                <a class="pagination-link" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $booking_page - 1; ?>" aria-label="Previous page">&larr; Previous</a>
                                 <?php endif; ?>
                                 <?php for ($page_number = 1; $page_number <= $booking_pages; $page_number++): ?>
-                                <a class="pagination-link <?php echo $page_number === $booking_page ? 'active' : ''; ?>" href="user_dashboard.php?booking_page=<?php echo $page_number; ?>" aria-current="<?php echo $page_number === $booking_page ? 'page' : 'false'; ?>"><?php echo $page_number; ?></a>
+                                <a class="pagination-link <?php echo $page_number === $booking_page ? 'active' : ''; ?>" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $page_number; ?>" aria-current="<?php echo $page_number === $booking_page ? 'page' : 'false'; ?>"><?php echo $page_number; ?></a>
                                 <?php endfor; ?>
                                 <?php if ($booking_page < $booking_pages): ?>
-                                <a class="pagination-link" href="user_dashboard.php?booking_page=<?php echo $booking_page + 1; ?>" aria-label="Next page">Next &rarr;</a>
+                                <a class="pagination-link" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $booking_page + 1; ?>" aria-label="Next page">Next &rarr;</a>
                                 <?php endif; ?>
                             </div>
                         </nav>
@@ -489,7 +674,7 @@ while ($row = $notifs_result->fetch_assoc()) {
                 </div>
 
                 <!-- ================= TAB: SETTINGS ================= -->
-                <div id="tab-settings" class="tab-pane">
+                <div id="tab-settings" class="tab-pane <?php echo $initial_section === 'settings' ? 'active' : ''; ?>">
                     <div class="content-header">
                         <div class="header-titles">
                             <h1 class="page-title">ACCOUNT SETTINGS</h1>
@@ -577,9 +762,9 @@ while ($row = $notifs_result->fetch_assoc()) {
     <!-- ================= MODALS ================= -->
 
     <!-- Cancel Modal -->
-    <div class="modal-overlay" id="modal-cancel">
+    <div class="modal-overlay" id="modal-cancel" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
         <div class="modal-box cancel-modal-box">
-            <h2 class="cancel-modal-title">Cancel Reservation?</h2>
+            <h2 class="cancel-modal-title" id="cancel-modal-title">Cancel Reservation?</h2>
 
             <h3 class="cancel-modal-subtitle">Booking Summary</h3>
 
@@ -652,9 +837,9 @@ while ($row = $notifs_result->fetch_assoc()) {
     </div>
 
     <!-- Reschedule Modal (Upgraded to Luxury Style) -->
-    <div class="modal-overlay" id="modal-reschedule">
+    <div class="modal-overlay" id="modal-reschedule" role="dialog" aria-modal="true" aria-labelledby="reschedule-modal-title">
         <div class="modal-box cancel-modal-box modal-box-scroll-90">
-            <h2 class="cancel-modal-title">Reschedule Request</h2>
+            <h2 class="cancel-modal-title" id="reschedule-modal-title">Reschedule Request</h2>
 
             <div class="cancel-summary-grid">
                 <span class="cancel-label">Venue:</span> <span class="cancel-value" id="reschedule-venue">--</span>
@@ -694,7 +879,7 @@ while ($row = $notifs_result->fetch_assoc()) {
     </div>
 
     <!-- Booking Details Modal -->
-    <div class="modal-overlay" id="modal-details">
+    <div class="modal-overlay" id="modal-details" role="dialog" aria-modal="true" aria-labelledby="ud-title">
         <div class="modal-box modal-details-scroll">
             <h2 class="modal-title" id="ud-title">Booking Details</h2>
             <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
@@ -761,7 +946,7 @@ while ($row = $notifs_result->fetch_assoc()) {
     </div>
 
     <!-- Alert Modal -->
-    <div class="modal-overlay alert-modal-overlay" id="uniAlertModal">
+    <div class="modal-overlay alert-modal-overlay" id="uniAlertModal" role="dialog" aria-modal="true" aria-labelledby="ua-title" aria-describedby="ua-message">
         <div class="modal-box alert-modal-box">
             <i id="ua-icon" class="fa-solid fa-circle-info modal-icon-warning alert-icon-gold"></i>
             <h3 class="modal-title" id="ua-title">Notice</h3>

@@ -16,9 +16,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const sidebarClose = document.getElementById('btn-close-sidebar');
   const sidebar = document.querySelector('.dashboard-sidebar');
   const sidebarOverlay = document.getElementById('sidebar-overlay');
+  let toggleDrawer = () => {};
 
   if (sidebar) {
-      const toggleDrawer = (open) => {
+      toggleDrawer = (open) => {
           sidebar.classList.toggle('mobile-open', open);
           if (sidebarOverlay) sidebarOverlay.classList.toggle('active', open);
           document.body.style.overflow = open ? 'hidden' : '';
@@ -105,6 +106,9 @@ document.addEventListener("DOMContentLoaded", () => {
           }
       });
   }
+  document.getElementById('overview-open-notifications')?.addEventListener('click', () => {
+      if (btnNotifs) btnNotifs.click();
+  });
 
   if (btnMarkRead) {
       btnMarkRead.addEventListener('click', () => {
@@ -183,22 +187,77 @@ document.addEventListener("DOMContentLoaded", () => {
   refreshNotifications();
   scheduleNotificationPoll();
   
-  // --- 1. Tab Switching Logic ---
-  const navItems = document.querySelectorAll(".nav-item");
+  // --- 1. Section state and URL navigation ---
+  const validSections = new Set(["overview", "bookings", "settings"]);
+  const navItems = document.querySelectorAll(".nav-item[data-tab]");
   const tabPanes = document.querySelectorAll(".tab-pane");
 
+  const requestedDashboardSection = () => {
+    const querySection = new URLSearchParams(window.location.search).get("section");
+    if (validSections.has(querySection)) return querySection;
+    if (/^booking-\d+$/.test(window.location.hash.slice(1))) return "bookings";
+    return "overview";
+  };
+
+  const setDashboardSection = (section, { push = false, focusBooking = false, hash = null } = {}) => {
+    const targetSection = validSections.has(section) ? section : "overview";
+    navItems.forEach((item) => {
+      const active = item.dataset.tab === targetSection;
+      item.classList.toggle("active", active);
+      const link = item.querySelector(".nav-link");
+      if (link) {
+        if (active) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      }
+    });
+    tabPanes.forEach((pane) => pane.classList.toggle("active", pane.id === `tab-${targetSection}`));
+
+    if (push) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("section", targetSection);
+      if (hash !== null) url.hash = hash;
+      if (targetSection !== "bookings" && url.hash.startsWith("#booking-")) url.hash = "";
+      window.history.pushState({ section: targetSection }, "", url);
+    }
+
+    if (focusBooking) {
+      const bookingId = window.location.hash.match(/^#booking-(\d+)$/)?.[1];
+      if (bookingId) {
+        window.requestAnimationFrame(() => {
+          const row = document.getElementById(`booking-${bookingId}`);
+          if (row) {
+            row.scrollIntoView({ block: "center" });
+            row.setAttribute("tabindex", "-1");
+            row.focus({ preventScroll: true });
+          }
+        });
+      }
+    }
+  };
+
   navItems.forEach((item) => {
-    item.addEventListener("click", (e) => {
-      if (item.classList.contains('sign-out')) return; // Allow logout link to work naturally
-      e.preventDefault();
-      navItems.forEach((nav) => nav.classList.remove("active"));
-      tabPanes.forEach((pane) => pane.classList.remove("active"));
-      item.classList.add("active");
-      const targetTab = item.getAttribute("data-tab");
-      const pane = document.getElementById(`tab-${targetTab}`);
-      if (pane) pane.classList.add("active");
+    const link = item.querySelector(".nav-link");
+    if (!link) return;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      setDashboardSection(item.dataset.tab, { push: true });
+      if (sidebar) toggleDrawer(false);
     });
   });
+
+  document.querySelectorAll("[data-dashboard-section]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const section = link.dataset.dashboardSection;
+      if (!validSections.has(section)) return;
+      event.preventDefault();
+      const linkedUrl = new URL(link.href, window.location.href);
+      setDashboardSection(section, { push: true, focusBooking: Boolean(link.closest(".attention-list")), hash: linkedUrl.hash || null });
+    });
+  });
+
+  window.addEventListener("popstate", () => setDashboardSection(requestedDashboardSection(), { focusBooking: true }));
+  window.addEventListener("hashchange", () => setDashboardSection(requestedDashboardSection(), { focusBooking: true }));
+  setDashboardSection(requestedDashboardSection(), { focusBooking: true });
 
   // --- 2. Table Filtering ---
   const statusFilter = document.getElementById("statusFilter");
@@ -234,19 +293,73 @@ document.addEventListener("DOMContentLoaded", () => {
     cancel: document.getElementById("modal-cancel"),
     reschedule: document.getElementById("modal-reschedule"),
     details: document.getElementById("modal-details"),
+    alert: document.getElementById("uniAlertModal"),
   };
 
-  function openModal(modalId) {
-    if (modals[modalId]) {
-        modals[modalId].classList.add("active");
-        document.body.style.overflow = "hidden"; 
-    }
+  const focusableSelector = [
+    'a[href]', 'area[href]', 'button:not([disabled])', 'input:not([disabled])',
+    'select:not([disabled])', 'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(',');
+  let activeModal = null;
+  let activeInvoker = null;
+  let globalAlertInvoker = null;
+  let suspendedModal = null;
+  let suspendedInvoker = null;
+
+  const isVisible = (element) => Boolean(element && (element.classList.contains('active') || (
+    window.getComputedStyle(element).visibility !== 'hidden' &&
+    window.getComputedStyle(element).display !== 'none' &&
+    window.getComputedStyle(element).opacity !== '0'
+  )));
+
+  const focusModal = (modal) => {
+    if (!modal) return;
+    const focusTarget = Array.from(modal.querySelectorAll(focusableSelector)).find(isVisible)
+      || modal.querySelector('.modal-box') || modal;
+    const isNativelyFocusable = /^(A|AREA|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(focusTarget.tagName)
+      || focusTarget.isContentEditable;
+    if (!isNativelyFocusable && !focusTarget.hasAttribute('tabindex')) focusTarget.setAttribute('tabindex', '-1');
+    const attemptFocus = () => {
+      if (!document.contains(focusTarget) || focusTarget.disabled || !isVisible(modal)) return false;
+      try { focusTarget.focus({ preventScroll: true }); } catch (error) { focusTarget.focus(); }
+      return document.activeElement === focusTarget;
+    };
+    if (!attemptFocus()) window.requestAnimationFrame(attemptFocus);
+    else window.requestAnimationFrame(() => {
+      if (document.activeElement !== focusTarget) attemptFocus();
+    });
+  };
+
+  const restoreFocus = (invoker) => {
+    const attemptFocus = () => {
+      if (!invoker || !document.contains(invoker) || invoker.disabled) return false;
+      const owningModal = invoker.closest('.modal-overlay, .global-admin-modal');
+      if (owningModal && !isVisible(owningModal)) return false;
+      try { invoker.focus({ preventScroll: true }); } catch (error) { invoker.focus(); }
+      return document.activeElement === invoker;
+    };
+    if (!attemptFocus()) window.requestAnimationFrame(attemptFocus);
+    else window.requestAnimationFrame(() => {
+      if (document.activeElement !== invoker) attemptFocus();
+    });
+  };
+
+  function openModal(modalId, invoker = document.activeElement) {
+    const modal = modals[modalId];
+    if (!modal) return;
+    activeModal = modal;
+    activeInvoker = invoker && !modal.contains(invoker) ? invoker : activeInvoker;
+    modal.classList.add("active");
+    document.body.style.overflow = "hidden";
+    focusModal(modal);
   }
 
   function closeModal() {
     Object.values(modals).forEach((modal) => {
-        if(modal) modal.classList.remove("active");
+        if (modal) modal.classList.remove("active");
     });
+    activeModal = null;
     document.body.style.overflow = "";
 
     const checkboxGrp = document.getElementById("cancel-checkbox-group");
@@ -258,15 +371,119 @@ document.addEventListener("DOMContentLoaded", () => {
         if (input.type === "checkbox") input.checked = false;
         else input.value = "";
     });
+    restoreFocus(activeInvoker);
+    activeInvoker = null;
   }
 
   document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
+  document.querySelectorAll("#uniAlertModal .btn-alert-ok").forEach((btn) => btn.addEventListener("click", closeModal));
 
   Object.values(modals).forEach((modal) => {
     if(modal) {
         modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
     }
   });
+
+  const globalAlertModal = document.getElementById('globalAlertModal');
+  const decorateGlobalAlert = (modal) => {
+    if (!modal) return;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'ga-title');
+    modal.setAttribute('aria-describedby', 'ga-message');
+  };
+  decorateGlobalAlert(globalAlertModal);
+
+  // global_modals.js owns the alert's close/reload action. Wrap only its
+  // invocation so focus is managed here without changing that behavior.
+  if (typeof window.showAlert === 'function' && !window.showAlert.__dashboardFocusWrapper) {
+    const originalShowAlert = window.showAlert;
+    const wrappedShowAlert = function (...args) {
+      globalAlertInvoker = document.activeElement;
+      suspendedModal = activeModal;
+      suspendedInvoker = activeInvoker;
+      const result = originalShowAlert.apply(this, args);
+      const alert = document.getElementById('globalAlertModal');
+      decorateGlobalAlert(alert);
+      activeModal = alert;
+      activeInvoker = globalAlertInvoker;
+      document.body.style.overflow = 'hidden';
+      focusModal(alert);
+      return result;
+    };
+    wrappedShowAlert.__dashboardFocusWrapper = true;
+    window.showAlert = wrappedShowAlert;
+  }
+
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('#globalAlertModal #ga-btn-ok')) {
+      window.setTimeout(() => {
+        restoreFocus(globalAlertInvoker);
+        globalAlertInvoker = null;
+        if (suspendedModal && isVisible(suspendedModal)) {
+          activeModal = suspendedModal;
+          activeInvoker = suspendedInvoker;
+        } else {
+          activeModal = null;
+          activeInvoker = null;
+          document.body.style.overflow = '';
+        }
+        suspendedModal = null;
+        suspendedInvoker = null;
+      }, 0);
+    }
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    const modal = activeModal || (isVisible(globalAlertModal) ? globalAlertModal : null);
+    if (!modal) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (modal === globalAlertModal) {
+        modal.querySelector('#ga-btn-ok')?.click();
+      } else {
+        closeModal();
+      }
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = Array.from(modal.querySelectorAll(focusableSelector)).filter((element) => isVisible(element));
+    if (!focusables.length) {
+      event.preventDefault();
+      focusModal(modal);
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (!modal.contains(document.activeElement)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+
+  const appendDetailLine = (container, label, value, supplemental = '') => {
+    const row = document.createElement('p');
+    row.style.cssText = 'border:none; padding:2px 0;';
+    const labelEl = document.createElement('span');
+    labelEl.textContent = `• ${String(label ?? '')}`;
+    const valueEl = document.createElement('span');
+    valueEl.style.color = 'var(--color-dark-light)';
+    valueEl.textContent = `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    row.append(labelEl, valueEl);
+    if (supplemental) {
+      const extra = document.createElement('small');
+      extra.textContent = String(supplemental);
+      labelEl.appendChild(document.createElement('br'));
+      labelEl.appendChild(extra);
+    }
+    container.appendChild(row);
+  };
 
   // --- 4. ACTION BUTTONS ---
 
@@ -451,6 +668,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // C. View Details Button
   document.querySelectorAll(".btn-details").forEach((btn) => {
     btn.addEventListener("click", function(e) {
+        const detailsTrigger = this;
         const bookingId = this.getAttribute('data-id');
         const originalHTML = this.innerHTML; 
         
@@ -522,11 +740,19 @@ document.addEventListener("DOMContentLoaded", () => {
             if (specifics && specRow) {
                 specRow.style.display = 'flex';
                 if (data.venue_category === 'Event Hall') {
-                    specLabel.innerText = "Event Details:";
-                    specValue.innerHTML = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span style="color:#666; font-size:0.85rem; display:block; margin-top:5px;"><strong>Your Notes:</strong> ${specifics.custom_notes || 'None'}</span>`;
+                    specLabel.textContent = "Event Details:";
+                    specValue.textContent = '';
+                    const eventSummary = document.createElement('strong');
+                    eventSummary.textContent = `${String(specifics.event_type ?? '')} (${String(specifics.event_style ?? '')})`;
+                    const notes = document.createElement('span');
+                    notes.style.cssText = 'color:#666; font-size:0.85rem; display:block; margin-top:5px;';
+                    const notesLabel = document.createElement('strong');
+                    notesLabel.textContent = 'Your Notes: ';
+                    notes.append(notesLabel, document.createTextNode(String(specifics.custom_notes || 'None')));
+                    specValue.append(eventSummary, document.createElement('br'), notes);
                 } else if (data.venue_category === 'Resort Villa') {
-                    specLabel.innerText = "Stay Type:";
-                    specValue.innerText = specifics.stay_type;
+                    specLabel.textContent = "Stay Type:";
+                    specValue.textContent = String(specifics.stay_type ?? '');
                 }
             } else if(specRow) {
                 specRow.style.display = 'none';
@@ -547,12 +773,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const rooms = res.data.rooms || [];
             const addonsContainer = document.getElementById('ud-addons-container');
             const addonsList = document.getElementById('ud-addons-list');
-            if (addonsList) addonsList.innerHTML = ''; 
+            if (addonsList) addonsList.replaceChildren();
             
             if (addons && addons.length > 0 && addonsContainer && addonsList) {
                 addonsContainer.style.display = 'block';
                 addons.forEach(addon => {
-                    addonsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${addon.name} (x${addon.quantity})</span> <span style="color:var(--color-dark-light);">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
+                    appendDetailLine(addonsList, `${String(addon.name ?? '')} (x${String(addon.quantity ?? 0)})`, addon.total_price);
                 });
             } else if(addonsContainer) {
                 addonsContainer.style.display = 'none';
@@ -560,13 +786,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const lineItemsContainer = document.getElementById('ud-line-items-container');
             const lineItemsList = document.getElementById('ud-line-items-list');
-            if (lineItemsList) lineItemsList.innerHTML = '';
+            if (lineItemsList) lineItemsList.replaceChildren();
 
             if (lineItems && lineItems.length > 0 && lineItemsContainer && lineItemsList) {
                 lineItemsContainer.style.display = 'block';
                 lineItems.forEach(item => {
-                    if (rooms.length && item.item_name.startsWith('Room Add-on:')) return;
-                    lineItemsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${item.item_name}</span> <span style="color:var(--color-dark-light);">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
+                    if (rooms.length && String(item.item_name ?? '').startsWith('Room Add-on:')) return;
+                    appendDetailLine(lineItemsList, item.item_name, item.amount);
                 });
             } else if (lineItemsContainer) {
                 lineItemsContainer.style.display = 'none';
@@ -576,7 +802,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 lineItemsContainer.style.display = 'block';
                 rooms.forEach(room => {
                     const number = room.room_number ? ` - Room ${room.room_number}` : '';
-                    lineItemsList.innerHTML += `<p style="border:none; padding:2px 0;"><span>&#8226; ${room.building_name} — ${room.room_type}${number}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span style="color:var(--color-dark-light);">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span></p>`;
+                    appendDetailLine(lineItemsList, `${String(room.building_name ?? '')} — ${String(room.room_type ?? '')}${number}`, room.line_total, `${String(room.start_date ?? '')} to ${String(room.end_date ?? '')} (${String(room.nights ?? 0)} nights)`);
                 });
             }
 
@@ -623,7 +849,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 btnPrint.style.display = cannotPrint ? 'none' : 'inline-flex';
             }
 
-            openModal("details");
+            openModal("details", detailsTrigger);
         })
         .catch(err => {
             showAlert("Error", "Network error fetching details.", "error");
