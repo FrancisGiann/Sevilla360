@@ -9,6 +9,8 @@ $google_oauth_enabled = google_oauth_is_configured();
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
         header("Location: admin_dashboard.php");
+    } elseif (($_SESSION['role'] ?? '') === 'customer') {
+        header("Location: user_dashboard.php");
     } else {
         header("Location: index.php");
     }
