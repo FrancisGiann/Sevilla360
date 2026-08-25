@@ -8,16 +8,25 @@
   background-color: #f8f9fa;
   margin: 0;
   padding: 0;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .dashboard-layout {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* --- Sidebar --- */
 .dashboard-sidebar {
   width: 250px;
+  min-width: 250px;
+  max-width: 250px;
   background-color: var(--color-white);
   border-right: 1px solid rgba(42, 37, 34, 0.08);
   display: flex;
@@ -139,8 +148,12 @@
 
 /* --- Main Content Area --- */
 .dashboard-main {
-  flex: 1;
+  flex: 0 1 auto;
   margin-left: 250px;
+  width: calc(100% - 250px);
+  max-width: calc(100% - 250px);
+  min-width: 0;
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
 }
@@ -153,6 +166,8 @@
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid rgba(42, 37, 34, 0.05);
+  width: 100%;
+  min-width: 0;
 }
 
 .topbar-left {
@@ -389,9 +404,19 @@
 /* Dashboard Body & Tabs */
 .dashboard-content {
   padding: 40px;
-  max-width: 1200px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* style.css gives every section a 100px homepage rhythm. Only the Overview
+   layout wrappers opt out; individual cards keep their own panel padding. */
+.dashboard-content > #tab-overview,
+.dashboard-content > .dashboard-overview,
+.dashboard-content .overview-kpis {
+  padding: 0;
 }
 
 .tab-pane {
@@ -1117,12 +1142,16 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 
 @media (max-width: 992px) {
   .dashboard-layout {
+    width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
   }
 
   .dashboard-main {
+    flex: 1 1 auto;
     margin-left: 0;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
   }
 
@@ -1771,7 +1800,12 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 28px;
+  margin: 0 0 16px;
+  padding: 24px 28px;
+  background: linear-gradient(135deg, rgba(253, 242, 226, .9), rgba(255, 255, 255, .96));
+  border: 1px solid rgba(214, 168, 112, .34);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(42, 37, 34, .05);
 }
 .overview-eyebrow {
   margin: 0 0 8px;
@@ -1792,10 +1826,21 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 .overview-primary-cta { flex-shrink: 0; text-decoration: none; }
 .overview-primary-cta,
 .overview-card-actions .btn-outline-dash,
-.overview-card-actions .btn-primary-dash { border-radius: 10px; }
-.overview-kpis { margin-bottom: 20px; }
+.overview-card-actions .btn-primary-dash { border-radius: 10px !important; }
+.overview-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 18px;
+}
+.overview-kpis .dashboard-summary-card {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: center;
+}
 .overview-main-grid,
-.overview-lower-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .9fr); gap: 18px; margin-bottom: 18px; }
+.overview-lower-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .9fr); gap: 16px; margin: 0 0 16px; align-items: stretch; }
 .overview-card {
   min-width: 0;
   padding: 22px;
@@ -1827,7 +1872,7 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 .attention-list strong { overflow: hidden; color: var(--color-dark); font-size: .88rem; text-overflow: ellipsis; white-space: nowrap; }
 .attention-list small { color: var(--color-dark-light); font-size: .75rem; }
 .attention-list a { flex-shrink: 0; color: #8a6532; font-size: .72rem; font-weight: 700; text-decoration: none; text-transform: uppercase; }
-.quick-actions-card { margin-bottom: 18px; }
+.quick-actions-card { margin: 0 0 16px; }
 .quick-actions-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .quick-actions-grid a { display: grid; gap: 5px; min-width: 0; padding: 15px; color: var(--color-dark); border: 1px solid rgba(42, 37, 34, .1); border-radius: 10px; text-decoration: none; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
 .quick-actions-grid a:hover { border-color: var(--color-gold); background: var(--color-beige); transform: translateY(-2px); }
@@ -1852,7 +1897,24 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 .recent-notifications-list time { color: #9b938a; font-size: .68rem; }
 .text-link { color: #8a6532; font-size: .8rem; font-weight: 700; text-decoration: none; }
 
-@media (max-width: 760px) {
+.dashboard-overview :is(a, button):focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-overview,
+  .dashboard-overview *,
+  .dashboard-overview *::before,
+  .dashboard-overview *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (max-width: 860px) {
   .overview-welcome { align-items: flex-start; flex-direction: column; }
   .overview-primary-cta { width: 100%; justify-content: center; }
   .overview-main-grid, .overview-lower-grid { grid-template-columns: 1fr; }
@@ -1869,11 +1931,24 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   .recent-booking-row .btn-icon-link { grid-column: 2; grid-row: 1; }
   .recent-booking-row .badge { grid-column: 1; grid-row: 2; justify-self: start; }
 }
-.dashboard-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:24px; }
-.dashboard-summary-card { background:var(--color-white,#fff); border:1px solid rgba(42,37,34,.08); border-radius:10px; padding:16px; box-shadow:0 5px 18px rgba(42,37,34,.05); min-width:0; }
-.summary-card-label { display:block; color:var(--color-dark-light,#666); font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
-.dashboard-summary-card strong { display:block; margin:8px 0 4px; color:var(--color-dark,#2a2522); font-family:var(--font-heading,serif); font-size:1.65rem; }
-.dashboard-summary-card small { display:block; color:var(--color-dark-light,#666); line-height:1.4; overflow-wrap:anywhere; }
-.dashboard-summary-actions a { display:block; margin-top:8px; color:var(--color-gold,#b5884e); font-size:.85rem; font-weight:600; text-decoration:none; }
-@media (max-width: 900px) { .dashboard-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media (max-width: 560px) { .dashboard-summary-grid { grid-template-columns:1fr; } }
+.dashboard-summary-card { background: var(--color-white, #fff); border: 1px solid rgba(42, 37, 34, .08); border-radius: 10px; padding: 16px; box-shadow: 0 5px 18px rgba(42, 37, 34, .05); min-width: 0; }
+.summary-card-label { display: block; color: var(--color-dark-light, #666); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.dashboard-summary-card strong { display: block; margin: 8px 0 4px; color: var(--color-dark, #2a2522); font-family: var(--font-heading, serif); font-size: 1.65rem; }
+.dashboard-summary-card small { display: block; color: var(--color-dark-light, #666); line-height: 1.4; overflow-wrap: anywhere; }
+.dashboard-summary-actions a { display: block; margin-top: 8px; color: var(--color-gold, #b5884e); font-size: .85rem; font-weight: 600; text-decoration: none; }
+
+@media (min-width: 993px) and (max-width: 1200px) {
+  .dashboard-content { padding: 28px; }
+  .dashboard-topbar { padding-left: 28px; padding-right: 28px; }
+  .overview-main-grid, .overview-lower-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick-actions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 993px) and (max-width: 1100px) {
+  .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .overview-kpis { grid-template-columns: 1fr; }
+}
