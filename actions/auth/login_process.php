@@ -110,6 +110,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['logged_in'] = true;
+            session_policy_mark_authenticated();
 
             $display_name = 'Account'; 
 

@@ -98,6 +98,7 @@ try {
     $_SESSION['role'] = 'customer';
     $_SESSION['logged_in'] = true;
     $_SESSION['first_name'] = $first_name !== '' ? $first_name : 'Customer';
+    session_policy_mark_authenticated();
     header('Location: ../../user_dashboard.php');
     exit;
 } catch (Throwable $error) {

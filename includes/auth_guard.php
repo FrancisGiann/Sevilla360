@@ -1,11 +1,6 @@
 <?php
 require_once __DIR__ . '/session_init.php';
 
-// Generate CSRF TOKEN
-if (empty($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
-
 // check if the user is logged in
 if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header("Location: auth.php");
@@ -32,46 +27,14 @@ $account_status = ($account && in_array($account['role'], ['admin', 'staff'], tr
     ? ($account['staff_status'] ?? '')
     : ($account['user_status'] ?? '');
 if (!$account || strcasecmp((string) $account_status, 'active') !== 0) {
-    session_unset();
-    session_destroy();
-    session_regenerate_id(true);
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    $_SESSION['auth_alert'] = [
-        'title' => 'Account unavailable',
-        'message' => 'Your account is suspended or inactive. Please contact an administrator.',
-        'type' => 'error'
-    ];
+    session_policy_expire(
+        'Your account is suspended or inactive. Please contact an administrator.',
+        'Account unavailable',
+        'error'
+    );
     header("Location: auth.php");
     exit();
 }
-
-// ==========================================
-// IDLE SESSION TIMEOUT (30 MINUTES)
-// ==========================================
-$timeout_minutes = 30;
-$timeout_seconds = $timeout_minutes * 60;
-
-if (isset($_SESSION['last_activity'])) {
-    if (time() - $_SESSION['last_activity'] > $timeout_seconds) {
-        // Clear old session data
-        session_unset();
-        session_destroy();
-        
-        // Start a fresh session for the alert message
-        session_regenerate_id(true);
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        $_SESSION['auth_alert'] = [
-            'title' => 'Session Expired', 
-            'message' => 'You were automatically logged out due to 30 minutes of inactivity.', 
-            'type' => 'warning'
-        ];
-        
-        header("Location: auth.php");
-        exit();
-    }
-}
-// Refresh the activity timestamp since they are active right now
-$_SESSION['last_activity'] = time();
 
 
 // check if the user has the required role to access the page

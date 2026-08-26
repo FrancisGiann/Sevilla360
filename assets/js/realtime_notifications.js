@@ -28,7 +28,10 @@
         if (document.visibilityState === 'hidden') return;
         if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) return;
         try {
-            const response = await fetch(config.tokenUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+            const response = await fetch(config.tokenUrl, {
+                headers: { Accept: 'application/json', 'X-Sevilla-Background': '1' },
+                credentials: 'same-origin'
+            });
             const data = await response.json();
             if (!response.ok || !data.enabled || !data.token || !data.ws_url) return;
             const currentSocket = new WebSocket(data.ws_url);

@@ -54,7 +54,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function refreshNotifications() {
       if (!notifListBody) return;
-      fetch('actions/user/get_notifications.php', { headers: { 'Accept': 'application/json' } })
+      fetch('actions/user/get_notifications.php', {
+          headers: { 'Accept': 'application/json', 'X-Sevilla-Background': '1' }
+      })
           .then(res => res.ok ? res.json() : null)
           .then(data => {
               if (!data?.success) return;

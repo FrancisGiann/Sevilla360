@@ -110,6 +110,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['role'] = 'customer';
             $_SESSION['logged_in'] = true;
             $_SESSION['first_name'] = $display_name;
+            session_policy_mark_authenticated();
 
             if ($transitioned) {
                 clear_rate_limit($conn, $otp_rate_key);

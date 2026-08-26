@@ -34,7 +34,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 2. MASTER FETCH: Grabs all data and shares it
     function fetchGlobalData() {
-        fetch('actions/admin/get_dashboard_stats.php')
+        fetch('actions/admin/get_dashboard_stats.php', {
+            headers: { 'X-Sevilla-Background': '1', 'Accept': 'application/json' }
+        })
         .then(res => res.json())
         .then(data => {
             
