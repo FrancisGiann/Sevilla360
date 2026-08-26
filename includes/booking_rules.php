@@ -2,14 +2,33 @@
 
 /**
  * Returns the overlap predicate used for customer inventory.
- * Event halls occupy every calendar date in their inclusive range; overnight
- * hotel/villa stays use checkout-exclusive intervals.
+ * Event halls and Resort Villas occupy every calendar date in their inclusive
+ * range. Hotel stays use checkout-exclusive intervals so a checkout date can
+ * be a following guest's check-in boundary. Villas persist Day stays with the
+ * same start/end date, so their inclusive rule is also what blocks that
+ * service date.
  */
 function booking_overlap_sql(string $category, string $start_column = 'start_date', string $end_column = 'end_date'): string
 {
-    return $category === 'Event Hall'
+    return in_array($category, ['Event Hall', 'Resort Villa'], true)
         ? "($start_column <= ? AND $end_column >= ?)"
         : "($start_column < ? AND $end_column > ?)";
+}
+
+/** Validate the persisted date shape for a Resort Villa stay. */
+function validate_villa_stay_dates(string $category, string $stay_type, DateTimeInterface $start, DateTimeInterface $end): void
+{
+    if ($category !== 'Resort Villa') return;
+    if (!in_array($stay_type, ['Day Time Stay', 'Overnight'], true)) {
+        throw new InvalidArgumentException('Please select a valid Villa stay type.');
+    }
+    $days = $start->diff($end);
+    if ($days->invert || ($stay_type === 'Day Time Stay' && $days->days !== 0)) {
+        throw new InvalidArgumentException('Day Time Stay must use one calendar date.');
+    }
+    if ($stay_type === 'Overnight' && $days->days !== 1) {
+        throw new InvalidArgumentException('Overnight stays require checkout on the next calendar day.');
+    }
 }
 
 /** Maintenance blocks are physical calendar dates, so always inclusive. */

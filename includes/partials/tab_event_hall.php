@@ -85,7 +85,7 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
         </div>
         <div class="inc-col">
             <h4>Amenities</h4>
-            <ul id="event-venue-amenities"><li>Select an event hall to view its amenities.</li></ul>
+            <ul id="event-venue-amenities" aria-live="polite"><li class="amenities-empty">Select an event hall to view its amenities.</li></ul>
         </div>
     </div>
 

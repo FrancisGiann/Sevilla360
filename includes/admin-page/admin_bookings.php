@@ -19,14 +19,16 @@
 
     <!-- Table Card & History -->
     <div class="table-card">
-        <div class="booking-history-heading" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 class="card-title" style="margin-bottom: 0;">Booking History</h3>
-            <button id="btn-refresh-bookings" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
-                <i class="fa-solid fa-arrows-rotate"></i> Refresh Bookings
-            </button>
-            <a id="btn-export-bookings" class="btn btn-outline" href="actions/admin/export_bookings.php" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;">
-                <i class="fa-solid fa-file-csv"></i> Export CSV
-            </a>
+        <div class="booking-history-heading">
+            <h3 class="card-title">Booking History</h3>
+            <div class="booking-history-actions">
+                <button type="button" id="btn-refresh-bookings" class="btn btn-outline">
+                    <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh Bookings
+                </button>
+                <a id="btn-export-bookings" class="btn btn-outline" href="actions/admin/export_bookings.php">
+                    <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Export CSV
+                </a>
+            </div>
         </div>
 
         <!-- Booking Status Filter Tabs -->

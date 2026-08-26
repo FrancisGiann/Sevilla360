@@ -54,10 +54,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $explicit_venue_id = (int)$validated_venue_id;
     }
     // Validate date formats
-    $start_dt = DateTime::createFromFormat('Y-m-d', $start_date);
-    $end_dt   = DateTime::createFromFormat('Y-m-d', $end_date);
-    if (!$start_dt || !$end_dt || $end_dt < $start_dt || (($room_type ?? '') !== 'Event Hall' && $end_dt <= $start_dt)) {
+    $start_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $start_date);
+    $end_dt   = DateTimeImmutable::createFromFormat('!Y-m-d', $end_date);
+    $is_hotel_request = !in_array($room_type, ['Event Hall', 'Resort Villa'], true);
+    if (!$start_dt || !$end_dt || $end_dt < $start_dt || ($is_hotel_request && $end_dt <= $start_dt)) {
         echo "Error|Invalid date range.";
+        exit;
+    }
+    try {
+        validate_villa_stay_dates($room_type, trim((string)($_POST['stay_type'] ?? 'Day Time Stay')), $start_dt, $end_dt);
+    } catch (InvalidArgumentException $e) {
+        echo "Error|" . $e->getMessage();
         exit;
     }
 

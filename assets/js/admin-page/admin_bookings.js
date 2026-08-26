@@ -238,7 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Customer">${customerName}</td>
                 <td data-label="Date">${dateStr}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
-                <td data-label="Status"><span class="status-badge ${badgeClass}">${statusText}</span>${Number(b.has_rescheduled) === 1 && b.booking_status === 'Confirmed' ? ' <span class="status-badge status-reschedule">Rescheduled &amp; Confirmed</span>' : ''}</td>
+                <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${Number(b.has_rescheduled) === 1 && b.booking_status === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
                 <td data-label="Actions" class="action-cells"><div class="action-buttons">${actionBtns}</div></td>
             </tr>`;
         });
@@ -777,7 +777,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
                   
                   const badge = document.getElementById('vd-status-badge');
-                  badge.innerText = data.booking_status + (Number(data.has_rescheduled) === 1 && data.booking_status === 'Confirmed' ? ' — Rescheduled & Confirmed' : '');
+                  badge.innerText = data.booking_status + (Number(data.has_rescheduled) === 1 && data.booking_status === 'Confirmed' ? ' — Rescheduled' : '');
                   badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
       
                   document.getElementById('vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;

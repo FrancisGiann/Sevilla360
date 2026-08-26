@@ -4,10 +4,11 @@
 
 /* --- Layout & Containers --- */
 .admin-maintenance-container {
-  width: 95%;
-  max-width: 1200px;
+  width: calc(100% - 48px);
+  max-width: 1440px;
   margin: 40px auto;
   padding: 0 20px 100px;
+  box-sizing: border-box;
 }
 
 .maintenance-grid {

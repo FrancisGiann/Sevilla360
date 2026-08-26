@@ -17,15 +17,18 @@ $rooms_query = $conn->query("
         v.name AS building_name,
         h.base_capacity,
         h.max_capacity,
+        h.bed_count,
         h.nightly_rate,
         h.extra_pax_rate,
+        h.check_in_time,
+        h.check_out_time,
         v.description AS venue_description,
         v.amenities AS venue_amenities,
         COUNT(v.id) AS total_inventory
     FROM venues v 
     JOIN hotel_rooms h ON v.id = h.venue_id 
     WHERE v.status = 'Available'
-    GROUP BY h.room_type, v.name, h.base_capacity, h.max_capacity, h.nightly_rate, h.extra_pax_rate, v.description, v.amenities
+    GROUP BY h.room_type, v.name, h.base_capacity, h.max_capacity, h.bed_count, h.nightly_rate, h.extra_pax_rate, h.check_in_time, h.check_out_time, v.description, v.amenities
     ORDER BY h.room_type, v.name
 ");
 $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
@@ -64,7 +67,7 @@ foreach ($hotel_room_groups as &$grp) {
 unset($grp);
 
 // Fetch Villas with CMS image
-$villas_query = $conn->query("SELECT v.id, v.name, vi.day_rate AS base_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
+$villas_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate AS base_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time, vi.day_stay_inclusions, vi.overnight_stay_inclusions FROM venues v JOIN villas vi ON v.id = vi.venue_id WHERE v.status = 'Available'");
 $villas = $villas_query->fetch_all(MYSQLI_ASSOC);
 foreach ($villas as &$villa) {
     $villa['image'] = get_venue_image($conn, $villa['name']);

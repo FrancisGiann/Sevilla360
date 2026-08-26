@@ -11,6 +11,24 @@ $realtime_client_config = realtime_client_config();
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 $allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'settings', 'auditlog', 'usermanagement', 'cms'];
 if (!in_array($page, $allowed_pages, true)) $page = 'overview';
+
+$account_user_id = (int)($_SESSION['user_id'] ?? 0);
+$account_name = 'Admin User';
+$account_email = 'No email on file';
+if ($account_user_id > 0) {
+    $account_display_stmt = $conn->prepare('SELECT u.email, s.full_name FROM users u LEFT JOIN staff s ON s.user_id = u.id WHERE u.id = ? LIMIT 1');
+    if ($account_display_stmt) {
+        $account_display_stmt->bind_param('i', $account_user_id);
+        $account_display_stmt->execute();
+        $account_display = $account_display_stmt->get_result()->fetch_assoc() ?: [];
+        $account_display_stmt->close();
+        $account_name = trim((string)($account_display['full_name'] ?? '')) ?: $account_name;
+        $account_email = trim((string)($account_display['email'] ?? '')) ?: $account_email;
+    }
+}
+$account_name_html = htmlspecialchars($account_name, ENT_QUOTES, 'UTF-8');
+$account_email_html = htmlspecialchars($account_email, ENT_QUOTES, 'UTF-8');
+$account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'admin')), ENT_QUOTES, 'UTF-8');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -192,8 +210,31 @@ if (!in_array($page, $allowed_pages, true)) $page = 'overview';
 
                     </div>
 
-                    <div class="admin-profile" role="img" aria-label="Admin profile">
-                        <i class="fa-solid fa-circle-user profile-icon" aria-hidden="true"></i>
+                    <div class="admin-profile" id="adminProfile">
+                        <button type="button" class="admin-profile-trigger" id="adminProfileTrigger"
+                            aria-label="Open account menu" aria-haspopup="menu" aria-expanded="false"
+                            aria-controls="adminProfileMenu">
+                            <i class="fa-solid fa-circle-user profile-icon" aria-hidden="true"></i>
+                            <i class="fa-solid fa-chevron-down profile-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div class="admin-profile-menu" id="adminProfileMenu" role="menu" hidden>
+                            <div class="admin-profile-identity">
+                                <strong class="admin-profile-name"><?= $account_name_html ?></strong>
+                                <span class="admin-profile-email"><?= $account_email_html ?></span>
+                                <span class="admin-profile-role"><?= $account_role_html ?></span>
+                            </div>
+                            <div class="admin-profile-menu-links">
+                                <a href="admin_dashboard.php?page=settings#panel-profile" role="menuitem">
+                                    <i class="fa-solid fa-user-gear" aria-hidden="true"></i><span>Profile &amp; Security</span>
+                                </a>
+                                <a href="admin_dashboard.php?page=overview" role="menuitem">
+                                    <i class="fa-solid fa-chart-pie" aria-hidden="true"></i><span>Dashboard Overview</span>
+                                </a>
+                                <a href="actions/auth/logout.php" class="admin-profile-sign-out" role="menuitem">
+                                    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i><span>Sign out</span>
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </header>

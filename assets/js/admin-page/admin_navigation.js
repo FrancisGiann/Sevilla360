@@ -55,6 +55,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const profile = document.getElementById('adminProfile');
+    const profileTrigger = document.getElementById('adminProfileTrigger');
+    const profileMenu = document.getElementById('adminProfileMenu');
+    const notificationBell = document.getElementById('notifBell');
+    const notificationDropdown = document.getElementById('notifDropdown');
+
+    if (profile && profileTrigger && profileMenu) {
+        const profileItems = [...profileMenu.querySelectorAll('[role="menuitem"]')];
+        const closeNotifications = () => {
+            notificationDropdown?.classList.remove('show');
+            notificationBell?.setAttribute('aria-expanded', 'false');
+        };
+        const setProfileOpen = (open, focusFirst = false) => {
+            profileTrigger.setAttribute('aria-expanded', String(open));
+            profileMenu.hidden = !open;
+            profileMenu.classList.toggle('show', open);
+            if (open) {
+                closeNotifications();
+                if (focusFirst) window.requestAnimationFrame(() => profileItems[0]?.focus());
+            }
+        };
+
+        profileTrigger.addEventListener('click', event => {
+            event.stopPropagation();
+            setProfileOpen(profileMenu.hidden, false);
+        });
+        profileTrigger.addEventListener('keydown', event => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setProfileOpen(true, true);
+            }
+        });
+        document.addEventListener('click', event => {
+            if (!profile.contains(event.target)) setProfileOpen(false);
+        }, true);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !profileMenu.hidden) {
+                event.preventDefault();
+                setProfileOpen(false);
+                profileTrigger.focus();
+            }
+        });
+    }
+
     if (!toggle || !scrim) return;
 
     const closeMenu = () => {

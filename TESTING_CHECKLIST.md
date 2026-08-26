@@ -52,7 +52,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Open the same availability in two separate browsers/accounts; lock a date in one and verify the other cannot complete a conflicting booking.
 - [ ] Let a booking lock expire; verify the dates become available again and the expired session cannot submit unexpectedly.
 - [ ] For a Hotel Room, verify nightly total, base capacity, extra-person rate, add-ons, and multi-night total against the admin-configured values.
-- [ ] For a Villa, verify day-time versus overnight selection, overnight surcharge, base capacity, extra-person rate, add-ons, and multi-day total.
+- [ ] For a Villa, verify day-time versus overnight selection, each absolute stay rate, base capacity, extra-person rate, add-ons, and multi-day total.
 - [ ] For an Event Hall, verify inquiry behavior, event type/style/notes, room-group selection and allocation, the labeled estimate, and zero upfront payment while awaiting staff confirmation.
 - [ ] Change dates, guests, stay type, room groups, and add-ons repeatedly; totals and UI must update correctly with no duplicate add-ons/rooms.
 - [ ] Confirm the final review shows correct customer, venue, dates, guest count, notes, payment scheme, itemized price, and total.

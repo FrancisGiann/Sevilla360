@@ -330,8 +330,22 @@ try {
         if (!$new_start_dt || !$new_end_dt || $new_start_dt->format('Y-m-d') !== $new_start || $new_end_dt->format('Y-m-d') !== $new_end || $new_end_dt < $new_start_dt || $new_start_dt < $today) {
             throw new Exception("Invalid reschedule date range.");
         }
-        if ($new_start_dt->diff($new_end_dt)->days !== $original_start_dt->diff($original_end_dt)->days) {
-            throw new Exception("Rescheduling must keep the original booking duration.");
+
+        if ($b_info['category'] === 'Resort Villa') {
+            $stmt_stay = $conn->prepare('SELECT stay_type FROM booking_villa_details WHERE booking_id = ? LIMIT 1 FOR UPDATE');
+            if (!$stmt_stay) throw new Exception('Unable to load the Villa stay type.');
+            $stmt_stay->bind_param('i', $booking_id);
+            if (!$stmt_stay->execute()) throw new Exception('Unable to load the Villa stay type.');
+            $stay_row = $stmt_stay->get_result()->fetch_assoc();
+            if (!$stay_row) throw new Exception('Villa stay details are missing for this booking.');
+            validate_villa_stay_dates($b_info['category'], trim((string)$stay_row['stay_type']), $new_start_dt, $new_end_dt);
+        } else {
+            if ($b_info['category'] === 'Hotel Room' && $new_end_dt <= $new_start_dt) {
+                throw new Exception('Hotel Room stays require checkout after check-in.');
+            }
+            if ($new_start_dt->diff($new_end_dt)->days !== $original_start_dt->diff($original_end_dt)->days) {
+                throw new Exception("Rescheduling must keep the original booking duration.");
+            }
         }
 
         // 1. Get original venue info

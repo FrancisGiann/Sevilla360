@@ -228,6 +228,7 @@ class BookingController {
 
             if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
             this.updateVenueInformation(opt, 'villa-description', 'villa-amenities');
+            this.updateVillaInformation(opt);
         });
 
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
@@ -246,12 +247,31 @@ class BookingController {
         });
 
         document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
-            radio.addEventListener("change", (e) => {
-                const isOvernight = e.target.value === "Overnight";
-                this.getEl("rule-day")?.classList.toggle("hidden", isOvernight);
-                this.getEl("rule-night")?.classList.toggle("hidden", !isOvernight);
+            radio.addEventListener("change", async (e) => {
+                // Native radio dispatch has already unchecked the previous
+                // option, so the only other allowed value is the prior state.
+                const previousRadio = Array.from(document.querySelectorAll('input[name="villa-stay"]'))
+                    .find(item => item !== e.target);
+                if (!await this.configureVillaStayMode(e.target.value)) {
+                    if (previousRadio) {
+                        e.target.checked = false;
+                        previousRadio.checked = true;
+                        this.updateVillaStaySelection(previousRadio.value);
+                        const help = this.getEl('villa-calendar-help');
+                        if (help) help.textContent = previousRadio.value === 'Overnight'
+                            ? 'Overnight: one night · checkout is the next calendar day.'
+                            : 'Day Time Stay: one calendar date.';
+                    } else {
+                        e.target.checked = true;
+                    }
+                    this.calculateSummary();
+                    return;
+                }
+                this.updateVillaStaySelection(e.target.value);
+                this.calculateSummary();
             });
         });
+        this.configureVillaStayMode(document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay', false);
 
         // RECALCULATE SUMMARY WHEN PAYMENT SCHEME CHANGES
         document.querySelectorAll('input[name="hotel-payment"], input[name="villa-payment"]').forEach(radio => {
@@ -547,6 +567,9 @@ class BookingController {
             opt.dataset.baseCap  = room.base_capacity;
             opt.dataset.maxCap   = room.max_capacity;
             opt.dataset.extraPax = room.extra_pax_rate;
+            opt.dataset.bedCount = room.bed_count || '';
+            opt.dataset.checkIn = room.check_in_time || '';
+            opt.dataset.checkOut = room.check_out_time || '';
             opt.dataset.description = room.venue_description || '';
             opt.dataset.amenities = room.venue_amenities || '';
             opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
@@ -565,12 +588,18 @@ class BookingController {
         const amenities = this.getEl('hotel-amenities');
         if (!description || !amenities || !option) return;
 
-        description.textContent = option.dataset.description || 'No additional description is available for this accommodation.';
+        const hasSelection = Boolean(option.value);
+        const hasDescription = hasSelection && Boolean((option.dataset.description || '').trim());
+        description.textContent = hasDescription
+            ? option.dataset.description
+            : (hasSelection ? 'No additional description is available for this accommodation.' : 'Select a building to view its description.');
+        description.classList.toggle('venue-description-empty', !hasDescription);
         amenities.innerHTML = '';
         const items = (option.dataset.amenities || '').split(/[,\n]+/).map(item => item.trim()).filter(Boolean);
         if (items.length === 0) {
             const empty = document.createElement('li');
-            empty.textContent = 'No amenities listed.';
+            empty.className = 'amenities-empty';
+            empty.textContent = hasSelection ? 'No amenities listed.' : 'Select a building to view its amenities.';
             amenities.appendChild(empty);
         } else {
             items.forEach(item => {
@@ -579,17 +608,145 @@ class BookingController {
                 amenities.appendChild(li);
             });
         }
+
+        const facts = {
+            'hotel-base-capacity': hasSelection ? `${parseInt(option.dataset.baseCap, 10) || 0} guests` : '—',
+            'hotel-max-capacity': hasSelection ? `${parseInt(option.dataset.maxCap, 10) || 0} guests` : '—',
+            'hotel-bed-count': hasSelection ? `${parseInt(option.dataset.bedCount, 10) || 0}` : '—',
+            'hotel-nightly-rate': hasSelection ? this.formatCurrency(option.value) : '—',
+            'hotel-extra-rate-fact': hasSelection ? this.formatCurrency(option.dataset.extraPax) : '—',
+            'hotel-check-times': hasSelection ? `${this.formatTime(option.dataset.checkIn)} – ${this.formatTime(option.dataset.checkOut)}` : '—'
+        };
+        Object.entries(facts).forEach(([id, value]) => {
+            const fact = this.getEl(id);
+            if (fact) {
+                fact.textContent = value;
+                fact.classList.toggle('fact-placeholder', !hasSelection);
+            }
+        });
+        const capacityNote = this.getEl('hotel-capacity-note');
+        if (capacityNote) capacityNote.textContent = hasSelection
+            ? `Maximum capacity: ${parseInt(option.dataset.maxCap, 10) || 0} guests.`
+            : 'Select a building to see its maximum capacity.';
+    }
+
+    formatTime(value) {
+        const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+        if (!match) return '—';
+        let hour = parseInt(match[1], 10);
+        const suffix = hour >= 12 ? 'PM' : 'AM';
+        hour = hour % 12 || 12;
+        return `${hour}:${match[2]} ${suffix}`;
+    }
+
+    renderVillaInclusions(id, raw, hasSelection) {
+        const container = this.getEl(id);
+        if (!container) return;
+        container.replaceChildren();
+        const items = String(raw || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
+        if (!items.length) {
+            const empty = document.createElement('span');
+            empty.className = 'villa-inclusion-empty';
+            empty.textContent = hasSelection ? 'No additional inclusions listed.' : 'Select a villa to view inclusions.';
+            container.appendChild(empty);
+            return;
+        }
+        items.forEach(item => {
+            const feature = document.createElement('span');
+            feature.className = 'villa-inclusion-item';
+            const marker = document.createElement('span');
+            marker.className = 'villa-inclusion-marker';
+            marker.setAttribute('aria-hidden', 'true');
+            marker.textContent = '✓';
+            feature.append(marker, document.createTextNode(item));
+            container.appendChild(feature);
+        });
+    }
+
+    updateVillaInformation(option) {
+        if (!option) return;
+        const hasSelection = Boolean(option.value);
+        const facts = {
+            'villa-base-capacity': hasSelection ? `${parseInt(option.dataset.baseCap, 10) || 0} guests` : '—',
+            'villa-max-capacity': hasSelection ? `${parseInt(option.dataset.maxCap, 10) || 0} guests` : '—',
+            'villa-extra-rate-fact': hasSelection ? this.formatCurrency(option.dataset.extraPax) : '—',
+            'villa-private-pool': hasSelection ? (option.dataset.privatePool === '1' ? 'Yes' : 'No') : '—'
+        };
+        Object.entries(facts).forEach(([id, value]) => {
+            const fact = this.getEl(id);
+            if (fact) {
+                fact.textContent = value;
+                fact.classList.toggle('fact-placeholder', !hasSelection);
+            }
+        });
+        const capacityNotes = [this.getEl('villa-capacity-note'), this.getEl('villa-capacity-note-guest')];
+        capacityNotes.forEach(note => {
+            if (note) note.textContent = hasSelection
+                ? `Maximum capacity: ${parseInt(option.dataset.maxCap, 10) || 0} guests.`
+                : 'Select a villa to view its configured capacity.';
+        });
+        const dayRate = hasSelection ? this.formatCurrency(option.value) : '—';
+        const overnightRate = hasSelection ? this.formatCurrency(option.dataset.overnight) : '—';
+        const dayDetails = this.getEl('stay-day-details');
+        const nightDetails = this.getEl('stay-night-details');
+        if (dayDetails) dayDetails.textContent = `${dayRate} total · One calendar date · ${this.formatTime(option.dataset.dayIn)}–${this.formatTime(option.dataset.dayOut)}`;
+        if (nightDetails) nightDetails.textContent = `${overnightRate} total · One night · checkout next day · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`;
+        this.renderVillaInclusions('stay-day-inclusions', option.dataset.dayInclusions, hasSelection);
+        this.renderVillaInclusions('stay-night-inclusions', option.dataset.nightInclusions, hasSelection);
+        this.updateVillaStaySelection(document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
+    }
+
+    updateVillaStaySelection(stayType) {
+        document.querySelectorAll('.villa-stay-card').forEach(card => {
+            card.classList.toggle('selected', card.querySelector('input')?.value === stayType);
+        });
+        const option = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
+        if (!option || !option.value) return;
+        const overnight = stayType === 'Overnight';
+        const inTime = overnight ? option.dataset.nightIn : option.dataset.dayIn;
+        const outTime = overnight ? option.dataset.nightOut : option.dataset.dayOut;
+        if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = overnight ? 'Overnight' : 'Day Time Stay';
+        if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = this.formatTime(inTime);
+        if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = this.formatTime(outTime);
+    }
+
+    async configureVillaStayMode(stayType, clearExisting = true) {
+        const calendar = this.state.calendars.villa;
+        if (!calendar) return true;
+        const duration = stayType === 'Overnight' ? 1 : 0;
+        const previousDuration = calendar.fixedDurationNights;
+        const previousGuard = calendar.fixedDurationGuard;
+        const changed = previousDuration !== duration || previousGuard !== true;
+        calendar.fixedDurationNights = duration;
+        calendar.fixedDurationGuard = true;
+        if (clearExisting && changed && (calendar.startDate || calendar.endDate || this.state.isDatesLocked)) {
+            if (this.state.isDatesLocked && !(await this.unlockDatesAPI())) {
+                calendar.fixedDurationNights = previousDuration;
+                calendar.fixedDurationGuard = previousGuard;
+                return false;
+            }
+            calendar.clearSelectedRange();
+            this.state.activeCalendar = null;
+        }
+        const help = this.getEl('villa-calendar-help');
+        if (help) help.textContent = stayType === 'Overnight'
+            ? 'Overnight: one night · checkout is the next calendar day.'
+            : 'Day Time Stay: one calendar date.';
+        return true;
     }
 
     updateVenueInformation(option, descriptionId, amenitiesId) {
         const description = this.getEl(descriptionId);
         const amenities = this.getEl(amenitiesId);
         if (!description || !amenities || !option) return;
-        description.textContent = option.dataset.description || 'No additional description is available for this venue.';
+        const hasDescription = Boolean((option.dataset.description || '').trim());
+        description.textContent = hasDescription ? option.dataset.description : 'No additional description is available for this venue.';
+        description.classList.toggle('venue-description-empty', !hasDescription);
         amenities.replaceChildren();
         const items = (option.dataset.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
         if (!items.length) {
             const empty = document.createElement('li');
+            empty.className = 'amenities-empty';
             empty.textContent = 'No amenities listed.';
             amenities.appendChild(empty);
             return;
@@ -688,13 +845,33 @@ class BookingController {
     }
 
     async unlockDatesAPI() {
-        try { 
-            await fetch('actions/bookings/unlock_dates.php', {
+        try {
+            const res = await fetch('actions/bookings/unlock_dates.php', {
                 method: 'POST',
                 headers: { "X-CSRF-Token": this.csrfToken }
-            }); 
-        } 
-        catch (error) { console.error("Unlock failed", error); }
+            });
+            const response = (await res.text()).split('|');
+            if (!res.ok || response[0] !== 'Success') {
+                throw new Error(response[1] || 'Temporary holds could not be released.');
+            }
+            this.state.isDatesLocked = false;
+            window.isDatesLocked = false;
+            clearInterval(this.state.timerInterval);
+            this.state.timerInterval = null;
+            this.state.timeLimit = 1800;
+            this.getEl("timer-box")?.classList.remove("running");
+            if (this.getEl("timer-text")) this.getEl("timer-text").style.display = "inline";
+            if (this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
+            this.state.addonConfirmedRange = null;
+            this.state.addonAvailabilityToken++;
+            this.state.addonAvailabilityPending = false;
+            this.state.addonAvailabilityReady = false;
+            this.state.addonAvailabilityRangeKey = '';
+            return true;
+        } catch (error) {
+            console.error("Unlock failed", error);
+            return false;
+        }
     }
 
     requestDateConfirmation(startDate, endDate, calendarInstance) {
@@ -716,7 +893,10 @@ class BookingController {
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
             : 'Proceeding will lock these dates for 30 minutes while you complete your booking.';
-        if (this.getEl("selected-date-text")) this.getEl("selected-date-text").innerText = `${startStr} — ${endStr}`;
+        const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
+            ? `${startStr} — ${endStr}`
+            : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
+        if (this.getEl("selected-date-text")) this.getEl("selected-date-text").innerText = dateLabel;
         if (dateModal) dateModal.classList.add("active");
 
         const confirmBtn = this.replaceElement("btn-confirm-date");
@@ -755,6 +935,9 @@ class BookingController {
             // room group; never omit the context when a unit ID is present.
             formData.append('room_type', lockData.roomType || '');
             formData.append('room_name', lockData.roomName || '');
+            if (lockData.roomType === 'Resort Villa') {
+                formData.append('stay_type', document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
+            }
 
             confirmBtn.innerText = isEventInquiry ? "Confirming..." : "Locking...";
             confirmBtn.disabled = true;
@@ -1235,29 +1418,23 @@ class BookingController {
 
     calcVillaMath() {
         const nights = this.state.calendars.villa?.totalNights || 1;
-        const villa = this.safeFloat(this.getEl('villa-type')?.value) * nights;
-        
+        const villaSelect = this.getEl('villa-type');
+        const villaOpt = villaSelect?.options[villaSelect?.selectedIndex];
         const activeStayRadio = document.querySelector('input[name="villa-stay"]:checked');
-        let stayTypePrice = 0;
         let stayText = 'Day Time Stay';
+        let stayRate = this.safeFloat(villaSelect?.value);
 
         if (activeStayRadio) {
             const isOvernight = activeStayRadio.value === 'Overnight';
             stayText = isOvernight ? 'Overnight' : 'Day Time Stay';
-            stayTypePrice = isOvernight ? (3000 * nights) : 0; 
-
-            if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = stayText;
-            if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = isOvernight ? '2:00 PM' : '7:00 AM';
-            if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = isOvernight ? '12:00 PM' : '5:00 PM';
+            stayRate = isOvernight ? this.safeFloat(villaOpt?.dataset.overnight) : this.safeFloat(villaOpt?.value);
         }
-        
-        this.state.summary.total += villa + stayTypePrice; 
-        if (villa > 0) this.appendSummaryRow(`Base Villa Rate (x${nights} days)`, villa);
-        if (stayTypePrice > 0) this.appendSummaryRow('Overnight surcharge (added to day rate)', stayTypePrice);
+        this.updateVillaStaySelection(stayText);
+        const villa = stayRate * nights;
+        this.state.summary.total += villa;
+        if (villa > 0) this.appendSummaryRow(`${stayText} Rate (x${nights} day${nights === 1 ? '' : 's'})`, villa);
         
         // Extra pax rate from villa option data attribute
-        const villaSelect = this.getEl('villa-type');
-        const villaOpt = villaSelect?.options[villaSelect?.selectedIndex];
         const villaCap = parseInt(villaOpt?.dataset.baseCap) || 4;
         const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
 
@@ -1295,7 +1472,8 @@ class BookingController {
             const opt = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
             context.roomType = 'Resort Villa';
             context.roomName = opt?.text.split('(')[0].trim();
-            context.baseAmt  = opt?.value;
+            const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value;
+            context.baseAmt  = stayType === 'Overnight' ? opt?.dataset.overnight : opt?.value;
             context.guests   = this.getEl('villa-guests')?.value;
             context.activeRadioGroup = 'villa-payment';
         }

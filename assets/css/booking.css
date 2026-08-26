@@ -475,6 +475,241 @@ textarea:focus {
   font-weight: bold;
 }
 
+/* Dynamic venue information panels */
+.venue-information-card,
+.hotel-information-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 24px;
+  margin: 1.5rem 0 2rem;
+  padding: 24px;
+  background: var(--color-white);
+  border: 1px solid rgba(42, 37, 34, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 5px 18px rgba(42, 37, 34, 0.05);
+}
+
+.venue-information-card .inc-col,
+.hotel-information-card .inc-col {
+  min-width: 0;
+}
+
+.venue-information-card .inc-col + .inc-col,
+.hotel-information-card .inc-col + .inc-col {
+  border-left: 1px solid rgba(42, 37, 34, 0.1);
+  padding-left: 24px;
+}
+
+.venue-information-card h4,
+.hotel-information-card h4 {
+  margin: 0 0 10px;
+  color: var(--color-dark);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.venue-information-card p,
+.hotel-information-card p {
+  margin: 0;
+  color: var(--color-dark-light);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.venue-description-empty {
+  font-style: italic;
+}
+
+.villa-calendar-help {
+  margin: 8px 0 0;
+  color: var(--color-dark-light);
+  font-size: 0.84rem;
+  font-style: italic;
+}
+
+.venue-information-card ul,
+.hotel-information-card ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.venue-information-card ul li,
+.hotel-information-card ul li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(214, 168, 112, 0.25);
+  border-radius: 5px;
+  background: #faf9f7;
+  color: var(--color-dark-light);
+  font-size: 0.87rem;
+  line-height: 1.35;
+}
+
+.venue-information-card ul li::before,
+.hotel-information-card ul li::before {
+  position: static;
+  flex: 0 0 auto;
+  color: var(--color-gold);
+  content: "✓";
+  font-weight: 700;
+}
+
+.venue-information-card ul li.amenities-empty,
+.hotel-information-card ul li.amenities-empty {
+  grid-column: 1 / -1;
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-dark-light);
+  font-style: italic;
+}
+
+.venue-information-card ul li.amenities-empty::before,
+.hotel-information-card ul li.amenities-empty::before {
+  content: none;
+}
+
+.venue-facts-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.venue-fact {
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid rgba(42, 37, 34, 0.1);
+  border-radius: 6px;
+  background: #faf9f7;
+}
+
+.fact-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color-dark-light);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.venue-fact strong {
+  display: block;
+  color: var(--color-dark);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.venue-fact strong.fact-placeholder {
+  color: var(--color-dark-light);
+  font-weight: 500;
+}
+
+.villa-stay-panel {
+  grid-column: 1 / -1;
+  padding-top: 20px;
+  border-top: 1px solid rgba(42, 37, 34, 0.1);
+}
+
+.villa-stay-heading h4 {
+  margin-bottom: 4px;
+}
+
+.villa-stay-heading p {
+  margin: 0 0 12px;
+  color: var(--color-dark-light);
+  font-size: 0.85rem;
+}
+
+.villa-stay-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.villa-stay-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(42, 37, 34, 0.14);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.villa-stay-card:hover,
+.villa-stay-card:focus-within {
+  border-color: var(--color-gold);
+}
+
+.villa-stay-card.selected {
+  border-color: var(--color-gold);
+  background: rgba(214, 168, 112, 0.08);
+}
+
+.villa-stay-card input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.villa-stay-copy,
+.villa-inclusion-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 5px;
+}
+
+.villa-stay-copy strong {
+  color: var(--color-dark);
+  font-size: 0.94rem;
+}
+
+.villa-stay-copy small {
+  color: var(--color-dark-light);
+  line-height: 1.45;
+}
+
+.villa-inclusion-list {
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.villa-inclusion-item,
+.villa-inclusion-empty {
+  color: var(--color-dark-light);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.villa-inclusion-item {
+  display: flex;
+  gap: 6px;
+}
+
+.villa-inclusion-marker {
+  flex: 0 0 auto;
+  color: var(--color-gold);
+  font-weight: 700;
+}
+
+.villa-inclusion-empty {
+  font-style: italic;
+}
+
 /* ==========================================================================
    RIGHT COLUMN: STICKY SUMMARY 
    ========================================================================== */
@@ -625,6 +860,20 @@ textarea:focus {
   .booking-main {
     padding: 1.5rem;
   }
+
+  .venue-information-card,
+  .hotel-information-card {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .venue-information-card .inc-col + .inc-col,
+  .hotel-information-card .inc-col + .inc-col {
+    border-top: 1px solid rgba(42, 37, 34, 0.1);
+    border-left: 0;
+    padding-top: 18px;
+    padding-left: 0;
+  }
 }
 
 @media (max-width: 768px) {
@@ -641,5 +890,29 @@ textarea:focus {
   .booking-main {
     padding: 1rem;
     border-radius: 6px;
+  }
+
+  .venue-information-card,
+  .hotel-information-card {
+    padding: 18px;
+  }
+
+  .venue-information-card ul,
+  .hotel-information-card ul {
+    grid-template-columns: 1fr;
+  }
+
+  .venue-facts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .villa-stay-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .venue-facts-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -47,9 +47,12 @@ $support_faq = is_array($support_faq) && count($support_faq) ? $support_faq : [
 $venues_query = $conn->query("
     SELECT 
         v.*, 
-        hr.room_type, hr.room_number, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
+        hr.room_type, hr.room_number, hr.bed_count, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
+        hr.check_in_time, hr.check_out_time,
         eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate, eh.capacity_theater, eh.capacity_classroom, eh.capacity_banquet,
-        vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra
+        vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra,
+        vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time,
+        vi.day_stay_inclusions, vi.overnight_stay_inclusions
     FROM venues v
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
@@ -67,7 +70,7 @@ if ($venues_query && $venues_query->num_rows > 0) {
 
 <!-- Pass venue data to JS for the Edit Modal -->
 <script>
-window.allVenuesData = <?php echo json_encode($all_venues); ?>;
+window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 
 <div class="admin-settings-container">
@@ -510,15 +513,15 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
             </div>
 
             <div class="form-group" style="margin-bottom: 15px;">
-                <label>Description (Used in Showroom)</label>
+                <label>Description (Showroom + Online/Admin booking)</label>
                 <textarea id="vm-desc" name="description" class="form-control" rows="3"
                     placeholder="Experience ultimate luxury..."></textarea>
             </div>
 
             <div class="form-group" style="margin-bottom: 25px;">
-                <label>Amenities (Comma-separated)</label>
-                <input type="text" id="vm-amenities" name="amenities" class="form-control"
-                    placeholder="Free Wi-Fi, Pool, Smart TV">
+                <label>Amenities (Online/Admin booking; comma or newline separated)</label>
+                <textarea id="vm-amenities" name="amenities" class="form-control" rows="3"
+                    placeholder="Free Wi-Fi, Pool, Smart TV"></textarea>
             </div>
 
             <!-- DYNAMIC SECTIONS: These hide/show based on category -->
@@ -568,6 +571,18 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         <input type="text" id="vm-hr-room-number" name="room_number" class="form-control"
                             placeholder="e.g. 101 or A-101">
                     </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Beds</label>
+                        <input type="number" id="vm-hr-bed-count" name="bed_count" class="form-control" min="1" step="1" value="1">
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Check-in</label>
+                        <input type="time" id="vm-hr-check-in" name="check_in_time" class="form-control" value="14:00">
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Check-out</label>
+                        <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00">
+                    </div>
 
                     <!-- BULK HOTEL ROOM CREATION (Only shown on add) -->
                     <div class="form-group vm-dynamic vm-hotel vm-bulk-section venue-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc;">
@@ -577,7 +592,7 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                                 <p style="margin: 0; font-size: 0.8rem; color: #4f46e5;">Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
                             </div>
                             <label class="toggle-switch">
-                                <input type="checkbox" id="vm-hr-bulk-toggle">
+                                <input type="checkbox" id="vm-hr-bulk-toggle" data-required="false">
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>
@@ -599,8 +614,38 @@ window.allVenuesData = <?php echo json_encode($all_venues); ?>;
                         <input type="number" id="vm-vi-day" name="day_rate" class="form-control" step="0.01">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Overnight Surcharge / Upgrade (₱, added to day rate)</label>
+                        <label>Overnight Rate (₱, total stay rate)</label>
                         <input type="number" id="vm-vi-night" name="overnight_rate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa venue-pool-field" style="display:none; margin-bottom: 0;">
+                        <label class="checkbox-field-label">
+                            <input type="checkbox" id="vm-vi-pool" name="has_private_pool" value="1" data-required="false">
+                            <span>Private pool available</span>
+                        </label>
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Day stay check-in</label>
+                        <input type="time" id="vm-vi-day-check-in" name="day_check_in_time" class="form-control" value="07:00">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Day stay check-out</label>
+                        <input type="time" id="vm-vi-day-check-out" name="day_check_out_time" class="form-control" value="17:00">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Overnight check-in</label>
+                        <input type="time" id="vm-vi-night-check-in" name="overnight_check_in_time" class="form-control" value="14:00">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
+                        <label>Overnight check-out</label>
+                        <input type="time" id="vm-vi-night-check-out" name="overnight_check_out_time" class="form-control" value="12:00">
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa venue-inclusions-field" style="display:none; margin-bottom: 0;">
+                        <label>Day stay inclusions <span class="field-help">Comma or newline separated</span></label>
+                        <textarea id="vm-vi-day-inclusions" name="day_stay_inclusions" class="form-control" rows="3" data-required="false" placeholder="TV, bed, air conditioner"></textarea>
+                    </div>
+                    <div class="form-group vm-dynamic vm-villa venue-inclusions-field" style="display:none; margin-bottom: 0;">
+                        <label>Overnight inclusions <span class="field-help">Comma or newline separated</span></label>
+                        <textarea id="vm-vi-night-inclusions" name="overnight_stay_inclusions" class="form-control" rows="3" data-required="false" placeholder="Complimentary breakfast for 4 persons"></textarea>
                     </div>
 
                     <!-- Shared Hotel/Villa -->

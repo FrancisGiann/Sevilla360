@@ -240,10 +240,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const formVenue = document.getElementById("form-venue");
   const catSelect = document.getElementById("vm-category");
 
+  function setVenueFieldsState(container, enabled) {
+    container?.querySelectorAll("input, select, textarea").forEach((field) => {
+      field.disabled = !enabled;
+      field.required = enabled && field.dataset.required !== "false";
+    });
+  }
+
   function toggleDynamicFields(category) {
     document.querySelectorAll(".vm-dynamic").forEach((el) => {
       el.style.display = "none";
-      el.querySelector("input").removeAttribute("required");
+      setVenueFieldsState(el, false);
     });
 
     let targetClass = "";
@@ -252,25 +259,23 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (category === "Resort Villa") targetClass = ".vm-villa";
 
     const isEditMode = document.getElementById("vm-id").value !== "";
+    if (!targetClass) return;
 
-    if (targetClass) {
-      document.querySelectorAll(targetClass).forEach((el) => {
-        // Handle bulk section visibility specifically
-        if (el.classList.contains("vm-bulk-section")) {
-          el.style.display = (category === "Hotel Room" && !isEditMode) ? "block" : "none";
-        } else {
-          el.style.display = "block";
-          const input = el.querySelector("input");
-          if (input && !el.classList.contains("vm-bulk-section") && input.id !== "vm-hr-room-number") {
-             input.setAttribute("required", "true");
-          }
-        }
-      });
+    document.querySelectorAll(targetClass).forEach((el) => {
+      const isBulkSection = el.classList.contains("vm-bulk-section");
+      if (isBulkSection && (category !== "Hotel Room" || isEditMode)) return;
+      el.style.display = "block";
+      setVenueFieldsState(el, true);
+    });
 
-      if (category !== "Event Hall") {
-        const extraPax = document.getElementById("vm-extra-pax");
-        extraPax.parentElement.style.display = "block";
-        extraPax.setAttribute("required", "true");
+    if (category === "Hotel Room" && bulkFields) {
+      const bulkEnabled = Boolean(bulkToggle?.checked) && !isEditMode;
+      bulkFields.style.display = bulkEnabled ? "grid" : "none";
+      setVenueFieldsState(bulkFields, bulkEnabled);
+      if (roomNumberField) {
+        roomNumberField.parentElement.style.display = bulkEnabled ? "none" : "block";
+        roomNumberField.disabled = bulkEnabled;
+        roomNumberField.required = !bulkEnabled;
       }
     }
   }
@@ -284,19 +289,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (bulkToggle) {
       bulkToggle.addEventListener("change", function() {
-          if (this.checked) {
-              bulkFields.style.display = "grid";
-              bulkQty.setAttribute("required", "true");
-              bulkStart.setAttribute("required", "true");
-              roomNumberField.removeAttribute("required");
-              roomNumberField.parentElement.style.display = "none";
-          } else {
-              bulkFields.style.display = "none";
-              bulkQty.removeAttribute("required");
-              bulkStart.removeAttribute("required");
-              roomNumberField.setAttribute("required", "true");
-              roomNumberField.parentElement.style.display = "block";
-          }
+          const enabled = this.checked;
+          bulkFields.style.display = enabled ? "grid" : "none";
+          setVenueFieldsState(bulkFields, enabled);
+          roomNumberField.disabled = enabled;
+          roomNumberField.required = !enabled;
+          roomNumberField.parentElement.style.display = enabled ? "none" : "block";
       });
   }
 
@@ -356,12 +354,22 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-hr-type").value = venueData.room_type;
         document.getElementById("vm-hr-rate").value = venueData.nightly_rate;
         document.getElementById("vm-hr-room-number").value = venueData.room_number || "";
+        document.getElementById("vm-hr-bed-count").value = venueData.bed_count || 1;
+        document.getElementById("vm-hr-check-in").value = (venueData.check_in_time || "14:00:00").slice(0, 5);
+        document.getElementById("vm-hr-check-out").value = (venueData.check_out_time || "12:00:00").slice(0, 5);
         document.getElementById("vm-extra-pax").value = venueData.hr_extra;
       } else if (venueData.category === "Resort Villa") {
         document.getElementById("vm-base-cap").value = venueData.vi_base;
         document.getElementById("vm-max-cap").value = venueData.vi_max;
         document.getElementById("vm-vi-day").value = venueData.day_rate;
         document.getElementById("vm-vi-night").value = venueData.overnight_rate;
+        document.getElementById("vm-vi-pool").checked = Number(venueData.has_private_pool) === 1;
+        document.getElementById("vm-vi-day-check-in").value = (venueData.day_check_in_time || "07:00:00").slice(0, 5);
+        document.getElementById("vm-vi-day-check-out").value = (venueData.day_check_out_time || "17:00:00").slice(0, 5);
+        document.getElementById("vm-vi-night-check-in").value = (venueData.overnight_check_in_time || "14:00:00").slice(0, 5);
+        document.getElementById("vm-vi-night-check-out").value = (venueData.overnight_check_out_time || "12:00:00").slice(0, 5);
+        document.getElementById("vm-vi-day-inclusions").value = venueData.day_stay_inclusions || "";
+        document.getElementById("vm-vi-night-inclusions").value = venueData.overnight_stay_inclusions || "";
         document.getElementById("vm-extra-pax").value = venueData.vi_extra;
       }
 

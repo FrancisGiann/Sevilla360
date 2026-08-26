@@ -15,6 +15,7 @@ class SevillaCalendar {
     this.endDate = null;
     this.totalNights = 1;
     this.fixedDurationNights = null;
+    this.fixedDurationGuard = options.fixedDurationGuard === true;
     this.requireHotelRules = options.requireHotelRules === true;
     this.allowSelectionWhilePrimaryLocked = options.allowSelectionWhilePrimaryLocked === true;
     this.onRangeSelected = typeof options.onRangeSelected === 'function' ? options.onRangeSelected : null;
@@ -132,6 +133,29 @@ class SevillaCalendar {
     return false;
   }
 
+  isDateUnavailable(date) {
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    if (this.bookedDatesList.includes(dateStr) || this.hardBlockedDatesList.includes(dateStr)) return true;
+    if (this.isMaintenanceMode) {
+      const maintenance = this.maintenanceDatesList.find(item => item.date === dateStr);
+      if (maintenance?.is_blocking) return true;
+    }
+    return false;
+  }
+
+  setFixedDurationSelection(startDate) {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + this.fixedDurationNights);
+    if (this.fixedDurationGuard) {
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        if (this.isDateUnavailable(cursor)) return null;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return endDate;
+  }
+
   render() {
     this.grid.innerHTML = "";
     const year = this.currentDate.getFullYear();
@@ -219,18 +243,24 @@ class SevillaCalendar {
             this.startDate = cellDate;
             this.endDate = null;
             if (this.fixedDurationNights !== null) {
-              this.endDate = new Date(this.startDate);
-              this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
+              this.endDate = this.setFixedDurationSelection(this.startDate);
+              if (!this.endDate) {
+                this.startDate = null;
+                showAlert("Notice", "The next checkout date is unavailable. Please choose another Villa date.", "info");
+              }
             }
             this.render();
-            if (this.fixedDurationNights !== null) this.notifyRangeSelected();
+            if (this.fixedDurationNights !== null && this.endDate) this.notifyRangeSelected();
           } else if (!this.startDate) {
             this.startDate = cellDate;
             if (this.fixedDurationNights !== null) {
-              this.endDate = new Date(this.startDate);
-              this.endDate.setDate(this.endDate.getDate() + this.fixedDurationNights);
+              this.endDate = this.setFixedDurationSelection(this.startDate);
+              if (!this.endDate) {
+                this.startDate = null;
+                showAlert("Notice", "The next checkout date is unavailable. Please choose another Villa date.", "info");
+              }
               this.render();
-              this.notifyRangeSelected();
+              if (this.endDate) this.notifyRangeSelected();
             } else {
               this.render();
             }

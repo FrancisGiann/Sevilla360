@@ -29,15 +29,15 @@ try {
             // Event Halls only block Confirmed. Villas block Pending & Confirmed.
             $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
 
-            $stmt_bookings = $conn->query("SELECT start_date, end_date FROM bookings WHERE venue_id = $venue_id AND booking_status $status_filter AND source <> 'Maintenance'");
+            $stmt_bookings = $conn->query("SELECT b.start_date, b.end_date, vd.stay_type FROM bookings b LEFT JOIN booking_villa_details vd ON vd.booking_id = b.id WHERE b.venue_id = $venue_id AND b.booking_status $status_filter AND b.source <> 'Maintenance'");
             while ($row = $stmt_bookings->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                $date_is_occupied = ($room_type === 'Event Hall') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
+                $date_is_occupied = ($room_type === 'Event Hall' || $room_type === 'Resort Villa') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
                 while ($date_is_occupied) {
                     $bookedDates[] = $currentDate->format('Y-m-d');
                     $currentDate->modify('+1 day');
-                    $date_is_occupied = ($room_type === 'Event Hall') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
+                    $date_is_occupied = ($room_type === 'Event Hall' || $room_type === 'Resort Villa') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
                 }
             }
 
@@ -63,7 +63,7 @@ try {
                 while ($row = $res_locks->fetch_assoc()) {
                     $currentDate = new DateTime($row['start_date']);
                     $endDate = new DateTime($row['end_date']);
-                    while ($currentDate < $endDate) {
+                    while ($currentDate <= $endDate) {
                         $bookedDates[] = $currentDate->format('Y-m-d');
                         $currentDate->modify('+1 day');
                     }

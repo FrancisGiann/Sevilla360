@@ -43,9 +43,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $scheme = $_POST['payment_scheme'] ?? '';
         $guests = (int)$_POST['guests'];
 
-        $start_dt = DateTime::createFromFormat('!Y-m-d', $sDate);
-        $end_dt = DateTime::createFromFormat('!Y-m-d', $eDate);
-        $today = new DateTime('today');
+        $start_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $sDate);
+        $end_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $eDate);
+        $today = new DateTimeImmutable('today');
         if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $sDate || $end_dt->format('Y-m-d') !== $eDate || $end_dt < $start_dt || $start_dt < $today) {
             throw new Exception("Invalid booking date range.");
         }
@@ -96,6 +96,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception("Selected venue no longer exists.");
         }
         $venue_category = $venue['category'];
+        $stay_type = trim((string)($_POST['stay_type'] ?? 'Day Time Stay'));
+        if ($venue_category === 'Hotel Room' && $end_dt <= $start_dt) {
+            throw new Exception('Hotel Room stays require checkout after check-in.');
+        }
+        validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
 
         // The final request must match an active lock created by this session
         // for overnight inventory. Event Hall inquiries are non-exclusive and
@@ -145,16 +150,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $ref_no = generate_booking_reference($conn, $venue_category);
-        if ($venue_category !== 'Event Hall' && $end_dt <= $start_dt) {
-            throw new Exception("Hotel and villa bookings must end after their start date.");
-        }
 
         // =========================================================================
         // SHARED PRICING LOGIC
         // =========================================================================
         require_once '../../includes/pricing.php';
-        $stay_type = $_POST['stay_type'] ?? 'Day Time Stay';
-
         $pricing = calculate_booking_price($conn, $venue_id, $venue_category, $sDate, $eDate, $guests, $stay_type);
         if ($venue_category === 'Event Hall') {
             $event_style = normalize_event_style($_POST['event_style_key'] ?? $_POST['event_style'] ?? null);
@@ -218,8 +218,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_notes->execute();
         }
 
-        if ($venue_category === 'Resort Villa' && isset($_POST['stay_type'])) {
-            $stay_type = $_POST['stay_type'];
+        if ($venue_category === 'Resort Villa') {
             $stmt_villa = $conn->prepare("INSERT INTO booking_villa_details (booking_id, stay_type) VALUES (?, ?)");
             $stmt_villa->bind_param("is", $booking_id, $stay_type);
             $stmt_villa->execute();
