@@ -116,6 +116,7 @@ $nav = [
     <?php if (!empty($extra_css)): ?>
     <link rel="stylesheet" href="<?php echo $extra_css; ?>">
     <?php endif; ?>
+    <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/ui-refinement.css'); ?>">
 </head>
 
 <body>

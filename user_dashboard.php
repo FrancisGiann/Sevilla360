@@ -211,6 +211,7 @@ $dashboard_status = static function (array $booking): array {
 
     <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
 </head>
 
 <body class="dashboard-body">

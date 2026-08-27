@@ -72,6 +72,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
     <?php endif; ?>
+    <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
 </head>
 
 <body class="admin-body">

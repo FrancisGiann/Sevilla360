@@ -1,0 +1,9 @@
+{
+  "index_file_modified": false,
+  "section_order": ["hero", "about", "experiences", "accommodations"],
+  "accommodations_order": ["event-hall", "resort-villa", "hotel-rooms"],
+  "anchors": ["about", "experiences", "accommodations"],
+  "booking_links": ["event-hall", "resort-villa", "hotel-rooms"],
+  "showroom_links": ["Event Hall", "Resort Villa", "Hotel Room"],
+  "layout_contract": "Hero, welcome, experiences, Event Hall row, dark Villa row, centered Hotel Rooms treatment remain in index.php source order."
+}

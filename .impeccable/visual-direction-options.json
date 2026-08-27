@@ -1,0 +1,43 @@
+{
+  "title": "Choose Sevilla360’s visual system",
+  "question": "Compare the same premium resort experience across the homepage and dashboard, then lock the direction that feels most like Sevilla360.",
+  "options": [
+    {
+      "id": "refined-editorial",
+      "label": "Refined Editorial Luxury",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "private-estate editorial hospitality",
+      "thesis": "The homepage’s warm editorial confidence becomes a disciplined system for every guest and staff screen.",
+      "palette": ["#F7F1E7", "#D5AA6D", "#2A2522", "#7D8F82"],
+      "materials": ["warm paper", "fine brass rules", "soft natural photography"],
+      "viewport": "The existing homepage composition remains intact while booking and dashboard surfaces inherit its type, restraint, and warmth.",
+      "risk": "Requires careful density control so operational screens stay fast rather than decorative.",
+      "comp": ".impeccable/mocks/decision/refined-editorial.webp"
+    },
+    {
+      "id": "resort-minimal",
+      "label": "Modern Resort Minimal",
+      "lineage": "contemporary tropical architecture and quiet boutique hotels",
+      "thesis": "A bright architectural system makes space, alignment, and calm the primary luxury signals.",
+      "palette": ["#FAF9F6", "#B58C5A", "#202422", "#C9D0C8"],
+      "materials": ["limestone", "white oak", "matte bronze"],
+      "viewport": "The homepage keeps its structure but becomes cleaner and more architectural; dashboards use crisp modular bands and restrained color.",
+      "risk": "The cleaner expression may feel less romantic than the current homepage treatment.",
+      "comp": ".impeccable/mocks/decision/resort-minimal.webp"
+    },
+    {
+      "id": "tropical-cinematic",
+      "label": "Cinematic Tropical Premium",
+      "lineage": "evening resort photography and garden-event cinematography",
+      "thesis": "Deep botanical color and dramatic imagery turn Sevilla360 into an immersive destination without sacrificing task clarity.",
+      "palette": ["#17241F", "#D4A75E", "#EFE6D8", "#6F806F"],
+      "materials": ["dark timber", "brushed brass", "lush photographic depth"],
+      "viewport": "The same homepage layout becomes richer and more atmospheric; dashboards translate the world into dark ink navigation and light work surfaces.",
+      "risk": "The strongest personality and motion demand stricter accessibility and performance discipline.",
+      "comp": ".impeccable/mocks/decision/tropical-cinematic.webp"
+    }
+  ],
+  "reroll": false,
+  "canon": false,
+  "steer": false
+}
