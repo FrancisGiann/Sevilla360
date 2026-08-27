@@ -140,7 +140,7 @@ body {
 
 /* Public header. The :has selector scopes the light hero state without
    changing the existing body or header markup. */
-.s-header { padding: 20px 24px; transition: background-color var(--ui-standard), padding var(--ui-standard), box-shadow var(--ui-standard); }
+.s-header { padding: 20px 24px; transition: background-color var(--ui-standard), box-shadow var(--ui-standard); }
 .s-header.is-scrolled { padding-top: 13px; padding-bottom: 13px; background: rgba(43, 39, 35, .97); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 1px 0 rgba(247, 244, 238, .16), 0 10px 24px rgba(20, 17, 15, .12); }
 .s-brand { font-size: 1.04rem; letter-spacing: .3em; }
 .s-links { gap: 28px; }
@@ -161,14 +161,13 @@ body:has(.idx-page) .s-header:not(.is-scrolled) .s-desktop-only > .s-cta:is(:hov
 .support-hero h1 { font-size: clamp(2.35rem, 5vw, 4.25rem); letter-spacing: -.025em; }
 .support-hero p:not(.support-eyebrow), .support-card p, .support-card li, .support-card dd { color: #5f574f; }
 .support-card { background: var(--ui-surface); border: 1px solid var(--ui-line-soft); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow-sm); transition: box-shadow var(--ui-standard), transform var(--ui-standard); }
-.support-card:hover { box-shadow: var(--ui-shadow-md); transform: translateY(-2px); }
 .support-card a { color: var(--color-gold-hover); text-underline-offset: 3px; }
 .booking-section { background: var(--ui-paper); padding-top: 8.5rem; }
 .booking-main, .booking-summary, .booking-sidebar, .booking-card, .summary-card { background: var(--ui-surface); border: 1px solid var(--ui-line-soft); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow-sm); }
 .booking-main { padding: clamp(1.25rem, 3vw, 2.25rem); }
 .booking-tabs { border-bottom-color: var(--ui-line); gap: 1.8rem; }
 .tab-btn { min-height: 48px; color: var(--color-dark-light); }
-.tab-btn::after { background: var(--color-gold); transition: width var(--ui-standard); }
+.tab-btn::after { background: var(--color-gold); width: 100%; transform: scaleX(0); transform-origin: left center; transition: transform var(--ui-standard); }
 .tab-btn:hover, .tab-btn.active { color: var(--color-dark); }
 .block-radios label { border-color: var(--ui-line-soft); border-radius: var(--ui-radius-sm); background: var(--ui-paper); }
 .block-radios label:hover { border-color: var(--color-gold); background: #f1e8da; }
@@ -209,8 +208,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .idx-btn-gold:hover { background: var(--idx-gold-deep) !important; }
 .idx-btn-outline-light { background: transparent !important; color: var(--idx-paper) !important; border-color: rgba(255, 253, 249, .62) !important; box-shadow: none !important; }
 .idx-btn-outline-light:hover { background: rgba(255, 253, 249, .12) !important; border-color: var(--idx-paper) !important; }
-.idx-exp-card img, .idx-reserve-grid img, .idx-reserve-row-dark img, .idx-reserve-centered-imgwrap img { transition: transform 800ms var(--ui-ease), filter 800ms var(--ui-ease); }
-.idx-exp-card:hover img, .idx-reserve-row:hover img { transform: scale(1.035); filter: saturate(1.04); }
+.idx-exp-card img, .idx-reserve-grid img, .idx-reserve-row-dark img, .idx-reserve-centered-imgwrap img { transition: transform 360ms var(--ui-ease), filter 360ms var(--ui-ease); }
 .idx-reserve-centered-card { border-radius: var(--ui-radius-md); }
 .idx-footer {
   background: #2b2723;
@@ -246,7 +244,6 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .dashboard-topbar { background: rgba(247, 244, 238, .95); border-bottom-color: var(--ui-line-soft); box-shadow: 0 1px 0 rgba(43, 39, 35, .04); }
 .dashboard-content { padding: clamp(20px, 4vw, 40px); }
 .overview-card, .dashboard-summary-card, .history-container, .settings-card, .recent-bookings-card, .recent-notifications-card, .next-booking-card, .quick-actions-card, .stat-card { border: 1px solid var(--ui-line-soft) !important; border-radius: var(--ui-radius-md) !important; box-shadow: var(--ui-shadow-sm) !important; }
-.overview-card:hover, .dashboard-summary-card:hover { box-shadow: var(--ui-shadow-md) !important; }
 .overview-eyebrow, .summary-card-label { color: var(--color-gold-hover); letter-spacing: .14em; }
 .next-booking-details { background: #f2ece3; border-radius: var(--ui-radius-sm); }
 .quick-actions-grid a { border-color: var(--ui-line-soft); border-radius: var(--ui-radius-sm); }
@@ -289,8 +286,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .admin-layout :is(.admin-table td, .bookings-table td, .audit-table td, .um-table td) { border-bottom-color: var(--ui-line-soft); }
 .admin-layout :is(.bookings-table tbody tr, .admin-table tbody tr, .audit-table tbody tr, .um-table tbody tr):hover { background: #f8f2e9; }
 .admin-layout :is(.cms-card, .stat-card, .chart-card, .widget-card, .table-card, .booking-card, .calendar-wrapper-card, .settings-panel, .um-card) { transition: box-shadow var(--ui-standard), transform var(--ui-standard); }
-.admin-layout :is(.cms-card, .stat-card, .chart-card, .widget-card, .table-card, .booking-card, .calendar-wrapper-card, .settings-panel, .um-card):hover { box-shadow: var(--ui-shadow-md); }
-.admin-layout .cms-card:hover { transform: translateY(-2px); }
+.admin-layout .cms-card:hover { box-shadow: var(--ui-shadow-sm); }
 .admin-layout .maintenance-alert, .admin-layout .walkin-lock-banner { border-left-width: 1px; border-radius: var(--ui-radius-sm); }
 .admin-layout .cms-pill, .admin-layout .um-tab { border-radius: var(--ui-radius-sm); }
 .admin-layout .cms-pill.active, .admin-layout .um-tab.active { background: var(--color-gold); border-color: var(--color-gold); box-shadow: none; }
@@ -303,7 +299,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
   .s-nav { gap: 6px; }
   .booking-grid, .maintenance-grid { grid-template-columns: 1fr; }
   .showroom-wrapper { height: auto; min-height: 100dvh; padding: 96px 12px 24px; }
-  .showroom-container { width: 100%; height: auto; min-height: 0; flex-direction: column-reverse; }
+  .showroom-container { width: 100%; height: auto; min-height: 0; flex-direction: column; }
   .details-box, .big-viewer-box { border-radius: 0; }
   .big-viewer-box { min-height: min(68vh, 560px); }
   .admin-layout .sidebar { width: min(88vw, 320px); }
@@ -326,10 +322,9 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
   .admin-layout .admin-header { padding-left: 14px; padding-right: 14px; }
   .admin-layout :is(.table-card, .booking-card, .settings-panel, .calendar-wrapper-card) { padding: 18px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-}
+/* Reduced motion is defined with the common interaction contracts at the end
+   of this file. Keep this boundary free of global near-zero-duration rules so
+   useful color and focus feedback can remain legible. */
 
 /* ========================================================================
    Bounded mobile adaptation
@@ -620,3 +615,373 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
   scrollbar-width: none;
 }
 .admin-layout .booking-tabs::-webkit-scrollbar { display: none; }
+
+.admin-layout .settings-sidebar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.admin-layout .settings-sidebar::-webkit-scrollbar { display: none; }
+
+/* ========================================================================
+   Motion system
+   The homepage keeps a fully visible baseline. JavaScript adds
+   .reveal-ready only after the observer is installed, allowing one authored
+   image-and-copy arrival without making content dependent on JavaScript.
+   Operational surfaces use short state changes and connected overlays.
+   ======================================================================== */
+
+/* Keep the hero arrival deliberate but bounded. */
+.idx-hero-content { animation-duration: 620ms; }
+
+/* A composed resort arrival: the image is optically uncovered, then its
+   neighboring copy settles into place. Other .reveal nodes stay visible and
+   are not given a repeated entrance animation. */
+.idx-page .reveal {
+  opacity: 1;
+  transform: none;
+  clip-path: none;
+  transition: none;
+  will-change: auto;
+}
+.idx-page.reveal-ready .idx-welcome-img-wrap.reveal:not(.active) {
+  /* Keep the observed wrapper geometrically intersectable; the image carries
+     the optical crop so IntersectionObserver can still trigger it. */
+  opacity: 1;
+  clip-path: none;
+}
+.idx-page.reveal-ready .idx-welcome-img-wrap.reveal img {
+  opacity: .98;
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 620ms var(--ui-ease), opacity 180ms ease;
+}
+.idx-page.reveal-ready .idx-welcome-img-wrap.reveal.active img {
+  opacity: 1;
+  clip-path: inset(0);
+}
+.idx-page.reveal-ready .idx-welcome-text.reveal:not(.active) {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 360ms ease, transform 360ms var(--ui-ease);
+}
+.idx-page.reveal-ready .idx-welcome-text.reveal.active {
+  opacity: 1;
+  transform: none;
+}
+
+/* Hover-only elevation is opt-in for fine pointers. Press states remain
+   available on touch and keyboard without changing layout. */
+:where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+  .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+  .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+  .btn-icon, .btn-icon-link, .mobile-nav-toggle,
+  .s-links a, .s-mobile a, .dashboard-sidebar .nav-link,
+  .admin-layout .nav-link, .tab-btn, .tab-link, .venue-filter-btn,
+  .um-tab, .cms-pill, .filter-pill, .quick-actions-grid a) {
+  transition: background-color var(--ui-fast), border-color var(--ui-fast),
+    color var(--ui-fast), box-shadow var(--ui-fast), transform var(--ui-fast) !important;
+}
+/* Destructive/cancellation hues communicate risk immediately; keep their
+   color change discrete while retaining quiet press and elevation feedback. */
+:where(.admin-layout .btn-danger, .admin-layout .btn-cancel,
+  .admin-layout .btn-refund, .btn-modal-danger, .btn-modal-reject-refund,
+  .booking-section .btn-cancel, .btn-danger-outline, .btn-cancel-confirm,
+  .btn-cancel-walkin, .btn-delete, .btn-delete-hotspot, .btn-delete-maint) {
+  transition: box-shadow var(--ui-fast), transform var(--ui-fast) !important;
+}
+:where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+  .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+  .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+  .btn-icon, .btn-icon-link, .mobile-nav-toggle,
+  .s-links a, .s-mobile a, .dashboard-sidebar .nav-link,
+  .admin-layout .nav-link, .tab-btn, .tab-link, .venue-filter-btn,
+  .um-tab, .cms-pill, .filter-pill, .quick-actions-grid a):active:not(:disabled) {
+  transform: translateY(1px) scale(.985) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+    .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+    .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+    .btn-icon, .btn-icon-link, .mobile-nav-toggle):hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+
+  .support-card:hover,
+  .dashboard-summary-card:hover {
+    box-shadow: var(--ui-shadow-md) !important;
+    transform: translateY(-2px);
+  }
+  .overview-card:hover { box-shadow: var(--ui-shadow-md) !important; }
+  .quick-actions-grid a:hover {
+    background: #f3eee6;
+    border-color: var(--color-gold);
+    box-shadow: var(--ui-shadow-sm);
+    transform: translateY(-2px);
+  }
+  .admin-layout .cms-card:hover {
+    box-shadow: var(--ui-shadow-md);
+    transform: translateY(-2px);
+  }
+  .idx-exp-card:hover img,
+  .idx-reserve-row:hover img {
+    transform: scale(1.035);
+    filter: saturate(1.04);
+  }
+  .idx-welcome-cta:hover .idx-cta-line {
+    transform: scaleX(1.6);
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .support-card:hover,
+  .overview-card:hover,
+  .dashboard-summary-card:hover,
+  .quick-actions-grid a:hover,
+  .admin-layout .cms-card:hover {
+    transform: none !important;
+    box-shadow: var(--ui-shadow-sm) !important;
+  }
+  .idx-exp-card:hover img,
+  .idx-reserve-row:hover img {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* Indicators use a compositor-friendly scale instead of width animation. */
+.s-links a::after,
+.tab-btn::after,
+.tab-link::after,
+.venue-filter-btn::after {
+  width: 100% !important;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--ui-fast) !important;
+}
+.s-links a:hover::after,
+.s-links a.active::after,
+.tab-btn.active::after,
+.tab-link.active::after,
+.venue-filter-btn.active::after {
+  width: 100% !important;
+  transform: scaleX(1);
+}
+.idx-welcome-cta .idx-cta-line {
+  transform-origin: left center;
+  transition: transform var(--ui-fast);
+}
+
+/* Fast operational continuity. Active panels own their display contract in
+   route CSS; this layer only supplies a short, bounded settle. */
+@keyframes ui-panel-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+.dashboard-layout .tab-pane,
+.booking-section .tab-content,
+.admin-layout .tab-content,
+.admin-layout .settings-panel,
+.admin-layout .um-table,
+.admin-layout .cms-container,
+.admin-layout .audit-log-container,
+.admin-layout .backups-container {
+  animation: none;
+}
+.dashboard-layout .tab-pane.active,
+.booking-section .tab-content.active,
+.admin-layout .tab-content.active,
+.admin-layout .settings-panel.active,
+.admin-layout .um-table.active,
+.admin-layout .cms-container,
+.admin-layout .audit-log-container,
+.admin-layout .backups-container {
+  animation: ui-panel-enter 220ms var(--ui-ease) both;
+}
+
+/* Overlay opacity establishes depth; the child motion establishes the
+   relationship to the trigger. Entrance is a touch slower than exit. */
+:where(.modal-overlay, .overview-modal-overlay, .um-modal-overlay,
+  .cms-modal-overlay, .global-modal-overlay) {
+  transition: opacity 180ms ease, visibility 0s linear 180ms !important;
+}
+:where(.modal-overlay, .overview-modal-overlay, .um-modal-overlay,
+  .cms-modal-overlay, .global-modal-overlay).active {
+  transition-duration: 220ms, 0s !important;
+  transition-delay: 0s !important;
+}
+.modal-overlay .modal-box,
+.modal-overlay .admin-modal,
+.modal-overlay .modal-content,
+.overview-modal-overlay .overview-modal,
+.um-modal-overlay .um-modal-content,
+.cms-modal-overlay .cms-modal-content,
+.global-modal-overlay .global-modal-content {
+  opacity: .98;
+  transform: translateY(8px) scale(.985);
+  transition: opacity 180ms ease, transform 180ms var(--ui-ease) !important;
+}
+.modal-overlay.active .modal-box,
+.modal-overlay.active .admin-modal.active,
+.modal-overlay.active .modal-content,
+.overview-modal-overlay.active .overview-modal.active,
+.um-modal-overlay.active .um-modal-content,
+.cms-modal-overlay.active .cms-modal-content,
+.global-modal-overlay.active .global-modal-content {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition-duration: 260ms, 260ms !important;
+}
+.global-admin-modal {
+  transition: opacity 180ms ease, transform 260ms var(--ui-ease),
+    visibility 0s linear 180ms !important;
+}
+
+/* Connected trigger surfaces. These contracts respect each route's existing
+   hidden/display behavior and animate only the open state when one exists. */
+.s-user__menu,
+.s-notif-dropdown,
+.notif-dropdown,
+.pill-dropdown-menu {
+  transform-origin: top right;
+  transition: opacity 180ms ease, transform 220ms var(--ui-ease),
+    visibility 0s linear 220ms !important;
+}
+.s-notif-dropdown {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+}
+.s-notif-wrapper.is-open .s-notif-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s !important;
+}
+.s-header.is-open .s-mobile,
+.admin-profile-menu:not([hidden]) {
+  animation: ui-dropdown-enter 180ms var(--ui-ease) both;
+  transform-origin: top right;
+}
+@keyframes ui-dropdown-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(.99); }
+  to { opacity: 1; transform: none; }
+}
+.admin-layout .notif-dropdown.show,
+.s-user.is-open .s-user__menu,
+.pill-dropdown-wrapper.open .pill-dropdown-menu {
+  transition-delay: 0s !important;
+}
+.admin-layout .notif-dropdown,
+.admin-profile-menu {
+  transform-origin: top right;
+}
+.admin-layout .notif-dropdown.show {
+  transition: opacity 180ms ease, transform 220ms var(--ui-ease),
+    visibility 0s linear 220ms !important;
+}
+.admin-layout .calendar-dropdown.active {
+  animation: ui-dropdown-enter 180ms var(--ui-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  /* The authored image crop and all spatial entrance motion become an
+     immediate, fully visible state. */
+  .idx-hero-content { animation: none !important; }
+  .idx-page.reveal-ready .idx-welcome-img-wrap.reveal,
+  .idx-page.reveal-ready .idx-welcome-text.reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+    transition: none !important;
+  }
+  .idx-page.reveal-ready .idx-welcome-img-wrap.reveal img {
+    opacity: 1 !important;
+    clip-path: none !important;
+    transition: none !important;
+  }
+  .idx-welcome-cta .idx-cta-line { transition: none; }
+
+  /* Do not replay or spatially animate routine panels. */
+  .dashboard-layout .tab-pane.active,
+  .booking-section .tab-content.active,
+  .admin-layout .tab-content.active,
+  .admin-layout .settings-panel.active,
+  .admin-layout .um-table.active,
+  .admin-layout .cms-container,
+  .admin-layout .audit-log-container,
+  .admin-layout .backups-container {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .modal-overlay .modal-box,
+  .modal-overlay .admin-modal,
+  .modal-overlay .modal-content,
+  .overview-modal-overlay .overview-modal,
+  .um-modal-overlay .um-modal-content,
+  .cms-modal-overlay .cms-modal-content,
+  .global-modal-overlay .global-modal-content {
+    transform: none !important;
+    transition: opacity 120ms ease !important;
+  }
+  .global-admin-modal {
+    transform: translate(-50%, -50%) !important;
+    transition: opacity 120ms ease !important;
+  }
+  .s-header.is-open .s-mobile,
+  .admin-profile-menu:not([hidden]),
+  .admin-layout .calendar-dropdown.active {
+    animation: none !important;
+    transform: none !important;
+  }
+  .s-user__menu,
+  .s-notif-dropdown,
+  .notif-dropdown,
+  .pill-dropdown-menu {
+    transform: none !important;
+    transition: opacity 120ms ease, visibility 0s linear 120ms !important;
+  }
+
+  /* Fine-pointer hover rules above still match when reduced motion is
+     requested. Remove their spatial lift/crop while retaining their visual
+     color, border, shadow, and focus feedback. */
+  :where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+    .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+    .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+    .btn-icon, .btn-icon-link, .mobile-nav-toggle):hover:not(:disabled),
+  .support-card:hover,
+  .dashboard-summary-card:hover,
+  .quick-actions-grid a:hover,
+  .admin-layout .cms-card:hover,
+  .idx-exp-card:hover img,
+  .idx-reserve-row:hover img,
+  .idx-welcome-cta:hover .idx-cta-line {
+    transform: none !important;
+  }
+
+  /* Brief color, border, shadow, and focus feedback remains available while
+     press compression and other spatial movement are removed. */
+  :where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+    .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+    .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+    .btn-icon, .btn-icon-link, .mobile-nav-toggle,
+    .s-links a, .s-mobile a, .dashboard-sidebar .nav-link,
+    .admin-layout .nav-link, .tab-btn, .tab-link, .venue-filter-btn,
+    .um-tab, .cms-pill, .filter-pill, .quick-actions-grid a) {
+    transition: background-color 120ms ease, border-color 120ms ease,
+      color 120ms ease, box-shadow 120ms ease !important;
+  }
+  :where(.btn, .idx-btn, .s-cta, .btn-primary, .btn-secondary,
+    .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
+    .btn-quick-action, .btn-modal, .btn-gold, .btn-dark, .btn-outline,
+    .btn-icon, .btn-icon-link, .mobile-nav-toggle,
+    .s-links a, .s-mobile a, .dashboard-sidebar .nav-link,
+    .admin-layout .nav-link, .tab-btn, .tab-link, .venue-filter-btn,
+    .um-tab, .cms-pill, .filter-pill, .quick-actions-grid a):active:not(:disabled) {
+    transform: none !important;
+  }
+}

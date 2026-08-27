@@ -13,28 +13,58 @@ if (document.querySelector('.hero')) {
 document.addEventListener("DOMContentLoaded", function () {
   
   // --- 1. Organic Scroll Reveal Animation ---
+  const homePage = document.querySelector(".idx-page");
   const reveals = document.querySelectorAll(".reveal");
-  const revealOptions = {
-    threshold: 0.15,
-    rootMargin: "0px 0px -50px 0px",
-  };
+  if (homePage && homePage.dataset.revealInitialized !== "true") {
+    homePage.dataset.revealInitialized = "true";
 
-  const revealOnScroll = new IntersectionObserver(function (entries, observer) {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add("active");
-      observer.unobserve(entry.target); 
-    });
-  }, revealOptions);
+    // The default CSS state is fully visible. Gate the authored homepage
+    // treatment only after its observer is ready, so a failed script or an
+    // older browser never leaves content hidden.
+    if (reveals.length && "IntersectionObserver" in window) {
+      const revealOptions = {
+        threshold: 0.15,
+        rootMargin: "0px 0px -50px 0px",
+      };
 
-  reveals.forEach((reveal) => {
-    revealOnScroll.observe(reveal);
-  });
+      const revealOnScroll = new IntersectionObserver(function (entries, observer) {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting || entry.target.dataset.revealSeen === "true") return;
+          entry.target.dataset.revealSeen = "true";
+          entry.target.classList.add("active");
+          observer.unobserve(entry.target);
+        });
+      }, revealOptions);
+
+      const isInInitialViewport = (element) => {
+        const rect = element.getBoundingClientRect();
+        const rootBottom = Math.max(0, window.innerHeight - 50);
+        const visibleHeight = Math.min(rect.bottom, rootBottom) - Math.max(rect.top, 0);
+        return visibleHeight > 0 && visibleHeight / Math.max(rect.height, 1) >= 0.15;
+      };
+
+      reveals.forEach((reveal) => {
+        revealOnScroll.observe(reveal);
+        // Anchor restoration can place a section in view before the observer's
+        // first async callback. Mark it now to avoid a one-frame hidden flash.
+        if (isInInitialViewport(reveal)) {
+          reveal.dataset.revealSeen = "true";
+          reveal.classList.add("active");
+          revealOnScroll.unobserve(reveal);
+        }
+      });
+
+      homePage.classList.add("reveal-ready");
+    } else {
+      // Keep the existing active contract when IntersectionObserver is not
+      // available, without relying on animation for content visibility.
+      reveals.forEach((reveal) => reveal.classList.add("active"));
+    }
+  }
 
   // --- 2. Homepage section-aware navigation ---
   // Header markup is shared by every route; only the homepage owns a
   // scroll-spy. Real pages retain their server-rendered active route.
-  const homePage = document.querySelector(".idx-page");
   const navLinks = Array.from(document.querySelectorAll("[data-nav-target]"));
   const sectionKeys = ["about", "experiences", "accommodations"];
 

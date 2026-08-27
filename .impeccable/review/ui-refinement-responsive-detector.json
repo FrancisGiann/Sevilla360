@@ -1,0 +1,22 @@
+[
+  {
+    "antipattern": "layout-transition",
+    "name": "Layout property animation",
+    "description": "Animating width, height, padding, or margin causes layout thrash and janky performance. Use transform and opacity instead, or grid-template-rows for height animations.",
+    "severity": "warning",
+    "category": "quality",
+    "file": "/var/www/html/Sevilla360/assets/css/ui-refinement.css",
+    "line": 143,
+    "snippet": "transition: padding"
+  },
+  {
+    "antipattern": "layout-transition",
+    "name": "Layout property animation",
+    "description": "Animating width, height, padding, or margin causes layout thrash and janky performance. Use transform and opacity instead, or grid-template-rows for height animations.",
+    "severity": "warning",
+    "category": "quality",
+    "file": "/var/www/html/Sevilla360/assets/css/ui-refinement.css",
+    "line": 170,
+    "snippet": "transition: width"
+  }
+]
