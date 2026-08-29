@@ -781,6 +781,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
                   
                   const displayStatus = data.display_booking_status || data.booking_status;
+                  const isCompleted = displayStatus === 'Completed';
                   const badge = document.getElementById('vd-status-badge');
                   badge.innerText = displayStatus + (Number(data.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' — Rescheduled' : '');
                   badge.className = 'status-badge ' + (displayStatus === 'Completed' ? 'status-completed' : (displayStatus === 'Confirmed' ? 'status-paid' : (displayStatus === 'Cancelled' ? 'status-refunded' : 'status-pending')));
@@ -899,13 +900,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
                   const btnAdminPrint = document.getElementById('btn-admin-print');
                   const btnAdminResend = document.getElementById('btn-admin-resend');
-                  const cannotPrint = (data.booking_status === 'Pending') || (data.booking_status === 'Cancelled') || (data.payment_scheme === 'To Be Arranged') || (data.venue_category === 'Event Hall' && data.booking_status === 'Pending');
+                  const canOpenPdfReceipt = displayStatus !== 'Pending'
+                      && displayStatus !== 'Cancelled'
+                      && data.payment_scheme !== 'To Be Arranged';
+                  const canResendReceipt = !isCompleted
+                      && displayStatus !== 'Pending'
+                      && displayStatus !== 'Cancelled'
+                      && data.payment_scheme !== 'To Be Arranged';
 
                   if (btnAdminPrint) {
-                      btnAdminPrint.style.display = cannotPrint ? 'none' : 'inline-flex';
+                      btnAdminPrint.style.display = canOpenPdfReceipt ? 'inline-flex' : 'none';
                   }
                   if (btnAdminResend) {
-                      btnAdminResend.style.display = cannotPrint ? 'none' : 'inline-flex';
+                      btnAdminResend.style.display = canResendReceipt ? 'inline-flex' : 'none';
                   }
       
                   modalOverlay.classList.add('active');

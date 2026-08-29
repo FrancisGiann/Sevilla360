@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 
 // 1. SECURITY: Must be Admin/Staff
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] !== 'admin' && $_SESSION['role'] !== 'staff')) {
@@ -29,6 +30,7 @@ try {
     // 3. Fetch Booking Data
     $stmt = $conn->prepare("
         SELECT b.reference_no, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
+               CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed,
                c.first_name, c.last_name, c.email, 
                v.name AS venue_name
         FROM bookings b
@@ -49,7 +51,11 @@ try {
     $venue_name = $booking['venue_name'];
     $amount_paid = floatval($booking['amount_paid']);
     
-    if (in_array($booking['booking_status'], ['Cancelled', 'Pending'])) {
+    if (booking_is_completed($booking)) {
+        throw new Exception("Receipt email cannot be resent for a completed booking.");
+    }
+
+    if (in_array($booking['booking_status'], ['Cancelled', 'Pending'], true)) {
         throw new Exception("Receipt cannot be resent for cancelled or pending bookings.");
     }
 
