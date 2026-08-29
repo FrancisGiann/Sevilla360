@@ -36,6 +36,15 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function () {
+            try {
+                if (window.matchMedia('(min-width: 769px)').matches && window.localStorage.getItem('sevilla360-admin-sidebar-collapsed') === '1') {
+                    document.documentElement.classList.add('admin-sidebar-precollapsed');
+                }
+            } catch (error) { /* Storage may be disabled; keep the expanded baseline. */ }
+        }());
+    </script>
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
     <title>SEVILLA360 - Admin Dashboard</title>

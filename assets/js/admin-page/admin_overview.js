@@ -125,9 +125,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 document.getElementById('ov-vd-title').innerText = `Booking ${data.reference_no}`;
                 
+                const displayStatus = data.display_booking_status || data.booking_status;
                 const badge = document.getElementById('ov-vd-status-badge');
-                badge.innerText = data.booking_status;
-                badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
+                badge.innerText = displayStatus;
+                badge.className = 'status-badge ' + (displayStatus === 'Completed' ? 'status-completed' : (displayStatus === 'Confirmed' ? 'status-paid' : (displayStatus === 'Cancelled' ? 'status-refunded' : 'status-pending')));
 
                 document.getElementById('ov-vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;
                 document.getElementById('ov-vd-customer-email').innerText = data.email;
@@ -348,7 +349,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (statusCanvas) {
             new Chart(statusCanvas.getContext("2d"), {
                 type: "pie",
-                data: { labels: ["Confirmed", "Pending", "Cancelled"], datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red], borderWidth: 0, hoverOffset: 4 }] },
+                data: { labels: ["Confirmed", "Pending", "Cancelled", "Completed"], datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red, "#a8b99d"], borderWidth: 0, hoverOffset: 4 }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } } }
             });
         }
@@ -490,18 +491,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
         bookings.forEach(booking => {
             let badgeClass = 'badge-pending'; let statusText = 'Pending';
-            if (booking.booking_status === 'Confirmed' || booking.booking_status === 'Completed') {
+            const displayStatus = booking.display_booking_status || booking.booking_status;
+            if (displayStatus === 'Completed') {
+                badgeClass = 'badge-completed'; statusText = 'Completed';
+            } else if (displayStatus === 'Confirmed') {
                 if (booking.payment_status === 'Partial') { badgeClass = 'badge-partial'; statusText = 'Partially Paid'; } 
                 else { badgeClass = 'badge-confirmed'; statusText = 'Fully Paid'; }
-            } else if (booking.booking_status === 'Cancelled') { badgeClass = 'badge-cancelled'; statusText = 'Cancelled'; }
+            } else if (displayStatus === 'Cancelled') { badgeClass = 'badge-cancelled'; statusText = 'Cancelled'; }
 
-            if (booking.cancel_status === 'Pending') { badgeClass = 'badge-action'; statusText = 'Pending Refund'; }
-            else if (booking.resched_status === 'Pending') { badgeClass = 'badge-partial'; statusText = 'Resched Req.'; }
+            if (displayStatus !== 'Completed' && booking.cancel_status === 'Pending') { badgeClass = 'badge-action'; statusText = 'Pending Refund'; }
+            else if (displayStatus !== 'Completed' && booking.resched_status === 'Pending') { badgeClass = 'badge-partial'; statusText = 'Resched Req.'; }
 
             const dateStr = new Date(booking.start_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 
             let amountText = currencyFormatter.format(booking.total_amount);
-            if (booking.venue_category === 'Event Hall' && booking.booking_status === 'Pending') {
+            if (booking.venue_category === 'Event Hall' && displayStatus === 'Pending') {
                 amountText = '<span class="tba-text">TBA</span>';
             }
 

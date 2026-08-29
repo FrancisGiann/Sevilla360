@@ -17,6 +17,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/booking_rules.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/refund_helper.php';
 require_once __DIR__ . '/../../includes/realtime.php';
@@ -68,7 +69,7 @@ try {
     // All booking/payment/cancellation paths acquire the booking row first.
     // This deterministic order prevents a refund transition from racing a
     // provider reconciliation or customer request that also locks bookings.
-    $stmt_booking_lock = $conn->prepare('SELECT id, booking_status, payment_status, amount_paid, total_amount FROM bookings WHERE id = ? FOR UPDATE');
+    $stmt_booking_lock = $conn->prepare("SELECT b.id, b.start_date, b.end_date, b.booking_status, b.payment_status, b.amount_paid, b.total_amount, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed FROM bookings b WHERE b.id = ? FOR UPDATE");
     $stmt_booking_lock->bind_param('i', $booking_id);
     if (!$stmt_booking_lock->execute()) throw new Exception('Booking lock unavailable.');
     $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
@@ -76,10 +77,16 @@ try {
     // All state-dependent decisions below use this locked snapshot rather
     // than the initial display query, which may have become stale.
     $b_info['booking_status'] = $locked_booking['booking_status'];
+    $b_info['start_date'] = $locked_booking['start_date'];
+    $b_info['end_date'] = $locked_booking['end_date'];
     $b_info['amount_paid'] = $locked_booking['amount_paid'];
     $b_info['payment_status'] = $locked_booking['payment_status'];
     $b_info['total_amount'] = $locked_booking['total_amount'];
     $is_pending_event_hall = ($b_info['category'] === 'Event Hall' && $locked_booking['booking_status'] === 'Pending');
+    $is_completed = booking_is_completed($locked_booking);
+    if ($is_completed) {
+        throw new Exception('This booking is complete and no longer accepts changes.');
+    }
 
     // Serialize inventory decisions for this venue within the transaction.
     // This protects cooperating paths; a schema-level exclusion constraint is

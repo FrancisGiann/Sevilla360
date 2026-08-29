@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+$booking_completion_sql = booking_completion_sql('b');
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
@@ -13,7 +15,8 @@ try {
     // 1. Fetch Booking + Phone Number!
     $stmt = $conn->prepare("
         SELECT
-            b.*, c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
+            b.*, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+            c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name as venue_name, v.category as venue_category,
             hr.room_type, hr.room_number,
             EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled

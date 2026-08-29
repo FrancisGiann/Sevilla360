@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require_once '../../config/env.php';
 require_once '../../config/db_connect.php';
 require_once '../../includes/paymongo.php';
+require_once '../../includes/booking_lifecycle.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
@@ -31,7 +32,8 @@ if (!$booking_id) {
 
 try {
     $stmt = $conn->prepare("
-        SELECT b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, v.category,
+        SELECT b.reference_no, b.end_date, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status,
+               CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed, v.category,
                c.first_name, c.last_name, c.email
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
@@ -45,9 +47,8 @@ try {
     if ($res->num_rows === 0) throw new Exception("Booking not found.");
     $booking = $res->fetch_assoc();
 
-    if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || $booking['payment_status'] === 'Refunded') {
-        throw new Exception("This booking is no longer eligible for payment.");
-    }
+    if (booking_is_completed($booking)) throw new Exception('This booking is complete and no longer eligible for payment.');
+    if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || $booking['payment_status'] === 'Refunded') throw new Exception('This booking is no longer eligible for payment.');
     if ($booking['category'] === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') {
         throw new Exception("Your event quotation must be finalized before payment.");
     }

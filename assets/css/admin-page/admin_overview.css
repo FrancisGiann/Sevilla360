@@ -937,9 +937,86 @@
   }
 }
 
-/* ==========================================================================
+/* Match the persisted desktop state before the navigation script runs. This
+   mirrors the runtime icon-rail rules so full-page tab navigation never
+   paints an expanded sidebar before collapsing it. */
+@media (min-width: 769px) {
+  html.admin-sidebar-precollapsed .admin-layout .sidebar {
+    width: 80px;
+    align-items: center;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sidebar-header {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 18px 0;
+    align-items: center;
+    justify-content: center;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sidebar-brand-row { display: none; }
+
+  html.admin-sidebar-precollapsed .admin-layout .sidebar-collapse-toggle {
+    margin: 0;
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+    justify-self: center;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sidebar-nav {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 24px 10px;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .nav-link {
+    justify-content: center;
+    gap: 0;
+    padding: 13px 0;
+    font-size: 0;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .nav-link i {
+    margin: 0;
+    font-size: 1.15rem;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sidebar-footer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 10px;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sign-out {
+    justify-content: center;
+    width: 100%;
+    padding: 13px 0;
+    font-size: 0;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .sign-out i { margin: 0; font-size: 1.1rem; }
+
+  html.admin-sidebar-precollapsed .admin-layout .admin-header {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  html.admin-sidebar-precollapsed .admin-layout .page-title {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 1.35rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ========================================================================
    Unauthorized Access Error Card
-   ========================================================================== */
+   ======================================================================== */
 .unauthorized-access {
     background-color: var(--color-white);
     padding: 4rem 2rem;

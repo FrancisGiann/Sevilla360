@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once '../../includes/booking_lifecycle.php';
+$booking_completion_sql = booking_completion_sql('b');
 
 // 1. SECURITY: Must be a logged-in customer
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -22,7 +24,7 @@ try {
     // 2. SECURITY: Fetch the booking, ensuring it belongs to THIS user_id!
     $stmt = $conn->prepare("
         SELECT
-            b.*,
+            b.*, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
             c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name AS venue_name, v.category AS venue_category,
             hr.room_type, hr.room_number,

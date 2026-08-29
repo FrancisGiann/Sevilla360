@@ -4,8 +4,10 @@ require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
 require_once 'includes/refund_helper.php';
 require_once 'includes/realtime.php';
+require_once 'includes/booking_lifecycle.php';
 $refund_fee_percent = get_refund_fee_percent($conn);
 $realtime_client_config = realtime_client_config();
+$booking_completion_sql = booking_completion_sql('b');
 
 // 1. Get the Customer ID associated with this User Account
 $user_id = $_SESSION['user_id'];
@@ -22,7 +24,7 @@ $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
 
 // 2. Calculate dashboard-wide booking totals independently of the visible page.
-$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN booking_status = 'Pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN booking_status = 'Confirmed' THEN 1 ELSE 0 END) AS confirmed FROM bookings WHERE customer_id = ?");
+$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status = 'Pending' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ?");
 $stmt_stats->bind_param("i", $customer_id);
 $stmt_stats->execute();
 $booking_stats = $stmt_stats->get_result()->fetch_assoc() ?: [];
@@ -33,13 +35,14 @@ $stmt_stats->close();
 
 $stmt_upcoming = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, b.payment_status, v.name AS venue_name,
+        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.payment_status, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
-    WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE()
+    WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
     ORDER BY b.start_date ASC LIMIT 1
 ");
 $stmt_upcoming->bind_param('i', $customer_id);
@@ -47,13 +50,13 @@ $stmt_upcoming->execute();
 $upcoming_booking = $stmt_upcoming->get_result()->fetch_assoc() ?: null;
 $stmt_upcoming->close();
 
-$stmt_upcoming_count = $conn->prepare("SELECT COUNT(*) AS upcoming_count FROM bookings WHERE customer_id = ? AND booking_status = 'Confirmed' AND start_date >= CURDATE()");
+$stmt_upcoming_count = $conn->prepare("SELECT COUNT(*) AS upcoming_count FROM bookings b WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()");
 $stmt_upcoming_count->bind_param('i', $customer_id);
 $stmt_upcoming_count->execute();
 $upcoming_count = (int)($stmt_upcoming_count->get_result()->fetch_assoc()['upcoming_count'] ?? 0);
 $stmt_upcoming_count->close();
 
-$stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(total_amount - amount_paid, 0)), 0) AS balance_due FROM bookings WHERE customer_id = ? AND booking_status <> 'Cancelled'");
+$stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(b.total_amount - b.amount_paid, 0)), 0) AS balance_due FROM bookings b WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql");
 $stmt_balance->bind_param('i', $customer_id);
 $stmt_balance->execute();
 $balance_due = (float)($stmt_balance->get_result()->fetch_assoc()['balance_due'] ?? 0);
@@ -69,7 +72,7 @@ $booking_offset = ($booking_page - 1) * $booking_limit;
 // 3. Fetch only the current page of bookings.
 $stmt_bookings = $conn->prepare("
     SELECT 
-        b.*, 
+        b.*, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
         v.name AS venue_name, 
         v.category AS venue_type,
         hr.room_type AS hotel_room_type,
@@ -98,7 +101,7 @@ while ($row = $bookings_result->fetch_assoc()) {
 }
 $payment_sync_booking_id = null;
 foreach ($bookings as $booking_row) {
-    if (!empty($booking_row['has_checkout_session']) && $booking_row['booking_status'] !== 'Cancelled' && $booking_row['payment_status'] !== 'Paid') {
+    if (!empty($booking_row['has_checkout_session']) && !booking_is_completed($booking_row) && $booking_row['booking_status'] !== 'Cancelled' && $booking_row['payment_status'] !== 'Paid') {
         $payment_sync_booking_id = (int)$booking_row['id'];
         break;
     }
@@ -127,7 +130,8 @@ while ($row = $notifs_result->fetch_assoc()) {
 // separate from the paginated booking-management query below.
 $stmt_overview_recent = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, b.payment_status, v.name AS venue_name,
+        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.payment_status, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
@@ -144,13 +148,14 @@ $stmt_overview_recent->close();
 
 $stmt_attention = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, b.payment_status, v.name AS venue_name,
+        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.payment_status, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
-    WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled'
+    WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
       AND (
         b.booking_status = 'Pending'
         OR (b.booking_status = 'Confirmed' AND b.payment_status IN ('Unpaid', 'Partial'))
@@ -182,6 +187,7 @@ $format_dashboard_date = static function ($start, $end = null): string {
     return $start_date->format('M j') . ' – ' . (new DateTime($end))->format('M j, Y');
 };
 $dashboard_status = static function (array $booking): array {
+    if (booking_is_completed($booking)) return ['Completed', 'badge-completed'];
     if (!empty($booking['cancel_pending'])) return ['Pending refund', 'badge-cancelled'];
     if (!empty($booking['resched_pending'])) return ['Reschedule requested', 'badge-reschedule'];
     if ($booking['booking_status'] === 'Cancelled') return ['Cancelled', 'badge-cancelled'];
@@ -198,6 +204,15 @@ $dashboard_status = static function (array $booking): array {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        (function () {
+            try {
+                if (window.matchMedia('(min-width: 993px)').matches && window.localStorage.getItem('sevilla360-customer-sidebar-collapsed') === '1') {
+                    document.documentElement.classList.add('customer-sidebar-precollapsed');
+                }
+            } catch (error) { /* Storage may be disabled; keep the expanded baseline. */ }
+        }());
+    </script>
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
     <title>Dashboard | SEVILLA360</title>
@@ -226,6 +241,10 @@ $dashboard_status = static function (array $booking): array {
         <aside class="dashboard-sidebar">
             <div class="sidebar-header">
                 <a href="index.php" class="brand-logo">SEVILLA360</a>
+                <button type="button" id="btn-sidebar-collapse" class="sidebar-collapse-toggle"
+                    aria-label="Minimize sidebar" aria-pressed="false" title="Minimize sidebar">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
                 <button id="btn-close-sidebar" class="sidebar-close-btn" aria-label="Close sidebar">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -494,6 +513,7 @@ $dashboard_status = static function (array $booking): array {
                                 <button class="filter-pill" data-filter="Pending">Pending</button>
                                 <button class="filter-pill" data-filter="Partially Paid">Partially Paid</button>
                                 <button class="filter-pill" data-filter="Paid">Paid</button>
+                                <button class="filter-pill" data-filter="Completed">Completed</button>
                                 <button class="filter-pill" data-filter="Cancelled">Cancelled</button>
                             </div>
 
@@ -504,6 +524,7 @@ $dashboard_status = static function (array $booking): array {
                                     <option value="Pending">Pending</option>
                                     <option value="Partially Paid">Partially Paid</option>
                                     <option value="Paid">Paid</option>
+                                    <option value="Completed">Completed</option>
                                     <option value="Cancelled">Cancelled</option>
                                 </select>
                             </div>
@@ -531,11 +552,13 @@ $dashboard_status = static function (array $booking): array {
                                         $start = new DateTime($b['start_date']);
                                         $end = new DateTime($b['end_date']);
                                         $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
+                                        $display_status = $b['display_booking_status'] ?? $b['booking_status'];
+                                        $is_completed = ($display_status === 'Completed');
 
                                         $total_amt = floatval($b['total_amount']);
                                         $amount_paid = floatval($b['amount_paid']);
                                         $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
-                                        $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $b['booking_status'] === 'Pending');
+                                        $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $display_status === 'Pending');
 
                                         $display_amount = '₱' . number_format($total_amt, 2);
                                         if ($is_pending_inquiry) {
@@ -547,9 +570,13 @@ $dashboard_status = static function (array $booking): array {
                                         $status_text = 'Pending Payment';
                                         $filter_data = 'Pending';
 
-                                        if ($is_pending_inquiry) {
+                                        if ($is_completed) {
+                                            $badge_class = 'badge-completed';
+                                            $status_text = 'Completed';
+                                            $filter_data = 'Completed';
+                                        } elseif ($is_pending_inquiry) {
                                             $status_text = 'Inquiry Sent';
-                                        } elseif ($b['booking_status'] === 'Confirmed') {
+                                        } elseif ($display_status === 'Confirmed') {
                                             if ($b['payment_status'] === 'Paid') {
                                                 $badge_class = 'badge-paid';
                                                 $status_text = 'Fully Paid';
@@ -563,24 +590,24 @@ $dashboard_status = static function (array $booking): array {
                                                 $status_text = 'Unpaid';
                                                 $filter_data = 'Pending';
                                             }
-                                        } elseif ($b['booking_status'] === 'Cancelled') {
+                                        } elseif ($display_status === 'Cancelled') {
                                             $badge_class = 'badge-cancelled';
                                             $status_text = 'Cancelled';
                                             $filter_data = 'Cancelled';
                                         }
 
                                         // OVERRIDE TEXT IF A REQUEST IS PENDING
-                                        if ($b['cancel_status'] === 'Pending') {
+                                        if (!$is_completed && $b['cancel_status'] === 'Pending') {
                                             $status_text = 'Pending Refund';
                                             $badge_class = 'badge-cancelled'; 
-                                        } elseif ($b['resched_status'] === 'Pending') {
+                                        } elseif (!$is_completed && $b['resched_status'] === 'Pending') {
                                             $status_text = 'Resched Requested';
                                             $badge_class = 'badge-reschedule';  
                                         }
 
                                         $display_id = !empty($b['reference_no']) ? htmlspecialchars($b['reference_no']) : '#' . $b['id'];
                                     ?>
-                                    <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo $filter_data; ?>">
+                                    <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo htmlspecialchars($filter_data, ENT_QUOTES, 'UTF-8'); ?>">
 
                                         <td class="booking-ref-id" data-label="Booking ID">
                                             <?php echo $display_id; ?>
@@ -589,31 +616,31 @@ $dashboard_status = static function (array $booking): array {
                                         <td data-label="Date"><?php echo $date_str; ?></td>
                                         <td
                                             data-label="Amount"
-                                            class="<?php echo ($b['booking_status'] === 'Cancelled') ? 'text-muted' : ''; ?>">
+                                            class="<?php echo ($display_status === 'Cancelled') ? 'text-muted' : ''; ?>">
                                             <?php echo $display_amount; ?>
                                         </td>
                                         <td data-label="Status">
                                             <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo ($b['cancel_status'] === 'Pending') ? 'Pending Refund' : $status_text; ?>
+                                                <?php echo (!$is_completed && $b['cancel_status'] === 'Pending') ? 'Pending Refund' : $status_text; ?>
                                             </span>
-                                            <?php if (!empty($b['has_rescheduled']) && $b['booking_status'] === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
+                                            <?php if (!$is_completed && !empty($b['has_rescheduled']) && $display_status === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
                                             <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
                                             <?php endif; ?>
                                         </td>
                                         <td data-label="Actions">
                                             <div class="action-cell">
-                                                <?php if ($b['cancel_status'] !== 'Pending' && ($b['booking_status'] === 'Pending' || ($b['booking_status'] === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial'])))): ?>
+                                                <?php if (!$is_completed && $b['cancel_status'] !== 'Pending' && ($display_status === 'Pending' || ($display_status === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial'])))): ?>
                                                 <?php if (!$is_pending_inquiry): ?>
                                                 <button class="btn-action btn-pay btn-pay-now"
                                                     data-id="<?php echo $b['id']; ?>">Pay Now</button>
                                                 <?php endif; ?>
-                                                <?php if (!empty($b['has_checkout_session']) && $b['payment_status'] !== 'Paid' && $b['booking_status'] !== 'Cancelled'): ?>
+                                                <?php if (!$is_completed && !empty($b['has_checkout_session']) && $b['payment_status'] !== 'Paid' && $display_status !== 'Cancelled'): ?>
                                                 <button class="btn-action btn-outline-action btn-sync-payment" data-id="<?php echo (int)$b['id']; ?>">Sync Payment</button>
                                                 <?php endif; ?>
                                                 <?php endif; ?>
 
-                                                <?php if ($b['booking_status'] !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
-                                                <?php if ($b['booking_status'] === 'Confirmed'): ?>
+                                                <?php if (!$is_completed && $display_status !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
+                                                <?php if ($display_status === 'Confirmed'): ?>
                                                 <button class="btn-action btn-outline-action btn-reschedule"
                                                     data-id="<?php echo $b['id']; ?>"
                                                     data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"

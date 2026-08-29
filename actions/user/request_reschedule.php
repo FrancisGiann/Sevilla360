@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/booking_lifecycle.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/realtime.php';
 
@@ -64,12 +65,14 @@ try {
     if (!$stmt_lock->execute() || $stmt_lock->get_result()->num_rows === 0) throw new Exception('Booking not found or access denied.');
     // Re-fetch mutable booking state after acquiring the row lock so date,
     // duration, and confirmation checks cannot use a stale snapshot.
-    $stmt_refresh = $conn->prepare("SELECT b.id, b.start_date, b.end_date, b.booking_status, v.category, vd.stay_type FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id LEFT JOIN booking_villa_details vd ON vd.booking_id = b.id WHERE b.id = ? AND c.user_id = ? FOR UPDATE");
+    $stmt_refresh = $conn->prepare("SELECT b.id, b.start_date, b.end_date, b.booking_status, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed, v.category, vd.stay_type FROM bookings b JOIN customers c ON b.customer_id = c.id JOIN venues v ON b.venue_id = v.id LEFT JOIN booking_villa_details vd ON vd.booking_id = b.id WHERE b.id = ? AND c.user_id = ? FOR UPDATE");
     if (!$stmt_refresh) throw new Exception('Could not refresh the booking.');
     $stmt_refresh->bind_param('ii', $booking_id, $_SESSION['user_id']);
     if (!$stmt_refresh->execute()) throw new Exception('Could not refresh the booking.');
     $booking = $stmt_refresh->get_result()->fetch_assoc();
-    if (!$booking || $booking['booking_status'] !== 'Confirmed') throw new Exception('Only confirmed bookings can be rescheduled.');
+    if (!$booking) throw new Exception('Booking not found or access denied.');
+    if (booking_is_completed($booking)) throw new Exception('This booking is complete and can no longer be rescheduled.');
+    if ($booking['booking_status'] !== 'Confirmed') throw new Exception('Only confirmed bookings can be rescheduled.');
     $orig_start = DateTimeImmutable::createFromFormat('!Y-m-d', $booking['start_date']);
     $orig_end = DateTimeImmutable::createFromFormat('!Y-m-d', $booking['end_date']);
     if (!$orig_start || !$orig_end) throw new Exception('The existing booking dates are invalid.');

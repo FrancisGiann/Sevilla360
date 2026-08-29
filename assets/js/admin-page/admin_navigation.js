@@ -23,7 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setCollapsed = (collapsed, persist = true) => {
-        if (!desktopQuery.matches) return;
+        if (!desktopQuery.matches) {
+            document.documentElement.classList.remove('admin-sidebar-precollapsed');
+            return;
+        }
+        document.documentElement.classList.toggle('admin-sidebar-precollapsed', collapsed);
         sidebar.closest('.admin-layout')?.classList.toggle('sidebar-collapsed', collapsed);
         sidebar.querySelectorAll('.nav-link').forEach(link => {
             const label = link.textContent.replace(/\s+/g, ' ').trim();

@@ -1,14 +1,16 @@
 <?php
 /** Shared, idempotent payment crediting path for webhooks and reconciliation. */
 require_once __DIR__ . '/realtime.php';
+require_once __DIR__ . '/booking_lifecycle.php';
 function credit_verified_payment(mysqli $conn, string $reference_no, float $amount_paid, string $transaction_id, string $payment_method = 'PayMongo', ?string $provider_session_id = null, string $currency = 'PHP'): array {
     if ($reference_no === '' || $amount_paid <= 0 || $transaction_id === '' || $currency !== 'PHP') throw new RuntimeException('Payment payload is invalid.');
     if (!$conn->begin_transaction()) throw new RuntimeException('Unable to start the payment transaction.');
     try {
-        $stmt = $conn->prepare("SELECT b.id, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, c.user_id FROM bookings b LEFT JOIN customers c ON c.id = b.customer_id WHERE b.reference_no = ? FOR UPDATE");
+        $stmt = $conn->prepare("SELECT b.id, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed, c.user_id FROM bookings b LEFT JOIN customers c ON c.id = b.customer_id WHERE b.reference_no = ? FOR UPDATE");
         if (!$stmt) throw new RuntimeException('Unable to load the booking for payment.');
         $stmt->bind_param('s', $reference_no); if (!$stmt->execute()) throw new RuntimeException('Unable to load the booking for payment.');
         $booking = $stmt->get_result()->fetch_assoc(); if (!$booking) throw new RuntimeException('Booking reference was not found.');
+        if (booking_is_completed($booking)) throw new RuntimeException('This booking is complete and no longer eligible for payment.');
         if ($provider_session_id !== null) {
             $stmt = $conn->prepare("SELECT booking_id, amount, currency FROM booking_checkout_sessions WHERE provider_session_id = ? LIMIT 1");
             if (!$stmt) throw new RuntimeException('Unable to validate the checkout session.');
@@ -47,7 +49,7 @@ function credit_verified_payment(mysqli $conn, string $reference_no, float $amou
                 return ['duplicate' => true, 'status' => $booking['payment_status'], 'amount_paid' => (float)$booking['amount_paid']];
             }
         } else throw new RuntimeException('Unable to check payment idempotency.');
-        if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') throw new RuntimeException('This booking is no longer eligible for payment.');
+        if ($booking['booking_status'] === 'Cancelled' || $booking['payment_status'] === 'Refunded') throw new RuntimeException('This booking is no longer eligible for payment.');
         $remaining = max(0, (float)$booking['total_amount'] - (float)$booking['amount_paid']);
         if ($remaining <= 0 || $amount_paid > $remaining + 0.01) throw new RuntimeException('Payment exceeds the booking balance and was not credited.');
         $new_amount = (float)$booking['amount_paid'] + $amount_paid; $status = $new_amount >= (float)$booking['total_amount'] - 0.01 ? 'Paid' : 'Partial';
@@ -88,13 +90,14 @@ function credit_verified_payment(mysqli $conn, string $reference_no, float $amou
 
 /** Verify one locally recorded checkout session, then use the shared locked/idempotent credit path. */
 function reconcile_payment_for_booking(mysqli $conn, int $booking_id): array {
-    $stmt = $conn->prepare("SELECT b.id, b.reference_no, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, s.provider_session_id, s.amount AS checkout_amount, s.currency FROM bookings b JOIN booking_checkout_sessions s ON s.booking_id = b.id WHERE b.id = ? AND s.status IN ('creating','created','paid') ORDER BY s.id DESC LIMIT 1");
+    $stmt = $conn->prepare("SELECT b.id, b.reference_no, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed, s.provider_session_id, s.amount AS checkout_amount, s.currency FROM bookings b JOIN booking_checkout_sessions s ON s.booking_id = b.id WHERE b.id = ? AND s.status IN ('creating','created','paid') ORDER BY s.id DESC LIMIT 1");
     if (!$stmt) throw new RuntimeException('Unable to load checkout session.');
     $stmt->bind_param('i', $booking_id);
     if (!$stmt->execute()) throw new RuntimeException('Unable to load checkout session.');
     $booking = $stmt->get_result()->fetch_assoc();
     if (!$booking || empty($booking['provider_session_id'])) throw new RuntimeException('No PayMongo checkout session is recorded for this booking.');
-    if (in_array($booking['booking_status'], ['Cancelled', 'Completed'], true) || $booking['payment_status'] === 'Refunded') throw new RuntimeException('This booking is not eligible for reconciliation.');
+    if (booking_is_completed($booking)) throw new RuntimeException('This booking is complete and no longer eligible for reconciliation.');
+    if ($booking['booking_status'] === 'Cancelled' || $booking['payment_status'] === 'Refunded') throw new RuntimeException('This booking is not eligible for reconciliation.');
     $remaining_due = max(0.0, (float)$booking['total_amount'] - (float)$booking['amount_paid']);
     if ((float)$booking['checkout_amount'] <= 0 || strtoupper((string)$booking['currency']) !== 'PHP') throw new RuntimeException('The recorded checkout amount is invalid.');
     $checkout_exceeds_balance = (float)$booking['checkout_amount'] > $remaining_due + 0.01;

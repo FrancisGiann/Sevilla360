@@ -2,6 +2,9 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+
+$booking_completion_sql = booking_completion_sql('b');
 
 // Auth Guard
 if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
@@ -19,8 +22,8 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 
 $data = json_decode(file_get_contents('php://input'), true);
 
-$page = isset($data['page']) ? intval($data['page']) : 1;
-$limit = isset($data['limit']) ? intval($data['limit']) : 10;
+$page = max(1, isset($data['page']) ? intval($data['page']) : 1);
+$limit = min(100, max(1, isset($data['limit']) ? intval($data['limit']) : 10));
 $offset = ($page - 1) * $limit;
 
 $searchTerm = trim((string)($data['search'] ?? ''));
@@ -46,15 +49,17 @@ if ($venueFilter !== 'All') {
 
 // Status Filtering Logic
 if ($statusFilter === 'action_req') {
-    $where_clauses[] = "b.booking_status != 'Cancelled' AND (cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
+    $where_clauses[] = "b.booking_status != 'Cancelled' AND NOT $booking_completion_sql AND (cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
 } elseif ($statusFilter === 'partial') {
-    $where_clauses[] = "(b.booking_status = 'Confirmed' AND b.payment_status IN ('Partial', 'Unpaid'))";
+    $where_clauses[] = "(b.booking_status = 'Confirmed' AND NOT $booking_completion_sql AND b.payment_status IN ('Partial', 'Unpaid'))";
 } elseif ($statusFilter === 'confirmed') {
-    $where_clauses[] = "b.booking_status = 'Confirmed'";
+    $where_clauses[] = "b.booking_status = 'Confirmed' AND NOT $booking_completion_sql";
+} elseif ($statusFilter === 'completed') {
+    $where_clauses[] = $booking_completion_sql;
 } elseif ($statusFilter === 'cancelled') {
-    $where_clauses[] = "b.booking_status = 'Cancelled'";
+    $where_clauses[] = "b.booking_status = 'Cancelled' AND NOT $booking_completion_sql";
 } elseif ($statusFilter === 'pending') {
-    $where_clauses[] = "b.booking_status = 'Pending'";
+    $where_clauses[] = "b.booking_status = 'Pending' AND NOT $booking_completion_sql";
 }
 
 $where_sql = implode(' AND ', $where_clauses);
@@ -75,12 +80,14 @@ try {
     if (!empty($params)) $stmt_count->bind_param($types, ...$params);
     $stmt_count->execute();
     $total_rows = $stmt_count->get_result()->fetch_assoc()['total'];
-    $total_pages = ceil($total_rows / $limit);
+    $total_pages = max(1, (int)ceil($total_rows / $limit));
 
     // 2. Fetch the actual paginated data
     $data_sql = "
         SELECT 
-            b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status, b.payment_status,
+            b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.booking_status,
+            CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+            b.payment_status,
             c.first_name, c.last_name, 
             v.name AS venue_name, v.category AS venue_category,
             hr.room_type AS hotel_room_type,

@@ -5,6 +5,8 @@ require_once '../../config/db_connect.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/refund_helper.php';
 require_once '../../includes/realtime.php';
+require_once '../../includes/booking_lifecycle.php';
+$booking_completion_sql = booking_completion_sql('b');
 
 // Auth Guard: Must be a logged-in customer
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
@@ -54,6 +56,10 @@ if ($res->num_rows === 0) {
 
 $booking = $res->fetch_assoc();
 $amount_paid = floatval($booking['amount_paid']);
+if ($booking['booking_status'] === 'Completed') {
+    echo json_encode(['success' => false, 'message' => 'This booking is complete and can no longer be cancelled or refunded.']);
+    exit;
+}
 if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true)) {
     echo json_encode(['success' => false, 'message' => 'This booking is no longer eligible for cancellation.']);
     exit;
@@ -68,11 +74,13 @@ $fee_percent = $refund['fee_percent'];
 try {
     $conn->begin_transaction();
 
-    $stmt_booking_lock = $conn->prepare('SELECT b.amount_paid, b.booking_status, b.reference_no, v.category FROM bookings b INNER JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE');
+    $stmt_booking_lock = $conn->prepare("SELECT b.amount_paid, b.booking_status, b.start_date, b.end_date, b.reference_no, CASE WHEN $booking_completion_sql THEN 1 ELSE 0 END AS is_completed, v.category FROM bookings b INNER JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
     $stmt_booking_lock->bind_param('i', $booking_id);
     $stmt_booking_lock->execute();
     $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
-    if (!$locked_booking || !in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
+    if (!$locked_booking) throw new Exception('This booking is no longer available.');
+    if (booking_is_completed($locked_booking)) throw new Exception('This booking is complete and can no longer be cancelled or refunded.');
+    if (!in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
     $amount_paid = (float)$locked_booking['amount_paid'];
     $refund = calculate_refund_breakdown($conn, $amount_paid);
     $fee = $refund['fee'];
@@ -181,8 +189,15 @@ try {
 
 } catch (Exception $e) {
     $conn->rollback();
-    if ($conn->errno == 1062) echo json_encode(['success' => false, 'message' => 'A cancellation request is already pending for this booking.']);
-    else echo json_encode(['success' => false, 'message' => 'Unable to submit the cancellation request.']);
+    $errorMessage = strtolower((string)$e->getMessage());
+    if (str_contains($errorMessage, 'complete')) {
+        $safeMessage = 'This booking is complete and can no longer be cancelled or refunded.';
+    } elseif ($conn->errno == 1062) {
+        $safeMessage = 'A cancellation request is already pending for this booking.';
+    } else {
+        $safeMessage = 'Unable to submit the cancellation request.';
+    }
+    echo json_encode(['success' => false, 'message' => $safeMessage]);
 }
 $conn->close();
 ?>

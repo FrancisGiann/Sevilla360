@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/booking_lifecycle.php';
+
 /**
  * Fetch actionable notifications for the admin dashboard and homepage bell.
  *
@@ -13,14 +15,17 @@ function get_admin_action_notifications(mysqli $conn, ?int $limit = null): array
     }
 
     $limit_clause = $limit === null ? '' : " LIMIT {$limit}";
+    $booking_completion_sql = booking_completion_sql('b');
     $result = $conn->query(
-        "SELECT b.id, b.reference_no, b.booking_status, b.start_date,
+        "SELECT b.id, b.reference_no, b.booking_status,
+                CASE WHEN {$booking_completion_sql} THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+                b.start_date,
                 b.source, v.name AS venue_name, v.category AS venue_category,
                 CASE WHEN EXISTS (
                     SELECT 1 FROM cancellations cx
                     WHERE cx.booking_id = b.id AND cx.status = 'Pending'
-                ) THEN 'Pending' END AS cancel_status,
-                CASE WHEN b.booking_status != 'Cancelled' AND EXISTS (
+                ) AND NOT {$booking_completion_sql} THEN 'Pending' END AS cancel_status,
+                CASE WHEN b.booking_status != 'Cancelled' AND NOT {$booking_completion_sql} AND EXISTS (
                     SELECT 1 FROM reschedule_requests rr
                     WHERE rr.booking_id = b.id AND rr.status = 'Pending'
                 ) THEN 'Pending' END AS resched_status
@@ -34,12 +39,12 @@ function get_admin_action_notifications(mysqli $conn, ?int $limit = null): array
                 EXISTS (
                     SELECT 1 FROM cancellations cx
                     WHERE cx.booking_id = b.id AND cx.status = 'Pending'
-                )
-            OR (b.booking_status != 'Cancelled' AND EXISTS (
+                ) AND NOT {$booking_completion_sql}
+            OR (b.booking_status != 'Cancelled' AND NOT {$booking_completion_sql} AND EXISTS (
                     SELECT 1 FROM reschedule_requests rr
                     WHERE rr.booking_id = b.id AND rr.status = 'Pending'
                 ))
-            OR (b.source = 'Online' AND b.booking_status = 'Pending'
+            OR (b.source = 'Online' AND b.booking_status = 'Pending' AND NOT {$booking_completion_sql}
                 AND v.category IN ('Event Hall', 'Hotel Room', 'Resort Villa'))
            )
          ORDER BY b.id DESC{$limit_clause}"

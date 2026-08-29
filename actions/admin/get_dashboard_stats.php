@@ -4,6 +4,8 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/admin_notifications.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+$booking_completion_sql = booking_completion_sql('b');
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     http_response_code(403);
@@ -27,7 +29,7 @@ try {
     // 2. ACTION REQUIRED
     $res = $conn->query("SELECT COUNT(DISTINCT b.id) as c
         FROM bookings b
-        WHERE b.booking_status != 'Cancelled'
+        WHERE b.booking_status != 'Cancelled' AND NOT $booking_completion_sql
           AND (
               EXISTS (
                   SELECT 1 FROM cancellations cx
@@ -99,8 +101,8 @@ try {
     }
 
     // 6. BOOKING PIPELINE (Pie Chart)
-    $res = $conn->query("SELECT booking_status, COUNT(*) as count FROM bookings GROUP BY booking_status");
-    $statusData = ['Confirmed' => 0, 'Pending' => 0, 'Cancelled' => 0];
+    $res = $conn->query("SELECT CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS booking_status, COUNT(*) as count FROM bookings b GROUP BY CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END");
+    $statusData = ['Confirmed' => 0, 'Pending' => 0, 'Cancelled' => 0, 'Completed' => 0];
     while ($row = $res->fetch_assoc()) {
         if (isset($statusData[$row['booking_status']])) {
             $statusData[$row['booking_status']] = (int)$row['count'];
@@ -156,7 +158,8 @@ try {
     // 9. RECENT BOOKINGS
     $res = $conn->query("
         SELECT b.id, b.reference_no, v.name as venue_name, v.category as venue_category, 
-               b.start_date, b.total_amount, b.booking_status, b.payment_status, 
+               b.start_date, b.end_date, b.total_amount,
+               b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status, b.payment_status,
                cx.status AS cancel_status, rr.status AS resched_status
         FROM bookings b 
         JOIN customers c ON b.customer_id = c.id

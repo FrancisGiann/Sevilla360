@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+$booking_completion_sql = booking_completion_sql('b');
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff', 'admin'], true)) {
     http_response_code(403);
@@ -27,25 +29,30 @@ if (in_array($venueFilter, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) 
 }
 switch ($statusFilter) {
     case 'action_req':
-        $where[] = "b.booking_status <> 'Cancelled' AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
+        $where[] = "b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
         break;
     case 'partial':
-        $where[] = "b.booking_status = 'Confirmed' AND b.payment_status IN ('Partial', 'Unpaid')";
+        $where[] = "b.booking_status = 'Confirmed' AND NOT $booking_completion_sql AND b.payment_status IN ('Partial', 'Unpaid')";
         break;
     case 'pending':
-        $where[] = "b.booking_status = 'Pending'";
+        $where[] = "b.booking_status = 'Pending' AND NOT $booking_completion_sql";
         break;
     case 'confirmed':
-        $where[] = "b.booking_status = 'Confirmed'";
+        $where[] = "b.booking_status = 'Confirmed' AND NOT $booking_completion_sql";
+        break;
+    case 'completed':
+        $where[] = $booking_completion_sql;
         break;
     case 'cancelled':
-        $where[] = "b.booking_status = 'Cancelled'";
+        $where[] = "b.booking_status = 'Cancelled' AND NOT $booking_completion_sql";
         break;
 }
 
 $sql = "SELECT b.reference_no, CONCAT_WS(' ', c.first_name, c.last_name) AS customer_name,
                v.name AS venue_name, v.category AS venue_category, b.start_date, b.end_date,
-               b.guests_count, b.total_amount, b.amount_paid, b.booking_status, b.payment_status
+               b.guests_count, b.total_amount, b.amount_paid,
+               CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS booking_status,
+               b.payment_status
         FROM bookings b
         INNER JOIN customers c ON c.id = b.customer_id
         INNER JOIN venues v ON v.id = b.venue_id

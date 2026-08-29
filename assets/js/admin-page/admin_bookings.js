@@ -171,37 +171,41 @@ document.addEventListener("DOMContentLoaded", () => {
             const dateStr = (b.start_date === b.end_date) ? sDateStr : `${sDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${eDateStr}`;
   
             const customerName = `${b.first_name} ${b.last_name}`;
+            const displayStatus = b.display_booking_status || b.booking_status;
+            const isCompleted = displayStatus === 'Completed';
             const actualRoomType = (b.venue_category === 'Hotel Room') ? b.hotel_room_type : b.venue_category;
             const totalAmt = parseFloat(b.total_amount) || 0;
             const amtPaid = parseFloat(b.amount_paid) || 0;
             const balanceDue = totalAmt - amtPaid;
   
-            const isPendingInquiry = (b.venue_category === 'Event Hall' && b.booking_status === 'Pending');
+            const isPendingInquiry = (b.venue_category === 'Event Hall' && displayStatus === 'Pending');
             const displayAmount = isPendingInquiry ? '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>' : `₱${totalAmt.toLocaleString('en-US', {minimumFractionDigits:2})}`;
   
             // Badges
             let badgeClass = 'status-pending'; 
             let statusText = 'Pending';
   
-            if (b.booking_status === 'Confirmed') {
+            if (isCompleted) {
+                badgeClass = 'status-completed'; statusText = 'Completed';
+            } else if (displayStatus === 'Confirmed') {
                 if (b.payment_status === 'Paid') { badgeClass = 'status-paid'; statusText = 'Fully Paid'; } 
                 else if (b.payment_status === 'Partial') { badgeClass = 'status-partial'; statusText = 'Partially Paid'; } 
                 else if (b.payment_status === 'Refunded') { badgeClass = 'status-refunded'; statusText = 'Refunded'; }
                 else { badgeClass = 'status-pending'; statusText = 'Unpaid'; }
-            } else if (b.booking_status === 'Cancelled') {
+            } else if (displayStatus === 'Cancelled') {
                 badgeClass = 'status-refunded'; statusText = 'Cancelled';
             }
-  
-            if (b.booking_status !== 'Cancelled') {
+
+            if (!isCompleted && displayStatus !== 'Cancelled') {
                 if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Pending Refund'; }
                 else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
             }
   
-            const fadeClass = (b.booking_status === 'Cancelled') ? 'faded-text' : '';
+            const fadeClass = (displayStatus === 'Cancelled') ? 'faded-text' : '';
   
             // Build Action Buttons
             let actionBtns = '';
-            if (b.booking_status === 'Pending') {
+            if (!isCompleted && displayStatus === 'Pending') {
                 if (isPendingInquiry) {
                     actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
                                    <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price / Finalize</button>`;
@@ -212,7 +216,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                    <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price</button>`;
                 }
             } 
-            else if (b.booking_status === 'Confirmed') {
+            else if (!isCompleted && displayStatus === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-ref="${b.reference_no}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent || window.refundFeePercent || 3}" data-fee="${b.cancel_fee || ''}" data-refund="${b.cancel_refund || ''}" data-reason="${b.cancel_reason || ''}">Refund Req</button>
                                    `;
@@ -227,18 +231,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
             actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
-            if (Number(b.has_checkout_session) === 1 && b.payment_status !== 'Paid' && b.booking_status !== 'Cancelled') {
+            if (!isCompleted && Number(b.has_checkout_session) === 1 && b.payment_status !== 'Paid' && displayStatus !== 'Cancelled') {
                 actionBtns += `<button class="btn-action btn-confirm open-reconcile" data-id="${b.id}">Sync PayMongo</button>`;
             }
 
             html += `
-            <tr class="${b.booking_status === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
+            <tr class="${displayStatus === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
                 <td data-label="Booking ID" style="font-weight: 600; color: var(--color-gold);">${b.reference_no}</td>
                 <td data-label="Venue">${b.venue_name}</td>
                 <td data-label="Customer">${customerName}</td>
                 <td data-label="Date">${dateStr}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
-                <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${Number(b.has_rescheduled) === 1 && b.booking_status === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
+                <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${!isCompleted && Number(b.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
                 <td data-label="Actions" class="action-cells"><div class="action-buttons">${actionBtns}</div></td>
             </tr>`;
         });
@@ -776,9 +780,10 @@ document.addEventListener("DOMContentLoaded", () => {
       
                   document.getElementById('vd-title').innerText = `Booking ${data.reference_no}`;
                   
+                  const displayStatus = data.display_booking_status || data.booking_status;
                   const badge = document.getElementById('vd-status-badge');
-                  badge.innerText = data.booking_status + (Number(data.has_rescheduled) === 1 && data.booking_status === 'Confirmed' ? ' — Rescheduled' : '');
-                  badge.className = 'status-badge ' + (data.booking_status === 'Confirmed' ? 'status-paid' : (data.booking_status === 'Cancelled' ? 'status-refunded' : 'status-pending'));
+                  badge.innerText = displayStatus + (Number(data.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' — Rescheduled' : '');
+                  badge.className = 'status-badge ' + (displayStatus === 'Completed' ? 'status-completed' : (displayStatus === 'Confirmed' ? 'status-paid' : (displayStatus === 'Cancelled' ? 'status-refunded' : 'status-pending')));
       
                   document.getElementById('vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;
                   document.getElementById('vd-customer-email').innerText = data.email;

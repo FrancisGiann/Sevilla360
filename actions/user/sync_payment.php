@@ -29,7 +29,9 @@ try {
     error_log('Customer payment sync failed: class=' . get_class($e) . ' booking_id=' . (int)$booking_id);
     $providerMessage = strtolower((string)$e->getMessage());
     $safeMessage = 'Payment status could not be refreshed. Please try again shortly.';
-    if (str_contains($providerMessage, 'not returned a paid') || str_contains($providerMessage, 'not yet paid')) {
+    if (str_contains($providerMessage, 'complete')) {
+        $safeMessage = 'This booking is complete and no longer eligible for payment reconciliation.';
+    } elseif (str_contains($providerMessage, 'not returned a paid') || str_contains($providerMessage, 'not yet paid')) {
         $safeMessage = 'Payment is not yet confirmed. Please try again shortly.';
     } elseif (str_contains($providerMessage, 'checkout session') || str_contains($providerMessage, 'checkout')) {
         $safeMessage = 'No valid payment session was found for this booking.';

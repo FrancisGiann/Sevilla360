@@ -18,6 +18,54 @@ document.addEventListener("DOMContentLoaded", () => {
   const sidebarOverlay = document.getElementById('sidebar-overlay');
   let toggleDrawer = () => {};
 
+  // --- Desktop Sidebar Icon Rail ---
+  const sidebarCollapseToggle = document.getElementById('btn-sidebar-collapse');
+  const dashboardLayout = sidebar?.closest('.dashboard-layout');
+  const sidebarCollapseKey = 'sevilla360-customer-sidebar-collapsed';
+  const desktopSidebarQuery = window.matchMedia('(min-width: 993px)');
+  const readSidebarCollapsed = () => {
+      try { return window.localStorage.getItem(sidebarCollapseKey) === '1'; }
+      catch (error) { return false; }
+  };
+  const persistSidebarCollapsed = (collapsed) => {
+      try { window.localStorage.setItem(sidebarCollapseKey, collapsed ? '1' : '0'); }
+      catch (error) { /* Private browsing or restrictive storage is non-fatal. */ }
+  };
+  const setSidebarCollapsed = (collapsed, persist = true) => {
+      if (!desktopSidebarQuery.matches) {
+          document.documentElement.classList.remove('customer-sidebar-precollapsed');
+          dashboardLayout?.classList.remove('customer-sidebar-collapsed');
+          return;
+      }
+      document.documentElement.classList.toggle('customer-sidebar-precollapsed', collapsed);
+      dashboardLayout?.classList.toggle('customer-sidebar-collapsed', collapsed);
+      sidebar?.querySelectorAll('.sidebar-nav .nav-link, .sidebar-footer .nav-link').forEach(link => {
+          const label = link.textContent.replace(/\s+/g, ' ').trim();
+          if (collapsed) {
+              link.setAttribute('title', label);
+              link.setAttribute('aria-label', label);
+          } else {
+              link.removeAttribute('title');
+              link.removeAttribute('aria-label');
+          }
+      });
+      sidebarCollapseToggle?.setAttribute('aria-pressed', String(collapsed));
+      sidebarCollapseToggle?.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Minimize sidebar');
+      sidebarCollapseToggle?.setAttribute('title', collapsed ? 'Expand sidebar' : 'Minimize sidebar');
+      if (sidebarCollapseToggle) sidebarCollapseToggle.innerHTML = `<i class="fa-solid fa-chevron-${collapsed ? 'right' : 'left'}" aria-hidden="true"></i>`;
+      if (persist) persistSidebarCollapsed(collapsed);
+  };
+
+  if (sidebarCollapseToggle) {
+      setSidebarCollapsed(readSidebarCollapsed(), false);
+      sidebarCollapseToggle.addEventListener('click', () => {
+          setSidebarCollapsed(!dashboardLayout?.classList.contains('customer-sidebar-collapsed'));
+      });
+      desktopSidebarQuery.addEventListener?.('change', event => {
+          setSidebarCollapsed(event.matches ? readSidebarCollapsed() : false, false);
+      });
+  }
+
   if (sidebar) {
       toggleDrawer = (open) => {
           sidebar.classList.toggle('mobile-open', open);
@@ -703,16 +751,19 @@ document.addEventListener("DOMContentLoaded", () => {
             const titleEl = document.getElementById('ud-title');
             if(titleEl) titleEl.innerText = `Booking ${displayId}`;
             
+            const displayStatus = data.display_booking_status || data.booking_status;
             let badgeClass = 'badge-pending';
-            let badgeText = data.booking_status;
+            let badgeText = displayStatus;
 
-            if (data.booking_status === 'Confirmed') {
+            if (displayStatus === 'Completed') {
+                badgeClass = 'badge-completed'; badgeText = 'Completed';
+            } else if (displayStatus === 'Confirmed') {
                 if (data.payment_status === 'Paid') { badgeClass = 'badge-paid'; badgeText = 'Fully Paid'; }
                 else if (data.payment_status === 'Partial') { badgeClass = 'badge-partial'; badgeText = 'Partially Paid'; }
                 else { badgeClass = 'badge-pending'; badgeText = 'Unpaid'; }
-            } else if (data.booking_status === 'Cancelled') {
+            } else if (displayStatus === 'Cancelled') {
                 badgeClass = 'badge-cancelled'; badgeText = 'Cancelled';
-            } else if (data.booking_status === 'Pending') {
+            } else if (displayStatus === 'Pending') {
                 badgeText = 'Pending';
             }
 
@@ -809,7 +860,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const formatCash = (amt) => `₱${parseFloat(amt || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            const isPendingEvent = data.venue_category === 'Event Hall' && data.booking_status === 'Pending';
+            const isPendingEvent = data.venue_category === 'Event Hall' && displayStatus === 'Pending';
 
             const extraPaxAmt = parseFloat(data.extra_pax_amount || 0);
             const extraPaxContainer = document.getElementById('ud-extrapax-container');

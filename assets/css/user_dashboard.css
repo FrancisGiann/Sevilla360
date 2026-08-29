@@ -727,7 +727,161 @@
 
 .badge-pending { background-color: rgba(214, 168, 112, 0.15); color: #a67c42; }
 .badge-partial, .badge-paid { background-color: rgba(136, 160, 150, 0.15); color: #557567; }
+.badge-completed { background-color: #e4ecdf; color: #456247; }
 .badge-cancelled { background-color: rgba(194, 124, 124, 0.15); color: #a85454; }
+
+/* Desktop icon rail. The 993px boundary matches the existing mobile drawer;
+   keeping these rules desktop-only prevents the minimize state from changing
+   mobile drawer layout or touch behavior. */
+@media (min-width: 993px) {
+  .dashboard-sidebar {
+    transition: width .24s ease, min-width .24s ease, max-width .24s ease;
+  }
+
+  .dashboard-main {
+    margin-left: 264px;
+    width: calc(100% - 264px);
+    max-width: calc(100% - 264px);
+  }
+
+  .dashboard-sidebar .sidebar-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+  }
+
+  .dashboard-sidebar .sidebar-collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    padding: 0;
+    border: 1px solid rgba(42, 37, 34, .15);
+    border-radius: 5px;
+    background: var(--color-white);
+    color: var(--color-dark-light);
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease, background-color .2s ease;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .dashboard-sidebar,
+  html.customer-sidebar-precollapsed .dashboard-layout .dashboard-sidebar {
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+    align-items: center;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .dashboard-main,
+  html.customer-sidebar-precollapsed .dashboard-layout .dashboard-main {
+    margin-left: 80px;
+    width: calc(100% - 80px);
+    max-width: calc(100% - 80px);
+    transition: margin-left .24s ease, width .24s ease, max-width .24s ease;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sidebar-header,
+  html.customer-sidebar-precollapsed .dashboard-layout .sidebar-header {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 18px 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .brand-logo,
+  html.customer-sidebar-precollapsed .dashboard-layout .brand-logo,
+  .dashboard-layout.customer-sidebar-collapsed .user-profile,
+  html.customer-sidebar-precollapsed .dashboard-layout .user-profile,
+  .dashboard-layout.customer-sidebar-collapsed .nav-heading,
+  html.customer-sidebar-precollapsed .dashboard-layout .nav-heading {
+    display: none;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sidebar-collapse-toggle,
+  html.customer-sidebar-precollapsed .dashboard-layout .sidebar-collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    padding: 0;
+    border: 1px solid rgba(42, 37, 34, .15);
+    border-radius: 5px;
+    background: var(--color-white);
+    color: var(--color-dark-light);
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease, background-color .2s ease;
+  }
+
+  .sidebar-collapse-toggle:hover {
+    background-color: rgba(214, 168, 112, .08);
+    color: var(--color-gold);
+    border-color: var(--color-gold);
+  }
+
+  .sidebar-collapse-toggle:focus-visible {
+    color: var(--color-gold);
+    border-color: var(--color-gold);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(214, 168, 112, .28);
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sidebar-nav,
+  html.customer-sidebar-precollapsed .dashboard-layout .sidebar-nav {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 24px 10px;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .nav-link,
+  html.customer-sidebar-precollapsed .dashboard-layout .nav-link {
+    justify-content: center;
+    gap: 0;
+    padding: 13px 0;
+    font-size: 0 !important;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .nav-link i,
+  html.customer-sidebar-precollapsed .dashboard-layout .nav-link i {
+    margin: 0;
+    font-size: 1.15rem !important;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .nav-link span,
+  html.customer-sidebar-precollapsed .dashboard-layout .nav-link span {
+    display: none;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sidebar-footer,
+  html.customer-sidebar-precollapsed .dashboard-layout .sidebar-footer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 10px;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sign-out,
+  html.customer-sidebar-precollapsed .dashboard-layout .sign-out {
+    justify-content: center;
+    width: 100%;
+    padding: 13px 0;
+    font-size: 0 !important;
+  }
+
+  .dashboard-layout.customer-sidebar-collapsed .sign-out i,
+  html.customer-sidebar-precollapsed .dashboard-layout .sign-out i { margin: 0; font-size: 1.1rem !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-sidebar,
+  .dashboard-main { transition: none !important; }
+}
 .badge-reschedule { background-color: rgba(119, 136, 153, 0.15); color: #5a6b7c; }
 
 /* --- Action Buttons (Centered & Clean) --- */
@@ -1210,6 +1364,8 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
     align-items: center;
     justify-content: center;
   }
+
+  .sidebar-collapse-toggle { display: none !important; }
 
   .user-profile {
     display: flex !important;

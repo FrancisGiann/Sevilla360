@@ -281,6 +281,7 @@
 
 .status-pending { background-color: #fde047; color: var(--color-dark); }
 .status-paid { background-color: #86efac; color: var(--color-dark); }
+.status-completed { background-color: #dfe9d8; color: #456247; }
 .status-partial { background-color: #dbeafe; color: #1e40af; }
 .status-refunded { background-color: #e5e7eb; color: var(--color-dark); }
 .status-pending-refund { background-color: #ef4444; color: white; }

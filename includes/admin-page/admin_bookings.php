@@ -38,6 +38,7 @@
             <button class="tab-btn" data-filter="partial">Balances Due</button>
             <button class="tab-btn" data-filter="pending">Pending</button>
             <button class="tab-btn" data-filter="confirmed">Confirmed</button>
+            <button class="tab-btn" data-filter="completed">Completed</button>
             <button class="tab-btn" data-filter="cancelled">Cancelled</button>
         </div>
         <label class="booking-filter-select-label" for="bookingFilterSelect">Booking status</label>
@@ -47,6 +48,7 @@
             <option value="partial">Balances Due</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
         </select>
 
