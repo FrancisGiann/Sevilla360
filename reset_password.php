@@ -57,13 +57,15 @@ if (empty($token)) {
 
                         <div class="form-group">
                             <label>NEW PASSWORD</label>
-                    <input type="password" name="new_password" class="form-control" required minlength="8">
+                    <input type="password" name="new_password" class="form-control" required autocomplete="new-password" aria-describedby="reset-password-help" data-password-policy-input>
                         </div>
                         
                         <div class="form-group">
                             <label>CONFIRM PASSWORD</label>
-                    <input type="password" name="confirm_password" class="form-control" required minlength="8">
+                    <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
                         </div>
+
+                        <small id="reset-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
 
                         <button type="submit" class="btn btn-primary btn-full">RESET PASSWORD</button>
                     </form>
@@ -81,6 +83,7 @@ if (empty($token)) {
 
     <!-- Scripts -->
     <script src="assets/js/global_modals.js?v=<?= time(); ?>"></script>
+    <script src="assets/js/password_policy.js?v=<?= time(); ?>"></script>
     
     <?php if (isset($_SESSION['auth_alert'])): ?>
         <script>

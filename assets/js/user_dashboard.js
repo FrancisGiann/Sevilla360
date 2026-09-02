@@ -968,6 +968,11 @@ document.addEventListener("DOMContentLoaded", () => {
           showAlert("Error", "New password and confirmation do not match.", "error");
           return;
       }
+      const passwordPolicy = window.SevillaPasswordPolicy?.validate(newPassword);
+      if (!passwordPolicy || !passwordPolicy.valid) {
+          showAlert("Error", passwordPolicy?.message || "Password does not meet the required policy.", "error");
+          return;
+      }
       updateSettings({
           action: 'update_password',
           old_pass: document.getElementById('set-old-pass').value,

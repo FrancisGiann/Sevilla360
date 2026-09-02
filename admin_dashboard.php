@@ -279,6 +279,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="assets/js/admin-page/admin_notifications.js?v=<?= time() ?>"></script>
     <!-- Global Custom Modals -->
     <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
+    <script src="assets/js/password_policy.js?v=<?= time() ?>"></script>
     <script src="assets/js/admin-page/admin_navigation.js?v=<?= time() ?>"></script>
 
     <!-- Specific JS for each page -->

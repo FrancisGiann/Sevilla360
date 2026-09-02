@@ -138,16 +138,17 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="form-group">
                             <label>PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" minlength="8" required>
+                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help">
                                 <span class="password-toggle">SHOW</span>
                             </div>
+                            <small id="reg-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
                             <div class="error-msg" id="err-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
                         </div>
 
                         <div class="form-group">
                             <label>CONFIRM PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" minlength="8" required>
+                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" required>
                                 <span class="password-toggle">SHOW</span>
                             </div>
                             <div class="error-msg" id="err-confirm-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
@@ -323,6 +324,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
     <!-- Scripts -->
     <script src="assets/js/global_modals.js?v=<?= time(); ?>"></script>
+    <script src="assets/js/password_policy.js?v=<?= time(); ?>"></script>
     <script src="assets/js/auth.js?v=<?= time(); ?>"></script>
     
     <?php if (isset($_SESSION['auth_alert'])): ?>

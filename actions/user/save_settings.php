@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/password_policy.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -59,9 +60,8 @@ try {
         if ($old_pass === '' || $new_pass === '' || $confirm_pass === '') {
             throw new Exception("Current password, new password, and confirmation are required.");
         }
-        if (strlen($new_pass) < 8) {
-        throw new Exception("New password must be at least 8 characters.");
-        }
+        $password_policy = password_policy_validate($new_pass);
+        if (!$password_policy['valid']) throw new Exception($password_policy['message']);
         if (!hash_equals($new_pass, $confirm_pass)) {
             throw new Exception("New password and confirmation do not match.");
         }

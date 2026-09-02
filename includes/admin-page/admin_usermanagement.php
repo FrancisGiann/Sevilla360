@@ -168,7 +168,8 @@ $customer_list = $cust_query->fetch_all(MYSQLI_ASSOC);
             </div>
             <div class="um-form-group">
                 <label>Password</label>
-                <input type="password" id="staff_password" minlength="8" placeholder="Enter password (leave blank to keep current)">
+                <input type="password" id="staff_password" autocomplete="new-password" aria-describedby="staff-password-help" placeholder="Enter password (leave blank to keep current)">
+                <small id="staff-password-help" style="color:#888; font-size:0.8rem;">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
                 <small id="pw_hint" style="color:#888; font-size:0.8rem; display:none;">Leave blank to keep existing
                     password.</small>
             </div>

@@ -89,9 +89,17 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         const btn = document.getElementById('btnSaveStaff');
         const origText = btn.innerText;
+        const userId = document.getElementById('staff_user_id').value;
+        const password = document.getElementById('staff_password').value;
+        if (password !== '') {
+            const passwordPolicy = window.SevillaPasswordPolicy?.validate(password);
+            if (!passwordPolicy || !passwordPolicy.valid) {
+                showAlert("Notice", "Error: " + (passwordPolicy?.message || "Password does not meet the required policy."));
+                return;
+            }
+        }
         btn.innerText = 'Saving...'; btn.disabled = true;
 
-        const userId = document.getElementById('staff_user_id').value;
         const payload = {
             action: userId ? 'edit' : 'add',
             user_id: userId,
@@ -99,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
             email: document.getElementById('staff_email').value,
             role: document.getElementById('staff_role').value,
             status: document.getElementById('staff_status').value,
-            password: document.getElementById('staff_password').value
+            password
         };
 
         fetch('actions/admin/manage_staff.php', {

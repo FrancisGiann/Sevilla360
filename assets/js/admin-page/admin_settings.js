@@ -46,6 +46,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const newPass = document.getElementById("prof-new-pass").value;
       const confPass = document.getElementById("prof-conf-pass").value;
 
+      if (newPass !== '' && newPass !== confPass) {
+          if (window.showAlert) window.showAlert("Notice", "New password and confirm password do not match.", "error");
+          else alert("New password and confirm password do not match.");
+          return;
+      }
+      if (newPass !== '') {
+          const passwordPolicy = window.SevillaPasswordPolicy?.validate(newPass);
+          if (!passwordPolicy || !passwordPolicy.valid) {
+              if (window.showAlert) window.showAlert("Notice", passwordPolicy?.message || "Password does not meet the required policy.", "error");
+              else alert(passwordPolicy?.message || "Password does not meet the required policy.");
+              return;
+          }
+      }
+
       const originalText = button.innerHTML;
       button.innerHTML = "Saving...";
       button.disabled = true;

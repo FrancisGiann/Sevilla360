@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
+require_once '../../includes/password_policy.php';
 
 // =========================================================================
 // DATABASE HYGIENE: The "Piggyback" Auto-Delete
@@ -59,8 +60,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         header("Location: ../../auth.php");
         exit();
     }
-    if (strlen($password) < 8) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Password must be at least 8 characters.', 'type' => 'error'];
+    $password_policy = password_policy_validate($password);
+    if (!$password_policy['valid']) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => $password_policy['message'], 'type' => 'error'];
         header("Location: ../../auth.php");
         exit();
     }

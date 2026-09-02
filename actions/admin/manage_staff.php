@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
+require_once __DIR__ . '/../../includes/password_policy.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
@@ -42,9 +43,12 @@ if ($action === 'add' || $action === 'edit') {
         echo json_encode(['success' => false, 'message' => 'Invalid staff name, email, role, or status.']);
         exit;
     }
-    if (($action === 'add' && strlen($inputPassword) < 8) || ($action === 'edit' && $inputPassword !== '' && strlen($inputPassword) < 8)) {
+    $password_policy = ($action === 'add' || $inputPassword !== '')
+        ? password_policy_validate($inputPassword)
+        : ['valid' => true, 'message' => ''];
+    if (!$password_policy['valid']) {
         http_response_code(422);
-        echo json_encode(['success' => false, 'message' => 'Password must be at least 8 characters.']);
+        echo json_encode(['success' => false, 'message' => $password_policy['message']]);
         exit;
     }
 } elseif (!filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
@@ -73,7 +77,8 @@ try {
             $stmt->execute();
             if ($stmt->get_result()->num_rows > 0) throw new Exception("Email already exists.");
 
-            if (strlen($password) < 8) throw new Exception("Password must be at least 8 characters for new staff.");
+            $password_policy = password_policy_validate($password);
+            if (!$password_policy['valid']) throw new Exception($password_policy['message']);
             
             $hash = password_hash($password, PASSWORD_DEFAULT);
             
@@ -113,7 +118,8 @@ try {
 
             // Update User
             if ($password !== '') {
-                if (strlen($password) < 8) throw new Exception("Password must be at least 8 characters.");
+                $password_policy = password_policy_validate($password);
+                if (!$password_policy['valid']) throw new Exception($password_policy['message']);
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt_u = $conn->prepare("UPDATE users SET email = ?, role = ?, password_hash = ? WHERE id = ?");
                 $stmt_u->bind_param("sssi", $email, $role, $hash, $user_id);

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/password_policy.php';
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -19,9 +20,9 @@ $data = json_decode(file_get_contents('php://input'), true);
 
 $name = trim($data['name'] ?? '');
 $phone = trim($data['phone'] ?? '');
-$currPass = $data['curr_pass'] ?? '';
-$newPass = $data['new_pass'] ?? '';
-$confPass = $data['conf_pass'] ?? '';
+$currPass = is_string($data['curr_pass'] ?? null) ? $data['curr_pass'] : '';
+$newPass = is_string($data['new_pass'] ?? null) ? $data['new_pass'] : '';
+$confPass = is_string($data['conf_pass'] ?? null) ? $data['conf_pass'] : '';
 $uid = $_SESSION['user_id'];
 
 if (empty($name)) {
@@ -45,9 +46,8 @@ try {
         if ($newPass !== $confPass) {
             throw new Exception("New password and confirm password do not match.");
         }
-        if (strlen($newPass) < 8) {
-            throw new Exception("New password must be at least 8 characters.");
-        }
+        $password_policy = password_policy_validate($newPass);
+        if (!$password_policy['valid']) throw new Exception($password_policy['message']);
 
         // Verify current password
         $stmt_check = $conn->prepare("SELECT password_hash FROM users WHERE id = ?");

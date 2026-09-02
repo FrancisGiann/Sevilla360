@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
+require_once '../../includes/password_policy.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
@@ -18,9 +19,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
     
-    $token = $_POST['token'] ?? '';
-    $new_password = $_POST['new_password'] ?? '';
-    $confirm_password = $_POST['confirm_password'] ?? '';
+    $token = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+    $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
+    $confirm_password = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
     $user_id = $_SESSION['reset_user_id'] ?? 0;
     
     if (empty($token) || empty($new_password) || $user_id === 0) {
@@ -35,8 +36,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
     
-    if (strlen($new_password) < 8) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Password must be at least 8 characters.', 'type' => 'error'];
+    $password_policy = password_policy_validate($new_password);
+    if (!$password_policy['valid']) {
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => $password_policy['message'], 'type' => 'error'];
         header("Location: ../../auth.php");
         exit();
     }

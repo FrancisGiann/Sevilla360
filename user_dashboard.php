@@ -763,19 +763,20 @@ $dashboard_status = static function (array $booking): array {
                                     <div class="form-group">
                                         <label>Current Password</label>
                                         <input type="password" id="set-old-pass" class="form-control"
-                                            placeholder="••••••••">
+                                            placeholder="••••••••" autocomplete="current-password">
                                     </div>
                                     <div class="form-group">
                                         <label>New Password</label>
                                         <input type="password" id="set-new-pass" class="form-control"
-                                            placeholder="Enter new password" minlength="8">
+                                            placeholder="Enter new password" autocomplete="new-password" aria-describedby="set-password-help">
                                     </div>
                                     <div class="form-group">
                                         <label>Confirm New Password</label>
                                         <input type="password" id="set-confirm-pass" class="form-control"
-                                            placeholder="Re-enter new password" minlength="8">
+                                            placeholder="Re-enter new password" autocomplete="new-password">
                                     </div>
                                 </div>
+                                <small id="set-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
                                 <button type="button" id="btn-update-password" class="btn btn-outline-dark">Update
                                     Password</button>
                             </form>
@@ -994,6 +995,7 @@ $dashboard_status = static function (array $booking): array {
     
     <!-- Global Custom Modals -->
     <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
+    <script src="assets/js/password_policy.js?v=<?= time() ?>"></script>
 
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>

@@ -108,8 +108,8 @@ document.addEventListener("DOMContentLoaded", () => {
               errPass.innerText = 'Password is required.';
               errPass.style.display = 'block';
               isValid = false;
-          } else if (pass.value.length < 8) {
-              errPass.innerText = 'Password must be at least 8 characters.';
+          } else if (!window.SevillaPasswordPolicy || !window.SevillaPasswordPolicy.validate(pass.value).valid) {
+              errPass.innerText = window.SevillaPasswordPolicy?.validate(pass.value).message || 'Password does not meet the required policy.';
               errPass.style.display = 'block';
               isValid = false;
           }
