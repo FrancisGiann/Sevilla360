@@ -19,8 +19,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnAgreeTerms = document.getElementById("btn-agree-terms");
   const agreeCheckbox = document.getElementById("agree-checkbox");
   
-  const linkForgot = document.querySelector(".forgot-link");
   const linkBackLoginForgot = document.getElementById("link-back-login-from-forgot");
+  const forgotTriggers = document.querySelectorAll("[data-forgot-password]");
 
   // --- Switch View Function ---
   function switchView(targetView) {
@@ -43,6 +43,77 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnNext = document.getElementById('btn-next-step');
   const btnPrev = document.getElementById('btn-prev-step');
   const registerSubtitle = document.getElementById('register-subtitle');
+  const email = document.getElementById('reg-email');
+  const errEmail = document.getElementById('err-email');
+  let emailInteracted = false;
+
+  function isRegistrationEmailFormatValid(value, nativeTypeMismatch = false) {
+      if (nativeTypeMismatch || typeof value !== 'string' || !value) return false;
+
+      // Match PHP's ordinary-address behavior without accepting Unicode or
+      // whitespace in the local part/domain. Quoted/escaped local parts are
+      // intentionally outside the registration field's common address scope.
+      const atIndex = value.indexOf('@');
+      if (atIndex < 1 || atIndex !== value.lastIndexOf('@')) return false;
+
+      const localPart = value.slice(0, atIndex);
+      const domain = value.slice(atIndex + 1);
+      const localAtom = "[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+";
+      if (!new RegExp(`^${localAtom}(?:\\.${localAtom})*$`).test(localPart)) return false;
+
+      const labels = domain.split('.');
+      if (labels.length < 2 || labels.some(label =>
+          !/^[A-Za-z0-9-]+$/.test(label) || label.startsWith('-') || label.endsWith('-')
+      )) return false;
+
+      // FILTER_VALIDATE_EMAIL accepts a one-character TLD but rejects a
+      // numeric-only final label (for example, example.1).
+      return /[A-Za-z]/.test(labels[labels.length - 1]);
+  }
+
+  function updateRegistrationEmailState({ normalize = false } = {}) {
+      if (!email || !errEmail) return false;
+
+      const value = email.value.trim();
+      const nativeTypeMismatch = email.value === value && email.validity.typeMismatch;
+      const state = !value ? 'empty' : (isRegistrationEmailFormatValid(value, nativeTypeMismatch) ? 'valid' : 'invalid');
+      const isValid = state === 'valid';
+      const message = state === 'empty'
+          ? 'Email address is required.'
+          : isValid
+              ? 'Email address looks valid.'
+              : 'Enter a valid email address, such as name@example.com.';
+
+      if (normalize && isValid) email.value = value;
+
+      email.classList.toggle('email-invalid', state === 'empty' || state === 'invalid');
+      email.classList.toggle('email-valid', isValid);
+      email.setAttribute('aria-invalid', isValid ? 'false' : 'true');
+
+      // Keep the initial field quiet, then only mutate the polite region when
+      // its state/message changes so typing does not cause repeated announcements.
+      if (!emailInteracted && !normalize) {
+          errEmail.hidden = true;
+      } else {
+          if (errEmail.textContent !== message) errEmail.textContent = message;
+          errEmail.classList.toggle('email-feedback-invalid', !isValid);
+          errEmail.classList.toggle('email-feedback-valid', isValid);
+          errEmail.hidden = false;
+      }
+
+      return isValid;
+  }
+
+  if (email) {
+      email.addEventListener('blur', () => {
+          emailInteracted = true;
+          updateRegistrationEmailState();
+      });
+      email.addEventListener('input', () => {
+          emailInteracted = true;
+          updateRegistrationEmailState();
+      });
+  }
   
   // Initialization: Hide Step 2 via JS so it degrades gracefully if JS fails
   if (step2) step2.style.display = 'none';
@@ -84,25 +155,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnNext) {
       btnNext.addEventListener('click', () => {
           let isValid = true;
-          
-          const email = document.getElementById('reg-email');
           const pass = document.getElementById('reg-password');
           const confPass = document.getElementById('reg-confirm-password');
-          
-          const errEmail = document.getElementById('err-email');
           const errPass = document.getElementById('err-password');
           const errConf = document.getElementById('err-confirm-password');
-          
-          errEmail.style.display = 'none';
+
+          emailInteracted = true;
+          const emailIsValid = updateRegistrationEmailState({ normalize: true });
+          if (!emailIsValid) isValid = false;
+
           errPass.style.display = 'none';
           errConf.style.display = 'none';
-          
-          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-          if (!email.value || !emailRegex.test(email.value)) {
-              errEmail.innerText = 'Please enter a valid email address.';
-              errEmail.style.display = 'block';
-              isValid = false;
-          }
           
           if (!pass.value) {
               errPass.innerText = 'Password is required.';
@@ -119,7 +182,8 @@ document.addEventListener("DOMContentLoaded", () => {
               errConf.style.display = 'block';
               isValid = false;
           }
-          
+
+          if (!emailIsValid) email.focus();
           if (isValid) {
               showRegisterStep(2);
           }
@@ -138,7 +202,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnGotoAdmin) btnGotoAdmin.addEventListener("click", () => switchView(viewAdmin));
   if(linkBackLogin) linkBackLogin.addEventListener("click", () => switchView(viewLogin));
   if(linkGotoTerms) linkGotoTerms.addEventListener("click", () => switchView(viewTerms));
-  if(linkForgot) linkForgot.addEventListener("click", (e) => { e.preventDefault(); switchView(viewForgot); });
+  const openForgotPassword = (event) => {
+      event.preventDefault();
+      switchView(viewForgot);
+  };
+  forgotTriggers.forEach((trigger) => trigger.addEventListener("click", openForgotPassword));
   if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(viewLogin));
 
   if(btnAgreeTerms) {

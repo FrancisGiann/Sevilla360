@@ -10,6 +10,12 @@ if (isset($conn) && $conn instanceof mysqli) {
 }
 $footer_social_links = json_decode($footer_settings['social_links_json'], true);
 $footer_social_links = is_array($footer_social_links) ? $footer_social_links : [];
+$footer_social_links = array_values(array_filter($footer_social_links, static function ($footer_social): bool {
+    if (!is_array($footer_social)) return false;
+    $footer_label = trim((string)($footer_social['label'] ?? ''));
+    $footer_url = trim((string)($footer_social['url'] ?? ''));
+    return $footer_label !== '' && preg_match('/^https?:\/\//i', $footer_url) === 1;
+}));
 ?>
 <!-- Footer -->
 <footer class="idx-footer">
@@ -43,21 +49,19 @@ $footer_social_links = is_array($footer_social_links) ? $footer_social_links : [
                 </ul>
             </nav>
 
+            <?php if (!empty($footer_social_links)): ?>
             <nav class="idx-footer-col">
                 <h4>Connect</h4>
                 <ul>
                     <?php foreach ($footer_social_links as $footer_social):
                         $footer_label = trim((string)($footer_social['label'] ?? ''));
                         $footer_url = trim((string)($footer_social['url'] ?? ''));
-                        if ($footer_label === '' || !preg_match('/^https?:\/\//i', $footer_url)) continue;
                     ?>
                     <li><a href="<?php echo htmlspecialchars($footer_url, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars($footer_label, ENT_QUOTES, 'UTF-8'); ?></a></li>
                     <?php endforeach; ?>
-                    <?php if (filter_var($footer_settings['biz_email'], FILTER_VALIDATE_EMAIL)): ?>
-                    <li><a href="mailto:<?php echo htmlspecialchars($footer_settings['biz_email'], ENT_QUOTES, 'UTF-8'); ?>">Email Us</a></li>
-                    <?php endif; ?>
                 </ul>
             </nav>
+            <?php endif; ?>
         </div>
 
         <div class="idx-footer-bottom">

@@ -3,18 +3,24 @@ $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = 'assets/css/booking.css?v=' . time(); 
 $extra_js = 'assets/js/booking.js?v=' . time();    
 $active_page = 'booking';              
-$required_role = 'customer';
-require 'includes/auth_guard.php';
+require_once 'includes/session_init.php';
+
+$booking_role = (string)($_SESSION['role'] ?? '');
+$booking_is_customer = ($_SESSION['logged_in'] ?? false) === true && $booking_role === 'customer';
+$booking_is_staff = ($_SESSION['logged_in'] ?? false) === true && in_array($booking_role, ['staff', 'admin'], true);
 
 include 'includes/header.php';
 
 require_once 'config/db_connect.php';
 require_once 'includes/media_helper.php';
-$phone_stmt = $conn->prepare("SELECT phone FROM customers WHERE user_id = ? LIMIT 1");
-$phone_stmt->bind_param('i', $_SESSION['user_id']);
-$phone_stmt->execute();
-$saved_contact_phone = (string)($phone_stmt->get_result()->fetch_assoc()['phone'] ?? '');
-$phone_stmt->close();
+$saved_contact_phone = '';
+if ($booking_is_customer) {
+    $phone_stmt = $conn->prepare("SELECT phone FROM customers WHERE user_id = ? LIMIT 1");
+    $phone_stmt->bind_param('i', $_SESSION['user_id']);
+    $phone_stmt->execute();
+    $saved_contact_phone = (string)($phone_stmt->get_result()->fetch_assoc()['phone'] ?? '');
+    $phone_stmt->close();
+}
 
 // Fetch Event Halls with CMS image
 $halls_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
@@ -237,5 +243,14 @@ unset($villa);
 
 <!-- INJECT THE MODALS -->
 <?php include 'includes/partials/booking_modals.php'; ?>
+
+<script>
+window.bookingAuth = <?php echo json_encode([
+    'isCustomer' => $booking_is_customer,
+    'isStaff' => $booking_is_staff,
+    'isAuthenticated' => ($booking_is_customer || $booking_is_staff),
+    'resume' => isset($_GET['resume']) && $_GET['resume'] === '1'
+], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+</script>
 
 <?php include 'includes/footer.php'; ?>

@@ -102,30 +102,63 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentPage = 1;
     const rowsPerPage = 15;
     let searchTimeout = null;
+    let bookingsLoadInFlight = false;
+    let bookingsLoadQueued = false;
+    let queuedLoadSuppressUrlSearchAction = false;
+    let bookingsRequestSequence = 0;
+    let realtimeRefreshTimeout = null;
+
+    function getBookingViewState() {
+        return {
+            page: currentPage,
+            activeTab: document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all",
+            search: searchInput?.value.trim() || '',
+            venue: venueFilter?.value || 'All'
+        };
+    }
+
+    function bookingViewStateChanged(state) {
+        const currentState = getBookingViewState();
+        return state.page !== currentState.page
+            || state.activeTab !== currentState.activeTab
+            || state.search !== currentState.search
+            || state.venue !== currentState.venue;
+    }
   
-    function loadBookings() {
+    function loadBookings(options = {}) {
+        if (!tbody) return;
+
+        const suppressUrlSearchAction = options.suppressUrlSearchAction === true;
+        if (bookingsLoadInFlight) {
+            bookingsLoadQueued = true;
+            queuedLoadSuppressUrlSearchAction = queuedLoadSuppressUrlSearchAction || suppressUrlSearchAction;
+            return;
+        }
+
+        bookingsLoadInFlight = true;
+        const requestSequence = ++bookingsRequestSequence;
+        const requestState = getBookingViewState();
+
         tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #888;">
                             <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; margin-bottom: 10px; color: var(--color-gold);"></i><br>
                             Loading Bookings...
                            </td></tr>`;
-        
-        const activeTab = document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all";
-        const searchTerm = searchInput.value.trim();
-        const venue = venueFilter.value;
   
         fetch('actions/admin/get_bookings_page.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({
-                page: currentPage,
+                page: requestState.page,
                 limit: rowsPerPage,
-                search: searchTerm,
-                venue: venue,
-                status: activeTab
+                search: requestState.search,
+                venue: requestState.venue,
+                status: requestState.activeTab
             })
         })
         .then(res => res.json())
         .then(res => {
+            if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
+
             if (!res.success) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Error: ${res.message}</td></tr>`;
                 return;
@@ -136,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
             // Auto-scroll, highlight, and pop open View Details modal if redirected from Master Calendar / Command Center
-            if (urlSearch && res.data && res.data.length > 0) {
+            if (!suppressUrlSearchAction && urlSearch && res.data && res.data.length > 0) {
                 const match = res.data.find(b => b.reference_no.toLowerCase() === urlSearch.toLowerCase() || b.reference_no.toLowerCase().includes(urlSearch.toLowerCase()) || b.id.toString() === urlSearch);
                 const targetRef = match ? match.reference_no : urlSearch;
 
@@ -150,9 +183,36 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         })
         .catch(err => {
+            if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
             tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Network Error occurred.</td></tr>`;
+        })
+        .finally(() => {
+            bookingsLoadInFlight = false;
+            const shouldLoadQueuedRequest = bookingsLoadQueued || bookingViewStateChanged(requestState);
+            const suppressQueuedUrlSearchAction = queuedLoadSuppressUrlSearchAction;
+            bookingsLoadQueued = false;
+            queuedLoadSuppressUrlSearchAction = false;
+            if (shouldLoadQueuedRequest) {
+                loadBookings({ suppressUrlSearchAction: suppressQueuedUrlSearchAction });
+            }
         });
     }
+
+    function scheduleRealtimeBookingRefresh() {
+        clearTimeout(realtimeRefreshTimeout);
+        realtimeRefreshTimeout = setTimeout(() => {
+            realtimeRefreshTimeout = null;
+            loadBookings({ suppressUrlSearchAction: true });
+        }, 250);
+    }
+
+    // Realtime gateway frames are { event_id, channel, event_type, payload }.
+    // The table endpoint remains the source of truth; payload is only an invalidation signal.
+    window.addEventListener('SevillaRealtimeEvent', event => {
+        const detail = event?.detail;
+        if (!detail || typeof detail !== 'object' || detail.channel !== 'admin' || detail.event_type !== 'booking.created') return;
+        if (tbody) scheduleRealtimeBookingRefresh();
+    });
   
     function renderTableRows(bookings) {
         if (bookings.length === 0) {
@@ -226,8 +286,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (['Unpaid', 'Partial'].includes(b.payment_status) && balanceDue > 0) {
                         actionBtns += `<button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>`;
                     }
-                    actionBtns += `<button class="btn-action btn-reschedule open-reschedule" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-type="${actualRoomType}" data-date="${dateStr}">Reschedule</button>
-                                   <button class="btn-action btn-cancel open-force-cancel" data-id="${b.id}" data-customer="${customerName}" data-paid="${amtPaid}">Force Cancel</button>`;
+                    actionBtns += `<button class="btn-action btn-reschedule open-reschedule" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-type="${actualRoomType}" data-date="${dateStr}">Reschedule</button>`;
                 }
             }
             actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
@@ -720,37 +779,6 @@ document.addEventListener("DOMContentLoaded", () => {
       
                 modalOverlay.classList.add('active');
                 reviewReschedModal.classList.add('active');
-            });
-        });
-      
-        // ADMIN FORCE CANCEL MODAL
-        const forceCancelModal = document.getElementById("forceCancelModal");
-      
-        document.querySelectorAll('.open-force-cancel').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
-                document.getElementById('fc-customer').innerText = this.getAttribute('data-customer');
-                document.getElementById('fc-refund-amt').innerText = totalPaid.toLocaleString();
-                document.getElementById('fc-reason').value = ""; 
-      
-                const executeBtn = document.getElementById('btn-execute-force-cancel');
-                const newBtn = executeBtn.cloneNode(true);
-                executeBtn.parentNode.replaceChild(newBtn, executeBtn);
-                
-                newBtn.setAttribute('data-id', this.getAttribute('data-id'));
-                newBtn.setAttribute('data-paid', totalPaid);
-                
-                newBtn.addEventListener('click', function() {
-                    const reason = document.getElementById('fc-reason').value.trim();
-                    if (reason === "") return showAlert("Missing Data", "You must provide a reason (e.g. Typhoon) for the audit log.", "error", "forceCancelModal");
-              
-                    showConfirmModal("Are you absolutely sure? This will instantly cancel the booking and process a full refund.", () => {
-                        processBookingAction(this.getAttribute('data-id'), 'admin_force_cancel', this, { reason: reason, refund_amount: this.getAttribute('data-paid') });
-                    }, 'forceCancelModal');
-                });
-      
-                modalOverlay.classList.add('active');
-                forceCancelModal.classList.add('active');
             });
         });
       

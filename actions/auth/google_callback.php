@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/google_oauth.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/request_context.php';
+require_once '../../includes/booking_intent.php';
 
 function google_oauth_fail(string $message = 'Google sign-in could not be completed.'): never
 {
@@ -99,7 +100,8 @@ try {
     $_SESSION['logged_in'] = true;
     $_SESSION['first_name'] = $first_name !== '' ? $first_name : 'Customer';
     session_policy_mark_authenticated();
-    header('Location: ../../user_dashboard.php');
+    $resume_target = booking_auth_consume_destination('customer');
+    header('Location: ../../' . ($resume_target ?? 'user_dashboard.php'));
     exit;
 } catch (Throwable $error) {
     $conn->rollback();

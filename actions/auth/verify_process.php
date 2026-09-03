@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/mailer.php';
 require_once '../../includes/rate_limit.php';
+require_once '../../includes/booking_intent.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
@@ -123,7 +124,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } else {
                 $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'This account was already verified. Please continue to your dashboard.', 'type' => 'info'];
             }
-            header("Location: ../../user_dashboard.php");
+            $resume_target = booking_auth_consume_destination('customer');
+            header("Location: ../../" . ($resume_target ?? 'user_dashboard.php'));
             exit();
 
         } else {

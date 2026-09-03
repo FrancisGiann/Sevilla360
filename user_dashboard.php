@@ -139,7 +139,7 @@ $stmt_overview_recent = $conn->prepare("
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ?
     ORDER BY b.id DESC
-    LIMIT 4
+    LIMIT 3
 ");
 $stmt_overview_recent->bind_param('i', $customer_id);
 $stmt_overview_recent->execute();
@@ -353,7 +353,6 @@ $dashboard_status = static function (array $booking): array {
                 <section id="tab-overview" class="tab-pane dashboard-overview <?php echo $initial_section === 'overview' ? 'active' : ''; ?>" aria-labelledby="overview-title">
                     <div class="overview-welcome">
                         <div>
-                            <p class="overview-eyebrow">YOUR SEVILLA360 DASHBOARD</p>
                             <h1 id="overview-title">Welcome back, <?php echo htmlspecialchars($customer['first_name']); ?>.</h1>
                             <p class="overview-intro">Keep your reservations, payments and preferences in one considered place.</p>
                         </div>
@@ -367,27 +366,16 @@ $dashboard_status = static function (array $booking): array {
                             <small><?php echo $upcoming_count ? 'Confirmed booking' . ($upcoming_count === 1 ? '' : 's') . ' ahead' : 'No upcoming bookings'; ?></small>
                         </div>
                         <div class="dashboard-summary-card">
-                            <span class="summary-card-label">Pending</span>
-                            <strong><?php echo $stat_pending; ?></strong>
-                            <small>Awaiting confirmation or payment</small>
-                        </div>
-                        <div class="dashboard-summary-card">
-                            <span class="summary-card-label">Confirmed</span>
-                            <strong><?php echo $stat_confirmed; ?></strong>
-                            <small><?php echo $stat_total; ?> total booking<?php echo $stat_total === 1 ? '' : 's'; ?></small>
-                        </div>
-                        <div class="dashboard-summary-card">
                             <span class="summary-card-label">Outstanding balance</span>
                             <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
                             <small><?php echo $balance_due > 0 ? 'Payment action may be needed' : 'You are all caught up'; ?></small>
                         </div>
                     </section>
 
-                    <div class="overview-main-grid">
+                    <div class="overview-main-grid<?php echo empty($attention_items) ? ' overview-main-grid-single' : ''; ?>">
                         <section class="overview-card next-booking-card" aria-labelledby="next-booking-title">
                             <div class="overview-card-heading">
                                 <div>
-                                    <p class="overview-eyebrow">NEXT BOOKING</p>
                                     <h2 id="next-booking-title">Your upcoming stay</h2>
                                 </div>
                                 <?php if ($upcoming_booking) { [$next_status_text, $next_status_class] = $dashboard_status($upcoming_booking); } ?>
@@ -406,20 +394,16 @@ $dashboard_status = static function (array $booking): array {
                                 <?php endif; ?>
                             </div>
                             <?php else: ?>
-                            <div class="overview-empty-state"><i class="fa-regular fa-calendar"></i><p>No upcoming booking yet.</p><a href="booking.php" class="btn-primary-dash">Find your venue</a></div>
+                            <div class="overview-empty-state"><i class="fa-regular fa-calendar"></i><p>No upcoming booking yet. Your next reservation will appear here.</p></div>
                             <?php endif; ?>
                         </section>
 
-                        <section class="overview-card attention-card" aria-labelledby="attention-title">
+                        <?php if (!empty($attention_items)): ?><section class="overview-card attention-card" aria-labelledby="attention-title">
                             <div class="overview-card-heading">
                                 <div>
-                                    <p class="overview-eyebrow">ACTION NEEDED</p>
-                                    <h2 id="attention-title">A little attention</h2>
+                                    <h2 id="attention-title">Needs attention</h2>
                                 </div>
                             </div>
-                            <?php if (empty($attention_items)): ?>
-                            <div class="overview-empty-state compact"><i class="fa-solid fa-check"></i><p>Nothing needs your attention right now.</p></div>
-                            <?php else: ?>
                             <ul class="attention-list">
                                 <?php foreach ($attention_items as $attention): [$attention_text, $attention_class] = $dashboard_status($attention); ?>
                                 <li>
@@ -428,25 +412,15 @@ $dashboard_status = static function (array $booking): array {
                                 </li>
                                 <?php endforeach; ?>
                             </ul>
-                            <?php endif; ?>
                         </section>
+                        <?php endif; ?>
                     </div>
 
-                    <section class="overview-card quick-actions-card" aria-labelledby="quick-actions-title">
-                        <div class="overview-card-heading"><div><p class="overview-eyebrow">SHORTCUTS</p><h2 id="quick-actions-title">Quick actions</h2></div></div>
-                        <div class="quick-actions-grid">
-                            <a href="booking.php"><i class="fa-solid fa-plus"></i><span>Book a venue</span><small>Start a new reservation</small></a>
-                            <a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings"><i class="fa-solid fa-clock-rotate-left"></i><span>View booking history</span><small>See all reservations</small></a>
-                            <a href="user_dashboard.php?section=settings" data-dashboard-section="settings"><i class="fa-regular fa-user"></i><span>Update profile</span><small>Preferences and security</small></a>
-                            <a href="support.php#contact"><i class="fa-regular fa-comment-dots"></i><span>Contact support</span><small>We are happy to help</small></a>
-                        </div>
-                    </section>
-
-                    <div class="overview-lower-grid">
+                    <div class="overview-lower-grid overview-recent-only">
                         <section class="overview-card recent-bookings-card" aria-labelledby="recent-bookings-title">
-                            <div class="overview-card-heading"><div><p class="overview-eyebrow">RECENT</p><h2 id="recent-bookings-title">Recent bookings</h2></div><a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">View all</a></div>
+                            <div class="overview-card-heading"><div><h2 id="recent-bookings-title">Recent bookings</h2></div><a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">View all</a></div>
                             <?php if (empty($overview_recent)): ?>
-                            <div class="overview-empty-state compact"><i class="fa-regular fa-calendar-xmark"></i><p>No bookings yet.</p><a href="booking.php" class="text-link">Book your first venue</a></div>
+                            <div class="overview-empty-state compact"><i class="fa-regular fa-calendar-xmark"></i><p>No bookings yet. Use Book a Venue above to start your first reservation.</p></div>
                             <?php else: ?>
                             <div class="recent-bookings-list">
                                 <?php foreach ($overview_recent as $recent): [$recent_status_text, $recent_status_class] = $dashboard_status($recent); ?>
@@ -460,18 +434,6 @@ $dashboard_status = static function (array $booking): array {
                             <?php endif; ?>
                         </section>
 
-                        <section class="overview-card recent-notifications-card" aria-labelledby="recent-notifications-title">
-                            <div class="overview-card-heading"><div><p class="overview-eyebrow">UPDATES</p><h2 id="recent-notifications-title">Recent activity</h2></div><button type="button" class="btn-icon-link" id="overview-open-notifications" aria-label="Open notifications"><i class="fa-regular fa-bell"></i></button></div>
-                            <?php if (empty($notifications)): ?>
-                            <div class="overview-empty-state compact"><i class="fa-regular fa-bell-slash"></i><p>No notifications yet.</p></div>
-                            <?php else: ?>
-                            <ul class="recent-notifications-list">
-                                <?php foreach (array_slice($notifications, 0, 4) as $activity): ?>
-                                <li class="<?php echo $activity['is_read'] ? '' : 'is-unread'; ?>"><span class="activity-dot"></span><div><strong><?php echo htmlspecialchars($activity['title']); ?></strong><small><?php echo htmlspecialchars($activity['message']); ?></small><time datetime="<?php echo htmlspecialchars($activity['created_at']); ?>"><?php echo htmlspecialchars(date('M j, Y', strtotime($activity['created_at']))); ?></time></div></li>
-                                <?php endforeach; ?>
-                            </ul>
-                            <?php endif; ?>
-                        </section>
                     </div>
                 </section>
 

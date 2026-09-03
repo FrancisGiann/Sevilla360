@@ -119,6 +119,72 @@
   color: #a09d9b;
 }
 
+/* Registration email feedback states. The message and symbols keep the state
+   understandable without relying on the border color alone. */
+.form-control.email-invalid {
+  border-color: #a94f4b !important;
+  box-shadow: 0 0 0 1px #a94f4b !important;
+}
+
+.form-control.email-invalid:focus {
+  border-color: #8f3f3b !important;
+  box-shadow: 0 0 0 3px rgba(169, 79, 75, 0.2) !important;
+}
+
+.form-control.email-valid {
+  border-color: #3f7355 !important;
+  box-shadow: 0 0 0 1px #3f7355 !important;
+}
+
+.form-control.email-valid:focus {
+  border-color: #315d44 !important;
+  box-shadow: 0 0 0 3px rgba(63, 115, 85, 0.2) !important;
+}
+
+.email-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.email-feedback[hidden] {
+  display: none;
+}
+
+.email-feedback::before {
+  display: inline-flex;
+  flex: 0 0 1.15rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.email-feedback-invalid {
+  color: #a94f4b;
+}
+
+.email-feedback-invalid::before {
+  content: "!";
+}
+
+.email-feedback-valid {
+  color: #3f7355;
+}
+
+.email-feedback-valid::before {
+  content: "✓";
+}
+
 .password-wrapper {
   position: relative;
 }
@@ -147,13 +213,56 @@
 
 .forgot-link {
   display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
   text-align: right;
   font-size: 0.85rem;
   margin-top: 0.5rem;
   color: var(--color-dark-light);
+  font-family: inherit;
 }
 
 .forgot-link:hover {
+  color: var(--color-gold);
+}
+
+.forgot-link:focus-visible,
+.recovery-nudge-action:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+.login-recovery-nudge {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: -0.5rem 0 1rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-gold);
+  background: #fff8ef;
+  color: var(--color-dark);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.recovery-nudge-action {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-dark);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.recovery-nudge-action:hover {
   color: var(--color-gold);
 }
 

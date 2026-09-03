@@ -328,25 +328,6 @@
             </div>
         </div>
 
-        <!-- Admin Override Cancel Modal -->
-        <div class="admin-modal modal-sm" id="forceCancelModal">
-            <i class="fa-solid fa-cloud-bolt modal-icon-warning text-red-danger"></i>
-            <h3 class="modal-title">Admin Override Cancel</h3>
-            <div class="modal-body">
-                <p class="fc-subtitle">You are forcing a cancellation for <strong id="fc-customer">--</strong>.</p>
-                <div class="fc-info-banner">
-                    <i class="fa-solid fa-circle-info"></i> Because the resort is initiating this, the customer will receive a <strong>100% Full Refund</strong> (₱<span id="fc-refund-amt">0</span>). The resort absorbs all processing fees.
-                </div>
-
-                <label class="form-label-bold-block">Reason for Cancellation:</label>
-                <textarea id="fc-reason" class="form-textarea-padded" rows="2" placeholder="e.g. Typhoon, Maintenance Issue, Overbooked..."></textarea>
-            </div>
-            <div class="modal-actions-center">
-                <button class="btn btn-outline btn-modal-cancel close-modal">Go Back</button>
-                <button class="btn btn-primary btn-modal-danger" id="btn-execute-force-cancel">Confirm Cancellation</button>
-            </div>
-        </div>
-
         <!-- Event Hall Itemized Invoice / Edit Price Modal -->
         <div class="admin-modal modal-edit-price" id="editPriceModal">
             <h3 class="modal-main-title">Finalize Event Invoice</h3>

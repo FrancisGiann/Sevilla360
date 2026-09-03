@@ -32,8 +32,10 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $start_date = $_POST['start_date'];
-    $end_date   = $_POST['end_date'];
+    $start_date_raw = $_POST['start_date'] ?? null;
+    $end_date_raw   = $_POST['end_date'] ?? null;
+    $start_date = is_string($start_date_raw) ? trim($start_date_raw) : '';
+    $end_date   = is_string($end_date_raw) ? trim($end_date_raw) : '';
     $session_id = session_id();
     $source     = $is_staff_booking ? 'walkin' : 'online'; // walkin or online
     $lock_mins  = ($source === 'walkin') ? 60 : 30; // 1 hour for walk-in, 30 min for online
@@ -53,11 +55,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $explicit_venue_id = (int)$validated_venue_id;
     }
-    // Validate date formats
+    // Validate exact calendar dates before any transaction or lock insert.
+    // DateTime normalizes values such as 2026-02-31, so compare the formatted
+    // value back to the submitted value as well as checking the date range.
+    $has_exact_date_shape = static fn(string $value): bool => preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2}\z/D', $value) === 1;
+    if (!$has_exact_date_shape($start_date) || !$has_exact_date_shape($end_date)) {
+        http_response_code(422);
+        echo "Error|Invalid date range.";
+        exit;
+    }
     $start_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $start_date);
     $end_dt   = DateTimeImmutable::createFromFormat('!Y-m-d', $end_date);
+    $today = new DateTimeImmutable('today');
+    $strict_start = $start_dt instanceof DateTimeImmutable && $start_dt->format('Y-m-d') === $start_date;
+    $strict_end = $end_dt instanceof DateTimeImmutable && $end_dt->format('Y-m-d') === $end_date;
     $is_hotel_request = !in_array($room_type, ['Event Hall', 'Resort Villa'], true);
-    if (!$start_dt || !$end_dt || $end_dt < $start_dt || ($is_hotel_request && $end_dt <= $start_dt)) {
+    if (!$strict_start || !$strict_end || $start_dt < $today || $end_dt < $start_dt || ($is_hotel_request && $end_dt <= $start_dt)) {
+        http_response_code(422);
         echo "Error|Invalid date range.";
         exit;
     }

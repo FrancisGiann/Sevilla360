@@ -21,7 +21,7 @@
 
   /* Organic Motion Variables */
   --transition-smooth: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
-  --transition-snappy: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --transition-snappy: all 0.4s cubic-bezier(.16, 1, .3, 1);
 
   /* Update shadows to match the softer Lovable design */
   --shadow-soft: 0 30px 70px -35px rgba(42, 37, 34, 0.2);
@@ -738,6 +738,8 @@ section {
   color: var(--color-dark);
   border: none;
   margin: 0 4px;
+  padding: 0;
+  font-family: inherit;
 }
 
 .cal-day-cell:not(.booked):not(.unavailable):not(.past-date):not(.empty):hover {

@@ -24,6 +24,7 @@ class SevillaCalendar {
     this.hardBlockedDatesList = [];
     this.maintenanceDatesList = []; // Array of objects {date, type}
     this.isMaintenanceMode = false;
+    this.availabilityRequestGeneration = 0;
 
     this.init();
   }
@@ -81,6 +82,7 @@ class SevillaCalendar {
 
   async fetchBookedDates(room_type, room_name, venue_id = null, requireHotelRules = false) {
     if (!room_type && !room_name && !venue_id) return;
+    const requestGeneration = ++this.availabilityRequestGeneration;
     this.isMaintenanceMode = false;
     
     // Auto-detect hotel mode from strings if passed, or explicit flag
@@ -107,10 +109,12 @@ class SevillaCalendar {
       if (!response.ok || !data.success || !Array.isArray(data.booked_dates)) {
           throw new Error(data.message || 'Availability could not be loaded.');
       }
+      if (requestGeneration !== this.availabilityRequestGeneration) return;
       this.bookedDatesList = data.booked_dates;
       this.hardBlockedDatesList = Array.isArray(data.hard_blocked_dates) ? data.hard_blocked_dates : [];
       this.render();
     } catch (error) {
+      if (requestGeneration !== this.availabilityRequestGeneration) return;
       console.error("Error fetching dates:", error);
       // Never turn a failed request into an apparently empty calendar.
       this.bookedDatesList = previousBookedDates;
@@ -179,19 +183,26 @@ class SevillaCalendar {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const cellDate = new Date(year, month, day);
-      const cell = document.createElement("div");
-      cell.className = "cal-day-cell";
-      cell.innerText = day;
-
       const cellDateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-      // Check if date is in the past
+      // Check the availability state before choosing an element type. Future
+      // available dates are real buttons so keyboard users receive the same
+      // Enter/Space activation as pointer users; past and unavailable dates
+      // remain non-interactive cells.
       const isPastDate = cellDate < today;
-      
       const maintObj = this.isMaintenanceMode ? this.maintenanceDatesList.find(m => m.date === cellDateStr) : null;
       const isMaintenance = !!maintObj;
       const isBooked = this.bookedDatesList.includes(cellDateStr);
       const isHardBlocked = this.hardBlockedDatesList.includes(cellDateStr);
+      const checkoutBoundary = this.requireHotelRules && this.startDate && !this.endDate && isBooked && cellDate > this.startDate && !this.hasInvalidDaysBetween(this.startDate, cellDate);
+      const isInteractive = !isPastDate && !isMaintenance && !isHardBlocked && (!isBooked || checkoutBoundary);
+      const cell = document.createElement(isInteractive ? "button" : "div");
+      cell.className = "cal-day-cell";
+      cell.innerText = day;
+      if (isInteractive) {
+        cell.type = 'button';
+        cell.setAttribute('aria-label', `${cellDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}${checkoutBoundary ? ', available checkout date' : ''}`);
+      }
 
       if (isPastDate) {
         // Past dates are always grey — they're unavailable regardless of booking status.
@@ -209,7 +220,6 @@ class SevillaCalendar {
             const bObj = this.bookedObjectsList.find(b => b.date === cellDateStr);
             if (bObj) cell.title = `Booked (${bObj.ref_no} - ${bObj.status})`;
         }
-        const checkoutBoundary = this.requireHotelRules && this.startDate && !this.endDate && cellDate > this.startDate && !this.hasInvalidDaysBetween(this.startDate, cellDate);
         if (checkoutBoundary) {
           cell.classList.add('checkout-boundary');
           cell.title = 'Available as a hotel checkout date';
@@ -347,6 +357,10 @@ class SevillaCalendar {
   }
 
   clearSelection() {
+    // A venue/context reset invalidates any availability response still in
+    // flight. Its result must not overwrite the new empty state or alert the
+    // customer after they have moved on.
+    this.availabilityRequestGeneration++;
     this.startDate = null;
     this.endDate = null;
     this.bookedDatesList = [];

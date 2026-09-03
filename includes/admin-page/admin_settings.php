@@ -322,7 +322,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     <div class="preference-item settings-section-card">
                         <div class="preference-info">
                             <h4>Payment-processing fee</h4>
-                            <p>This percentage is deducted from every paid customer cancellation/refund request and snapshotted when the request is submitted. Admin force cancellations remain 100% refunds.</p>
+                            <p>This percentage is deducted from every paid customer cancellation/refund request and snapshotted when the request is submitted. Resort-initiated decisions follow the same recorded refund workflow.</p>
                         </div>
                         <div class="form-group settings-inline-field">
                             <label for="refund-fee-percent">Fee percentage</label>
@@ -369,7 +369,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </div>
                             <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
-                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time; the fee percentage and refund amount are snapshotted when the request is submitted.\n• Admin-initiated force cancellations receive a 100% refund; the resort absorbs any processing fee."); ?></textarea>
+                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time; the fee percentage and refund amount are snapshotted when the request is submitted.\n• Resort-initiated cancellation decisions follow the existing cancellation and refund workflow."); ?></textarea>
                             </div>
                         </div>
                         <div class="social-settings-block">

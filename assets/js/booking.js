@@ -10,13 +10,16 @@
 class BookingController {
     constructor() {
         this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        this.auth = window.bookingAuth || { isCustomer: false, isStaff: false, resume: false };
+        this.draftKey = 'sevilla360.booking-draft.v1';
+        this.draftTtlMs = 2 * 60 * 60 * 1000;
         this.state = {
             activeTabId: 'event-hall', 
             isDatesLocked: false,
             activeCalendar: null,
             timerInterval: null,
             timeLimit: 1800, 
-            summary: { total: 0, amountDue: 0, html: '', bundleDiscount: 0 },
+            summary: { total: 0, amountDue: 0, rows: [], bundleDiscount: 0 },
             calendars: {},
             addonConfirmedRange: null,
             pendingDateConfirmation: null,
@@ -25,6 +28,9 @@ class BookingController {
             addonAvailabilityReady: false,
             addonAvailabilityRangeKey: ''
         };
+        this.state.lockExpiresAt = null;
+        window.isDatesLocked = false;
+        this.isRestoringDraft = false;
 
         window.requestDateConfirmation = this.requestDateConfirmation.bind(this);
         window.showOverrideModal = this.showOverrideModal.bind(this);
@@ -42,6 +48,303 @@ class BookingController {
         this.bindUnloadHook();
         this.determineActiveTab();
         this.preselectFromURL();
+        this.preselectDatesFromURL();
+        this.restoreDraftIfRequested();
+    }
+
+    isValidDraftDate(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const [year, month, day] = value.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+    }
+
+    sanitizeDraftDateRange(draft, startKey, endKey, options = {}) {
+        const start = draft[startKey] || '';
+        const end = draft[endKey] || '';
+        const today = this.formatSafeDate(new Date());
+        const requiresEnd = options.requiresEnd === true;
+        const sameEndAllowed = options.sameEndAllowed !== false;
+        const validStart = this.isValidDraftDate(start) && start >= today;
+        const validEnd = !end || (this.isValidDraftDate(end) && end >= today && end >= start);
+        if (!validStart || !validEnd || (requiresEnd && !end) || (!sameEndAllowed && end === start)) {
+            const changed = Boolean(draft[startKey] || draft[endKey]);
+            draft[startKey] = '';
+            draft[endKey] = '';
+            return changed;
+        }
+        return false;
+    }
+
+    getDraft() {
+        try {
+            const raw = window.sessionStorage.getItem(this.draftKey);
+            const draft = raw ? JSON.parse(raw) : null;
+            if (!draft || typeof draft !== 'object' || draft.version !== 1) {
+                window.sessionStorage.removeItem(this.draftKey);
+                return null;
+            }
+            const createdAt = Number(draft.createdAt);
+            const now = Date.now();
+            if (!Number.isSafeInteger(createdAt) || createdAt < 1 || createdAt > now || now - createdAt > this.draftTtlMs) {
+                window.sessionStorage.removeItem(this.draftKey);
+                return null;
+            }
+            let changed = false;
+            const category = String(draft.category || '');
+            changed = this.sanitizeDraftDateRange(draft, 'startDate', 'endDate', {
+                requiresEnd: category === 'Hotel Room' || (category === 'Resort Villa' && draft.stayType === 'Overnight'),
+                sameEndAllowed: category === 'Event Hall' || (category === 'Resort Villa' && draft.stayType !== 'Overnight')
+            }) || changed;
+            changed = this.sanitizeDraftDateRange(draft, 'addonStartDate', 'addonEndDate', { requiresEnd: true, sameEndAllowed: false }) || changed;
+            if (!draft.addons || typeof draft.addons !== 'object') {
+                draft.addons = {};
+                changed = true;
+            }
+            if (!Array.isArray(draft.addons.roomGroups)) {
+                draft.addons.roomGroups = [];
+                changed = true;
+            }
+            if (changed) window.sessionStorage.setItem(this.draftKey, JSON.stringify(draft));
+            return draft;
+        } catch (error) {
+            try { window.sessionStorage.removeItem(this.draftKey); } catch (storageError) { /* no-op */ }
+            return null;
+        }
+    }
+
+    saveDraft() {
+        if (this.isRestoringDraft) return;
+        const existing = this.getDraft();
+        const calendar = this.state.activeCalendar;
+        const context = this.getTabContextData();
+        const addon = this.getAddonStayRange();
+        const guestInputId = this.state.activeTabId === 'event-hall' ? 'event-guests' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel-guests' : 'villa-guests');
+        const category = this.state.activeTabId === 'hotel-rooms' ? 'Hotel Room' : (context.roomType || '');
+        const today = this.formatSafeDate(new Date());
+        const draftDate = date => {
+            const value = date ? this.formatSafeDate(date) : '';
+            return this.isValidDraftDate(value) && value >= today ? value : '';
+        };
+        const startDate = draftDate(calendar?.startDate);
+        const endDateCandidate = draftDate(calendar?.endDate);
+        const endDate = startDate && endDateCandidate && endDateCandidate >= startDate ? endDateCandidate : '';
+        const addonStartDate = draftDate(addon?.start);
+        const addonEndCandidate = draftDate(addon?.end);
+        const addonEndDate = addonStartDate && addonEndCandidate && addonEndCandidate > addonStartDate ? addonEndCandidate : '';
+        const draft = {
+            version: 1,
+            createdAt: existing?.createdAt || Date.now(),
+            activeTabId: this.state.activeTabId,
+            category,
+            venueId: context.venueId || '',
+            venueName: context.roomName || '',
+            roomType: context.roomType && !['Event Hall', 'Resort Villa'].includes(context.roomType) ? context.roomType : '',
+            buildingName: context.roomType && !['Event Hall', 'Resort Villa'].includes(context.roomType) ? context.roomName || '' : '',
+            startDate,
+            endDate,
+            addonStartDate,
+            addonEndDate,
+            stayType: document.querySelector('input[name="villa-stay"]:checked')?.value || '',
+            guests: this.getEl(guestInputId)?.value || '',
+            paymentChoice: document.querySelector('input[name="' + (context.activeRadioGroup || '') + '"]:checked')?.value || '',
+            eventType: document.querySelector('input[name="event-type"]:checked')?.dataset.text || '',
+            eventTypeOther: this.getEl('event-type-others')?.value || '',
+            eventStyle: this.getEl('event-style')?.value || '',
+            addons: {
+                catering: this.getEl('check-catering')?.checked === true,
+                cateringTier: document.querySelector('input[name="catering-tier"]:checked')?.value || '',
+                av: this.getEl('check-av')?.checked === true,
+                rooms: this.getEl('check-rooms')?.checked === true,
+                roomGroups: Array.from(document.querySelectorAll('.selected-room-row')).map(row => ({
+                    buildingName: row.dataset.building || '',
+                    roomType: row.dataset.roomType || '',
+                    quantity: Number.parseInt(row.querySelector('.sel-room-qty')?.value, 10) || 1
+                })).filter(item => item.buildingName && item.roomType)
+            }
+        };
+        try {
+            window.sessionStorage.setItem(this.draftKey, JSON.stringify(draft));
+        } catch (error) { /* Storage may be disabled; continue with live state. */ }
+    }
+
+    clearDraft() {
+        try { window.sessionStorage.removeItem(this.draftKey); } catch (error) { /* no-op */ }
+    }
+
+    async restoreAddonSelections(draft) {
+        if (this.state.activeTabId !== 'event-hall' || draft.addons?.rooms !== true) return;
+        const roomsToggle = this.getEl('check-rooms');
+        const roomsOptions = this.getEl('rooms-options');
+        if (!roomsToggle) return;
+        roomsToggle.checked = true;
+        roomsOptions?.classList.remove('hidden');
+
+        const start = draft.addonStartDate;
+        const end = draft.addonEndDate;
+        const requestedGroups = Array.isArray(draft.addons?.roomGroups) ? draft.addons.roomGroups : [];
+        if (!this.isValidDraftDate(start) || !this.isValidDraftDate(end) || end <= start) {
+            roomsToggle.checked = false;
+            roomsOptions?.classList.add('hidden');
+            this.resetAddonStayDates();
+            this.saveDraft();
+            if (requestedGroups.length || start || end) showAlert('Hotel add-ons need new dates', 'Your saved hotel add-on dates have expired or are no longer valid. Choose a new stay if you still need rooms.', 'info');
+            return;
+        }
+
+        const startDate = new Date(`${start}T00:00:00`);
+        const endDate = new Date(`${end}T00:00:00`);
+        const nights = Math.round((endDate - startDate) / 86400000);
+        this.state.addonConfirmedRange = { start: startDate, end: endDate, nights };
+        this.state.calendars.addonHotel?.setSelection(startDate, endDate);
+        const display = this.getEl('addon-room-date-display');
+        if (display) display.textContent = `${start} to ${end} (${nights} night${nights === 1 ? '' : 's'})`;
+
+        await this.updateRoomAvailabilityLabels(startDate, endDate);
+        const cards = Array.from(document.querySelectorAll('.room-group-card'));
+        const validGroups = [];
+        const invalidGroups = [];
+        requestedGroups.forEach(group => {
+            const buildingName = String(group?.buildingName || '');
+            const roomType = String(group?.roomType || '');
+            const quantity = Number.parseInt(group?.quantity, 10);
+            const card = cards.find(item => item.dataset.building === buildingName && item.dataset.roomType === roomType);
+            const available = Number.parseInt(card?.dataset.available, 10);
+            if (card && Number.isInteger(quantity) && quantity > 0 && quantity <= available) {
+                validGroups.push({ card, quantity });
+            } else {
+                invalidGroups.push(buildingName && roomType ? `${buildingName} — ${roomType}` : 'an invalid room group');
+            }
+        });
+
+        if (requestedGroups.length && !validGroups.length) {
+            roomsToggle.checked = false;
+            roomsOptions?.classList.add('hidden');
+            this.resetAddonStayDates();
+            this.saveDraft();
+            showAlert('Hotel add-ons changed', 'The saved hotel rooms are no longer available for those dates. Your primary venue selection is still available.', 'info');
+            return;
+        }
+        validGroups.forEach(({ card, quantity }) => {
+            this.addRoomGroupToSelection(card.dataset.groupKey);
+            const row = document.querySelector(`.selected-room-row[data-sel-key="${CSS.escape(card.dataset.groupKey)}"]`);
+            const qtyInput = row?.querySelector('.sel-room-qty');
+            if (qtyInput) {
+                qtyInput.value = String(quantity);
+                qtyInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        this.saveDraft();
+        if (invalidGroups.length) showAlert('Some hotel add-ons changed', `${invalidGroups.join(', ')} could not be restored for the saved dates. Your valid selections remain in place.`, 'info');
+    }
+
+    async restoreDraftIfRequested() {
+        if (!this.auth.resume) return;
+        const draft = this.getDraft();
+        if (!draft) return;
+        this.isRestoringDraft = true;
+        try {
+        const tab = document.querySelector('.tab-btn[data-tab="' + CSS.escape(draft.activeTabId || '') + '"]');
+        if (tab) this.executeTabVisualSwitch(tab, draft.activeTabId);
+
+        const applyChange = (id, value) => {
+            const element = this.getEl(id);
+            if (!element || value === '' || value === null || value === undefined) return;
+            element.value = String(value);
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        if (draft.category === 'Event Hall') {
+            const select = this.getEl('event-venue');
+            const option = Array.from(select?.options || []).find(item => String(item.dataset.id || '') === String(draft.venueId) || String(item.dataset.name || '') === String(draft.venueName));
+            if (option && select) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); }
+        } else if (draft.category === 'Resort Villa') {
+            const select = this.getEl('villa-type');
+            const option = Array.from(select?.options || []).find(item => String(item.dataset.id || '') === String(draft.venueId) || String(item.dataset.name || '') === String(draft.venueName));
+            if (option && select) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (draft.stayType) {
+                const stay = document.querySelector('input[name="villa-stay"][value="' + CSS.escape(draft.stayType) + '"]');
+                if (stay && !stay.checked) { stay.checked = true; stay.dispatchEvent(new Event('change', { bubbles: true })); }
+            }
+        } else if (draft.roomType) {
+            applyChange('hotel-room-type', draft.roomType);
+            const roomSelect = this.getEl('hotel-room-name');
+            const option = Array.from(roomSelect?.options || []).find(item => String(item.dataset.name || '') === String(draft.buildingName || draft.venueName));
+            if (option && roomSelect) { roomSelect.value = option.value; roomSelect.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+
+        const guestsId = draft.category === 'Event Hall' ? 'event-guests' : (draft.category === 'Resort Villa' ? 'villa-guests' : 'hotel-guests');
+        applyChange(guestsId, draft.guests);
+        const activeContext = this.getTabContextData();
+        if (draft.paymentChoice && activeContext.activeRadioGroup) {
+            const payment = Array.from(document.querySelectorAll('input[type="radio"]')).find(item => item.name === activeContext.activeRadioGroup && item.value === draft.paymentChoice);
+            if (payment) { payment.checked = true; payment.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+        if (draft.eventStyle) applyChange('event-style', draft.eventStyle);
+        if (draft.eventTypeOther) {
+            applyChange('event-type-others', draft.eventTypeOther);
+            const other = this.getEl('event-others-radio');
+            if (other) { other.checked = true; other.dispatchEvent(new Event('change', { bubbles: true })); }
+        } else if (draft.eventType) {
+            const eventType = Array.from(document.querySelectorAll('input[name="event-type"]')).find(item => item.dataset.text === draft.eventType);
+            if (eventType) { eventType.checked = true; eventType.dispatchEvent(new Event('change', { bubbles: true })); }
+        }
+        const restoreCatering = () => {
+            if (this.state.activeTabId !== 'event-hall' || !draft.addons?.catering) return;
+            const control = this.getEl('check-catering');
+            if (!control) return;
+            control.checked = true;
+            this.getEl('catering-options')?.classList.remove('hidden');
+            const tier = Array.from(document.querySelectorAll('input[name="catering-tier"]'))
+                .find(item => item.value === String(draft.addons.cateringTier || ''));
+            if (tier) tier.checked = true;
+        };
+        const restoreAv = () => {
+            if (this.state.activeTabId !== 'event-hall' || !draft.addons?.av) return;
+            const control = this.getEl('check-av');
+            if (!control) return;
+            control.checked = true;
+            this.getEl('av-options')?.classList.remove('hidden');
+        };
+
+        const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
+        const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+        if (!calendar || !isDate(draft.startDate)) {
+            await this.restoreAddonSelections(draft);
+            restoreCatering();
+            restoreAv();
+            this.calculateSummary();
+            return;
+        }
+        const endDate = isDate(draft.endDate) ? draft.endDate : draft.startDate;
+        this.state.activeCalendar = calendar;
+        calendar.setSelection(draft.startDate, endDate);
+        const context = this.getTabContextData();
+        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId);
+        const invalidStart = calendar.isDateUnavailable(calendar.startDate);
+        const invalidInterior = calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate);
+        const invalidEnd = this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate);
+        if (invalidStart || invalidInterior || invalidEnd) {
+            calendar.clearSelectedRange();
+            this.state.activeCalendar = null;
+            // Keep the selected venue/options and independently restorable
+            // add-ons, but discard only the unavailable primary dates.
+            await this.restoreAddonSelections(draft);
+            restoreCatering();
+            restoreAv();
+            this.calculateSummary();
+            showAlert('Dates changed', 'Your selected venue is still available, but those dates are no longer available. Please choose new dates.', 'info');
+            return;
+        }
+        this.calculateSummary();
+        this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
+        await this.restoreAddonSelections(draft);
+        restoreCatering();
+        restoreAv();
+        this.calculateSummary();
+        } finally {
+            this.isRestoringDraft = false;
+            this.saveDraft();
+        }
     }
 
     preselectFromURL() {
@@ -59,7 +362,7 @@ class BookingController {
         if (!targetTabId) return;
 
         // Switch to the correct tab
-        const tabBtn = document.querySelector(`.tab-btn[data-target="${targetTabId}"]`);
+        const tabBtn = document.querySelector(`.tab-btn[data-tab="${targetTabId}"]`);
         if (tabBtn) this.handleTabSwitch(tabBtn);
 
         const venueId = urlParams.get('venue_id');
@@ -114,6 +417,29 @@ class BookingController {
                 }, 100); // small delay to allow population
             }
         }
+    }
+
+    async preselectDatesFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const start = params.get('start_date');
+        const end = params.get('end_date') || start;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) return;
+        await new Promise(resolve => setTimeout(resolve, this.state.activeTabId === 'hotel-rooms' ? 140 : 40));
+        const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
+        const context = this.getTabContextData();
+        if (!calendar || (!context.roomName && !context.venueId)) return;
+        this.state.activeCalendar = calendar;
+        calendar.setSelection(start, end);
+        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId);
+        if (calendar.isDateUnavailable(calendar.startDate) || (calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate)) || (this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate))) {
+            calendar.clearSelectedRange();
+            this.state.activeCalendar = null;
+            showAlert('Dates changed', 'Those dates are no longer available. Please choose new dates.', 'info');
+            return;
+        }
+        this.calculateSummary();
+        this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
+        window.history.replaceState(null, '', window.location.pathname);
     }
 
     initCalendars() {
@@ -244,6 +570,7 @@ class BookingController {
         this.getEl("event-type-others")?.addEventListener("input", (e) => {
             const sumEvType = this.getEl("sum-ev-type");
             if (sumEvType) sumEvType.innerText = e.target.value || "Custom Event";
+            this.saveDraft();
         });
 
         document.querySelectorAll('input[name="villa-stay"]').forEach(radio => {
@@ -437,35 +764,57 @@ class BookingController {
         row.setAttribute('data-room-type', roomType);
         row.setAttribute('data-rate', rate);
         row.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; align-items:center;';
-        row.innerHTML = `
-            <div style="flex:1; display:flex; flex-direction:column;">
-                <strong style="font-size:0.95rem; color:#333;">${building} — ${roomType}</strong>
-                <small style="color:#666;">₱${rate.toLocaleString()}/night</small>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <label style="font-size:0.85rem; font-weight:600; color:#555;">Qty:</label>
-                <input type="number" class="sel-room-qty" min="1" max="${inventory}" value="1"
-                    style="width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
-                <button type="button" class="btn-remove-room-sel" style="width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;" title="Remove"><i class="fa-solid fa-times"></i></button>
-            </div>
-        `;
+        const roomDetails = document.createElement('div');
+        roomDetails.style.cssText = 'flex:1; display:flex; flex-direction:column;';
+        const roomLabel = document.createElement('strong');
+        roomLabel.style.cssText = 'font-size:0.95rem; color:#333;';
+        roomLabel.textContent = `${building} — ${roomType}`;
+        const roomRate = document.createElement('small');
+        roomRate.style.cssText = 'color:#666;';
+        roomRate.textContent = `₱${rate.toLocaleString()}/night`;
+        roomDetails.append(roomLabel, roomRate);
+
+        const roomControls = document.createElement('div');
+        roomControls.style.cssText = 'display:flex; align-items:center; gap:8px;';
+        const quantityLabel = document.createElement('label');
+        quantityLabel.style.cssText = 'font-size:0.85rem; font-weight:600; color:#555;';
+        quantityLabel.textContent = 'Qty:';
+        const quantityInput = document.createElement('input');
+        quantityInput.type = 'number';
+        quantityInput.className = 'sel-room-qty';
+        quantityInput.min = '1';
+        quantityInput.max = String(inventory);
+        quantityInput.value = '1';
+        quantityInput.style.cssText = 'width: 60px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; text-align: center;';
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'btn-remove-room-sel';
+        removeButton.style.cssText = 'width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;';
+        removeButton.title = 'Remove';
+        const removeIcon = document.createElement('i');
+        removeIcon.className = 'fa-solid fa-times';
+        removeButton.appendChild(removeIcon);
+        roomControls.append(quantityLabel, quantityInput, removeButton);
+        row.append(roomDetails, roomControls);
         container.appendChild(row);
 
-        row.querySelector('.sel-room-qty').addEventListener('input', () => this.calculateSummary());
-        row.querySelector('.btn-remove-room-sel').addEventListener('click', () => {
+        quantityInput.addEventListener('input', () => { this.calculateSummary(); this.saveDraft(); });
+        removeButton.addEventListener('click', () => {
             row.remove();
             this.calculateSummary();
+            this.saveDraft();
         });
 
         this.calculateSummary();
+        this.saveDraft();
     }
 
     // =========================================================================
 
     bindCalculatorTriggers() {
         document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"]').forEach(input => {
-            input.addEventListener('change', () => this.calculateSummary());
-            input.addEventListener('input', () => this.calculateSummary());
+            input.addEventListener('change', () => { this.calculateSummary(); this.saveDraft(); });
+            input.addEventListener('input', () => { this.calculateSummary(); this.saveDraft(); });
         });
     }
 
@@ -474,6 +823,7 @@ class BookingController {
         this.getEl("btn-agree")?.addEventListener("click", () => { this.getEl("tnc-modal")?.classList.remove("active"); this.getEl("terms-check").checked = true; });
         
         this.getEl("btn-cancel")?.addEventListener("click", () => {
+            this.clearDraft();
             this.stopTimerAndReset();
             this.unlockDatesAPI();
         });
@@ -498,7 +848,7 @@ class BookingController {
 
     bindUnloadHook() {
         window.addEventListener('beforeunload', () => {
-            if (this.state.isDatesLocked) this.unlockDatesAPI();
+            if (this.state.isDatesLocked && this.auth.isCustomer) this.unlockDatesAPI();
         });
     }
 
@@ -515,8 +865,6 @@ class BookingController {
             if (btn) {
                 this.executeTabVisualSwitch(btn, urlTab);
             }
-            const cleanUrl = window.location.pathname;
-            window.history.replaceState(null, '', cleanUrl);
             return;
         }
         
@@ -792,8 +1140,15 @@ class BookingController {
         this.state.activeTabId = target;
     }
 
-    startTimer() {
+    startTimer(expiresAt) {
         if (this.state.timerInterval) return;
+        const expiry = Number(expiresAt || this.state.lockExpiresAt);
+        if (!Number.isFinite(expiry) || expiry <= Math.floor(Date.now() / 1000)) {
+            this.stopTimerAndReset();
+            showAlert("Hold unavailable", "The temporary hold could not be confirmed. Please choose your dates again.", "error");
+            return;
+        }
+        this.state.lockExpiresAt = expiry;
         const timerBox = this.getEl("timer-box");
         const countdownEl = this.getEl("countdown");
         
@@ -802,18 +1157,20 @@ class BookingController {
         this.getEl("countdown-wrapper").style.display = "inline";
 
         this.state.timerInterval = setInterval(() => {
-            const minutes = Math.floor(this.state.timeLimit / 60);
-            const seconds = String(this.state.timeLimit % 60).padStart(2, '0');
-            if(countdownEl) countdownEl.innerText = `${minutes}:${seconds}`;
+            const remaining = Math.max(0, this.state.lockExpiresAt - Math.floor(Date.now() / 1000));
+            const minutes = Math.floor(remaining / 60);
+            const seconds = String(remaining % 60).padStart(2, '0');
+            if(countdownEl) countdownEl.innerText = minutes + ':' + seconds;
 
-            if (this.state.timeLimit <= 0) {
+            if (remaining <= 0) {
                 this.stopTimerAndReset();
-                showAlert("Notice", "Your session has expired. Please refresh the page to restart your booking.");
+                showAlert("Hold expired", "Your temporary hold has expired. Please confirm your dates again.", "warning");
                 const proceedBtn = this.getEl("btn-proceed");
                 if(proceedBtn) { proceedBtn.disabled = true; proceedBtn.style.opacity = "0.5"; }
             }
-            this.state.timeLimit--;
         }, 1000);
+        const remaining = Math.max(0, this.state.lockExpiresAt - Math.floor(Date.now() / 1000));
+        if (countdownEl) countdownEl.innerText = Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
     }
 
     stopTimerAndReset() {
@@ -821,6 +1178,8 @@ class BookingController {
         this.state.timerInterval = null;
         this.state.timeLimit = 1800;
         this.state.isDatesLocked = false;
+        this.state.lockExpiresAt = null;
+        window.isDatesLocked = false;
 
         const timerBox = this.getEl("timer-box");
         timerBox?.classList.remove("running");
@@ -845,6 +1204,11 @@ class BookingController {
     }
 
     async unlockDatesAPI() {
+        if (!this.auth.isCustomer) {
+            this.state.isDatesLocked = false;
+            window.isDatesLocked = false;
+            return true;
+        }
         try {
             const res = await fetch('actions/bookings/unlock_dates.php', {
                 method: 'POST',
@@ -859,6 +1223,7 @@ class BookingController {
             clearInterval(this.state.timerInterval);
             this.state.timerInterval = null;
             this.state.timeLimit = 1800;
+            this.state.lockExpiresAt = null;
             this.getEl("timer-box")?.classList.remove("running");
             if (this.getEl("timer-text")) this.getEl("timer-text").style.display = "inline";
             if (this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
@@ -889,10 +1254,11 @@ class BookingController {
 
         const title = dateModal?.querySelector('.modal-title');
         const subtext = dateModal?.querySelector('.modal-subtext');
-        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : 'Confirm Dates';
+        const canHold = this.auth.isCustomer && !isEventInquiry;
+        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : (canHold ? 'Confirm dates for a 30-minute hold' : 'Confirm your dates');
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : 'Proceeding will lock these dates for 30 minutes while you complete your booking.';
+            : (canHold ? 'Your selection is available now. Confirm to place the server-authoritative 30-minute hold.' : 'Available now — not held. Keep this selection and sign in when you are ready to reserve.');
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
             ? `${startStr} — ${endStr}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
@@ -903,6 +1269,7 @@ class BookingController {
         this.replaceElement("btn-cancel-date").addEventListener("click", () => {
             dateModal.classList.remove("active");
             calendarInstance.clearSelectedRange();
+            this.saveDraft();
         });
 
         confirmBtn.addEventListener("click", async () => {
@@ -912,13 +1279,14 @@ class BookingController {
                 return;
             }
 
-            // Event Hall submissions are inquiries and must not create a
-            // date lock. Availability is checked again on the server when
-            // the inquiry is submitted.
-            if (isEventInquiry) {
+            // Event Hall inquiries and guests only confirm a local selection.
+            // Guest actions never call a lock endpoint or create booking_locks.
+            if (!canHold) {
                 dateModal.classList.remove("active");
                 this.state.isDatesLocked = false;
+                window.isDatesLocked = false;
                 calendarInstance.updateDateDisplay();
+                this.saveDraft();
                 this.calculateSummary();
                 return;
             }
@@ -949,9 +1317,10 @@ class BookingController {
                 headers: { "X-CSRF-Token": this.csrfToken }, 
                 body: formData 
             });
-                if (res.status === 401) {
+                if (res.status === 401 || res.status === 403) {
                     const sessionError = new Error('Your session has expired. Please sign in again.');
                     sessionError.sessionExpired = true;
+                    sessionError.status = res.status;
                     throw sessionError;
                 }
                 const text = await res.text();
@@ -960,7 +1329,13 @@ class BookingController {
                 if (response[0] === 'Success') {
                     dateModal.classList.remove("active");
                     this.state.isDatesLocked = true;
+                    window.isDatesLocked = true;
+                    this.state.lockExpiresAt = Number(response[2] || 0);
+                    if (!this.state.lockExpiresAt) throw new Error('The server did not return a valid hold expiry.');
+                    const proceed = this.getEl('btn-proceed');
+                    if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
                     calendarInstance.updateDateDisplay();
+                    this.saveDraft();
                     this.calculateSummary();
 
                     // Suggest the hotel add-on only when it is enabled. Defer
@@ -971,14 +1346,16 @@ class BookingController {
                     
                     // ONLY START THE TIMER IF IT IS NOT AN EVENT INQUIRY
                     if (this.state.activeTabId !== 'event-hall') {
-                        this.startTimer();
+                        this.startTimer(this.state.lockExpiresAt);
                     }
                 } else {
                     throw new Error(response[1]);
                 }
             } catch (err) {
                 calendarInstance.clearSelectedRange();
-                if (err.sessionExpired) {
+                this.state.isDatesLocked = false;
+                window.isDatesLocked = false;
+                if (err.sessionExpired || err.status === 403) {
                     showAlert("Session Expired", err.message, "error", true);
                 } else {
                     showAlert("Notice", "Error: " + err.message, "error");
@@ -1049,6 +1426,7 @@ class BookingController {
         if (display) display.textContent = `${this.formatSafeDate(pending.start)} to ${this.formatSafeDate(pending.end)} (${nights} night${nights === 1 ? '' : 's'})`;
         this.updateRoomAvailabilityLabels(pending.start, pending.end);
         this.calculateSummary();
+        this.saveDraft();
     }
 
     cancelPendingDateConfirmation() {
@@ -1081,6 +1459,7 @@ class BookingController {
         }
         dateModal?.classList.remove('active');
         this.calculateSummary();
+        this.saveDraft();
     }
 
     // =========================================================================
@@ -1135,11 +1514,13 @@ class BookingController {
                         // never be submitted or included in the estimate.
                         selectedRow.remove();
                         this.calculateSummary();
+                        this.saveDraft();
                     } else if (selectedQty) {
                         selectedQty.max = Math.max(n, 1);
                         if (n > 0 && parseInt(selectedQty.value) > n) {
                             selectedQty.value = n;
                             this.calculateSummary();
+                            this.saveDraft();
                         }
                     }
                     return true;
@@ -1194,7 +1575,10 @@ class BookingController {
     }
 
     appendSummaryRow(label, amount) {
-        this.state.summary.html += `<div class="summary-row" style="display:flex; justify-content:space-between; margin-bottom: 5px;"><span>${label}</span><span>${this.formatCurrency(amount)}</span></div>`;
+        this.state.summary.rows.push({
+            label: String(label),
+            amount: Number.isFinite(Number(amount)) ? Number(amount) : 0
+        });
     }
 
     calcExtraPax(inputEl, baseCap, feePerHead, labelEl, guestsSumEl) {
@@ -1218,7 +1602,7 @@ class BookingController {
     // =========================================================================
     calculateSummary() {
         this.state.summary.total = 0;
-        this.state.summary.html = '';
+        this.state.summary.rows = [];
         this.state.summary.bundleDiscount = 0;
 
         const breakdownEl = this.getEl('summary-breakdown');
@@ -1232,7 +1616,30 @@ class BookingController {
             case 'resort-villa': this.calcVillaMath(); break;
         }
         
-        if (breakdownEl) breakdownEl.innerHTML = this.state.summary.html || '<div class="summary-row" style="color:#b5884e;"><i>No items selected</i></div>';
+        if (breakdownEl) {
+            breakdownEl.replaceChildren();
+            if (this.state.summary.rows.length === 0) {
+                const emptyRow = document.createElement('div');
+                emptyRow.className = 'summary-row';
+                emptyRow.style.color = '#b5884e';
+                const emptyLabel = document.createElement('i');
+                emptyLabel.textContent = 'No items selected';
+                emptyRow.appendChild(emptyLabel);
+                breakdownEl.appendChild(emptyRow);
+            } else {
+                this.state.summary.rows.forEach(({ label, amount }) => {
+                    const row = document.createElement('div');
+                    row.className = 'summary-row';
+                    row.style.cssText = 'display:flex; justify-content:space-between; margin-bottom: 5px;';
+                    const labelEl = document.createElement('span');
+                    labelEl.textContent = label;
+                    const amountEl = document.createElement('span');
+                    amountEl.textContent = this.formatCurrency(amount);
+                    row.append(labelEl, amountEl);
+                    breakdownEl.appendChild(row);
+                });
+            }
+        }
         if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
         const eventEstimate = this.getEl('event-estimate-total');
         if (eventEstimate && this.state.activeTabId === 'event-hall') eventEstimate.textContent = this.formatCurrency(this.state.summary.total);
@@ -1250,7 +1657,7 @@ class BookingController {
             schemePct = 0; 
             
             if (proceedBtn) {
-                proceedBtn.innerText = "SUBMIT EVENT INQUIRY";
+                proceedBtn.innerText = this.auth.isCustomer ? "SUBMIT EVENT INQUIRY" : "SIGN IN TO SUBMIT INQUIRY";
                 proceedBtn.style.backgroundColor = "var(--color-dark)";
             }
             if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
@@ -1276,7 +1683,7 @@ class BookingController {
             });
 
             if (proceedBtn) {
-                proceedBtn.innerText = "PROCEED TO PAYMENT";
+                proceedBtn.innerText = this.auth.isCustomer ? "PROCEED TO PAYMENT" : "SIGN IN TO RESERVE";
                 proceedBtn.style.backgroundColor = "var(--color-gold)";
             }
         }
@@ -1484,7 +1891,20 @@ class BookingController {
     // SUBMISSION & PAYMONGO REDIRECT
     // =========================================================================
     async submitOnlineBooking() {
-        if ((!this.state.isDatesLocked && this.state.activeTabId !== 'event-hall') || !this.state.activeCalendar?.startDate) {
+        if (!this.state.activeCalendar?.startDate) {
+            showAlert("Notice", "Please select dates on the calendar and confirm them first!");
+            return;
+        }
+        if (this.auth.isStaff) {
+            showAlert("Customer account required", "Staff and administrators can browse availability, but only a customer account can submit a booking or inquiry.", "info");
+            return;
+        }
+        if (!this.auth.isCustomer) {
+            this.saveDraft();
+            window.location.href = 'auth.php?destination=booking_resume';
+            return;
+        }
+        if (this.state.activeTabId !== 'event-hall' && !this.state.isDatesLocked) {
             showAlert("Notice", "Please select dates on the calendar and confirm them first!");
             return;
         }
@@ -1630,8 +2050,13 @@ class BookingController {
             const response = data.split('|');
             
             if (response[0] === 'CheckoutUrl') {
+                // The server has created the booking before returning the
+                // provider URL. Do not resurrect this completed selection if
+                // the customer returns from payment later.
+                this.clearDraft();
                 window.location.href = response[1];
             } else if (response[0] === 'Success') {
+                this.clearDraft();
                 showAlert("Notice", "Success! Redirecting to Dashboard.");
                 window.location.href = "user_dashboard.php"; 
             } else {

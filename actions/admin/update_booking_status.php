@@ -133,6 +133,9 @@ try {
 
     }
     elseif ($action === 'cancel') {
+        if (($locked_booking['booking_status'] ?? '') !== 'Pending') {
+            throw new Exception('Only Pending bookings can be declined or cancelled.');
+        }
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled' WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
@@ -654,54 +657,6 @@ try {
             'user_id' => $c_user_id
         ];
     }
-    elseif ($action === 'admin_force_cancel') {
-        if (!isset($data['reason'])) throw new Exception("Reason is required.");
-
-        $reason = trim((string)$data['reason']);
-        if ($reason === '' || strlen($reason) > 500 || preg_match('/[\x00-\x1F\x7F]/', $reason)) throw new Exception('A bounded cancellation reason is required.');
-        // Force cancellation is always a full refund of the amount actually
-        // paid; never trust the client-provided display amount.
-        $refund_amount = max(0.0, (float)$locked_booking['amount_paid']);
-        $fee = 0.00; // Resort shoulders the fee
-
-        $stmt_cx = $conn->prepare("SELECT id, status FROM cancellations WHERE booking_id = ? LIMIT 1 FOR UPDATE");
-        $stmt_cx->bind_param('i', $booking_id); $stmt_cx->execute();
-        $current_cancellation = $stmt_cx->get_result()->fetch_assoc();
-        if ($current_cancellation && $current_cancellation['status'] === 'Processed') throw new Exception('This booking has already been refunded.');
-        if ($current_cancellation) {
-            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = 0, status = 'Processed', admin_reply = 'Admin Initiated (Force Majeure)', refund_transaction_id = NULL WHERE id = ?");
-            $stmt_cx->bind_param('sddi', $reason, $refund_amount, $fee, $current_cancellation['id']); $stmt_cx->execute();
-            $cancellation_id = (int)$current_cancellation['id'];
-        } else {
-            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, status, admin_reply) VALUES (?, ?, ?, ?, 0, 'Processed', 'Admin Initiated (Force Majeure)')");
-            $stmt_cx->bind_param("isdd", $booking_id, $reason, $refund_amount, $fee); $stmt_cx->execute();
-            $cancellation_id = (int)$conn->insert_id;
-        }
-        record_cancellation_history($conn, $booking_id, $cancellation_id, 'processed', $reason, $refund_amount, $fee, 0.0, 'Admin Initiated (Force Majeure)', (int)$_SESSION['user_id']);
-
-        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
-        $stmt->bind_param("i", $booking_id);
-        $stmt->execute();
-
-        // Also clean up any pending reschedule request for this booking
-        $stmt_resched = $conn->prepare("UPDATE reschedule_requests SET status = 'Rejected', admin_reply = 'Booking Cancelled' WHERE booking_id = ? AND status = 'Pending'");
-        $stmt_resched->bind_param("i", $booking_id);
-        $stmt_resched->execute();
-
-        $message = "Booking #$ref_no forcefully cancelled. 100% refund recorded.";
-
-        // Keep customer-facing refund/cancellation delivery after commit.
-        $postCommitActions[] = [
-            'kind' => 'force_cancelled',
-            'email' => $c_email,
-            'name' => $c_name,
-            'booking_id' => $booking_id,
-            'refund_amount' => $refund_amount,
-            'reason' => $reason,
-            'user_id' => $c_user_id,
-            'venue_name' => $v_name
-        ];
-    }
     else {
         throw new Exception('Invalid action provided.');
     }
@@ -800,17 +755,6 @@ try {
                 create_user_notification($conn, $postCommitAction['user_id'], 'Reschedule Rejected', 'Your request to reschedule ' . $postCommitAction['venue_name'] . ' was declined. Your original dates remain secured.');
             } catch (Throwable $notificationError) {
                 error_log('Reschedule rejection notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
-            }
-        } elseif ($postCommitAction['kind'] === 'force_cancelled') {
-            try {
-                send_booking_cancellation_email($postCommitAction['email'], $postCommitAction['name'], $postCommitAction['booking_id'], 'cancelled', $postCommitAction['refund_amount'], $postCommitAction['reason']);
-            } catch (Throwable $mailError) {
-                error_log('Force cancellation email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
-            }
-            try {
-                create_user_notification($conn, $postCommitAction['user_id'], 'Booking Cancelled', 'Your booking for ' . $postCommitAction['venue_name'] . ' has been cancelled by the admin.');
-            } catch (Throwable $notificationError) {
-                error_log('Force cancellation notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
             }
         }
     }

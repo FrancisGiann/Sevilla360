@@ -149,4 +149,203 @@ document.addEventListener("DOMContentLoaded", function () {
     handleHashChange();
   }
 
+  // --- Public venue discovery: no-autoplay carousels and shared details modal ---
+  const catalog = window.publicVenueCatalog || {};
+  const modal = document.getElementById('idx-venue-modal');
+  let activeVenue = null;
+  let activeImageIndex = 0;
+  let previousFocus = null;
+  let modalCalendar = null;
+  const money = value => {
+    if (value === null || value === undefined || value === '') return 'Rate on request';
+    const amount = Number(value);
+    return Number.isFinite(amount) ? '₱' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'Rate on request';
+  };
+  const tabFor = category => category === 'Event Hall' ? 'event-hall' : (category === 'Hotel Room' ? 'hotel-rooms' : 'resort-villa');
+  const hasRate = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+  const hotelRateText = (venue, showStarting = true) => {
+    if (!hasRate(venue.rate) || !hasRate(venue.max_nightly_rate)) return 'Rate on request';
+    const minimum = money(venue.rate);
+    const maximum = money(venue.max_nightly_rate);
+    return Number(venue.rate) === Number(venue.max_nightly_rate)
+      ? minimum + ' / night'
+      : (showStarting ? 'From ' : '') + minimum + '–' + maximum + ' / night';
+  };
+  const rateText = (venue, showStarting = true) => {
+    if (venue.category === 'Resort Villa') return 'Day ' + money(venue.rate) + ' · Overnight ' + money(venue.overnight_rate);
+    if (venue.category === 'Hotel Room') return hotelRateText(venue, showStarting);
+    return hasRate(venue.rate)
+      ? 'Base rate ' + money(venue.rate) + ' · final quote after consultation'
+      : 'Rate on request · final quote after consultation';
+  };
+  const bookingUrl = (venue, dates) => {
+    const params = new URLSearchParams({ tab: tabFor(venue.category), category: venue.category, venue_name: venue.venue_name });
+    if (venue.venue_id) params.set('venue_id', venue.venue_id);
+    if (venue.room_type) params.set('room_type', venue.room_type);
+    if (dates && dates.startDate) params.set('start_date', dates.startDate);
+    if (dates && dates.endDate) params.set('end_date', dates.endDate);
+    return 'booking.php?' + params.toString();
+  };
+  const makeCard = venue => {
+    const article = document.createElement('article');
+    article.className = 'idx-catalog-card';
+    const image = document.createElement('img');
+    image.src = (venue.images && venue.images[0]) || 'assets/img/placeholder.jpg';
+    image.alt = venue.venue_name || venue.room_type || 'Sevilla360 venue';
+    image.loading = 'lazy';
+    article.appendChild(image);
+    const body = document.createElement('div'); body.className = 'idx-catalog-card-body';
+    const title = document.createElement('h4'); title.textContent = venue.venue_name || venue.room_type || 'Venue';
+    const kind = document.createElement('p'); kind.className = 'idx-catalog-card-category';
+    kind.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
+    const rate = document.createElement('p'); rate.className = 'idx-catalog-card-rate'; rate.textContent = rateText(venue);
+    const facts = document.createElement('p'); facts.className = 'idx-catalog-card-facts'; facts.textContent = Object.values(venue.facts || {}).slice(0, 2).join(' · ');
+    const actions = document.createElement('div'); actions.className = 'idx-catalog-card-actions';
+    const details = document.createElement('button'); details.type = 'button'; details.className = 'idx-btn idx-btn-outline-dark'; details.textContent = 'View details';
+    details.addEventListener('click', () => openVenueModal(venue, details));
+    const book = document.createElement('a'); book.className = 'idx-btn idx-btn-gold'; book.href = bookingUrl(venue);
+    book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
+    actions.append(details, book); body.append(title, kind, rate, facts, actions); article.appendChild(body);
+    return article;
+  };
+  const updateCarousel = (section, cards, index) => {
+    const selected = (index + cards.length) % cards.length;
+    const track = section.querySelector('.idx-catalog-track');
+    if (track) track.style.transform = 'translateX(-' + (selected * 100) + '%)';
+    const position = section.querySelector('.idx-carousel-position');
+    if (position) position.textContent = (selected + 1) + ' of ' + cards.length;
+    const controls = section.querySelector('.idx-carousel-controls');
+    const shell = section.querySelector('.idx-catalog-shell');
+    const isSingle = cards.length === 1;
+    if (controls) controls.toggleAttribute('hidden', isSingle);
+    if (shell) shell.classList.toggle('idx-catalog-shell-single', isSingle);
+    section.dataset.carouselState = isSingle ? 'single' : 'multi';
+    [section.querySelector('.idx-carousel-prev'), section.querySelector('.idx-carousel-next')].forEach(control => {
+      if (control) control.disabled = cards.length <= 1;
+    });
+    cards.forEach((item, itemIndex) => {
+      const isVisible = itemIndex === selected;
+      item.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+      item.querySelectorAll('button, a[href]').forEach(control => {
+        if (isVisible) {
+          const priorTabIndex = control.dataset.carouselTabindex;
+          if (priorTabIndex === '') control.removeAttribute('tabindex');
+          else if (priorTabIndex !== undefined) control.setAttribute('tabindex', priorTabIndex);
+        } else {
+          if (control.dataset.carouselTabindex === undefined) control.dataset.carouselTabindex = control.getAttribute('tabindex') || '';
+          control.setAttribute('tabindex', '-1');
+        }
+      });
+    });
+    section.dataset.carouselIndex = String(selected);
+  };
+  document.querySelectorAll('.idx-catalog-section').forEach(section => {
+    const category = section.dataset.catalogCategory;
+    const venues = Array.isArray(catalog[category]) ? catalog[category] : [];
+    const track = section.querySelector('.idx-catalog-track');
+    if (!track || !venues.length) {
+      section.querySelector('.idx-catalog-shell')?.classList.add('idx-catalog-shell-empty');
+      section.querySelector('.idx-catalog-empty')?.removeAttribute('hidden');
+      section.querySelector('.idx-carousel-controls')?.setAttribute('hidden', '');
+      return;
+    }
+    const cards = venues.map(venue => track.appendChild(makeCard(venue)));
+    let index = 0;
+    const move = delta => { index = (index + delta + cards.length) % cards.length; updateCarousel(section, cards, index); };
+    section.querySelector('.idx-carousel-prev')?.addEventListener('click', () => move(-1));
+    section.querySelector('.idx-carousel-next')?.addEventListener('click', () => move(1));
+    track.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); move(-1); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); move(1); }
+    });
+    let touchStart = null;
+    track.addEventListener('touchstart', event => { touchStart = event.changedTouches[0]?.clientX || null; }, { passive: true });
+    track.addEventListener('touchend', event => {
+      if (touchStart === null) return;
+      const delta = (event.changedTouches[0]?.clientX || touchStart) - touchStart;
+      if (Math.abs(delta) > 40) move(delta < 0 ? 1 : -1);
+      touchStart = null;
+    }, { passive: true });
+    updateCarousel(section, cards, index);
+  });
+  const dateValue = date => date ? date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0') : '';
+  const modalDates = () => modalCalendar && modalCalendar.startDate ? { startDate: dateValue(modalCalendar.startDate), endDate: dateValue(modalCalendar.endDate) } : null;
+  const updateContinue = () => {
+    const link = modal?.querySelector('.idx-modal-continue');
+    if (link && activeVenue) link.href = bookingUrl(activeVenue, modalDates());
+  };
+  const setModalImage = index => {
+    if (!activeVenue) return;
+    const images = activeVenue.images && activeVenue.images.length ? activeVenue.images : ['assets/img/placeholder.jpg'];
+    activeImageIndex = (index + images.length) % images.length;
+    const image = document.getElementById('idx-modal-image');
+    if (image) { image.src = images[activeImageIndex]; image.alt = (activeVenue.venue_name || 'Venue') + ' image ' + (activeImageIndex + 1); }
+    modal?.querySelectorAll('.idx-modal-thumbnail').forEach((thumb, i) => thumb.classList.toggle('is-active', i === activeImageIndex));
+  };
+  const openVenueModal = (venue, source) => {
+    if (!modal) return;
+    activeVenue = venue; previousFocus = source || document.activeElement; activeImageIndex = 0;
+    const title = document.getElementById('idx-modal-title');
+    const category = modal.querySelector('.idx-modal-category');
+    const rate = modal.querySelector('.idx-modal-rate');
+    const description = modal.querySelector('.idx-modal-description');
+    const facts = modal.querySelector('.idx-modal-facts');
+    const amenities = modal.querySelector('.idx-modal-amenities');
+    if (title) title.textContent = venue.venue_name || venue.room_type || 'Venue details';
+    if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
+    if (rate) rate.textContent = rateText(venue, false);
+    if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
+    if (facts) {
+      facts.replaceChildren();
+      Object.entries(venue.facts || {}).forEach(([label, value]) => {
+        const item = document.createElement('div'); item.className = 'idx-modal-fact';
+        const name = document.createElement('span'); name.textContent = label;
+        const amount = document.createElement('strong'); amount.textContent = value; item.append(name, amount); facts.appendChild(item);
+      });
+    }
+    if (amenities) {
+      amenities.replaceChildren();
+      const items = String(venue.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
+      (items.length ? items : ['No amenities listed.']).forEach(item => { const li = document.createElement('li'); li.textContent = item; amenities.appendChild(li); });
+    }
+    const thumbnails = modal.querySelector('.idx-modal-thumbnails');
+    if (thumbnails) {
+      thumbnails.replaceChildren();
+      (venue.images && venue.images.length ? venue.images : ['assets/img/placeholder.jpg']).forEach((image, i) => {
+        const thumb = document.createElement('button'); thumb.type = 'button'; thumb.className = 'idx-modal-thumbnail'; thumb.setAttribute('aria-label', 'Show image ' + (i + 1));
+        const preview = document.createElement('img'); preview.src = image; preview.alt = ''; preview.loading = i === 0 ? 'eager' : 'lazy'; thumb.appendChild(preview);
+        thumb.addEventListener('click', () => setModalImage(i)); thumbnails.appendChild(thumb);
+      });
+    }
+    if (typeof SevillaCalendar !== 'undefined') {
+      if (!modalCalendar) modalCalendar = new SevillaCalendar('idx-modal-calendar', { onRangeSelected: updateContinue });
+      modalCalendar.clearSelection();
+      modalCalendar.fixedDurationNights = venue.category === 'Resort Villa' ? 0 : null;
+      modalCalendar.fixedDurationGuard = venue.category === 'Resort Villa';
+      modalCalendar.requireHotelRules = venue.category === 'Hotel Room';
+      modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null);
+    }
+    setModalImage(0); updateContinue();
+    modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); document.body.classList.add('idx-modal-open');
+    modal.querySelector('.idx-modal-close')?.focus();
+  };
+  const closeVenueModal = () => {
+    if (!modal) return;
+    modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); document.body.classList.remove('idx-modal-open'); activeVenue = null;
+    if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+  };
+  modal?.querySelector('.idx-modal-close')?.addEventListener('click', closeVenueModal);
+  modal?.addEventListener('click', event => { if (event.target === modal) closeVenueModal(); });
+  modal?.querySelector('.idx-modal-gallery-prev')?.addEventListener('click', () => setModalImage(activeImageIndex - 1));
+  modal?.querySelector('.idx-modal-gallery-next')?.addEventListener('click', () => setModalImage(activeImageIndex + 1));
+  modal?.querySelector('.idx-modal-calendar .cal-days-grid')?.addEventListener('click', () => window.setTimeout(updateContinue, 0));
+  modal?.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); closeVenueModal(); return; }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll('button, a[href]')).filter(item => !item.disabled && item.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
 });

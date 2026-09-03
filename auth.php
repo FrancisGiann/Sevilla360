@@ -4,13 +4,18 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 
 require_once 'config/db_connect.php';
 require_once 'includes/google_oauth.php';
+require_once __DIR__ . '/includes/customer_login_recovery.php';
+require_once __DIR__ . '/includes/booking_intent.php';
+booking_auth_capture_request();
 $google_oauth_enabled = google_oauth_is_configured();
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
+        booking_auth_clear_destination();
         header("Location: admin_dashboard.php");
     } elseif (($_SESSION['role'] ?? '') === 'customer') {
-        header("Location: user_dashboard.php");
+        $resume_target = booking_auth_consume_destination('customer');
+        header("Location: " . ($resume_target ?? 'user_dashboard.php'));
     } else {
         header("Location: index.php");
     }
@@ -66,8 +71,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
             <!-- VIEW 1: USER LOGIN -->
             <div id="view-user-login" class="auth-view active">
-                <h2 class="auth-title">Welcome Back</h2>
-                <p class="auth-subtitle">Sign in to manage your bookings</p>
+                <h2 class="auth-title">Sign in to continue</h2>
+                <p class="auth-subtitle"><?php echo booking_auth_resume_requested() ? 'Sign in to continue your venue selection' : 'Sign in to manage your bookings'; ?></p>
 
                 <form id="form-login" action="actions/auth/login_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
@@ -91,8 +96,15 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                                 placeholder="Enter your password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
-                        <a href="#" class="forgot-link">Forgot password?</a>
+                        <button type="button" class="forgot-link" data-forgot-password>Forgot password?</button>
                     </div>
+
+                    <?php if (customer_login_recovery_nudge_eligible()): ?>
+                    <div class="login-recovery-nudge" role="status" aria-live="polite" aria-atomic="true">
+                        <span>Having trouble signing in?</span>
+                        <button type="button" class="recovery-nudge-action" data-forgot-password>Reset your password.</button>
+                    </div>
+                    <?php endif; ?>
 
                     <button type="submit" class="btn btn-primary btn-full">SIGN IN &rarr;</button>
                     <?php if ($google_oauth_enabled): ?>
@@ -130,9 +142,9 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <!-- STEP 1: Account Info -->
                     <div id="register-step-1" class="register-step active">
                         <div class="form-group">
-                            <label>EMAIL ADDRESS</label>
-                            <input type="email" id="reg-email" name="email" class="form-control" placeholder="you@example.com" required>
-                            <div class="error-msg" id="err-email" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                            <label for="reg-email">EMAIL ADDRESS</label>
+                            <input type="email" id="reg-email" name="email" class="form-control" placeholder="you@example.com" autocomplete="email" aria-describedby="err-email" aria-errormessage="err-email" aria-invalid="false" required>
+                            <div class="email-feedback" id="err-email" role="status" aria-live="polite" aria-atomic="true" hidden></div>
                         </div>
 
                         <div class="form-group">
@@ -200,7 +212,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <ol>
                         <li><strong>Booking & Payments:</strong> All reservations require a valid payment method. A
                             booking is confirmed once the required payment is successfully processed.</li>
-                        <li><strong>Cancellation & Refunds:</strong> Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time. The fee percentage and refund amount are snapshotted when the request is submitted; admin-initiated force cancellations receive a 100% refund and the resort absorbs any processing fee.</li>
+                        <li><strong>Cancellation & Refunds:</strong> Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time. The fee percentage and refund amount are snapshotted when the request is submitted; resort-initiated cancellation decisions follow the existing refund workflow.</li>
                         <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for
                             illustrative purposes. Actual arrangements and lighting may slightly vary.</li>
                         <li><strong>Resort Rules:</strong> Guests are expected to maintain the property. Damages

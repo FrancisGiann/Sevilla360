@@ -285,14 +285,16 @@
 
 .idx-welcome-cta .idx-cta-line {
   display: block;
-  width: 2.5rem;
+  width: 4rem;
   height: 1px;
   background: var(--idx-gold);
-  transition: width 0.5s ease;
+  transform: scaleX(.625);
+  transform-origin: left;
+  transition: transform 0.5s cubic-bezier(.16, 1, .3, 1);
 }
 
 .idx-welcome-cta:hover .idx-cta-line {
-  width: 4rem;
+  transform: scaleX(1);
 }
 
 /* --------------------------------------------------------------------
@@ -380,15 +382,17 @@
 
 .idx-exp-rule {
   display: block;
-  width: 2rem;
+  width: 5rem;
   height: 1px;
   margin-top: 1rem;
   background: var(--idx-gold);
-  transition: width 0.6s ease;
+  transform: scaleX(.4);
+  transform-origin: left;
+  transition: transform 0.6s cubic-bezier(.16, 1, .3, 1);
 }
 
 .idx-exp-card:hover .idx-exp-rule {
-  width: 5rem;
+  transform: scaleX(1);
 }
 
 .idx-exp-card p {
@@ -524,6 +528,150 @@
   text-align: center;
   background: var(--idx-paper);
   box-shadow: var(--idx-shadow-lift);
+}
+
+/* --------------------------------------------------------------------
+   PUBLIC VENUE DISCOVERY
+   -------------------------------------------------------------------- */
+.idx-discovery {
+  background: #f8f4ed;
+  padding: 5rem 1.5rem 6rem;
+}
+.idx-discovery-head {
+  width: min(72rem, 100%);
+  margin-inline: auto;
+}
+.idx-catalog-stack {
+  width: min(64rem, 100%);
+  margin-inline: auto;
+}
+.idx-discovery-head { margin-bottom: 3rem; }
+.idx-discovery-head h2 {
+  max-width: 34rem;
+  margin: 1rem 0 0;
+  color: var(--idx-ink);
+  font: 400 clamp(2rem, 4vw, 3.2rem)/1.1 var(--font-heading);
+}
+.idx-discovery-head p { max-width: 34rem; margin: 1.25rem 0 0; color: #5f5850; line-height: 1.7; }
+.idx-catalog-stack { display: flex; flex-direction: column; gap: 3.25rem; }
+.idx-catalog-section { min-width: 0; }
+.idx-catalog-heading { display: flex; align-items: center; gap: 1rem; margin-bottom: .9rem; }
+.idx-catalog-heading::after { content: ''; flex: 1; height: 1px; background: var(--idx-hairline); }
+.idx-catalog-heading h3 { flex: 0 1 auto; margin: 0; color: var(--idx-ink); font: 400 clamp(1.45rem, 2.2vw, 1.9rem)/1.2 var(--font-heading); }
+.idx-catalog-shell { position: relative; padding-bottom: 2.15rem; }
+.idx-catalog-shell-empty,
+.idx-catalog-shell-single { padding-bottom: 0; }
+.idx-carousel-controls { position: absolute; inset: 0; z-index: 2; pointer-events: none; color: #635c54; font-size: .72rem; }
+.idx-carousel-controls[hidden] { display: none; }
+.idx-carousel-controls button,
+.idx-modal-gallery button { border: 1px solid var(--idx-hairline); background: transparent; color: var(--idx-ink); cursor: pointer; }
+.idx-carousel-controls button { position: absolute; top: clamp(9rem, 14vw, 11rem); width: 2.75rem; height: 2.75rem; padding: 0; transform: translateY(-50%); border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 8px 20px -10px rgba(42,37,34,.72); pointer-events: auto; }
+.idx-carousel-controls button:disabled { opacity: .42; cursor: default; pointer-events: none; }
+.idx-carousel-prev { left: .55rem; }
+.idx-carousel-next { right: .55rem; }
+.idx-carousel-position { position: absolute; bottom: .15rem; left: 50%; transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.idx-carousel-controls button:hover,
+.idx-carousel-controls button:focus-visible { background: var(--idx-ink); color: var(--idx-paper); }
+.idx-carousel-controls button:focus-visible { outline: 2px solid var(--idx-gold); outline-offset: 3px; }
+.idx-catalog-viewport { overflow: hidden; }
+.idx-catalog-track { display: flex; width: 100%; transition: transform .45s cubic-bezier(.16, 1, .3, 1); outline: none; }
+.idx-catalog-card { flex: 0 0 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; background: var(--idx-paper); box-shadow: var(--idx-shadow-editorial); }
+.idx-catalog-card > img { width: 100%; height: clamp(18rem, 28vw, 19rem); object-fit: cover; display: block; }
+.idx-catalog-card-body { display: flex; flex-direction: column; justify-content: flex-start; padding: 1.7rem 1.9rem 1.8rem; }
+.idx-catalog-section--event-hall .idx-catalog-card-body,
+.idx-catalog-section--resort-villa .idx-catalog-card-body { justify-content: center; }
+.idx-catalog-card-category { margin: 0; color: var(--idx-gold-deep); font-size: .68rem; letter-spacing: .16em; text-transform: uppercase; }
+.idx-catalog-card h4 { margin: .55rem 0 0; color: var(--idx-ink); font: 400 clamp(1.55rem, 2.8vw, 2.05rem)/1.12 var(--font-heading); }
+.idx-catalog-card-rate { margin: .7rem 0 0; color: var(--idx-ink); font-size: .98rem; font-weight: 600; line-height: 1.45; }
+.idx-catalog-card-facts { margin: .55rem 0 0; color: #655e56; font-size: .86rem; line-height: 1.55; }
+.idx-catalog-card-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.35rem; }
+.idx-catalog-card-actions .idx-btn { min-width: 0; min-height: 44px; padding: .7rem .9rem; font-size: .59rem; letter-spacing: .11em; }
+.idx-catalog-empty { margin: .75rem 0 0; color: #655e56; font-size: .82rem; line-height: 1.5; }
+
+/* Editorial category variants keep the catalogue linear while echoing the
+   former image/text compositions. */
+.idx-catalog-section--resort-villa { position: relative; isolation: isolate; padding-block: 2.5rem; }
+.idx-catalog-section--resort-villa::before { content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%); background: var(--idx-ink); }
+.idx-catalog-section--resort-villa .idx-catalog-heading h3 { color: var(--idx-paper); }
+.idx-catalog-section--resort-villa .idx-catalog-heading::after { background: rgba(255,255,255,.3); }
+.idx-catalog-section--resort-villa .idx-catalog-card { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); background: transparent; box-shadow: none; }
+.idx-catalog-section--resort-villa .idx-catalog-card-body { grid-column: 1; grid-row: 1; }
+.idx-catalog-section--resort-villa .idx-catalog-card > img { grid-column: 2; grid-row: 1; }
+.idx-catalog-section--resort-villa .idx-catalog-card h4 { color: var(--idx-paper); }
+.idx-catalog-section--resort-villa .idx-catalog-card-facts { color: rgba(255,255,255,.7); }
+.idx-catalog-section--resort-villa .idx-catalog-card-rate { color: var(--idx-paper); }
+.idx-catalog-section--resort-villa .idx-catalog-card > img { box-shadow: var(--idx-shadow-editorial); }
+.idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark { border-color: rgba(255,255,255,.66); color: var(--idx-paper); }
+.idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark:hover,
+.idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark:focus-visible { background: var(--idx-paper); color: var(--idx-ink); }
+.idx-catalog-section--resort-villa .idx-carousel-controls { color: rgba(255,255,255,.78); }
+.idx-catalog-section--resort-villa .idx-carousel-controls button { border-color: rgba(255,255,255,.58); background: rgba(255,255,255,.08); color: var(--idx-paper); }
+.idx-catalog-section--resort-villa .idx-carousel-controls button:hover,
+.idx-catalog-section--resort-villa .idx-carousel-controls button:focus-visible { background: var(--idx-paper); color: var(--idx-ink); }
+
+.idx-catalog-section--hotel .idx-catalog-card { position: relative; display: block; background: transparent; box-shadow: none; padding-inline: clamp(0rem, 4vw, 4rem); padding-bottom: 1.4rem; }
+.idx-catalog-section--hotel .idx-catalog-card > img { width: 100%; max-width: 60rem; height: clamp(18rem, 27vw, 19rem); margin-inline: auto; }
+.idx-catalog-section--hotel .idx-catalog-card-body { position: relative; width: min(30rem, calc(100% - 2rem)); margin: -3rem auto 0; padding: 1.35rem 1.4rem 1.4rem; text-align: left; background: var(--idx-paper); box-shadow: var(--idx-shadow-lift); }
+
+.idx-venue-modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: clamp(1rem, 4vw, 3rem); background: rgba(26, 23, 20, .72); }
+.idx-venue-modal[hidden] { display: none; }
+.idx-modal-open { overflow: hidden; }
+.idx-venue-dialog { position: relative; display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); width: min(49rem, 100%); height: min(84svh, 44rem); max-height: min(84svh, calc(100svh - 2rem)); overflow: hidden; border: 1px solid rgba(42,37,34,.14); border-radius: 14px; background: var(--idx-paper); box-shadow: 0 24px 58px -22px rgba(26,23,20,.58); }
+.idx-modal-close { position: absolute; z-index: 2; top: .7rem; right: .7rem; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(42,37,34,.65); color: white; cursor: pointer; }
+.idx-modal-gallery { position: relative; min-height: 0; height: 100%; background: var(--idx-ink); }
+.idx-modal-gallery > img { width: 100%; height: 100%; min-height: 0; object-fit: cover; display: block; }
+.idx-modal-gallery button { position: absolute; top: 50%; z-index: 1; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; transform: translateY(-50%); border-radius: 50%; background: rgba(255,255,255,.88); }
+.idx-modal-gallery-prev { left: .75rem; }.idx-modal-gallery-next { right: .75rem; }
+.idx-modal-thumbnails { position: absolute; right: .75rem; bottom: .75rem; left: .75rem; display: flex; gap: .35rem; overflow-x: auto; }
+.idx-modal-thumbnail { position: relative !important; inset: auto !important; flex: 0 0 3.1rem; width: 3.1rem !important; height: 2.75rem !important; transform: none !important; background: #756b61 !important; }
+.idx-modal-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.idx-modal-thumbnail::after { content: ''; position: absolute; inset: .25rem; border: 1px solid transparent; }.idx-modal-thumbnail.is-active::after { border-color: var(--idx-gold); }
+.idx-modal-copy { min-height: 0; padding: 1.55rem 1.7rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--idx-gold-deep) var(--idx-sand); }
+.idx-modal-copy::-webkit-scrollbar { width: 6px; }
+.idx-modal-copy::-webkit-scrollbar-track { background: var(--idx-sand); }
+.idx-modal-copy::-webkit-scrollbar-thumb { background: var(--idx-gold-deep); border-radius: 999px; }
+.idx-modal-category { margin: 0; color: var(--idx-gold-deep); font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; }
+.idx-modal-copy h2 { margin: .5rem 0 0; color: var(--idx-ink); font: 400 clamp(1.8rem, 3vw, 2.4rem)/1.08 var(--font-heading); }
+.idx-modal-rate { margin: .65rem 0 0; color: var(--idx-ink); font-size: .96rem; font-weight: 600; line-height: 1.5; }
+.idx-modal-description { margin: .8rem 0 0; color: #5f5850; font-size: .86rem; line-height: 1.6; }
+.idx-modal-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; margin-top: .95rem; }
+.idx-modal-fact { padding: .55rem .65rem; border-top: 1px solid var(--idx-hairline); }.idx-modal-fact span { display: block; color: #726a60; font-size: .68rem; }.idx-modal-fact strong { display: block; margin-top: .25rem; color: var(--idx-ink); font-size: .8rem; }
+.idx-modal-amenities { display: flex; flex-wrap: wrap; gap: .3rem .75rem; margin: .8rem 0 0; padding: 0; list-style: none; color: #5f5850; font-size: .78rem; }
+.idx-modal-amenities li::before { content: '•'; margin-right: .35rem; color: var(--idx-gold-deep); }
+.idx-modal-availability { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--idx-hairline); }.idx-modal-availability h3 { margin: 0; color: var(--idx-ink); font: 400 1.08rem var(--font-heading); }
+.idx-modal-calendar { margin-top: .55rem; padding: 0; box-shadow: none; }.idx-modal-calendar .cal-header { padding: .3rem 0; }.idx-modal-calendar .cal-nav { min-width: 2.75rem; min-height: 2.75rem; }.idx-modal-calendar .cal-days-grid { gap: .2rem; margin-bottom: .4rem; }.idx-modal-calendar .cal-day-cell { height: 2.15rem; min-height: 2.15rem; margin: 0 2px; font-size: .79rem; }
+.idx-modal-calendar-note { margin: .5rem 0 0; color: #726a60; font-size: .7rem; line-height: 1.4; }.idx-modal-continue { width: 100%; margin-top: .85rem; padding: .75rem 1rem; font-size: .61rem; }
+
+@media (max-height: 640px) and (min-width: 768px) {
+  .idx-modal-copy { overflow-y: auto; }
+}
+
+@media (min-width: 1100px) {
+  .idx-catalog-shell:not(.idx-catalog-shell-single):not(.idx-catalog-shell-empty) .idx-carousel-prev { left: -3.25rem; }
+  .idx-catalog-shell:not(.idx-catalog-shell-single):not(.idx-catalog-shell-empty) .idx-carousel-next { right: -3.25rem; }
+}
+
+@media (max-width: 767px) {
+  .idx-discovery { padding: 4rem 1rem 5rem; }
+  .idx-catalog-stack { gap: 2.5rem; }
+  .idx-catalog-heading { gap: .75rem; }
+  .idx-catalog-section--resort-villa { margin-inline: -1rem; padding-inline: 1rem; }
+  .idx-catalog-card { display: flex; flex-direction: column; }
+  .idx-catalog-card > img { height: auto; aspect-ratio: 16 / 9; }
+  .idx-catalog-card-body { padding: 1.25rem 1.2rem 1.35rem; }
+  .idx-catalog-card-actions .idx-btn { flex: 1; }
+  .idx-carousel-controls button { top: clamp(5.25rem, 28vw, 6.5rem); }
+  .idx-catalog-section--resort-villa .idx-catalog-card-body { order: 2; }
+  .idx-catalog-section--resort-villa .idx-catalog-card > img { order: 1; }
+  .idx-catalog-section--hotel .idx-catalog-card { padding-inline: 0; }
+  .idx-catalog-section--hotel .idx-catalog-card-body { width: calc(100% - 1rem); margin-top: -2.25rem; padding: 1.15rem 1.2rem 1.3rem; }
+  .idx-venue-modal { padding: 1rem; }
+  .idx-venue-dialog { display: block; width: 100%; height: auto; max-height: calc(100svh - 2rem); overflow: auto; }
+  .idx-modal-copy { overflow: visible; }
+  .idx-modal-gallery, .idx-modal-gallery > img { min-height: 13rem; height: 13rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .idx-catalog-track { transition: none; }
 }
 
 /* --------------------------------------------------------------------

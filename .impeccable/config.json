@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-03T09:38:25.004Z",
+        "reason": "User confirmed: preserve the approved Sevilla360 cinematic public and editorial dashboard design; Inter is the existing shared body-face token across those surfaces."
+      }
+    ]
+  }
+}
