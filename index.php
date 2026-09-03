@@ -230,6 +230,13 @@ include 'includes/header.php';
                         <div class="cal-header"><button type="button" class="cal-nav prev-month" aria-label="Previous month"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><h4 class="cal-month-year">Month Year</h4><button type="button" class="cal-nav next-month" aria-label="Next month"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
                         <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>
                         <div class="cal-days-grid" aria-live="polite"></div>
+                        <ul class="idx-modal-calendar-legend" aria-label="Calendar legend">
+                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--available" aria-hidden="true"></span><span>Available</span></li>
+                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--selected" aria-hidden="true"></span><span>Selected</span></li>
+                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--unavailable" aria-hidden="true"></span><span>Unavailable</span></li>
+                            <li data-calendar-legend="checkout-boundary" hidden><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--checkout" aria-hidden="true"></span><span>Available checkout date</span></li>
+                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--past" aria-hidden="true"></span><span>Past date</span></li>
+                        </ul>
                     </div>
                     <p class="idx-modal-calendar-note">This calendar checks availability only; it never places a hold.</p>
                 </div>

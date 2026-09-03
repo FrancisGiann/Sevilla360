@@ -291,9 +291,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const description = modal.querySelector('.idx-modal-description');
     const facts = modal.querySelector('.idx-modal-facts');
     const amenities = modal.querySelector('.idx-modal-amenities');
+    const checkoutBoundaryLegend = modal.querySelector('[data-calendar-legend="checkout-boundary"]');
     if (title) title.textContent = venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     if (rate) rate.textContent = rateText(venue, false);
+    if (checkoutBoundaryLegend) checkoutBoundaryLegend.hidden = venue.category !== 'Hotel Room';
     if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
     if (facts) {
       facts.replaceChildren();

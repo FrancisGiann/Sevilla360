@@ -640,6 +640,15 @@
 .idx-modal-amenities li::before { content: '•'; margin-right: .35rem; color: var(--idx-gold-deep); }
 .idx-modal-availability { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--idx-hairline); }.idx-modal-availability h3 { margin: 0; color: var(--idx-ink); font: 400 1.08rem var(--font-heading); }
 .idx-modal-calendar { margin-top: .55rem; padding: 0; box-shadow: none; }.idx-modal-calendar .cal-header { padding: .3rem 0; }.idx-modal-calendar .cal-nav { min-width: 2.75rem; min-height: 2.75rem; }.idx-modal-calendar .cal-days-grid { gap: .2rem; margin-bottom: .4rem; }.idx-modal-calendar .cal-day-cell { height: 2.15rem; min-height: 2.15rem; margin: 0 2px; font-size: .79rem; }
+.idx-modal-calendar .idx-modal-calendar-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .35rem .8rem; margin: .55rem 0 0; padding: .55rem 0 0; border-top: 1px solid var(--idx-hairline); list-style: none; color: #726a60; font-size: .68rem; line-height: 1.25; }
+.idx-modal-calendar .idx-modal-calendar-legend[hidden] { display: none; }
+.idx-modal-calendar .idx-modal-calendar-legend li { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
+.idx-modal-calendar .idx-modal-calendar-legend-dot { display: inline-block; width: .72rem; height: .72rem; flex: 0 0 .72rem; border-radius: 2px; }
+.idx-modal-calendar .idx-modal-calendar-legend-dot--available { background: #f9f9f9; border: 1px solid rgba(42,37,34,.2); }
+.idx-modal-calendar .idx-modal-calendar-legend-dot--selected { background: var(--color-gold); }
+.idx-modal-calendar .idx-modal-calendar-legend-dot--unavailable { background: #e06666; border: 1px solid #b84d4d; }
+.idx-modal-calendar .idx-modal-calendar-legend-dot--checkout { background: #d6a870; border: 2px dashed #8b5e2c; }
+.idx-modal-calendar .idx-modal-calendar-legend-dot--past { background: #999; }
 .idx-modal-calendar-note { margin: .5rem 0 0; color: #726a60; font-size: .7rem; line-height: 1.4; }.idx-modal-continue { width: 100%; margin-top: .85rem; padding: .75rem 1rem; font-size: .61rem; }
 
 @media (max-height: 640px) and (min-width: 768px) {
