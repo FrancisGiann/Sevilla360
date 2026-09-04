@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const isStrictSlot = slotDropdown.value.startsWith('home-');
 
           if (isStrictSlot && fileInputEl.files.length > 1) {
-              showAlert("Error", "You can only upload ONE image at a time for Homepage Previews.", "error", false);
+              showAlert("Error", "You can only upload ONE image at a time for homepage image slots.", "error", false);
               return;
           }
 
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
               submitBtn.innerText = originalText;
               submitBtn.disabled = false;
               if (progContainer) progContainer.style.display = 'none';
-              if (progBar) progBar.style.width = '0%';
+              if (progBar) progBar.style.transform = 'scaleX(0)';
               if (progText) progText.innerText = '0%';
           };
           const showUploadError = (title, message) => {
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // Show Progress Bar
           if (progContainer) {
               progContainer.style.display = 'block';
-              progBar.style.width = '0%';
+              progBar.style.transform = 'scaleX(0)';
               progText.innerText = '0%';
           }
 
@@ -167,8 +167,11 @@ document.addEventListener('DOMContentLoaded', () => {
               // Track Upload Progress
               xhr.upload.addEventListener("progress", (event) => {
                   if (event.lengthComputable) {
-                      let percentComplete = Math.round((event.loaded / event.total) * 100);
-                      progBar.style.width = percentComplete + '%';
+                      const percentComplete = event.total > 0
+                          ? Math.round((event.loaded / event.total) * 100)
+                          : 0;
+                      const progressRatio = Math.min(1, Math.max(0, percentComplete / 100));
+                      progBar.style.transform = `scaleX(${progressRatio})`;
                       progText.innerText = percentComplete + '%';
                   }
               });
@@ -261,9 +264,10 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('mg-title').innerText = `Manage Photos`;
           mgGrid.innerHTML = '';
           
-          photos.forEach((photo, index) => {
-              const isPrimary = index === 0;
+          photos.forEach((photo) => {
+              const isPrimary = Number(photo.is_primary) === 1;
               const starColor = isPrimary ? "var(--color-gold)" : "#ccc";
+              const primaryLabel = isPrimary ? "Primary image" : "Set as primary image";
               
               mgGrid.innerHTML += `
                   <div class="mg-photo-card" data-id="${photo.id}" style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
@@ -276,8 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
                       <img src="${photo.file_path}?v=${Date.now()}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           
-                          <button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" title="Set as Main Photo" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
-                              <i class="fa-solid fa-star"></i>
+                          <button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
+                              <i class="fa-solid fa-star" aria-hidden="true"></i>
                           </button>
                           
                           <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${photo.file_name}</span>
@@ -310,6 +314,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Grid Actions (Lightbox, Star, Single Delete, Checkboxes)
   if (mgGrid) {
+      function updatePrimaryButtonState(button, isPrimary) {
+          const label = isPrimary ? "Primary image" : "Set as primary image";
+          button.style.color = isPrimary ? "var(--color-gold)" : "#ccc";
+          button.setAttribute('aria-pressed', isPrimary ? 'true' : 'false');
+          button.setAttribute('aria-label', label);
+          button.setAttribute('title', label);
+      }
+
       // Listen for checkbox changes dynamically
       mgGrid.addEventListener('change', function(e) {
           if (e.target.classList.contains('mg-bulk-check')) {
@@ -331,23 +343,70 @@ document.addEventListener('DOMContentLoaded', () => {
           if (primaryBtn) {
               const mediaId = primaryBtn.getAttribute('data-id');
               const slot = primaryBtn.getAttribute('data-slot');
-              
-              mgGrid.querySelectorAll('.btn-primary-media').forEach(btn => btn.style.color = '#ccc');
-              primaryBtn.style.color = "var(--color-gold)";
+
+              if (primaryBtn.disabled || primaryBtn.dataset.pending === 'true') return;
+              const mediaIdNumber = Number(mediaId);
+              if (!Number.isSafeInteger(mediaIdNumber) || mediaIdNumber < 1 || !slot) {
+                  showAlert("Error", "The selected image is invalid. Please refresh and try again.", "error", false);
+                  return;
+              }
+
+              const slotButtons = Array.from(mgGrid.querySelectorAll('.btn-primary-media'))
+                  .filter(btn => btn.getAttribute('data-slot') === slot);
+              slotButtons.forEach(btn => {
+                  btn.disabled = true;
+                  btn.dataset.pending = 'true';
+              });
 
               fetch("actions/admin/set_primary_media.php", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-                  body: JSON.stringify({ id: mediaId, slot_assignment: slot })
+                  body: JSON.stringify({ id: mediaIdNumber, slot_assignment: slot })
               })
-              .then(res => res.json())
-              .then(data => {
-                  if (data.success) {
-                      showAlert("Success", "Primary image updated successfully!", "success", false);
-                      window.needsCmsRefresh = true;
-                  } else {
-                      showAlert("Error", data.message, "error", false);
+              .then(async res => {
+                  let data;
+                  try {
+                      data = await res.json();
+                  } catch (error) {
+                      throw new Error("The server returned an invalid response. Please try again.");
                   }
+                  const serverMessage = data && typeof data.message === 'string' ? data.message.trim() : '';
+                  if (!res.ok || !data || data.success !== true) {
+                      throw new Error(serverMessage || `Unable to update the primary image (HTTP ${res.status}).`);
+                  }
+                  return data;
+              })
+              .then(data => {
+                  const confirmedPrimaryId = Number(data.primary_id);
+                  const primaryId = Number.isSafeInteger(confirmedPrimaryId) && confirmedPrimaryId > 0
+                      ? confirmedPrimaryId
+                      : mediaIdNumber;
+                  const photosForSlot = window.galleryData && Array.isArray(window.galleryData[slot])
+                      ? window.galleryData[slot]
+                      : [];
+                  photosForSlot.forEach(photo => {
+                      photo.is_primary = Number(photo.id) === primaryId ? 1 : 0;
+                  });
+
+                  mgGrid.querySelectorAll('.btn-primary-media').forEach(btn => {
+                      if (btn.getAttribute('data-slot') === slot) {
+                          updatePrimaryButtonState(btn, Number(btn.getAttribute('data-id')) === primaryId);
+                      }
+                  });
+                  showAlert("Success", "Primary image updated successfully!", "success", false);
+                  window.needsCmsRefresh = true;
+              })
+              .catch(error => {
+                  const message = error instanceof Error && error.message
+                      ? error.message
+                      : "The primary image could not be updated. Please try again.";
+                  showAlert("Error", message, "error", false);
+              })
+              .finally(() => {
+                  slotButtons.forEach(btn => {
+                      btn.disabled = false;
+                      delete btn.dataset.pending;
+                  });
               });
               return;
           }

@@ -103,10 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $home_slots = [
             'home-hero' => 'standard',
-            'home-about' => 'standard',
-            'home-eventhall' => 'standard',
-            'home-villa' => 'standard',
-            'home-hotel' => 'standard'
+            'home-about' => 'standard'
         ];
         $expected_media_type = $home_slots[$website_slot] ?? null;
         if ($website_slot === 'gallery') {

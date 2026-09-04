@@ -59,9 +59,8 @@ if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
     ];
 }
 
-// Fetch CMS images (same slots the old homepage used, so anything already
-// uploaded via Admin > Media CMS keeps working)
-$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms");
+// Fetch the current system CMS images used by the homepage.
+$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms WHERE slot_assignment IN ('home-hero', 'home-about')");
 $cms_images = [];
 if ($cms_query) {
     while ($row = $cms_query->fetch_assoc()) {

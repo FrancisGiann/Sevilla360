@@ -20,10 +20,7 @@ $venues_query = $conn->query("
 // 2. Setup Base Arrays
 $website_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'Homepage', 'type' => 'standard'],
-    'home-about' => ['title' => 'Homepage - About/Welcome Photo', 'badge' => 'Homepage', 'type' => 'standard'],
-    'home-eventhall' => ['title' => 'Homepage - Event Hall Preview', 'badge' => 'Homepage', 'type' => 'standard'],
-    'home-villa' => ['title' => 'Homepage - Villa Preview', 'badge' => 'Homepage', 'type' => 'standard'],
-    'home-hotel' => ['title' => 'Homepage - Hotel Preview', 'badge' => 'Homepage', 'type' => 'standard']
+    'home-about' => ['title' => 'Homepage - About/Welcome Photo', 'badge' => 'Homepage', 'type' => 'standard']
 ];
 
 $venue_standard_slots = []; // Distinct array for venue standard slots
@@ -68,7 +65,7 @@ if ($venues_query) {
 $query = "SELECT * FROM media_cms ORDER BY is_primary DESC, id DESC";
 $result = $conn->query($query);
 
-$uploaded_media = []; // For 1-to-1 slots (Homepage Previews)
+$uploaded_media = []; // For the one-to-one homepage system slots
 $gallery_items = [];  // General gallery
 $standard_venue_photos = []; // Grouped standard photos
 $pano_venue_photos = [];     // Grouped 360 panoramas
@@ -128,7 +125,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
     <!-- Media Grid -->
     <div class="cms-grid" id="cms-grid-container">
 
-        <!-- 1. SYSTEM SLOTS (Hero Banner & Homepage Previews) -->
+        <!-- 1. SYSTEM SLOTS (Hero Banner & Welcome Photo) -->
         <?php foreach($website_slots as $slot_key => $slot_info): 
             $has_img = isset($uploaded_media[$slot_key]);
             $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
@@ -304,12 +301,6 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                         </option>
                         <option value="home-about" data-type="standard" style="display:none;">Homepage - About/Welcome
                             Photo</option>
-                        <option value="home-eventhall" data-type="standard" style="display:none;">Homepage - Event Hall
-                            Preview</option>
-                        <option value="home-villa" data-type="standard" style="display:none;">Homepage - Villa Preview
-                        </option>
-                        <option value="home-hotel" data-type="standard" style="display:none;">Homepage - Hotel Preview
-                        </option>
                         <option value="gallery" data-type="standard" style="display:none;">General Gallery (Standard)
                         </option>
                         <option value="gallery" data-type="360" style="display:none;">General Gallery (360)</option>
@@ -340,7 +331,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
                 </div>
                 <div style="width: 100%; background: #eee; border-radius: 10px; height: 8px; overflow: hidden;">
                     <div id="upload-progress-bar"
-                        style="width: 0%; height: 100%; background: var(--color-gold); transition: width 0.2s;"></div>
+                        style="width: 100%; height: 100%; background: var(--color-gold); transform-origin: left center; transform: scaleX(0); transition: transform 0.2s;"></div>
                 </div>
             </div>
 
