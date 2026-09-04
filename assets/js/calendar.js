@@ -1,3 +1,23 @@
+function normalizeCalendarDate(value) {
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const localDate = new Date(year, month - 1, day);
+    if (localDate.getFullYear() !== year || localDate.getMonth() !== month - 1 || localDate.getDate() !== day) return null;
+    localDate.setHours(0, 0, 0, 0);
+    return localDate;
+  }
+
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) return null;
+  const localDate = new Date(value.getTime());
+  localDate.setHours(0, 0, 0, 0);
+  return localDate;
+}
+
 class SevillaCalendar {
   constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
@@ -341,8 +361,9 @@ class SevillaCalendar {
   }
 
   setSelection(startDate, endDate) {
-    this.startDate = startDate ? new Date(startDate) : null;
-    this.endDate = endDate ? new Date(endDate) : null;
+    const normalizedStart = normalizeCalendarDate(startDate);
+    this.startDate = normalizedStart;
+    this.endDate = normalizedStart ? normalizeCalendarDate(endDate) : null;
     if (this.startDate) {
       this.currentDate = new Date(this.startDate.getFullYear(), this.startDate.getMonth(), 1);
     }

@@ -4,6 +4,11 @@ $extra_css = 'assets/css/booking.css?v=' . time();
 $extra_js = 'assets/js/booking.js?v=' . time();    
 $active_page = 'booking';              
 require_once 'includes/session_init.php';
+require_once 'includes/booking_intent.php';
+
+$booking_resume_marker = booking_auth_consume_resume_marker();
+$booking_resume = isset($_GET['resume']) && $_GET['resume'] === '1'
+    && $booking_resume_marker;
 
 $booking_role = (string)($_SESSION['role'] ?? '');
 $booking_is_customer = ($_SESSION['logged_in'] ?? false) === true && $booking_role === 'customer';
@@ -249,7 +254,7 @@ window.bookingAuth = <?php echo json_encode([
     'isCustomer' => $booking_is_customer,
     'isStaff' => $booking_is_staff,
     'isAuthenticated' => ($booking_is_customer || $booking_is_staff),
-    'resume' => isset($_GET['resume']) && $_GET['resume'] === '1'
+    'resume' => $booking_resume
 ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 

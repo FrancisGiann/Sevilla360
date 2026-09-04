@@ -26,7 +26,8 @@ class BookingController {
             addonAvailabilityToken: 0,
             addonAvailabilityPending: false,
             addonAvailabilityReady: false,
-            addonAvailabilityRangeKey: ''
+            addonAvailabilityRangeKey: '',
+            confirmedSelectionKey: ''
         };
         this.state.lockExpiresAt = null;
         window.isDatesLocked = false;
@@ -105,12 +106,42 @@ class BookingController {
                 draft.addons.roomGroups = [];
                 changed = true;
             }
+            if (typeof draft.confirmedSelectionKey !== 'string') {
+                draft.confirmedSelectionKey = '';
+                changed = true;
+            }
             if (changed) window.sessionStorage.setItem(this.draftKey, JSON.stringify(draft));
             return draft;
         } catch (error) {
             try { window.sessionStorage.removeItem(this.draftKey); } catch (storageError) { /* no-op */ }
             return null;
         }
+    }
+
+    buildSelectionKey(calendar = this.state.activeCalendar) {
+        if (!calendar?.startDate) return '';
+        const toCanonicalDate = value => {
+            if (!(value instanceof Date) || Number.isNaN(value.getTime())) return '';
+            const local = new Date(value.getTime());
+            local.setHours(0, 0, 0, 0);
+            const canonical = this.formatSafeDate(local);
+            return this.isValidDraftDate(canonical) ? canonical : '';
+        };
+        const context = this.getTabContextData();
+        const startDate = toCanonicalDate(calendar.startDate);
+        const endDate = toCanonicalDate(calendar.endDate) || startDate;
+        if (!startDate || !endDate || endDate < startDate) return '';
+        return JSON.stringify({
+            activeTabId: String(this.state.activeTabId || ''),
+            venueId: String(context.venueId || ''),
+            roomName: String(context.roomName || ''),
+            roomType: String(context.roomType || ''),
+            startDate,
+            endDate,
+            villaStayType: this.state.activeTabId === 'resort-villa'
+                ? String(document.querySelector('input[name="villa-stay"]:checked')?.value || '')
+                : ''
+        });
     }
 
     saveDraft() {
@@ -132,6 +163,13 @@ class BookingController {
         const addonStartDate = draftDate(addon?.start);
         const addonEndCandidate = draftDate(addon?.end);
         const addonEndDate = addonStartDate && addonEndCandidate && addonEndCandidate > addonStartDate ? addonEndCandidate : '';
+        const currentSelectionKey = this.buildSelectionKey(calendar);
+        const confirmedSelectionKey = typeof this.state.confirmedSelectionKey === 'string'
+            && this.state.confirmedSelectionKey !== ''
+            && this.state.confirmedSelectionKey === currentSelectionKey
+            ? currentSelectionKey
+            : '';
+        if (!confirmedSelectionKey) this.state.confirmedSelectionKey = '';
         const draft = {
             version: 1,
             createdAt: existing?.createdAt || Date.now(),
@@ -143,6 +181,7 @@ class BookingController {
             buildingName: context.roomType && !['Event Hall', 'Resort Villa'].includes(context.roomType) ? context.roomName || '' : '',
             startDate,
             endDate,
+            confirmedSelectionKey,
             addonStartDate,
             addonEndDate,
             stayType: document.querySelector('input[name="villa-stay"]:checked')?.value || '',
@@ -169,6 +208,7 @@ class BookingController {
     }
 
     clearDraft() {
+        this.state.confirmedSelectionKey = '';
         try { window.sessionStorage.removeItem(this.draftKey); } catch (error) { /* no-op */ }
     }
 
@@ -307,8 +347,9 @@ class BookingController {
         };
 
         const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
-        const isDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+        const isDate = value => this.isValidDraftDate(value) && value >= this.formatSafeDate(new Date());
         if (!calendar || !isDate(draft.startDate)) {
+            this.state.confirmedSelectionKey = '';
             await this.restoreAddonSelections(draft);
             restoreCatering();
             restoreAv();
@@ -326,6 +367,7 @@ class BookingController {
         if (invalidStart || invalidInterior || invalidEnd) {
             calendar.clearSelectedRange();
             this.state.activeCalendar = null;
+            this.state.confirmedSelectionKey = '';
             // Keep the selected venue/options and independently restorable
             // add-ons, but discard only the unavailable primary dates.
             await this.restoreAddonSelections(draft);
@@ -335,12 +377,31 @@ class BookingController {
             showAlert('Dates changed', 'Your selected venue is still available, but those dates are no longer available. Please choose new dates.', 'info');
             return;
         }
-        this.calculateSummary();
-        this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
         await this.restoreAddonSelections(draft);
         restoreCatering();
         restoreAv();
         this.calculateSummary();
+        const restoredSelectionKey = typeof draft.confirmedSelectionKey === 'string'
+            && draft.confirmedSelectionKey !== ''
+            && draft.confirmedSelectionKey === this.buildSelectionKey(calendar)
+            ? draft.confirmedSelectionKey
+            : '';
+        this.state.confirmedSelectionKey = restoredSelectionKey;
+        if (restoredSelectionKey && this.auth.isCustomer) {
+            if (this.state.activeTabId === 'event-hall') {
+                // Event inquiries are non-exclusive: the guest's explicit
+                // date confirmation carries through without a second prompt.
+                calendar.updateDateDisplay();
+            } else {
+                // The availability check above is advisory. The lock endpoint
+                // remains authoritative and is called once on resume.
+                await this.lockSelectedDates(calendar.startDate, calendar.endDate, calendar);
+            }
+        } else {
+            // Legacy drafts and drafts whose venue/category/dates changed must
+            // use the explicit confirmation step again.
+            this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
+        }
         } finally {
             this.isRestoringDraft = false;
             this.saveDraft();
@@ -1179,6 +1240,7 @@ class BookingController {
         this.state.timeLimit = 1800;
         this.state.isDatesLocked = false;
         this.state.lockExpiresAt = null;
+        this.state.confirmedSelectionKey = '';
         window.isDatesLocked = false;
 
         const timerBox = this.getEl("timer-box");
@@ -1224,6 +1286,7 @@ class BookingController {
             this.state.timerInterval = null;
             this.state.timeLimit = 1800;
             this.state.lockExpiresAt = null;
+            this.state.confirmedSelectionKey = '';
             this.getEl("timer-box")?.classList.remove("running");
             if (this.getEl("timer-text")) this.getEl("timer-text").style.display = "inline";
             if (this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
@@ -1235,6 +1298,116 @@ class BookingController {
             return true;
         } catch (error) {
             console.error("Unlock failed", error);
+            return false;
+        }
+    }
+
+    async lockSelectedDates(startDate, endDate, calendarInstance, { dateModal = null, confirmBtn = null } = {}) {
+        const isEventInquiry = this.state.activeTabId === 'event-hall';
+        if (!this.auth.isCustomer || isEventInquiry || !calendarInstance?.startDate) return false;
+
+        const lockData = this.getTabContextData();
+        if (!lockData.roomName && !lockData.venueId) {
+            showAlert('Notice', 'Please select a specific venue/room from the dropdown first!');
+            return false;
+        }
+        const toCanonicalDate = value => {
+            if (!(value instanceof Date) || Number.isNaN(value.getTime())) return '';
+            const local = new Date(value.getTime());
+            local.setHours(0, 0, 0, 0);
+            const canonical = this.formatSafeDate(local);
+            return this.isValidDraftDate(canonical) ? canonical : '';
+        };
+        const startValue = toCanonicalDate(startDate);
+        const endValue = toCanonicalDate(endDate) || startValue;
+        if (!startValue || !endValue || endValue < startValue) {
+            showAlert('Notice', 'Please select valid dates before placing a hold.');
+            return false;
+        }
+        const formData = new FormData();
+        formData.append('start_date', startValue);
+        formData.append('end_date', endValue);
+        if (lockData.venueId) formData.append('venue_id', lockData.venueId);
+        formData.append('room_type', lockData.roomType || '');
+        formData.append('room_name', lockData.roomName || '');
+        if (lockData.roomType === 'Resort Villa') {
+            formData.append('stay_type', document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
+        }
+
+        let serverLockCreated = false;
+        try {
+            const res = await fetch('actions/bookings/lock_dates.php', {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': this.csrfToken },
+                body: formData
+            });
+            if (res.status === 401 || res.status === 403) {
+                const sessionError = new Error('Your session has expired. Please sign in again.');
+                sessionError.sessionExpired = true;
+                sessionError.status = res.status;
+                throw sessionError;
+            }
+            const response = (await res.text()).split('|');
+            if (!res.ok || response[0] !== 'Success') {
+                throw new Error(response[1] || 'The selected dates could not be held.');
+            }
+            serverLockCreated = true;
+            const expiresAt = Number(response[2] || 0);
+            if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+                throw new Error('The server did not return a valid hold expiry.');
+            }
+
+            this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
+            this.state.isDatesLocked = true;
+            window.isDatesLocked = true;
+            this.state.lockExpiresAt = expiresAt;
+            const proceed = this.getEl('btn-proceed');
+            if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
+            calendarInstance.updateDateDisplay();
+            this.calculateSummary();
+            this.saveDraft();
+            this.startTimer(expiresAt);
+            serverLockCreated = false;
+            return true;
+        } catch (err) {
+            if (serverLockCreated) {
+                try {
+                    const release = await fetch('actions/bookings/unlock_dates.php', {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': this.csrfToken }
+                    });
+                    const releaseResponse = (await release.text()).split('|');
+                    if (!release.ok || releaseResponse[0] !== 'Success') {
+                        throw new Error(releaseResponse[1] || 'The temporary hold could not be released.');
+                    }
+                } catch (releaseError) {
+                    // Preserve the original lock/setup failure for the user;
+                    // leave a diagnostic for operators if cleanup failed.
+                    console.error('Fresh hold cleanup failed', releaseError);
+                }
+            }
+            calendarInstance.clearSelectedRange();
+            if (this.state.activeCalendar === calendarInstance) this.state.activeCalendar = null;
+            this.state.confirmedSelectionKey = '';
+            this.state.isDatesLocked = false;
+            this.state.lockExpiresAt = null;
+            window.isDatesLocked = false;
+            clearInterval(this.state.timerInterval);
+            this.state.timerInterval = null;
+            this.getEl('timer-box')?.classList.remove('running');
+            const proceed = this.getEl('btn-proceed');
+            if (proceed) { proceed.disabled = true; proceed.style.opacity = '0.5'; }
+            if (err.sessionExpired || err.status === 403) {
+                showAlert('Session Expired', err.message, 'error', true);
+            } else {
+                showAlert('Hold unavailable', `Error: ${err.message}`, 'error');
+                const refreshData = this.getTabContextData();
+                calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId);
+            }
+            this.calculateSummary();
+            this.saveDraft();
+            dateModal?.classList.remove('active');
+            if (confirmBtn) confirmBtn.disabled = false;
             return false;
         }
     }
@@ -1269,6 +1442,7 @@ class BookingController {
         this.replaceElement("btn-cancel-date").addEventListener("click", () => {
             dateModal.classList.remove("active");
             calendarInstance.clearSelectedRange();
+            this.state.confirmedSelectionKey = '';
             this.saveDraft();
         });
 
@@ -1284,6 +1458,8 @@ class BookingController {
             if (!canHold) {
                 dateModal.classList.remove("active");
                 this.state.isDatesLocked = false;
+                this.state.lockExpiresAt = null;
+                this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
                 window.isDatesLocked = false;
                 calendarInstance.updateDateDisplay();
                 this.saveDraft();
@@ -1291,86 +1467,19 @@ class BookingController {
                 return;
             }
 
-            const formData = new FormData();
-            formData.append('start_date', this.formatSafeDate(startDate));
-            formData.append('end_date', endDate ? this.formatSafeDate(endDate) : this.formatSafeDate(startDate));
-
-            // Hotel rooms: send venue_id directly; others: send room_type + room_name
-            if (lockData.venueId) {
-                formData.append('venue_id', lockData.venueId);
-            }
-            // The server validates a concrete hotel ID against this posted
-            // room group; never omit the context when a unit ID is present.
-            formData.append('room_type', lockData.roomType || '');
-            formData.append('room_name', lockData.roomName || '');
-            if (lockData.roomType === 'Resort Villa') {
-                formData.append('stay_type', document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
-            }
-
-            confirmBtn.innerText = isEventInquiry ? "Confirming..." : "Locking...";
+            this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
+            confirmBtn.innerText = "Locking...";
             confirmBtn.disabled = true;
-
-            let shouldSuggestAddon = false;
             try {
-                const res = await fetch('actions/bookings/lock_dates.php', { 
-                method: 'POST', 
-                headers: { "X-CSRF-Token": this.csrfToken }, 
-                body: formData 
-            });
-                if (res.status === 401 || res.status === 403) {
-                    const sessionError = new Error('Your session has expired. Please sign in again.');
-                    sessionError.sessionExpired = true;
-                    sessionError.status = res.status;
-                    throw sessionError;
-                }
-                const text = await res.text();
-                const response = text.split('|');
-
-                if (response[0] === 'Success') {
-                    dateModal.classList.remove("active");
-                    this.state.isDatesLocked = true;
-                    window.isDatesLocked = true;
-                    this.state.lockExpiresAt = Number(response[2] || 0);
-                    if (!this.state.lockExpiresAt) throw new Error('The server did not return a valid hold expiry.');
-                    const proceed = this.getEl('btn-proceed');
-                    if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
-                    calendarInstance.updateDateDisplay();
-                    this.saveDraft();
-                    this.calculateSummary();
-
-                    // Suggest the hotel add-on only when it is enabled. Defer
-                    // opening the shared modal until the loading state has
-                    // been restored below so the cloned button is usable.
-                    shouldSuggestAddon = this.state.activeTabId === 'event-hall'
-                        && this.getEl('check-rooms')?.checked === true;
-                    
-                    // ONLY START THE TIMER IF IT IS NOT AN EVENT INQUIRY
-                    if (this.state.activeTabId !== 'event-hall') {
-                        this.startTimer(this.state.lockExpiresAt);
-                    }
-                } else {
-                    throw new Error(response[1]);
-                }
+                const locked = await this.lockSelectedDates(startDate, endDate, calendarInstance, { dateModal, confirmBtn });
+                if (locked) dateModal.classList.remove("active");
             } catch (err) {
-                calendarInstance.clearSelectedRange();
-                this.state.isDatesLocked = false;
-                window.isDatesLocked = false;
-                if (err.sessionExpired || err.status === 403) {
-                    showAlert("Session Expired", err.message, "error", true);
-                } else {
-                    showAlert("Notice", "Error: " + err.message, "error");
-                    const refreshData = this.getTabContextData();
-                    calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId);
-                }
                 dateModal.classList.remove("active");
+                showAlert("Hold unavailable", err.message || "The selected dates could not be held.", "error");
             } finally {
                 confirmBtn.innerText = "Confirm";
                 confirmBtn.disabled = false;
             }
-
-            // Update room availability labels in add-on panel after the
-            // shared confirmation control has been reset.
-            if (shouldSuggestAddon) this.suggestAddonStayDates();
         });
     }
 

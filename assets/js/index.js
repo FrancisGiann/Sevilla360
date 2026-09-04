@@ -281,6 +281,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const image = document.getElementById('idx-modal-image');
     if (image) { image.src = images[activeImageIndex]; image.alt = (activeVenue.venue_name || 'Venue') + ' image ' + (activeImageIndex + 1); }
     modal?.querySelectorAll('.idx-modal-thumbnail').forEach((thumb, i) => thumb.classList.toggle('is-active', i === activeImageIndex));
+    modal?.querySelector('.idx-modal-thumbnail.is-active')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   };
   const openVenueModal = (venue, source) => {
     if (!modal) return;

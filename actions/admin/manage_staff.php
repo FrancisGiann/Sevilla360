@@ -1,196 +1,302 @@
 <?php
 // actions/admin/manage_staff.php
 require_once __DIR__ . '/../../includes/session_init.php';
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
 
+final class StaffManagementException extends RuntimeException
+{
+    public function __construct(string $message, private int $statusCode = 422)
+    {
+        parent::__construct($message);
+    }
+
+    public function statusCode(): int
+    {
+        return $this->statusCode;
+    }
+}
+
+function staff_management_error(int $statusCode, string $message): never
+{
+    http_response_code($statusCode);
+    echo json_encode(['success' => false, 'message' => $message], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    staff_management_error(405, 'Only POST requests are accepted.');
+}
+
+function staff_management_prepare(mysqli $conn, string $sql): mysqli_stmt
+{
+    $statement = $conn->prepare($sql);
+    if (!$statement) throw new RuntimeException('Unable to prepare the staff account query.');
+    return $statement;
+}
+
+function staff_management_string(array $data, string $key, bool $trim = true): string
+{
+    $value = $data[$key] ?? '';
+    if (!is_string($value)) throw new StaffManagementException('Invalid staff account data.');
+    return $trim ? trim($value) : $value;
+}
+
+function staff_management_user_id(array $data): int
+{
+    $value = $data['user_id'] ?? null;
+    if (is_int($value)) $userId = $value;
+    elseif (is_string($value) && preg_match('/\A[1-9][0-9]*\z/D', $value)) $userId = (int)$value;
+    else $userId = 0;
+    if ($userId < 1) throw new StaffManagementException('A valid staff account is required.');
+    return $userId;
+}
+
+function staff_management_optional_field(array $data, string $key, int $maxLength, string $label): ?string
+{
+    $value = $data[$key] ?? '';
+    if ($value === null) return null;
+    if (!is_string($value)) throw new StaffManagementException('Invalid staff account data.');
+    $value = trim($value);
+    if ($value === '') return null;
+    if (strlen($value) > $maxLength) {
+        throw new StaffManagementException("{$label} must be {$maxLength} characters or fewer.");
+    }
+    return $value;
+}
+
+function staff_management_hire_date(array $data): ?string
+{
+    $value = $data['hire_date'] ?? '';
+    if ($value === null) return null;
+    if (!is_string($value)) throw new StaffManagementException('Invalid staff account data.');
+    $value = trim($value);
+    if ($value === '') return null;
+    $date = DateTime::createFromFormat('!Y-m-d', $value);
+    $errors = DateTime::getLastErrors();
+    $hasDateErrors = is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
+    if (!$date || $hasDateErrors || $date->format('Y-m-d') !== $value || $value > date('Y-m-d')) {
+        throw new StaffManagementException('Hire date must be a valid date that is not in the future.');
+    }
+    return $value;
+}
+
+function staff_management_validate_profile(array $data): array
+{
+    $name = staff_management_string($data, 'name');
+    $email = staff_management_string($data, 'email');
+    $role = staff_management_string($data, 'role');
+    $phone = staff_management_optional_field($data, 'phone', 20, 'Work phone');
+    $address = staff_management_optional_field($data, 'address', 255, 'Residential address');
+    $department = staff_management_optional_field($data, 'department', 100, 'Department');
+    $jobTitle = staff_management_optional_field($data, 'job_title', 100, 'Job title');
+    $hireDate = staff_management_hire_date($data);
+
+    if ($name === '' || strlen($name) > 150) {
+        throw new StaffManagementException('Full name is required and must be 150 characters or fewer.');
+    }
+    if (strlen($email) > 254) {
+        throw new StaffManagementException('Work email must be 254 characters or fewer.');
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new StaffManagementException('Enter a valid work email address.');
+    }
+    if (!in_array($role, ['admin', 'staff'], true)) {
+        throw new StaffManagementException('Choose a valid access role.');
+    }
+    if ($phone !== null && !preg_match('/\A[0-9+().\-\s]{1,20}\z/D', $phone)) {
+        throw new StaffManagementException('Work phone may contain only numbers, spaces, and + ( ) . - characters.');
+    }
+
+    return [
+        'name' => $name,
+        'email' => $email,
+        'role' => $role,
+        'phone' => $phone,
+        'address' => $address,
+        'department' => $department,
+        'job_title' => $jobTitle,
+        'hire_date' => $hireDate,
+    ];
+}
+
+function staff_management_find_target(mysqli $conn, int $userId, bool $forUpdate = true): array
+{
+    $sql = "SELECT u.email, u.role, s.full_name, s.status
+            FROM users u
+            INNER JOIN staff s ON s.user_id = u.id
+            WHERE u.id = ? AND u.role IN ('admin', 'staff')
+            LIMIT 1" . ($forUpdate ? ' FOR UPDATE' : '');
+    $statement = staff_management_prepare($conn, $sql);
+    $statement->bind_param('i', $userId);
+    if (!$statement->execute()) throw new RuntimeException('Unable to load the staff account.');
+    $target = $statement->get_result()->fetch_assoc();
+    $statement->close();
+    if (!$target) throw new StaffManagementException('Staff account not found.', 404);
+    return $target;
+}
+
+function staff_management_active_admin_count(mysqli $conn): int
+{
+    // Lock active administrator rows before checking the count so concurrent
+    // demotions/archives cannot remove the last active administrator.
+    $result = $conn->query("SELECT u.id
+                            FROM users u
+                            INNER JOIN staff s ON s.user_id = u.id
+                            WHERE u.role = 'admin' AND s.status = 'active'
+                            FOR UPDATE");
+    if (!$result) throw new RuntimeException('Unable to check active administrators.');
+    return $result->num_rows;
+}
+
+function staff_management_audit(mysqli $conn, string $action): void
+{
+    $statement = staff_management_prepare($conn, "INSERT INTO audit_logs (user_id, module, action, ip_address)
+                                                   VALUES (?, 'User Management', ?, ?)");
+    $adminId = (int)($_SESSION['user_id'] ?? 0);
+    $ipAddress = request_client_ip();
+    $statement->bind_param('iss', $adminId, $action, $ipAddress);
+    if (!$statement->execute()) throw new RuntimeException('Unable to record the staff account audit entry.');
+    $statement->close();
+}
+
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
+    staff_management_error(403, 'Unauthorized.');
 }
 
-// ==========================================
-// CSRF PROTECTION GUARD (JSON)
-// ==========================================
-$client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'CSRF validation failed. Unauthorized request.']);
-    exit;
+$clientCsrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+$sessionCsrfToken = $_SESSION['csrf_token'] ?? '';
+if (!is_string($clientCsrfToken) || !is_string($sessionCsrfToken)
+    || $sessionCsrfToken === '' || !hash_equals($sessionCsrfToken, $clientCsrfToken)) {
+    staff_management_error(403, 'CSRF validation failed. Unauthorized request.');
 }
 
-$data = json_decode(file_get_contents('php://input'), true);
-if (!is_array($data)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Invalid JSON request.']);
-    exit;
-}
+$rawBody = file_get_contents('php://input');
+$data = json_decode($rawBody ?: '', true);
+if (!is_array($data)) staff_management_error(422, 'Invalid JSON request.');
+
 $action = $data['action'] ?? '';
-if (!in_array($action, ['add', 'edit', 'delete'], true)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Invalid staff action.']);
-    exit;
+if (!is_string($action)) staff_management_error(422, 'Invalid staff action.');
+if ($action === 'delete') {
+    staff_management_error(422, 'Staff accounts cannot be deleted. Archive the account to retain its records.');
 }
-if ($action === 'add' || $action === 'edit') {
-    $inputName = trim((string)($data['name'] ?? ''));
-    $inputEmail = trim((string)($data['email'] ?? ''));
-    $inputRole = (string)($data['role'] ?? '');
-    $inputStatus = (string)($data['status'] ?? '');
-    $inputPassword = (string)($data['password'] ?? '');
-    if ($inputName === '' || strlen($inputName) > 150 || !filter_var($inputEmail, FILTER_VALIDATE_EMAIL) || !in_array($inputRole, ['admin', 'staff'], true) || !in_array($inputStatus, ['active', 'inactive'], true)) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'message' => 'Invalid staff name, email, role, or status.']);
-        exit;
-    }
-    $password_policy = ($action === 'add' || $inputPassword !== '')
-        ? password_policy_validate($inputPassword)
-        : ['valid' => true, 'message' => ''];
-    if (!$password_policy['valid']) {
-        http_response_code(422);
-        echo json_encode(['success' => false, 'message' => $password_policy['message']]);
-        exit;
-    }
-} elseif (!filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'A valid staff account is required.']);
-    exit;
+if (!in_array($action, ['add', 'edit', 'archive', 'restore'], true)) {
+    staff_management_error(422, 'Invalid staff action.');
 }
 
+$transactionStarted = false;
 try {
     $conn->begin_transaction();
+    $transactionStarted = true;
 
     if ($action === 'add' || $action === 'edit') {
-        $name = trim((string)($data['name'] ?? ''));
-        $email = trim((string)($data['email'] ?? ''));
-        $role = (string)($data['role'] ?? '');
-        $status = (string)($data['status'] ?? '');
-        $password = (string)($data['password'] ?? '');
+        $profile = staff_management_validate_profile($data);
+        $passwordValue = $data['password'] ?? '';
+        if ($passwordValue === null) $password = '';
+        elseif (is_string($passwordValue)) $password = $passwordValue;
+        else throw new StaffManagementException('Invalid staff account data.');
+        if ($action === 'add' || $password !== '') {
+            $passwordPolicy = password_policy_validate($password);
+            if (!$passwordPolicy['valid']) throw new StaffManagementException($passwordPolicy['message']);
+        }
 
-        if ($name === '' || strlen($name) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception("A valid name and email are required.");
-        if (!in_array($role, ['admin', 'staff'], true) || !in_array($status, ['active', 'inactive'], true)) throw new Exception("Invalid staff role or status.");
+        $userId = 0;
+        $target = null;
+        if ($action === 'edit') {
+            $userId = staff_management_user_id($data);
+            $target = staff_management_find_target($conn, $userId);
+        }
+
+        $duplicateStatement = staff_management_prepare($conn, $action === 'add'
+            ? 'SELECT id FROM users WHERE email = ? LIMIT 1'
+            : 'SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1');
+        if ($action === 'add') $duplicateStatement->bind_param('s', $profile['email']);
+        else {
+            $duplicateStatement->bind_param('si', $profile['email'], $userId);
+        }
+        if (!$duplicateStatement->execute()) throw new RuntimeException('Unable to check the work email address.');
+        if ($duplicateStatement->get_result()->num_rows > 0) {
+            throw new StaffManagementException('That work email address is already in use.', 409);
+        }
+        $duplicateStatement->close();
 
         if ($action === 'add') {
-            // Check if email exists
-            $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            if ($stmt->get_result()->num_rows > 0) throw new Exception("Email already exists.");
-
-            $password_policy = password_policy_validate($password);
-            if (!$password_policy['valid']) throw new Exception($password_policy['message']);
-            
             $hash = password_hash($password, PASSWORD_DEFAULT);
-            
-            // Insert User
-            $stmt_u = $conn->prepare("INSERT INTO users (email, password_hash, role, is_verified) VALUES (?, ?, ?, 1)");
-            $stmt_u->bind_param("sss", $email, $hash, $role);
-            $stmt_u->execute();
-            $new_user_id = $conn->insert_id;
+            $userStatement = staff_management_prepare($conn, 'INSERT INTO users (email, password_hash, role, is_verified, status) VALUES (?, ?, ?, 1, \'active\')');
+            $userStatement->bind_param('sss', $profile['email'], $hash, $profile['role']);
+            if (!$userStatement->execute()) throw new RuntimeException('Unable to create the staff login.');
+            $newUserId = $conn->insert_id;
+            $userStatement->close();
 
-            // Insert Staff
-            $stmt_s = $conn->prepare("INSERT INTO staff (user_id, full_name, status) VALUES (?, ?, ?)");
-            $stmt_s->bind_param("iss", $new_user_id, $name, $status);
-            $stmt_s->execute();
+            $staffStatement = staff_management_prepare($conn, 'INSERT INTO staff (user_id, full_name, phone, address, department, job_title, hire_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, \'active\')');
+            $staffStatement->bind_param('issssss', $newUserId, $profile['name'], $profile['phone'], $profile['address'], $profile['department'], $profile['job_title'], $profile['hire_date']);
+            if (!$staffStatement->execute()) throw new RuntimeException('Unable to create the staff profile.');
+            $staffStatement->close();
 
-            $log_action = "Created new staff account: $email ($role)";
-            $message = "Staff added successfully.";
-
+            staff_management_audit($conn, "Created staff account {$profile['email']} ({$profile['role']})");
+            $message = 'Staff account added successfully.';
         } else {
-            // EDIT EXISTING
-            $user_id = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-            if (!$user_id) throw new Exception('A valid staff account is required.');
-            
-            // Superadmin Safeguard for Demotion
-            $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
-            $check->bind_param("i", $user_id);
-            $check->execute();
-            $current_user = $check->get_result()->fetch_assoc();
-            if (!$current_user) throw new Exception('Staff account not found.');
-            $current_role = $current_user['role'];
-            
-            if ($current_role === 'admin' && $role !== 'admin') {
-                $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
-                if ($count <= 1) {
-                    throw new Exception("Action blocked: System must have at least one admin.");
-                }
+            if ($target['role'] === 'admin' && $profile['role'] !== 'admin'
+                && $target['status'] === 'active' && staff_management_active_admin_count($conn) <= 1) {
+                throw new StaffManagementException('Action blocked: the system must keep at least one active administrator.', 409);
             }
 
-            // Update User
             if ($password !== '') {
-                $password_policy = password_policy_validate($password);
-                if (!$password_policy['valid']) throw new Exception($password_policy['message']);
                 $hash = password_hash($password, PASSWORD_DEFAULT);
-                $stmt_u = $conn->prepare("UPDATE users SET email = ?, role = ?, password_hash = ? WHERE id = ?");
-                $stmt_u->bind_param("sssi", $email, $role, $hash, $user_id);
+                $userStatement = staff_management_prepare($conn, 'UPDATE users SET email = ?, role = ?, password_hash = ? WHERE id = ?');
+                $userStatement->bind_param('sssi', $profile['email'], $profile['role'], $hash, $userId);
             } else {
-                $stmt_u = $conn->prepare("UPDATE users SET email = ?, role = ? WHERE id = ?");
-                $stmt_u->bind_param("ssi", $email, $role, $user_id);
+                $userStatement = staff_management_prepare($conn, 'UPDATE users SET email = ?, role = ? WHERE id = ?');
+                $userStatement->bind_param('ssi', $profile['email'], $profile['role'], $userId);
             }
-            $stmt_u->execute();
+            if (!$userStatement->execute()) throw new RuntimeException('Unable to update the staff login.');
+            $userStatement->close();
 
-            // Update Staff
-            $stmt_s = $conn->prepare("UPDATE staff SET full_name = ?, status = ? WHERE user_id = ?");
-            $stmt_s->bind_param("ssi", $name, $status, $user_id);
-            $stmt_s->execute();
+            $staffStatement = staff_management_prepare($conn, 'UPDATE staff SET full_name = ?, phone = ?, address = ?, department = ?, job_title = ?, hire_date = ? WHERE user_id = ?');
+            $staffStatement->bind_param('ssssssi', $profile['name'], $profile['phone'], $profile['address'], $profile['department'], $profile['job_title'], $profile['hire_date'], $userId);
+            if (!$staffStatement->execute()) throw new RuntimeException('Unable to update the staff profile.');
+            $staffStatement->close();
 
-            $log_action = "Updated staff account: $email";
-            $message = "Staff updated successfully.";
+            staff_management_audit($conn, "Updated staff account {$profile['email']} ({$userId})");
+            $message = 'Staff account updated successfully.';
         }
-    } 
-    elseif ($action === 'delete') {
-        $user_id = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        if (!$user_id) throw new Exception('A valid staff account is required.');
-        if ($user_id === $_SESSION['user_id']) throw new Exception("You cannot delete yourself.");
-
-        // Superadmin Safeguard for Deletion
-        $check = $conn->prepare("SELECT role FROM users WHERE id = ?");
-        $check->bind_param("i", $user_id);
-        $check->execute();
-        $target_user = $check->get_result()->fetch_assoc();
-        if (!$target_user) throw new Exception('Staff account not found.');
-        $target_role = $target_user['role'];
-
-        if ($target_role === 'admin') {
-            $count = $conn->query("SELECT COUNT(*) as c FROM users WHERE role = 'admin'")->fetch_assoc()['c'];
-            if ($count <= 1) {
-                throw new Exception("Deletion blocked: System must have at least one admin.");
+    } else {
+        $userId = staff_management_user_id($data);
+        if ($action === 'archive' && $userId === (int)($_SESSION['user_id'] ?? 0)) {
+            throw new StaffManagementException('You cannot archive your current account.', 409);
+        }
+        $target = staff_management_find_target($conn, $userId);
+        if ($action === 'archive') {
+            if ($target['status'] !== 'active') throw new StaffManagementException('That staff account is already archived.', 409);
+            if ($target['role'] === 'admin' && staff_management_active_admin_count($conn) <= 1) {
+                throw new StaffManagementException('Action blocked: the system must keep at least one active administrator.', 409);
             }
+            $staffStatement = staff_management_prepare($conn, "UPDATE staff SET status = 'inactive', archived_at = NOW() WHERE user_id = ? AND status = 'active'");
+            $staffStatement->bind_param('i', $userId);
+            if (!$staffStatement->execute() || $staffStatement->affected_rows !== 1) throw new RuntimeException('Unable to archive the staff account.');
+            $staffStatement->close();
+            staff_management_audit($conn, "Archived staff account {$target['full_name']} ({$target['email']}, {$userId})");
+            $message = 'Staff account archived. Sign-in access is disabled and records are retained.';
+        } else {
+            if ($target['status'] === 'active') throw new StaffManagementException('That staff account is already active.', 409);
+            $staffStatement = staff_management_prepare($conn, "UPDATE staff SET status = 'active', archived_at = NULL WHERE user_id = ? AND status = 'inactive'");
+            $staffStatement->bind_param('i', $userId);
+            if (!$staffStatement->execute() || $staffStatement->affected_rows !== 1) throw new RuntimeException('Unable to restore the staff account.');
+            $staffStatement->close();
+            staff_management_audit($conn, "Restored staff account {$target['full_name']} ({$target['email']}, {$userId})");
+            $message = 'Staff account restored and sign-in access is active.';
         }
-
-        // Get user details for logging before deleting
-        $stmt_info = $conn->prepare("
-            SELECT u.email, s.full_name 
-            FROM users u
-            LEFT JOIN staff s ON u.id = s.user_id
-            WHERE u.id = ?
-        ");
-        $stmt_info->bind_param("i", $user_id);
-        $stmt_info->execute();
-        $user_info = $stmt_info->get_result()->fetch_assoc();
-        $email = $user_info['email'] ?? 'Unknown Email';
-        $staff_name = $user_info['full_name'] ?? 'Unknown Name';
-
-        $stmt = $conn->prepare("DELETE FROM users WHERE id = ?"); // Cascade deletes staff table
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
-
-        $log_action = "Deleted staff account: $staff_name ($email, user ID: $user_id)";
-        $message = "Staff deleted successfully.";
     }
 
-    // AUDIT LOG
-    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'User Management', ?, ?)");
-        $audit_ip = request_client_ip();
-        $audit->bind_param("iss", $_SESSION['user_id'], $log_action, $audit_ip);
-    $audit->execute();
-
     $conn->commit();
-    echo json_encode(['success' => true, 'message' => $message]);
-
-} catch (Exception $e) {
-    $conn->rollback();
-    error_log('Staff management action failed: ' . get_class($e));
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => true, 'message' => $message], JSON_UNESCAPED_SLASHES);
+} catch (StaffManagementException $e) {
+    if ($transactionStarted) $conn->rollback();
+    staff_management_error($e->statusCode(), $e->getMessage());
+} catch (Throwable $e) {
+    if ($transactionStarted) $conn->rollback();
+    error_log('Staff management action failed: ' . get_class($e) . ': ' . $e->getMessage());
+    staff_management_error(500, 'The staff account could not be saved. Please try again.');
 }
-?>

@@ -6,7 +6,6 @@
   padding: 2rem;
   font-family: var(--font-body);
   color: var(--color-dark);
-  animation: fade-in 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
 /* --- Top Header (Tabs & Controls) --- */
@@ -37,7 +36,6 @@
   cursor: pointer;
   padding: .65rem 1rem;
   position: relative;
-  transition: var(--transition-smooth);
 }
 
 .um-tab:hover {
@@ -57,6 +55,8 @@
 
 .um-tab:focus-visible,
 .filter-pill:focus-visible,
+.staff-filter-btn:focus-visible,
+.um-actions button:focus-visible,
 .customer-filter-select:focus-visible {
   outline: 3px solid rgba(214, 168, 112, .35);
   outline-offset: 2px;
@@ -91,7 +91,6 @@
   border-radius: 4px;
   font-size: 0.9rem;
   outline: none;
-  transition: var(--transition-smooth);
 }
 
 .um-search-wrapper input:focus {
@@ -115,8 +114,11 @@
 }
 
 .um-table.active {
+  display: block;
+}
+
+#staffTable.um-table.active {
   display: table;
-  animation: fade-in 0.4s ease-out;
 }
 
 .um-table th {
@@ -168,7 +170,6 @@
   font-size: 0.9rem;
   cursor: pointer;
   margin-right: 1rem;
-  transition: opacity 0.3s ease;
 }
 
 .um-actions button:hover {
@@ -180,8 +181,12 @@
   color: var(--color-gold);
 }
 
-.action-delete {
-  color: #c75c5c; /* Soft red */
+.action-archive {
+  color: #a34e4e;
+}
+
+.action-restore {
+  color: #4a7c59;
 }
 /* --- Filter Pills (Matches Bookings Design) --- */
 .filter-pills {
@@ -208,7 +213,6 @@
   font-weight: 500;
   color: var(--color-dark-light);
   cursor: pointer;
-  transition: var(--transition-snappy);
   white-space: nowrap;
 }
 
@@ -233,14 +237,12 @@
   width: 100%;
   height: 100%;
   background-color: rgba(25, 22, 20, 0.6); /* Dark warm overlay */
-  backdrop-filter: blur(4px);
   z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .um-modal-overlay.active {
@@ -255,12 +257,6 @@
   padding: 2.5rem;
   border-radius: 8px;
   box-shadow: var(--shadow-hover);
-  transform: translateY(20px) scale(0.95);
-  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.um-modal-overlay.active .um-modal-content {
-  transform: translateY(0) scale(1);
 }
 
 .um-modal-large {
@@ -288,19 +284,21 @@
 }
 
 .um-form-group input,
-.um-form-group select {
+.um-form-group select,
+.um-form-group textarea {
   width: 100%;
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid rgba(42, 37, 34, 0.15);
   border-radius: 4px;
   font-family: var(--font-body);
   font-size: 0.95rem;
   outline: none;
-  transition: var(--transition-smooth);
 }
 
 .um-form-group input:focus,
-.um-form-group select:focus {
+.um-form-group select:focus,
+.um-form-group textarea:focus {
   border-color: var(--color-gold);
 }
 
@@ -319,7 +317,6 @@
 .um-modal-actions .btn-outline:hover {
   background-color: rgba(42, 37, 34, 0.05);
   border-color: var(--color-dark);
-  transform: none;
 }
 
 .um-modal-actions .btn-primary {
@@ -354,15 +351,194 @@
   border-bottom: 1px solid rgba(42, 37, 34, 0.05);
 }
 
-/* --- Animations & Media Queries --- */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+/* --- Staff lifecycle, profile form, and responsive layout --- */
+.staff-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: 1rem 1.2rem 0;
+}
+
+.staff-filter-label {
+  margin-right: .25rem;
+  color: var(--color-dark-light);
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.staff-filter-btn {
+  padding: .45rem .8rem;
+  border: 1px solid rgba(42, 37, 34, .15);
+  border-radius: 999px;
+  background: var(--color-white);
+  color: var(--color-dark-light);
+  cursor: pointer;
+  font: inherit;
+  font-size: .84rem;
+  white-space: nowrap;
+}
+
+.staff-filter-btn.active {
+  border-color: var(--color-gold);
+  background: var(--color-gold);
+  color: var(--color-white);
+  font-weight: 600;
+}
+
+.um-staff-id {
+  color: var(--color-dark-light);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .82rem;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.um-primary-text {
+  color: var(--color-dark);
+  font-weight: 600;
+}
+
+.um-secondary-text,
+.um-muted,
+.um-current-account,
+.um-modal-description,
+.field-help {
+  color: var(--color-dark-light);
+}
+
+.um-secondary-text,
+.field-help {
+  display: block;
+  font-size: .82rem;
+  margin-top: .2rem;
+}
+
+.um-address {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 28ch;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.um-role-text,
+.um-date-text {
+  white-space: nowrap;
+}
+
+.um-status {
+  display: inline-block;
+  padding: .3rem .6rem;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+}
+
+.status-active {
+  background: rgba(74, 124, 89, .12);
+  color: #397149;
+}
+
+.status-archived {
+  background: rgba(42, 37, 34, .09);
+  color: var(--color-dark-light);
+}
+
+.status-walk-in {
+  background: rgba(100, 116, 139, .14);
+  color: #475569;
+}
+
+.um-empty-row[hidden] {
+  display: none;
+}
+
+.um-empty-state {
+  display: grid;
+  gap: .35rem;
+  padding: 1.4rem;
+  color: var(--color-dark-light);
+  text-align: center;
+}
+
+.um-empty-state strong {
+  color: var(--color-dark);
+}
+
+.um-modal-description {
+  margin: -.8rem 0 1.35rem;
+  line-height: 1.5;
+}
+
+.um-staff-modal-content {
+  width: min(760px, calc(100vw - 2rem));
+  max-width: 760px;
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
+}
+
+.um-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+}
+
+.um-form-group-full {
+  grid-column: 1 / -1;
+}
+
+.um-form-group {
+  min-width: 0;
+}
+
+.um-label-optional {
+  color: var(--color-dark-light);
+  font-weight: 400;
+}
+
+.um-form-error {
+  margin-top: .85rem;
+  padding: .7rem .85rem;
+  border: 1px solid rgba(163, 78, 78, .32);
+  border-radius: 5px;
+  background: rgba(163, 78, 78, .08);
+  color: #8a3f3f;
+  line-height: 1.4;
+}
+
+.um-modal-overlay[aria-hidden="true"] {
+  pointer-events: none;
+}
+
+body.um-modal-open {
+  overflow: hidden;
+}
+
+.um-history-message td {
+  color: var(--color-dark-light);
+  text-align: center;
+}
+
+.um-history-error td {
+  color: #8a3f3f;
+}
+
+.um-customer-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -377,6 +553,10 @@
   }
   .um-modal-content {
     padding: 1.5rem;
+  }
+
+  .um-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -421,7 +601,16 @@
     box-shadow: none;
   }
 
+  .staff-filter-controls {
+    padding: 0 0 1rem;
+    overflow-x: auto;
+  }
+
   .um-table.active {
+    display: block;
+  }
+
+  #staffTable.um-table.active {
     display: block;
   }
 
@@ -501,6 +690,10 @@
   .um-actions button {
     margin-right: 0;
     padding: 7px 10px;
+  }
+
+  .um-address {
+    max-width: 100%;
   }
 
   .filter-pills {

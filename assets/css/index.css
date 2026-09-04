@@ -613,16 +613,17 @@
 .idx-catalog-section--hotel .idx-catalog-card > img { width: 100%; max-width: 60rem; height: clamp(18rem, 27vw, 19rem); margin-inline: auto; }
 .idx-catalog-section--hotel .idx-catalog-card-body { position: relative; width: min(30rem, calc(100% - 2rem)); margin: -3rem auto 0; padding: 1.35rem 1.4rem 1.4rem; text-align: left; background: var(--idx-paper); box-shadow: var(--idx-shadow-lift); }
 
-.idx-venue-modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: clamp(1rem, 4vw, 3rem); background: rgba(26, 23, 20, .72); }
+.idx-venue-modal { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: clamp(1rem, 4vw, 3rem); background: rgba(26, 23, 20, .72); }
 .idx-venue-modal[hidden] { display: none; }
 .idx-modal-open { overflow: hidden; }
-.idx-venue-dialog { position: relative; display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); width: min(49rem, 100%); height: min(84svh, 44rem); max-height: min(84svh, calc(100svh - 2rem)); overflow: hidden; border: 1px solid rgba(42,37,34,.14); border-radius: 14px; background: var(--idx-paper); box-shadow: 0 24px 58px -22px rgba(26,23,20,.58); }
+.idx-venue-dialog { position: relative; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); width: min(78rem, 100%); height: min(84svh, 44rem); max-height: min(84svh, calc(100svh - 2rem)); overflow: hidden; border: 1px solid rgba(42,37,34,.14); border-radius: 14px; background: var(--idx-paper); box-shadow: 0 24px 58px -22px rgba(26,23,20,.58); }
 .idx-modal-close { position: absolute; z-index: 2; top: .7rem; right: .7rem; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(42,37,34,.65); color: white; cursor: pointer; }
-.idx-modal-gallery { position: relative; min-height: 0; height: 100%; background: var(--idx-ink); }
+.idx-modal-gallery { position: relative; min-width: 0; min-height: 0; height: 100%; overflow: hidden; background: var(--idx-ink); }
 .idx-modal-gallery > img { width: 100%; height: 100%; min-height: 0; object-fit: cover; display: block; }
 .idx-modal-gallery button { position: absolute; top: 50%; z-index: 1; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; transform: translateY(-50%); border-radius: 50%; background: rgba(255,255,255,.88); }
 .idx-modal-gallery-prev { left: .75rem; }.idx-modal-gallery-next { right: .75rem; }
-.idx-modal-thumbnails { position: absolute; right: .75rem; bottom: .75rem; left: .75rem; display: flex; gap: .35rem; overflow-x: auto; }
+.idx-modal-thumbnails { position: absolute; right: .75rem; bottom: .75rem; left: .75rem; display: flex; min-width: 0; gap: .35rem; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; -ms-overflow-style: none; }
+.idx-modal-thumbnails::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .idx-modal-thumbnail { position: relative !important; inset: auto !important; flex: 0 0 3.1rem; width: 3.1rem !important; height: 2.75rem !important; transform: none !important; background: #756b61 !important; }
 .idx-modal-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .idx-modal-thumbnail::after { content: ''; position: absolute; inset: .25rem; border: 1px solid transparent; }.idx-modal-thumbnail.is-active::after { border-color: var(--idx-gold); }
@@ -674,8 +675,8 @@
   .idx-catalog-section--resort-villa .idx-catalog-card > img { order: 1; }
   .idx-catalog-section--hotel .idx-catalog-card { padding-inline: 0; }
   .idx-catalog-section--hotel .idx-catalog-card-body { width: calc(100% - 1rem); margin-top: -2.25rem; padding: 1.15rem 1.2rem 1.3rem; }
-  .idx-venue-modal { padding: 1rem; }
-  .idx-venue-dialog { display: block; width: 100%; height: auto; max-height: calc(100svh - 2rem); overflow: auto; }
+  .idx-venue-modal { --idx-mobile-header-offset: calc(72px + env(safe-area-inset-top, 0px)); align-items: start; justify-items: center; padding: calc(var(--idx-mobile-header-offset) + 1rem) 1rem 1rem; }
+  .idx-venue-dialog { display: block; width: 100%; height: auto; max-height: calc(100svh - var(--idx-mobile-header-offset) - 2rem); overflow: auto; }
   .idx-modal-copy { overflow: visible; }
   .idx-modal-gallery, .idx-modal-gallery > img { min-height: 13rem; height: 13rem; }
 }
