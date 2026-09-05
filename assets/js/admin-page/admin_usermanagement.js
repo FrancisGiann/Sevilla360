@@ -208,6 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
         staffForm?.reset();
         clearFormError();
         document.getElementById("staff_user_id").value = edit ? (trigger.dataset.id || "") : "";
+        document.getElementById("staff_display_id").value = edit ? `STF-${String(trigger.dataset.id || "").padStart(5, "0")}` : "Assigned after creation";
         document.getElementById("staff_name").value = edit ? (trigger.dataset.name || "") : "";
         document.getElementById("staff_email").value = edit ? (trigger.dataset.email || "") : "";
         document.getElementById("staff_phone").value = edit ? (trigger.dataset.phone || "") : "";
@@ -215,8 +216,27 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("staff_department").value = edit ? (trigger.dataset.department || "") : "";
         document.getElementById("staff_job_title").value = edit ? (trigger.dataset.jobTitle || "") : "";
         document.getElementById("staff_hire_date").value = edit ? (trigger.dataset.hireDate || "") : "";
-        document.getElementById("staff_role").value = edit ? (trigger.dataset.role || "staff") : "staff";
-        document.getElementById("staffModalTitle").textContent = edit ? "Edit Staff Account" : "Add New Staff";
+        document.getElementById("staff_role").value = "Staff";
+        document.getElementById("staff_status").value = edit ? (trigger.dataset.status || "Unknown") : "Active after creation";
+        const profileFields = ["staff_name", "staff_email", "staff_phone", "staff_address", "staff_department", "staff_job_title", "staff_hire_date"];
+        profileFields.forEach((id) => {
+            const field = document.getElementById(id);
+            if (field) {
+                field.readOnly = edit;
+                field.disabled = false;
+            }
+        });
+        const saveVisible = !edit;
+        if (saveButton) {
+            saveButton.hidden = !saveVisible;
+            saveButton.textContent = "Create Staff Account";
+        }
+        document.querySelector(".close-staff-modal")?.replaceChildren(document.createTextNode(edit ? "Close" : "Cancel"));
+        document.getElementById("staffModalTitle").textContent = edit ? "Staff Details" : "Add New Staff";
+        document.getElementById("staffModalDescription").textContent = edit
+            ? "Staff details are read-only here. Staff can change only their own name, phone, and password from Settings."
+            : "Create an active staff login. Administrator accounts cannot be created from User Management.";
+        if (passwordInput) passwordInput.closest('.um-form-group')?.toggleAttribute('hidden', edit);
         passwordInput.value = "";
         passwordInput.required = !edit;
         passwordInput.placeholder = edit ? "Leave blank to keep current password" : "Enter a password";
@@ -234,7 +254,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!value) return true;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || (today && value > today)) return false;
         const parsed = new Date(`${value}T00:00:00`);
-        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+        const localValue = [parsed.getFullYear(), String(parsed.getMonth() + 1).padStart(2, "0"), String(parsed.getDate()).padStart(2, "0")].join("-");
+        return !Number.isNaN(parsed.getTime()) && localValue === value;
     }
 
     function validateStaffForm() {
@@ -288,12 +309,13 @@ document.addEventListener("DOMContentLoaded", () => {
             showFormError(validationMessage);
             return;
         }
+        const userId = document.getElementById("staff_user_id").value;
+        if (userId) return;
         staffSubmitting = true;
         saveButton.disabled = true;
         saveButton.textContent = "Saving…";
-        const userId = document.getElementById("staff_user_id").value;
         const payload = {
-            action: userId ? "edit" : "add",
+            action: "add",
             user_id: userId,
             name: document.getElementById("staff_name").value.trim(),
             email: document.getElementById("staff_email").value.trim(),

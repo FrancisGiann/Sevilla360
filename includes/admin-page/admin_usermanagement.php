@@ -12,8 +12,8 @@ $staff_query = $conn->query("SELECT s.user_id, s.full_name, s.phone, s.address, 
                                     s.hire_date, s.status, s.archived_at, u.email, u.role
                              FROM staff s
                              INNER JOIN users u ON s.user_id = u.id
-                             WHERE u.role IN ('admin', 'staff')
-                             ORDER BY (s.status = 'active') DESC, u.role DESC, s.full_name ASC");
+                             WHERE u.role = 'staff'
+                             ORDER BY (s.status = 'active') DESC, s.full_name ASC");
 $staff_list = $staff_query ? $staff_query->fetch_all(MYSQLI_ASSOC) : [];
 
 // Fetch customers with status and total booking counts. This path intentionally
@@ -100,11 +100,11 @@ $today = date('Y-m-d');
                         <?php if ($department !== ''): ?><div class="um-secondary-text"><?= $e($department) ?></div><?php endif; ?>
                         <?php if ($position_title === '' && $department === ''): ?><span class="um-muted">—</span><?php endif; ?>
                     </td>
-                    <td data-label="Access role"><span class="um-role-text"><?= $e(ucfirst((string)$s['role'])) ?></span></td>
+                    <td data-label="Access role"><span class="um-role-text">Staff</span></td>
                     <td data-label="Hire date"><span class="um-date-text"><?= $e($s['hire_date'] ?: '—') ?></span></td>
                     <td data-label="Status"><span class="um-status <?= $e($status_class) ?>"><?= $e($status_label) ?></span></td>
                     <td data-label="Actions" class="um-actions">
-                        <button type="button" class="action-edit btn-staff-modal"
+                        <button type="button" class="action-view btn-staff-modal"
                             data-id="<?= $e($staff_id) ?>"
                             data-name="<?= $e($full_name) ?>"
                             data-email="<?= $e($email) ?>"
@@ -113,7 +113,8 @@ $today = date('Y-m-d');
                             data-department="<?= $e($department) ?>"
                             data-job-title="<?= $e($position_title) ?>"
                             data-hire-date="<?= $e($s['hire_date'] ?? '') ?>"
-                            data-role="<?= $e($s['role']) ?>">Edit</button>
+                            data-status="<?= $e($status_label) ?>"
+                            data-role="staff">View details</button>
                         <?php if ($staff_id === (int)($_SESSION['user_id'] ?? 0)): ?>
                             <span class="um-current-account">Current account</span>
                         <?php elseif ($staff_status === 'active'): ?>
@@ -204,14 +205,18 @@ $today = date('Y-m-d');
     </div>
 </div>
 
-<!-- Add/Edit Staff Modal -->
+<!-- Add staff / read-only staff details dialog -->
 <div class="um-modal-overlay" id="staffModal" aria-hidden="true">
     <div class="um-modal-content um-staff-modal-content" role="dialog" aria-modal="true" aria-labelledby="staffModalTitle" aria-describedby="staffModalDescription">
-        <h3 class="um-modal-title" id="staffModalTitle">Staff Account</h3>
-        <p class="um-modal-description" id="staffModalDescription">Maintain the staff member’s profile and sign-in access.</p>
+        <h3 class="um-modal-title" id="staffModalTitle">Staff Details</h3>
+        <p class="um-modal-description" id="staffModalDescription">Create a staff login or review a staff member’s immutable work profile.</p>
         <form class="um-form" id="staffForm">
             <input type="hidden" id="staff_user_id" value="">
             <div class="um-form-grid">
+                <div class="um-form-group">
+                    <label for="staff_display_id">Staff ID</label>
+                    <input type="text" id="staff_display_id" value="Assigned after creation" readonly>
+                </div>
                 <div class="um-form-group">
                     <label for="staff_name">Full name</label>
                     <input type="text" id="staff_name" name="name" placeholder="Enter full name" autocomplete="name" maxlength="150" required>
@@ -254,10 +259,11 @@ $today = date('Y-m-d');
                 </div>
                 <div class="um-form-group">
                     <label for="staff_role">Access role</label>
-                    <select id="staff_role" name="role" autocomplete="off" required>
-                        <option value="admin">Admin</option>
-                        <option value="staff">Staff</option>
-                    </select>
+                    <input type="text" id="staff_role" value="Staff" readonly>
+                </div>
+                <div class="um-form-group">
+                    <label for="staff_status">Status</label>
+                    <input type="text" id="staff_status" value="Active after creation" readonly>
                 </div>
                 <div class="um-form-group um-password-group">
                     <label for="staff_password">Password</label>
@@ -269,7 +275,7 @@ $today = date('Y-m-d');
             <div class="um-form-error" id="staffFormError" role="alert" hidden></div>
             <div class="um-modal-actions">
                 <button type="button" class="btn btn-outline close-staff-modal">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="btnSaveStaff">Save Account</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveStaff">Create Staff Account</button>
             </div>
         </form>
     </div>

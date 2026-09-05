@@ -25,7 +25,8 @@ foreach (['address VARCHAR(255) NULL', 'department VARCHAR(100) NULL', 'job_titl
 
 staff_account_contract_assert((bool)preg_match('/ALTER\s+TABLE\s+staff/i', $migration), 'migration targets staff');
 staff_account_contract_assert(!preg_match('/\bDROP\s+COLUMN\b|\bDELETE\s+FROM\b/i', $migration), 'migration is non-destructive');
-staff_account_contract_assert(strpos($backend, "['add', 'edit', 'archive', 'restore']") !== false, 'backend allowlist contains lifecycle actions');
+staff_account_contract_assert(strpos($backend, "['add', 'archive', 'restore']") !== false, 'backend allowlist contains staff lifecycle actions');
+staff_account_contract_assert(strpos($backend, "action === 'edit'") !== false && strpos($backend, 'read-only') !== false, 'direct staff edits are rejected');
 staff_account_contract_assert(strpos($backend, "\$action === 'delete'") !== false, 'delete action is explicitly rejected');
 staff_account_contract_assert(!preg_match('/\bDELETE\s+FROM\b/i', $backend), 'backend has no DELETE SQL');
 staff_account_contract_assert(strpos($backend, "status = 'inactive', archived_at = NOW()") !== false, 'archive sets inactive status and timestamp');
@@ -35,21 +36,26 @@ staff_account_contract_assert(strpos($backend, 'begin_transaction()') !== false
     && strpos($backend, '->rollback()') !== false, 'lifecycle writes are transactional');
 staff_account_contract_assert(strpos($backend, 'hash_equals(') !== false, 'backend validates CSRF');
 staff_account_contract_assert(strpos($backend, 'INNER JOIN staff') !== false
-    && strpos($backend, "u.role IN ('admin', 'staff')") !== false, 'target must be an actual staff/admin row');
-staff_account_contract_assert(strpos($backend, 'staff_management_active_admin_count') !== false
-    && strpos($backend, 'current account') !== false, 'last-admin and self-archive guards exist');
+    && strpos($backend, "u.role = 'staff'") !== false, 'target must be an actual staff row and cannot be an administrator');
+staff_account_contract_assert(strpos($backend, 'staff_management_active_admin_count') === false
+    && strpos($backend, 'current account') !== false, 'administrator archive guard is retired and self-archive guard remains');
+staff_account_contract_assert(strpos($backend, 'array_key_exists(\'role\', $data)') !== false
+    && strpos($backend, 'Only staff accounts can be created') !== false, 'direct administrator-role creation is rejected');
 staff_account_contract_assert(strpos($backend, 'password_policy_validate') !== false, 'password policy remains enforced');
 foreach (['address', 'department', 'job_title', 'hire_date', 'phone'] as $field) {
     staff_account_contract_assert(strpos($backend, $field) !== false, "backend handles {$field}");
 }
 
-foreach (['STF-', 'data-status', 'data-staff-filter="active"', 'data-staff-filter="archived"', 'data-staff-filter="all"', 'Archive', 'Restore', 'Current account', 'aria-controls="staffTable"', 'aria-controls="customerTable"', 'aria-labelledby="staffAccountsTab"', 'aria-labelledby="customerAccountsTab"'] as $marker) {
+foreach (['STF-', 'data-status', 'data-staff-filter="active"', 'data-staff-filter="archived"', 'data-staff-filter="all"', 'Archive', 'Restore', 'Current account', 'Staff Details', 'read-only', 'staff_display_id', 'staff_status', 'aria-controls="staffTable"', 'aria-controls="customerTable"', 'aria-labelledby="staffAccountsTab"', 'aria-labelledby="customerAccountsTab"'] as $marker) {
     staff_account_contract_assert(strpos($view, $marker) !== false, "view contains {$marker}");
 }
 foreach (['staff_phone', 'staff_address', 'staff_department', 'staff_job_title', 'staff_hire_date', 'Residential address', 'Admin-only staff record.', 'street-address', 'maxlength="20"', 'maxlength="100"', 'maxlength="255"'] as $marker) {
     staff_account_contract_assert(strpos($view, $marker) !== false, "modal contains {$marker}");
 }
-staff_account_contract_assert(!preg_match('/(?:id|name)=["\']staff_status["\']/i', $view), 'modal does not expose lifecycle status editing');
+staff_account_contract_assert((bool)preg_match('/id=["\']staff_status["\'][^>]*readonly/i', $view), 'modal exposes lifecycle status as read-only');
+staff_account_contract_assert((bool)preg_match('/id=["\']staff_display_id["\'][^>]*readonly/i', $view), 'modal exposes staff ID as read-only');
+staff_account_contract_assert(strpos($script, 'field.readOnly = edit') !== false
+    && strpos($script, 'edit ? "Close" : "Cancel"') !== false, 'details fields stay readable and modal action label follows mode');
 staff_account_contract_assert(!preg_match('/<\?=\s*\$[a-df-zA-DF-Z_]/', $view), 'dynamic view output is escaped');
 
 foreach (['archive', 'restore', 'staffFilter', 'aria-pressed', 'replaceChildren', 'textContent', 'Escape', 'lastFocusedElement', 'modalFocusableElements', 'trapModalFocus', 'shiftKey', 'preventDefault', 'focusTarget', 'staff_address', 'address:'] as $marker) {
