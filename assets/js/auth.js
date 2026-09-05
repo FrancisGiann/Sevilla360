@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", () => {
   
   const linkBackLoginForgot = document.getElementById("link-back-login-from-forgot");
   const forgotTriggers = document.querySelectorAll("[data-forgot-password]");
+  const forgotOriginInput = document.getElementById('forgot-origin');
+  let forgotOrigin = forgotOriginInput?.value === 'admin' ? 'admin' : 'customer';
 
   // --- Switch View Function ---
   function switchView(targetView) {
@@ -204,10 +206,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if(linkGotoTerms) linkGotoTerms.addEventListener("click", () => switchView(viewTerms));
   const openForgotPassword = (event) => {
       event.preventDefault();
+      forgotOrigin = event.currentTarget?.dataset.origin === 'admin' ? 'admin' : 'customer';
+      if (forgotOriginInput) forgotOriginInput.value = forgotOrigin;
       switchView(viewForgot);
   };
   forgotTriggers.forEach((trigger) => trigger.addEventListener("click", openForgotPassword));
-  if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(viewLogin));
+  if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(forgotOrigin === 'admin' ? viewAdmin : viewLogin));
+  if (forgotOrigin === 'admin') switchView(viewAdmin);
 
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {

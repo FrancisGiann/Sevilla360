@@ -8,6 +8,7 @@ require_once __DIR__ . '/includes/customer_login_recovery.php';
 require_once __DIR__ . '/includes/booking_intent.php';
 booking_auth_capture_request();
 $google_oauth_enabled = google_oauth_is_configured();
+$forgot_origin = in_array($_GET['origin'] ?? '', ['customer', 'admin'], true) ? $_GET['origin'] : 'customer';
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
@@ -96,13 +97,13 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                                 placeholder="Enter your password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
-                        <button type="button" class="forgot-link" data-forgot-password>Forgot password?</button>
+                        <button type="button" class="forgot-link" data-forgot-password data-origin="customer">Forgot password?</button>
                     </div>
 
                     <?php if (customer_login_recovery_nudge_eligible()): ?>
                     <div class="login-recovery-nudge" role="status" aria-live="polite" aria-atomic="true">
                         <span>Having trouble signing in?</span>
-                        <button type="button" class="recovery-nudge-action" data-forgot-password>Reset your password.</button>
+                        <button type="button" class="recovery-nudge-action" data-forgot-password data-origin="customer">Reset your password.</button>
                     </div>
                     <?php endif; ?>
 
@@ -246,6 +247,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <input type="email" name="email" class="form-control" placeholder="admin@sevilla360.com"
                             required>
                     </div>
+
+                    <button type="button" class="forgot-link" data-forgot-password data-origin="admin">Forgot password?</button>
                     <div class="form-group">
                         <label>PASSWORD</label>
                         <div class="password-wrapper">
@@ -271,6 +274,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <form id="form-forgot" action="actions/auth/forgot_password_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
                     <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <input type="hidden" name="origin" id="forgot-origin" value="<?php echo htmlspecialchars($forgot_origin, ENT_QUOTES, 'UTF-8'); ?>">
 
                     <!-- HONEYPOT FIELD -->
                     <div style="display:none; position:absolute; left:-9999px;">

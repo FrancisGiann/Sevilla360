@@ -1,18 +1,24 @@
 <?php
 require_once __DIR__ . '/includes/session_init.php';
 require_once 'config/db_connect.php';
+require_once __DIR__ . '/includes/password_reset_security.php';
 
 $token = $_GET['token'] ?? '';
 $is_valid = false;
 $error_msg = '';
 $user_id = 0;
+$origin = password_reset_origin(is_string($_GET['origin'] ?? null) ? $_GET['origin'] : 'customer');
 
 if (empty($token)) {
     $error_msg = 'Invalid password reset link.';
 } else {
-    // Check if token exists and is not expired
-    $stmt = $conn->prepare("SELECT id FROM users WHERE reset_token = ? AND reset_expires_at > NOW()");
-    $stmt->bind_param("s", $token);
+    // Only the SHA-256 digest is stored; raw tokens are never persisted.
+    $tokenHash = hash('sha256', $token);
+    $stmt = $conn->prepare("SELECT u.id, u.role FROM users u LEFT JOIN staff s ON s.user_id = u.id
+        WHERE u.reset_token_hash = ? AND u.reset_expires_at > NOW()
+          AND ((u.role = 'customer' AND u.status = 'active')
+            OR (u.role IN ('staff', 'admin') AND s.status = 'active'))");
+    $stmt->bind_param("s", $tokenHash);
     $stmt->execute();
     $res = $stmt->get_result();
     
@@ -20,6 +26,7 @@ if (empty($token)) {
         $is_valid = true;
         $user_id = $res->fetch_assoc()['id'];
         $_SESSION['reset_user_id'] = $user_id; // Store securely in session for processing
+        $_SESSION['reset_origin'] = $origin;
     } else {
         $error_msg = 'This password reset link is invalid or has expired.';
     }
@@ -54,6 +61,7 @@ if (empty($token)) {
                     <form action="actions/auth/reset_password_process.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
                         <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
+                        <input type="hidden" name="origin" value="<?php echo htmlspecialchars($origin, ENT_QUOTES, 'UTF-8'); ?>">
 
                         <div class="form-group">
                             <label>NEW PASSWORD</label>
@@ -75,7 +83,7 @@ if (empty($token)) {
                     <h2 class="auth-title" style="color: #d93025;">Error</h2>
                     <p class="auth-subtitle"><?php echo htmlspecialchars($error_msg); ?></p>
                     <br>
-                    <a href="auth.php" class="btn btn-primary btn-full" style="text-decoration: none;">GO TO LOGIN</a>
+                    <a href="auth.php?origin=<?php echo rawurlencode($origin); ?>" class="btn btn-primary btn-full" style="text-decoration: none;">GO TO LOGIN</a>
                 </div>
             <?php endif; ?>
         </div>
