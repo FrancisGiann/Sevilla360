@@ -27,7 +27,7 @@
   justify-content: space-between;
   overflow: hidden;
   z-index: 100;
-  transition: width 0.24s ease;
+  transition: transform 0.24s ease, opacity 0.24s ease;
 }
 
 .sidebar-header {
@@ -233,7 +233,7 @@
 .mini-calendar-grid .mini-day.has-maintenance { background:#f4d7cf; color:#7b2d26; }
 .mini-calendar-grid .mini-day.today { outline:2px solid var(--color-gold); outline-offset:-2px; font-weight:700; }
 .maintenance-summary-list { display:flex; flex-direction:column; gap:8px; max-height:220px; overflow:auto; }
-.maintenance-summary-item { padding:10px 12px; border:1px solid rgba(194,124,124,.24); border-left:3px solid #c27c7c; background:#fffaf1; font-size:.8rem; box-shadow:inset 0 1px 2px rgba(42,37,34,.04); }
+.maintenance-summary-item { padding:10px 12px; border:1px solid rgba(194,124,124,.35); background:#fffaf1; font-size:.8rem; box-shadow:inset 0 1px 2px rgba(42,37,34,.04); }
 .maintenance-summary-item strong,.maintenance-summary-item span { display:block; }
 .maintenance-summary-item span { color:var(--color-dark-light); margin-top:3px; }
 @media (max-width: 900px) { .overview-ops-grid { grid-template-columns:1fr; } }
@@ -596,7 +596,7 @@
 /* Maintenance Alert Banner */
 .maintenance-alert {
   background: #fef2f2;
-  border-left: 5px solid #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.36);
   padding: 15px 20px;
   margin-bottom: 25px;
   border-radius: 4px;
@@ -1025,7 +1025,7 @@
     text-align: center;
     border-radius: 8px;
     box-shadow: var(--shadow-soft);
-    border-top: 4px solid #c75c5c; 
+    border: 1px solid rgba(199, 92, 92, 0.3);
     animation: fade-in 0.5s ease-out;
 }
 
@@ -1379,7 +1379,7 @@
   display: block;
   margin-top: 5px;
   background: #fffaf1;
-  border-left: 3px solid #d6a870;
+  border: 1px solid rgba(214, 168, 112, 0.45);
   padding: 8px;
   border-radius: 4px;
 }

@@ -9,7 +9,7 @@ $realtime_client_config = realtime_client_config();
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
-$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'settings', 'auditlog', 'usermanagement', 'cms'];
+$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'sales', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms'];
 if (!in_array($page, $allowed_pages, true)) $page = 'overview';
 
 $account_user_id = (int)($_SESSION['user_id'] ?? 0);
@@ -111,11 +111,25 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                             class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>"><i
                                 class="fa-solid fa-chart-pie"></i> Overview</a>
                     </li>
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=sales"
+                            class="nav-link <?php echo $page === 'sales' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-chart-line"></i> Sales</a>
+                    </li>
+                    <?php endif; ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=calendar"
                             class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>"><i
                                 class="fa-solid fa-calendar-days"></i> Master Calendar</a>
                     </li>
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=reviews"
+                            class="nav-link <?php echo $page === 'reviews' ? 'active' : ''; ?>"><i
+                                class="fa-solid fa-star"></i> Venue Reviews</a>
+                    </li>
+                    <?php endif; ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=bookings"
                             class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>"><i
@@ -180,6 +194,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                         elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
+                        elseif ($page === 'sales') echo 'Sales';
+                        elseif ($page === 'reviews') echo 'Venue Reviews';
                         elseif ($page === 'settings') echo 'System Settings'; 
                         elseif ($page === 'auditlog') echo 'System Audit Log';
                         elseif ($page === 'usermanagement') echo 'User Management';
@@ -254,6 +270,9 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                 if ($page === 'calendar') include 'includes/admin-page/admin_calendar.php';
                 elseif ($page === 'walkin') include 'includes/admin-page/admin_walkin.php';
                 elseif ($page === 'maintenance') include 'includes/admin-page/admin_maintenance.php';
+                elseif ($page === 'sales' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_sales.php';
+                elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_reviews.php';
+                elseif (in_array($page, ['sales', 'reviews'], true)) echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 elseif ($page === 'bookings') include 'includes/admin-page/admin_bookings.php';
                 elseif ($page === 'settings') include 'includes/admin-page/admin_settings.php'; 
                 elseif ($page === 'auditlog') {
@@ -293,6 +312,12 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="assets/js/admin-page/admin_walkin.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'maintenance'): ?>
     <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
+    <?php elseif ($page === 'sales' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_sales.css?v=<?= time() ?>">
+    <script src="assets/js/admin-page/admin_sales.js?v=<?= time() ?>"></script>
+    <?php elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_reviews.css?v=<?= time() ?>">
+    <script src="assets/js/admin-page/admin_reviews.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'settings'): ?>
     <script src="assets/js/admin-page/admin_settings.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_settings.js') ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>

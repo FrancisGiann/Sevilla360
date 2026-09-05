@@ -15,16 +15,17 @@
 
     <!-- Key Performance Metrics Grid -->
     <div class="stats-grid">
-        <div class="stat-card">
-            <h4>Monthly Revenue <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><i class="fa-solid fa-lock stat-lock-icon" title="Restricted to Admins"></i><?php endif; ?></h4>
-            <span class="stat-number color-green" id="stat-monthly-revenue">
+        <?php $is_overview_admin = (($_SESSION['role'] ?? '') === 'admin'); ?>
+        <?php if ($is_overview_admin): ?><a href="admin_dashboard.php?page=sales" class="stat-card stat-card-link" aria-label="View monthly sales report"><?php else: ?><div class="stat-card"><?php endif; ?>
+            <h4>Monthly Sales <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><i class="fa-solid fa-lock stat-lock-icon" title="Restricted to Admins"></i><?php endif; ?></h4>
+            <span class="stat-number color-green" id="stat-monthly-sales">
                 <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?>
                     <span class="stat-restricted-text">Restricted</span>
                 <?php else: ?>
                     ₱0.00
                 <?php endif; ?>
             </span>
-        </div>
+        <?php if ($is_overview_admin): ?></a><?php else: ?></div><?php endif; ?>
 
         <div class="stat-card clickable" onclick="window.location.href='admin_dashboard.php?page=bookings&filter=action_req';">
             <h4>Action Required</h4>
@@ -63,21 +64,8 @@
         </section>
     </div>
 
-    <!-- Charts Section (Revenue & Booking Pipeline) -->
+    <!-- Charts Section (Booking Pipeline) -->
     <div class="charts-grid-2">
-        <div class="chart-card bar-card chart-card-relative">
-            <h3>Revenue Trend <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?><span class="admin-only-badge">(Admin Only)</span><?php endif; ?></h3>
-            <div class="canvas-wrapper" id="revenueChartContainer">
-                <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'staff'): ?>
-                    <div class="chart-restricted-placeholder">
-                        <i class="fa-solid fa-lock-keyhole chart-restricted-icon"></i>
-                        <p class="chart-restricted-text">Financial chart restricted to Admin accounts.</p>
-                    </div>
-                <?php else: ?>
-                    <canvas id="revenueChart"></canvas>
-                <?php endif; ?>
-            </div>
-        </div>
         <div class="chart-card">
             <h3>Booking Pipeline</h3>
             <div class="canvas-wrapper"><canvas id="statusChart"></canvas></div>

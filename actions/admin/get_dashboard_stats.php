@@ -52,9 +52,9 @@ try {
     $activeVenues = (int)($res->fetch_assoc()['c'] ?? 0);
     $response['occupancyRate'] = $totalVenues > 0 ? round(($activeVenues / $totalVenues) * 100) : 0;
 
-    // 4. TOP STATS (Revenue & Arrivals)
+    // 4. TOP STATS (Monthly recorded sales & arrivals)
     if ($is_staff) {
-        $response['monthlyRevenue'] = null; // Privacy: Hide for Staff
+        $response['monthlySales'] = null; // Privacy: Hide for Staff
     } else {
         $res = $conn->query("
             SELECT COALESCE(SUM(p.amount), 0) as total FROM payments p
@@ -62,45 +62,13 @@ try {
             WHERE p.status = 'Success' AND b.booking_status != 'Cancelled'
             AND MONTH(p.payment_date) = MONTH(CURDATE()) AND YEAR(p.payment_date) = YEAR(CURDATE())
         ");
-        $response['monthlyRevenue'] = (float)($res->fetch_assoc()['total'] ?? 0);
+        $response['monthlySales'] = (float)($res->fetch_assoc()['total'] ?? 0);
     }
 
     $res = $conn->query("SELECT COUNT(*) as count FROM bookings WHERE start_date = CURDATE() AND booking_status IN ('Confirmed', 'Completed')");
     $response['arrivalsToday'] = $res->fetch_assoc()['count'] ?? 0;
 
-    // 5. REVENUE TREND
-    if ($is_staff) {
-        $response['charts']['revenue'] = ['labels' => [], 'data' => [], 'restricted' => true];
-    } else {
-        $sixMonthsAgo = date('Y-m-01', strtotime('-5 months'));
-        $stmt = $conn->prepare("
-            SELECT MONTH(p.payment_date) as m, YEAR(p.payment_date) as y, SUM(p.amount) as total 
-            FROM payments p JOIN bookings b ON p.booking_id = b.id
-            WHERE p.status = 'Success' AND b.booking_status != 'Cancelled' AND p.payment_date >= ? 
-            GROUP BY y, m
-        ");
-        $stmt->bind_param("s", $sixMonthsAgo);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        $dbRevenue = [];
-        while ($row = $result->fetch_assoc()) {
-            $key = $row['y'] . '-' . str_pad($row['m'], 2, '0', STR_PAD_LEFT);
-            $dbRevenue[$key] = (float)$row['total'];
-        }
-
-        $revenueTrend = [];
-        $monthLabels = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $dateObj = strtotime("-$i months");
-            $key = date('Y-m', $dateObj);
-            $monthLabels[] = date('M', $dateObj);
-            $revenueTrend[] = $dbRevenue[$key] ?? 0.00;
-        }
-        $response['charts']['revenue'] = ['labels' => $monthLabels, 'data' => $revenueTrend, 'restricted' => false];
-    }
-
-    // 6. BOOKING PIPELINE (Pie Chart)
+    // 5. BOOKING PIPELINE (Pie Chart)
     $res = $conn->query("SELECT CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS booking_status, COUNT(*) as count FROM bookings b GROUP BY CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END");
     $statusData = ['Confirmed' => 0, 'Pending' => 0, 'Cancelled' => 0, 'Completed' => 0];
     while ($row = $res->fetch_assoc()) {

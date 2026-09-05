@@ -253,21 +253,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!data.success) return;
 
                 // --- Update Key Performance Metrics ---
-                const revElem = document.getElementById('stat-monthly-revenue');
-                if (revElem && data.monthlyRevenue !== null && data.monthlyRevenue !== undefined) {
-                    revElem.innerText = currencyFormatter.format(data.monthlyRevenue);
+                const salesElem = document.getElementById('stat-monthly-sales');
+                if (salesElem && data.monthlySales !== null && data.monthlySales !== undefined) {
+                    salesElem.innerText = currencyFormatter.format(data.monthlySales);
                 }
 
                 document.getElementById('stat-action-req').innerText = data.actionRequiredCount || 0;
                 document.getElementById('stat-arrivals-today').innerText = data.arrivalsTodayCount || 0;
                 document.getElementById('stat-occupancy-rate').innerText = (data.occupancyRate || 0) + '%';
-
-                // --- Update Revenue & Distribution Charts ---
-                if (data.monthlyRevenue !== null && data.revenueTrend && window.revenueChartInstance) {
-                    window.revenueChartInstance.data.labels = data.revenueTrend.labels;
-                    window.revenueChartInstance.data.datasets[0].data = data.revenueTrend.data;
-                    window.revenueChartInstance.update();
-                }
 
                 if (data.venueDistribution && window.venueChartInstance) {
                     window.venueChartInstance.data.labels = data.venueDistribution.labels;
@@ -310,12 +303,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
         }
-        const revStat = document.getElementById('stat-monthly-revenue');
-        if (revStat) {
-            if (data.monthlyRevenue === null || data.userRole === 'staff') {
-                revStat.innerHTML = '<span class="stat-restricted-text">Restricted</span>';
+        const salesStat = document.getElementById('stat-monthly-sales');
+        if (salesStat) {
+            if (data.monthlySales === null || data.userRole === 'staff') {
+                salesStat.innerHTML = '<span class="stat-restricted-text">Restricted</span>';
             } else {
-                revStat.textContent = currencyFormatter.format(data.monthlyRevenue);
+                salesStat.textContent = currencyFormatter.format(data.monthlySales);
             }
         }
         document.getElementById('stat-action-req').textContent = data.actionRequired;
@@ -331,20 +324,9 @@ document.addEventListener("DOMContentLoaded", () => {
     loadOverviewCalendar();
   
     function renderCharts(chartsData, userRole) {
-        let revChart = Chart.getChart("revenueChart");
         let statChart = Chart.getChart("statusChart");
-        if(revChart) revChart.destroy();
         if(statChart) statChart.destroy();
 
-        const revCanvas = document.getElementById("revenueChart");
-        if (revCanvas && chartsData.revenue && !chartsData.revenue.restricted && userRole !== 'staff') {
-            new Chart(revCanvas.getContext("2d"), {
-                type: "bar",
-                data: { labels: chartsData.revenue.labels, datasets: [{ label: "Revenue", data: chartsData.revenue.data, backgroundColor: colors.gold, borderRadius: 4, barThickness: 30 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: colors.grid } }, x: { grid: { display: false } } } }
-            });
-        }
-  
         const statusCanvas = document.getElementById("statusChart");
         if (statusCanvas) {
             new Chart(statusCanvas.getContext("2d"), {
