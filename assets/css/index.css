@@ -584,6 +584,13 @@
 .idx-catalog-card h4 { margin: .55rem 0 0; color: var(--idx-ink); font: 400 clamp(1.55rem, 2.8vw, 2.05rem)/1.12 var(--font-heading); }
 .idx-catalog-card-rate { margin: .7rem 0 0; color: var(--idx-ink); font-size: .98rem; font-weight: 600; line-height: 1.45; }
 .idx-catalog-card-facts { margin: .55rem 0 0; color: #655e56; font-size: .86rem; line-height: 1.55; }
+.idx-catalog-card-rating, .idx-modal-rating { margin: .45rem 0 0; color: #9a6b21; font-size: .86rem; }
+.idx-modal-reviews { margin-top: 1.1rem; border-top: 1px solid rgba(42,37,34,.12); padding-top: .8rem; }
+.idx-modal-reviews h3 { font-size: 1rem; margin: 0 0 .5rem; }
+.idx-modal-review { padding: .55rem 0; border-bottom: 1px solid rgba(42,37,34,.08); }
+.idx-modal-review:last-child { border-bottom: 0; }
+.idx-modal-review strong { color: #9a6b21; font-size: .86rem; }
+.idx-modal-review p { margin: .25rem 0 0; white-space: pre-wrap; line-height: 1.45; }
 .idx-catalog-card-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.35rem; }
 .idx-catalog-card-actions .idx-btn { min-width: 0; min-height: 44px; padding: .7rem .9rem; font-size: .59rem; letter-spacing: .11em; }
 .idx-catalog-empty { margin: .75rem 0 0; color: #655e56; font-size: .82rem; line-height: 1.5; }

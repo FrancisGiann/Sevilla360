@@ -26,35 +26,45 @@ $public_images = static function (string $displayName) use (&$public_media, $pub
     $images = array_values(array_filter(array_map(static fn($path) => trim((string)$path), $images)));
     return $images ?: ['assets/img/placeholder.jpg'];
 };
+$venue_reviews_table_result = $conn->query("SHOW TABLES LIKE 'venue_reviews'");
+$venue_reviews_available = $venue_reviews_table_result instanceof mysqli_result && $venue_reviews_table_result->num_rows > 0;
+$event_review_fields = $venue_reviews_available
+    ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.venue_id = v.id AND vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded'), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.venue_id = v.id AND vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded') AS rating_count"
+    : ', 0 AS rating_average, 0 AS rating_count';
 $public_venues = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
-$public_event_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v INNER JOIN event_halls e ON e.venue_id = v.id WHERE v.category = 'Event Hall' AND v.status = 'Available' ORDER BY v.name");
+$public_event_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet {$event_review_fields} FROM venues v INNER JOIN event_halls e ON e.venue_id = v.id WHERE v.category = 'Event Hall' AND v.status = 'Available' ORDER BY v.name");
 if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
     $public_venues['Event Hall'][] = [
-        'key' => 'event-' . (int)$venue['id'], 'category' => 'Event Hall', 'venue_name' => (string)$venue['name'],
+        'key' => 'event-' . (int)$venue['id'], 'review_key' => 'event-' . (int)$venue['id'], 'category' => 'Event Hall', 'venue_name' => (string)$venue['name'],
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['base_rate'] ?? null) ? (float)$venue['base_rate'] : null,
         'facts' => ['Theater' => (int)$venue['capacity_theater'] . ' guests', 'Classroom' => (int)$venue['capacity_classroom'] . ' guests', 'Banquet' => (int)$venue['capacity_banquet'] . ' guests', 'Booking' => 'Inquiry, no date hold'],
-        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
+        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
         'images' => $public_images((string)$venue['name'])
     ];
 }
-$public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, MIN(h.nightly_rate) AS nightly_rate, MAX(h.nightly_rate) AS max_nightly_rate, MIN(h.base_capacity) AS base_capacity, MAX(h.max_capacity) AS max_capacity, MAX(h.bed_count) AS bed_count, MIN(h.extra_pax_rate) AS extra_pax_rate, MIN(h.check_in_time) AS check_in_time, MAX(h.check_out_time) AS check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type ORDER BY v.name, h.room_type");
+$hotel_review_fields = $venue_reviews_available
+    ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)) AS rating_count"
+    : ', 0 AS rating_average, 0 AS rating_count';
+$public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, MIN(h.nightly_rate) AS nightly_rate, MAX(h.nightly_rate) AS max_nightly_rate, MIN(h.base_capacity) AS base_capacity, MAX(h.max_capacity) AS max_capacity, MIN(h.bed_count) AS min_bed_count, MAX(h.bed_count) AS max_bed_count, MIN(h.extra_pax_rate) AS extra_pax_rate, MIN(h.check_in_time) AS check_in_time, MAX(h.check_out_time) AS check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count {$hotel_review_fields} FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type ORDER BY v.name, h.room_type");
 if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
     $displayName = $venue['building_name'] . ' - ' . $venue['room_type'];
+    $minBeds = (int)$venue['min_bed_count']; $maxBeds = (int)$venue['max_bed_count'];
+    $formatBeds = static fn(int $min, int $max): string => $min === $max ? $min . ' ' . ($min === 1 ? 'bed' : 'beds') : $min . '–' . $max . ' beds';
     $public_venues['Hotel Room'][] = [
-        'key' => 'hotel-' . md5($displayName), 'stable_key' => 'hotel-' . md5($displayName), 'category' => 'Hotel Room', 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
+        'key' => 'hotel-' . md5($displayName), 'stable_key' => 'hotel-' . md5($displayName), 'review_key' => 'hotel-' . md5($displayName), 'category' => 'Hotel Room', 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
         'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
-        'facts' => ['Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
-        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
+        'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
+        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
         'images' => $public_images($displayName)
     ];
 }
-$public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
+$public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time {$event_review_fields} FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
 if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
     $public_venues['Resort Villa'][] = [
-        'key' => 'villa-' . (int)$venue['id'], 'category' => 'Resort Villa', 'venue_name' => (string)$venue['name'],
+        'key' => 'villa-' . (int)$venue['id'], 'review_key' => 'villa-' . (int)$venue['id'], 'category' => 'Resort Villa', 'venue_name' => (string)$venue['name'],
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['day_rate'] ?? null) ? (float)$venue['day_rate'] : null, 'overnight_rate' => is_numeric($venue['overnight_rate'] ?? null) ? (float)$venue['overnight_rate'] : null,
         'facts' => ['Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Day or overnight', 'Pool' => ((int)$venue['has_private_pool'] === 1 ? 'Private pool' : 'Pool access'), 'Day hours' => substr((string)$venue['day_check_in_time'], 0, 5) . '–' . substr((string)$venue['day_check_out_time'], 0, 5), 'Overnight hours' => substr((string)$venue['overnight_check_in_time'], 0, 5) . '–' . substr((string)$venue['overnight_check_out_time'], 0, 5)],
-        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
+        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
         'images' => $public_images((string)$venue['name'])
     ];
 }
@@ -220,6 +230,11 @@ include 'includes/header.php';
                 <h2 id="idx-modal-title"></h2>
                 <p class="idx-modal-category"></p>
                 <p class="idx-modal-rate"></p>
+                <p class="idx-modal-rating" id="idx-modal-rating" aria-live="polite"></p>
+                <section class="idx-modal-reviews" aria-labelledby="idx-modal-reviews-title">
+                    <h3 id="idx-modal-reviews-title">Recent reviews</h3>
+                    <div id="idx-modal-reviews-list"><p>No ratings yet</p></div>
+                </section>
                 <div class="idx-modal-facts"></div>
                 <p class="idx-modal-description"></p>
                 <ul class="idx-modal-amenities"></ul>

@@ -99,6 +99,25 @@ $bookings = [];
 while ($row = $bookings_result->fetch_assoc()) {
     $bookings[] = $row;
 }
+$reviewsByBooking = [];
+$reviewsTableCheck = $conn->query("SHOW TABLES LIKE 'venue_reviews'");
+if ($reviewsTableCheck instanceof mysqli_result && $reviewsTableCheck->num_rows > 0 && $bookings) {
+    $reviewIds = array_map(static fn($booking) => (int)$booking['id'], $bookings);
+    $reviewPlaceholders = implode(',', array_fill(0, count($reviewIds), '?'));
+    $reviewTypes = str_repeat('i', count($reviewIds));
+    $reviewBindValues = $reviewIds; $reviewBindRefs = [];
+    foreach ($reviewBindValues as $reviewIndex => &$reviewBindValue) $reviewBindRefs[$reviewIndex] =& $reviewBindValue;
+    $reviewBindRefs = array_values($reviewBindRefs);
+    $reviewStmt = $conn->prepare("SELECT id, booking_id, rating, review_text, moderation_status FROM venue_reviews WHERE customer_id = ? AND booking_id IN ($reviewPlaceholders)");
+    $reviewCustomerId = $customer_id;
+    array_unshift($reviewBindRefs, $reviewCustomerId);
+    $reviewBindRefs[0] =& $reviewCustomerId;
+    $reviewStmt->bind_param('i' . $reviewTypes, ...$reviewBindRefs);
+    $reviewStmt->execute();
+    $reviewResult = $reviewStmt->get_result();
+    while ($review = $reviewResult->fetch_assoc()) $reviewsByBooking[(int)$review['booking_id']] = $review;
+    $reviewStmt->close();
+}
 $payment_sync_booking_id = null;
 foreach ($bookings as $booking_row) {
     if (!empty($booking_row['has_checkout_session']) && !booking_is_completed($booking_row) && $booking_row['booking_status'] !== 'Cancelled' && $booking_row['payment_status'] !== 'Paid') {
@@ -568,6 +587,7 @@ $dashboard_status = static function (array $booking): array {
                                         }
 
                                         $display_id = !empty($b['reference_no']) ? htmlspecialchars($b['reference_no']) : '#' . $b['id'];
+                                        $booking_review = $reviewsByBooking[(int)$b['id']] ?? null;
                                     ?>
                                     <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo htmlspecialchars($filter_data, ENT_QUOTES, 'UTF-8'); ?>">
 
@@ -619,6 +639,16 @@ $dashboard_status = static function (array $booking): array {
                                                     data-paid="<?php echo $amount_paid; ?>">
                                                     <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
                                                 </button>
+                                                <?php endif; ?>
+
+                                                <?php if ($is_completed && $b['booking_status'] !== 'Cancelled' && $b['payment_status'] !== 'Refunded'): ?>
+                                                <?php if (!$booking_review): ?>
+                                                <button type="button" class="btn-action btn-review btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>">Rate venue</button>
+                                                <?php elseif ($booking_review['moderation_status'] === 'Pending'): ?>
+                                                <button type="button" class="btn-action btn-outline-action btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">Review pending</button>
+                                                <?php else: ?>
+                                                <button type="button" class="btn-action btn-outline-action btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">View/edit review</button>
+                                                <?php endif; ?>
                                                 <?php endif; ?>
 
                                                 <!-- Dynamic View Details Button -->
@@ -933,6 +963,29 @@ $dashboard_status = static function (array $booking): array {
                 <button class="btn-modal btn-go-back close-modal btn-modal-150">Close</button>
                 <button class="btn-modal btn-confirm btn-modal-print-150" id="btn-print-receipt" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> Open PDF Receipt</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Venue Review Modal -->
+    <div class="modal-overlay" id="modal-review" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
+        <div class="modal-box review-modal-box">
+            <h2 class="modal-title" id="review-modal-title">Rate venue</h2>
+            <p id="review-modal-venue" class="review-modal-venue"></p>
+            <fieldset class="review-rating-fieldset">
+                <legend>Venue rating</legend>
+                <div class="review-rating-options">
+                    <?php for ($ratingOption = 1; $ratingOption <= 5; $ratingOption++): ?>
+                    <label class="review-rating-option" for="review-rating-<?= $ratingOption ?>">
+                        <input class="review-rating-input" type="radio" id="review-rating-<?= $ratingOption ?>" name="review_rating" value="<?= $ratingOption ?>" aria-label="<?= $ratingOption ?> out of 5">
+                        <span><?= $ratingOption ?></span>
+                    </label>
+                    <?php endfor; ?>
+                </div>
+            </fieldset>
+            <label for="review-text">Your review <span>(optional)</span></label>
+            <textarea id="review-text" maxlength="1000" rows="5" placeholder="What stood out about your stay?"></textarea>
+            <p class="review-form-status" id="review-form-status" role="alert" hidden></p>
+            <div class="modal-actions center-actions"><button type="button" class="btn-modal btn-go-back close-modal">Cancel</button><button type="button" class="btn-modal btn-confirm" id="review-submit">Submit review</button></div>
         </div>
     </div>
 

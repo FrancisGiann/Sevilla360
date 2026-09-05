@@ -171,6 +171,9 @@ document.addEventListener("DOMContentLoaded", function () {
       ? minimum + ' / night'
       : (showStarting ? 'From ' : '') + minimum + '–' + maximum + ' / night';
   };
+  const ratingText = venue => Number(venue.rating_count || 0) > 0
+    ? `${Number(venue.rating_average || 0).toFixed(1)} out of 5 · ${venue.rating_count} review${Number(venue.rating_count) === 1 ? '' : 's'}`
+    : 'No ratings yet';
   const rateText = (venue, showStarting = true) => {
     if (venue.category === 'Resort Villa') return 'Day ' + money(venue.rate) + ' · Overnight ' + money(venue.overnight_rate);
     if (venue.category === 'Hotel Room') return hotelRateText(venue, showStarting);
@@ -199,13 +202,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const kind = document.createElement('p'); kind.className = 'idx-catalog-card-category';
     kind.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     const rate = document.createElement('p'); rate.className = 'idx-catalog-card-rate'; rate.textContent = rateText(venue);
-    const facts = document.createElement('p'); facts.className = 'idx-catalog-card-facts'; facts.textContent = Object.values(venue.facts || {}).slice(0, 2).join(' · ');
+    const rating = document.createElement('p'); rating.className = 'idx-catalog-card-rating'; rating.textContent = ratingText(venue);
+    const facts = document.createElement('p'); facts.className = 'idx-catalog-card-facts'; facts.textContent = Object.values(venue.facts || {}).slice(0, 3).join(' · ');
     const actions = document.createElement('div'); actions.className = 'idx-catalog-card-actions';
     const details = document.createElement('button'); details.type = 'button'; details.className = 'idx-btn idx-btn-outline-dark'; details.textContent = 'View details';
     details.addEventListener('click', () => openVenueModal(venue, details));
     const book = document.createElement('a'); book.className = 'idx-btn idx-btn-gold'; book.href = bookingUrl(venue);
     book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
-    actions.append(details, book); body.append(title, kind, rate, facts, actions); article.appendChild(body);
+    actions.append(details, book); body.append(title, kind, rate, rating, facts, actions); article.appendChild(body);
     return article;
   };
   const updateCarousel = (section, cards, index) => {
@@ -289,6 +293,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const title = document.getElementById('idx-modal-title');
     const category = modal.querySelector('.idx-modal-category');
     const rate = modal.querySelector('.idx-modal-rate');
+    const rating = document.getElementById('idx-modal-rating');
     const description = modal.querySelector('.idx-modal-description');
     const facts = modal.querySelector('.idx-modal-facts');
     const amenities = modal.querySelector('.idx-modal-amenities');
@@ -296,6 +301,31 @@ document.addEventListener("DOMContentLoaded", function () {
     if (title) title.textContent = venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     if (rate) rate.textContent = rateText(venue, false);
+    if (rating) rating.textContent = ratingText(venue);
+    const reviewsList = document.getElementById('idx-modal-reviews-list');
+    if (reviewsList) {
+      reviewsList.replaceChildren();
+      const loading = document.createElement('p'); loading.textContent = 'Loading reviews…'; reviewsList.appendChild(loading);
+      fetch('actions/public/get_venue_reviews.php?venue_key=' + encodeURIComponent(venue.review_key || venue.key), {headers: {'X-Sevilla-Background': 'true'}})
+        .then(response => response.ok ? response.json() : Promise.reject(new Error('Review request failed')))
+        .then(data => {
+          if (!activeVenue || activeVenue !== venue) return;
+          if (rating && data && data.rating_count !== undefined) {
+            rating.textContent = ratingText({...venue, rating_average: data.rating_average, rating_count: data.rating_count});
+          }
+          reviewsList.replaceChildren();
+          if (!Array.isArray(data.reviews) || !data.reviews.length) { const empty = document.createElement('p'); empty.textContent = 'No ratings yet'; reviewsList.appendChild(empty); return; }
+          data.reviews.forEach(review => {
+            const item = document.createElement('article'); item.className = 'idx-modal-review';
+            const author = document.createElement('strong'); author.textContent = `${review.reviewer} · ${Number(review.rating || 0).toFixed(1)} out of 5`;
+            const text = document.createElement('p'); text.textContent = review.review_text || '';
+            item.append(author, text); reviewsList.appendChild(item);
+          });
+        }).catch(() => {
+          if (!activeVenue || activeVenue !== venue || !reviewsList) return;
+          reviewsList.replaceChildren(); const empty = document.createElement('p'); empty.textContent = 'No ratings yet'; reviewsList.appendChild(empty);
+        });
+    }
     if (checkoutBoundaryLegend) checkoutBoundaryLegend.hidden = venue.category !== 'Hotel Room';
     if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
     if (facts) {

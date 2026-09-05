@@ -10,7 +10,7 @@ require_once 'config/db_connect.php';
 $venues_query = $conn->query("
     SELECT 
         v.id, v.category, v.name AS venue_name, v.status, v.description, v.amenities,
-        hr.room_type, hr.base_capacity, hr.max_capacity, hr.nightly_rate,
+        hr.room_type, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
         eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
         vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
     FROM venues v
@@ -29,7 +29,12 @@ if ($venues_query) {
         $safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
         
         $cap = 'N/A'; $rate = 'N/A';
-        if ($v['category'] === 'Hotel Room') { $cap = $v['max_capacity'] . ' pax'; $rate = '₱' . number_format($v['nightly_rate']) . ' /night'; }
+        $beds = '';
+        if ($v['category'] === 'Hotel Room') {
+            $cap = $v['max_capacity'] . ' pax'; $rate = '₱' . number_format($v['nightly_rate']) . ' /night';
+            $minBeds = (int)($v['min_bed_count'] ?? 0); $maxBeds = (int)($v['max_bed_count'] ?? 0);
+            $beds = $minBeds === $maxBeds ? $minBeds . ' ' . ($minBeds === 1 ? 'bed' : 'beds') : $minBeds . '–' . $maxBeds . ' beds';
+        }
         if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . ' /day'; }
         if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . ' /day'; }
 
@@ -45,6 +50,7 @@ if ($venues_query) {
             'room_type' => $v['room_type'] ?? '',
             'venue_name' => $v['venue_name'],
             'capacity' => $cap,
+            'beds' => $beds,
             'rate' => $rate,
             'status' => $v['status'],
             'description' => $desc,
@@ -310,6 +316,10 @@ window.process = {
                     <span class="d-label">MAX CAPACITY</span>
                     <span class="d-value" id="val-capacity">--</span>
                 </div>
+                <div class="detail-row" id="val-beds-row">
+                    <span class="d-label">BEDS</span>
+                    <span class="d-value" id="val-beds">--</span>
+                </div>
             </div>
 
             <div class="details-right">
@@ -351,6 +361,9 @@ window.process = {
                     style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-bottom: 20px;">
                     <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">CAPACITY</span>
                         <span id="info-modal-cap">--</span>
+                    </div>
+                    <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">BEDS</span>
+                        <span id="info-modal-beds">--</span>
                     </div>
                     <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">RATE</span> <span
                             id="info-modal-rate">--</span></div>

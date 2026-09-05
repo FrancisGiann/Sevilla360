@@ -401,6 +401,19 @@
   cursor: pointer;
 }
 
+.review-modal-box { max-width: 560px; }
+.review-modal-venue { color: var(--color-dark-light); margin: -.5rem 0 1rem; }
+.review-rating-fieldset { border: 0; margin: .5rem 0 1rem; padding: 0; }
+.review-rating-fieldset legend { font-weight: 600; margin-bottom: .45rem; }
+.review-rating-options { display: flex; flex-wrap: wrap; gap: .6rem; }
+.review-rating-option { display: inline-flex; align-items: center; gap: .35rem; margin: 0; font-weight: 500; cursor: pointer; }
+.review-rating-input { accent-color: #a9752b; inline-size: 1.1rem; block-size: 1.1rem; margin: 0; }
+.review-rating-option:focus-within { outline: 2px solid #a9752b; outline-offset: 3px; }
+.review-modal-box label { display: block; font-weight: 600; margin-bottom: .35rem; }
+.review-modal-box label span { color: var(--color-dark-light); font-weight: 400; }
+.review-modal-box textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: .7rem; border: 1px solid rgba(42,37,34,.2); font: inherit; }
+.review-form-status { color: #a33f34; font-size: .88rem; margin: .6rem 0 0; }
+
 /* Dashboard Body & Tabs */
 .dashboard-content {
   padding: 40px;

@@ -343,6 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
     cancel: document.getElementById("modal-cancel"),
     reschedule: document.getElementById("modal-reschedule"),
     details: document.getElementById("modal-details"),
+    review: document.getElementById("modal-review"),
     alert: document.getElementById("uniAlertModal"),
   };
 
@@ -406,6 +407,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function closeModal() {
+    const wasReviewModal = activeModal === modals.review;
     Object.values(modals).forEach((modal) => {
         if (modal) modal.classList.remove("active");
     });
@@ -418,9 +420,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (refundInfo) refundInfo.style.display = "none";
 
     document.querySelectorAll(".modal-box textarea, .modal-box input").forEach((input) => {
-        if (input.type === "checkbox") input.checked = false;
+        if (input.type === "checkbox" || input.type === "radio") input.checked = false;
         else input.value = "";
     });
+    if (wasReviewModal) {
+      reviewBookingId = null;
+      reviewRating = 0;
+    }
     restoreFocus(activeInvoker);
     activeInvoker = null;
   }
@@ -1026,6 +1032,32 @@ document.addEventListener("DOMContentLoaded", () => {
               this.disabled = false;
           });
       });
+  });
+
+  // --- 8. Completed-stay venue reviews ---
+  let reviewBookingId = null;
+  let reviewRating = 0;
+  const reviewModal = modals.review;
+  const reviewStatus = document.getElementById('review-form-status');
+  const setReviewStatus = (message, isError = true) => { if (!reviewStatus) return; reviewStatus.textContent = message; reviewStatus.hidden = !message; reviewStatus.dataset.error = isError ? 'true' : 'false'; };
+  const reviewInputs = document.querySelectorAll('.review-rating-input');
+  const paintReviewRating = () => reviewInputs.forEach((input) => { input.checked = Number(input.value) === reviewRating; });
+  reviewInputs.forEach((input) => input.addEventListener('change', () => { reviewRating = Number(input.value); paintReviewRating(); }));
+  document.querySelectorAll('.btn-review-open').forEach((button) => button.addEventListener('click', () => {
+    reviewBookingId = button.dataset.id; reviewRating = Number(button.dataset.rating || 0); paintReviewRating();
+    document.getElementById('review-modal-title').textContent = button.textContent.trim() === 'View/edit review' ? 'View or edit review' : 'Rate venue';
+    document.getElementById('review-modal-venue').textContent = button.dataset.venue || '';
+    document.getElementById('review-text').value = button.dataset.review || '';
+    setReviewStatus(''); openModal('review', button);
+  }));
+  document.getElementById('review-submit')?.addEventListener('click', async () => {
+    if (!reviewBookingId || reviewRating < 1 || reviewRating > 5) { setReviewStatus('Choose a rating from 1 to 5.'); return; }
+    const submit = document.getElementById('review-submit'); submit.disabled = true; setReviewStatus('');
+    try {
+      const response = await fetch('actions/user/save_venue_review.php', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken}, body: JSON.stringify({booking_id: reviewBookingId, rating: reviewRating, review_text: document.getElementById('review-text').value}) });
+      const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Review could not be saved.');
+      closeModal(); showAlert('Review submitted', data.message, 'success', true);
+    } catch (error) { setReviewStatus(error.message); } finally { submit.disabled = false; }
   });
 
 });
