@@ -626,6 +626,276 @@ body.no-scroll .footer {
 }
 
 /* ==========================================================================
+   Virtual Receptionist Overlay
+   ========================================================================== */
+.showroom-receptionist[hidden],
+.receptionist-reopen[hidden] {
+  display: none !important;
+}
+
+.showroom-receptionist {
+  position: fixed;
+  inset: 0;
+  z-index: 1000000;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 3vw, 3rem);
+  color: var(--color-dark, #2a2522);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+.showroom-receptionist.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.showroom-receptionist.is-closing {
+  opacity: 0;
+  visibility: visible;
+}
+
+.showroom-receptionist-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 17, 14, 0.78);
+}
+
+.showroom-receptionist-dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.88fr) minmax(27rem, 1.12fr);
+  grid-template-rows: minmax(0, 1fr);
+  width: min(74rem, 100%);
+  min-height: min(78vh, 46rem);
+  max-height: calc(100svh - 2rem);
+  overflow: hidden;
+  background: #f8f0e3;
+  border: 1px solid rgba(214, 168, 112, 0.58);
+  box-shadow: 0 2rem 6rem rgba(0, 0, 0, 0.38);
+  transform: translateY(1.5rem) scale(0.985);
+  transition: transform 320ms cubic-bezier(0.2, 0.82, 0.24, 1), box-shadow 320ms ease;
+}
+
+.showroom-receptionist.is-open .showroom-receptionist-dialog {
+  transform: translateY(0) scale(1);
+}
+
+.showroom-receptionist.is-closing .showroom-receptionist-dialog {
+  transform: translateY(0.75rem) scale(0.99);
+}
+
+.receptionist-portrait-wrap {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: #e9dcc9;
+}
+
+.receptionist-portrait {
+  display: block;
+  width: min(100%, 32rem);
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.receptionist-panel {
+  align-self: end;
+  min-height: 0;
+  max-height: 100%;
+  padding: clamp(2rem, 4vw, 4rem) clamp(1.5rem, 4vw, 4.75rem) clamp(1.75rem, 4vw, 3.5rem);
+  background: #f8f0e3;
+  overflow-y: auto;
+}
+
+.receptionist-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.receptionist-label {
+  margin: 0 0 0.7rem;
+  color: #806b52;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.receptionist-panel h2 {
+  margin: 0;
+  color: #2a2522;
+  font-family: var(--font-heading), serif;
+  font-size: clamp(2rem, 4vw, 3.45rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+
+.receptionist-skip {
+  flex: 0 0 auto;
+  padding: 0.45rem 0;
+  border: 0;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.42);
+  background: transparent;
+  color: #4a4440;
+  cursor: pointer;
+  font: 500 0.75rem/1.4 var(--font-body), sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.receptionist-skip:hover {
+  color: #8f6a3d;
+  border-color: #8f6a3d;
+}
+
+.receptionist-message {
+  max-width: 38rem;
+  margin: 1.8rem 0 0;
+  color: #4a4440;
+  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  line-height: 1.7;
+}
+
+.receptionist-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.receptionist-choices {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 2rem;
+}
+
+.receptionist-choice {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(42, 37, 34, 0.32);
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.34);
+  color: #2a2522;
+  cursor: pointer;
+  font: 600 0.82rem/1.35 var(--font-body), sans-serif;
+  letter-spacing: 0.045em;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.receptionist-choice:hover {
+  border-color: #9f7644;
+  background: #fffaf1;
+  transform: translateX(0.2rem);
+}
+
+.receptionist-choice-primary {
+  border-color: #a07748;
+  background: #a07748;
+  color: #fffaf1;
+}
+
+.receptionist-choice-primary:hover {
+  border-color: #7f5d39;
+  background: #7f5d39;
+  color: #fffaf1;
+}
+
+.receptionist-choice-secondary {
+  border-color: rgba(42, 37, 34, 0.18);
+  background: transparent;
+  color: #5c5147;
+  font-weight: 500;
+}
+
+.receptionist-choice-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.receptionist-facts {
+  display: grid;
+  gap: 0;
+  margin: 1.6rem 0 0.4rem;
+  border-top: 1px solid rgba(42, 37, 34, 0.18);
+}
+
+.receptionist-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(42, 37, 34, 0.18);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.receptionist-fact dt {
+  color: #786653;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.receptionist-fact dd {
+  margin: 0;
+  color: #2a2522;
+  font-weight: 600;
+  text-align: right;
+}
+
+.receptionist-reopen {
+  position: fixed;
+  right: 1.25rem;
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  z-index: 900;
+  min-height: 2.9rem;
+  padding: 0.75rem 1.15rem;
+  border: 1px solid #a07748;
+  border-radius: 0.45rem;
+  background: #2a2522;
+  color: #fffaf1;
+  cursor: pointer;
+  font: 600 0.78rem/1.2 var(--font-body), sans-serif;
+  letter-spacing: 0.04em;
+  box-shadow: 0 0.55rem 1.5rem rgba(42, 37, 34, 0.26);
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.receptionist-reopen:hover {
+  background: #a07748;
+  transform: translateY(-0.15rem);
+}
+
+.showroom-receptionist button:focus-visible,
+.showroom-receptionist a:focus-visible,
+.receptionist-reopen:focus-visible {
+  outline: 3px solid #bd8a4e;
+  outline-offset: 3px;
+}
+
+body.showroom-receptionist-open {
+  overflow: hidden !important;
+}
+
+/* ==========================================================================
    360 Interaction Hint Overlay
    ========================================================================== */
 #interaction-hint {
@@ -756,5 +1026,80 @@ body.no-scroll .footer {
   .showroom-wrapper.mode-photos .slider-arrow svg {
       width: 30px !important;
       height: 30px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .showroom-receptionist {
+    align-items: end;
+    padding: 0;
+  }
+
+  .showroom-receptionist-dialog {
+    grid-template-columns: 1fr;
+    width: 100%;
+    height: min(92svh, 48rem);
+    min-height: 0;
+    max-height: 92svh;
+    grid-template-rows: minmax(14rem, 33svh) minmax(0, 1fr);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+  }
+
+  .receptionist-portrait-wrap {
+    height: auto;
+    min-height: 0;
+  }
+
+  .receptionist-portrait {
+    width: min(100%, 19rem);
+  }
+
+  .receptionist-panel {
+    align-self: stretch;
+    height: auto;
+    min-height: 0;
+    padding: 1.45rem 1.15rem max(1.4rem, env(safe-area-inset-bottom));
+  }
+
+  .receptionist-panel h2 {
+    font-size: clamp(1.8rem, 8vw, 2.45rem);
+  }
+
+  .receptionist-label {
+    max-width: 15rem;
+    font-size: 0.62rem;
+  }
+
+  .receptionist-skip {
+    font-size: 0.68rem;
+  }
+
+  .receptionist-message {
+    margin-top: 1.2rem;
+    font-size: 0.96rem;
+    line-height: 1.55;
+  }
+
+  .receptionist-choices {
+    margin-top: 1.35rem;
+  }
+
+  .receptionist-reopen {
+    right: 0.8rem;
+    bottom: max(4.7rem, calc(3.7rem + env(safe-area-inset-bottom)));
+    min-height: 2.7rem;
+    padding-inline: 0.9rem;
+    font-size: 0.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .showroom-receptionist,
+  .showroom-receptionist-dialog,
+  .receptionist-choice,
+  .receptionist-reopen {
+    transition: none !important;
   }
 }

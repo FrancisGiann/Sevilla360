@@ -47,6 +47,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const interactionHint = document.getElementById("interaction-hint");
   let hintTimeout;
 
+  const receptionistRoot = document.getElementById("showroom-receptionist");
+  const receptionistDialog = receptionistRoot?.querySelector(".showroom-receptionist-dialog");
+  const receptionistTitle = document.getElementById("receptionist-title");
+  const receptionistMessage = document.getElementById("receptionist-message");
+  const receptionistLive = document.getElementById("receptionist-live");
+  const receptionistChoices = document.getElementById("receptionist-choices");
+  const receptionistReopen = document.getElementById("receptionist-reopen");
+  const receptionistGreeting = "Welcome to M.I. Sevilla Resort & Events Place. I’m your virtual receptionist. How may I help you today?";
+  const receptionistState = {
+      isOpen: false,
+      hasOpened: false,
+      previousFocus: null,
+      activeCategory: null,
+      activeRoomId: null,
+      closeTimer: null,
+      inertElements: []
+  };
+
   // Hide hint instantly on user interaction
   const disableHintForever = () => {
       if (interactionHint) interactionHint.classList.remove("hint-visible");
@@ -197,7 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return cleanUrl + '?t=' + new Date().getTime(); 
       });
 
-      loadRoom(currentRoomId);
+      activateVenue(currentRoomId);
   });
 
   // --- 6. Info Modal Logic (Mobile) ---
@@ -215,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const modalAmenities = document.getElementById("info-modal-amenities");
       if (modalAmenities && amenitiesGrid) {
-          modalAmenities.innerHTML = amenitiesGrid.innerHTML;
+          modalAmenities.replaceChildren(...Array.from(amenitiesGrid.children, item => item.cloneNode(true)));
       }
       infoModal.classList.add("active");
   });
@@ -302,11 +320,32 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- 7. Main Room Loading Logic ---
-  function loadRoom(roomId) {
+  function getBookingUrl(room) {
+    if (!room || room.venue_id === undefined || room.venue_id === null) return "booking.php";
+    const params = new URLSearchParams({
+      venue_id: String(room.venue_id),
+      category: String(room.category || ""),
+      room_type: String(room.room_type || ""),
+      venue_name: String(room.venue_name || "")
+    });
+    return `booking.php?${params.toString()}`;
+  }
+
+  function activateVenue(roomId) {
     const loadToken = ++roomLoadToken;
     currentRoomId = roomId; 
     const room = dataMap[roomId];
     if (!room) return;
+
+    // Keep every venue entry point on the same active state and renderer.
+    document.querySelectorAll(".dropdown-item").forEach(item => {
+        item.classList.toggle("active", item.getAttribute("data-room") === roomId);
+    });
+    document.querySelectorAll(".master-pill").forEach(master => {
+        master.classList.toggle("active", master.getAttribute("data-category") === room.category);
+    });
+    document.querySelectorAll(".pill-dropdown-wrapper").forEach(menu => menu.classList.remove("open"));
+    document.querySelectorAll(".master-pill").forEach(master => master.classList.remove("menu-open"));
 
     // Update Text Data
     valTitle.textContent = room.title;
@@ -321,13 +360,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update Book Button URL
     const bookBtn = document.querySelector('.btn-book');
-    if (bookBtn) {
-        bookBtn.href = `booking.php?venue_id=${room.venue_id}&category=${encodeURIComponent(room.category)}&room_type=${encodeURIComponent(room.room_type || '')}&venue_name=${encodeURIComponent(room.venue_name || '')}`;
-    }
+    if (bookBtn) bookBtn.href = getBookingUrl(room);
 
     // Dynamic Amenities Icons
     if (amenitiesGrid && room.amenities) {
-        amenitiesGrid.innerHTML = ""; 
+        amenitiesGrid.replaceChildren();
         const iconMap = {
             "free wi-fi": "fa-wifi", "wifi": "fa-wifi",
             "fully air-conditioned": "fa-snowflake", "ac ": "fa-snowflake", "air ": "fa-snowflake",
@@ -354,7 +391,10 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const div = document.createElement("div");
             div.className = "amenity";
-            div.innerHTML = `<i class="fa-solid ${iconClass}"></i> ${cleanItem}`;
+            const icon = document.createElement("i");
+            icon.className = `fa-solid ${iconClass}`;
+            icon.setAttribute("aria-hidden", "true");
+            div.append(icon, document.createTextNode(` ${cleanItem}`));
             amenitiesGrid.appendChild(div);
         });
     }
@@ -533,23 +573,11 @@ document.addEventListener("DOMContentLoaded", () => {
       item.addEventListener("click", function(e) {
           e.stopPropagation(); // Stop mobile browsers from double-firing events
 
-          // Remove active state from all items and master pills
-          dropdownItems.forEach(i => i.classList.remove("active"));
-          masterPills.forEach(m => m.classList.remove("active"));
-
-          // Set this item to active
-          this.classList.add("active");
-          
-          // Set its parent Master Pill to active
-          const parentWrapper = this.closest(".pill-dropdown-wrapper");
-          const parentMaster = parentWrapper.querySelector(".master-pill");
-          if (parentMaster) parentMaster.classList.add("active");
-
           // Close the menu
           closeAllMenus();
 
-          // Load the room!
-          loadRoom(this.getAttribute("data-room"));
+          // Dropdowns and the receptionist share one venue activation path.
+          activateVenue(this.getAttribute("data-room"));
       });
   });
 
@@ -580,13 +608,250 @@ document.addEventListener("DOMContentLoaded", () => {
           }
       }
       
-      // Magically simulate a click on the correct room!
-      // This forces the UI to light up Gold and the 360 engine to load it.
-      targetItem.click(); 
+      // Activate the initial venue directly so the guide never depends on a
+      // synthetic browser click to synchronize showroom state.
+      activateVenue(targetItem.getAttribute("data-room"));
   }
 
 
-  // --- 9. Photo Gallery Swap Mode ---
+  // --- 9. Virtual Receptionist Guide -------------------------------------
+  // This enhancement is deliberately self-contained: if its markup or image
+  // is unavailable, the existing showroom remains fully usable.
+  if (receptionistRoot && receptionistDialog && receptionistChoices && receptionistReopen) {
+    const showroomContainer = document.querySelector(".showroom-container");
+    const backgroundElements = [
+      document.querySelector(".s-header"),
+      showroomContainer,
+      document.querySelector(".idx-footer")
+    ].filter(Boolean);
+    const receptionistSkip = receptionistRoot.querySelector("[data-receptionist-skip]");
+
+    const tourableVenues = () => Object.values(dataMap).filter(room => {
+      const hasPanorama = !room?.panoFailed && Array.isArray(room?.pano_urls) && room.pano_urls.length > 0;
+      const hasGallery = Array.isArray(room?.gallery) && room.gallery.length > 0;
+      return Boolean(room && (hasPanorama || hasGallery));
+    });
+
+    const venuesForCategory = category => tourableVenues().filter(room => room.category === category);
+    const createChoice = (label, className = "", attributes = {}) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `receptionist-choice${className ? ` ${className}` : ""}`;
+      button.textContent = label;
+      Object.entries(attributes).forEach(([name, value]) => button.setAttribute(name, value));
+      return button;
+    };
+    const createBackChoice = () => createChoice("Back to welcome", "receptionist-choice-secondary", {
+      "data-receptionist-back": "true"
+    });
+    const setDialogue = (title, message, announce = true) => {
+      receptionistTitle.textContent = title;
+      receptionistMessage.textContent = message;
+      receptionistLive.textContent = announce ? message : "";
+    };
+    const focusFirstChoice = () => {
+      const first = receptionistChoices.querySelector("button, a[href]") || receptionistSkip;
+      if (first) first.focus();
+    };
+    const guideFact = (value, fallback) => {
+      const normalized = String(value ?? "").trim();
+      return normalized && normalized.toLowerCase() !== "n/a" ? normalized : fallback;
+    };
+    const renderGreeting = ({ announce = true } = {}) => {
+      receptionistState.activeCategory = null;
+      receptionistState.activeRoomId = null;
+      setDialogue("Welcome", receptionistGreeting, announce);
+      receptionistChoices.replaceChildren(
+        createChoice("Plan an event", "", { "data-receptionist-intent": "Event Hall" }),
+        createChoice("Book a hotel room", "", { "data-receptionist-intent": "Hotel Room" }),
+        createChoice("Explore a resort villa", "", { "data-receptionist-intent": "Resort Villa" }),
+        createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" })
+      );
+    };
+    const renderCategory = category => {
+      receptionistState.activeCategory = category;
+      const categoryNames = {
+        "Event Hall": "event hall",
+        "Hotel Room": "hotel room",
+        "Resort Villa": "resort villa"
+      };
+      const label = categoryNames[category] || "venue";
+      const article = category === "Event Hall" ? "an" : "a";
+      const venues = venuesForCategory(category);
+      setDialogue(`Choose ${article} ${label}`, venues.length
+        ? `Here are the ${label}s available to explore. Choose one to see its details.`
+        : `There are no ${label}s with tour media available right now. You can continue looking around the showroom.`);
+      receptionistChoices.replaceChildren();
+      if (venues.length) {
+        venues.forEach(room => {
+          const choice = createChoice(room.title || room.venue_name || "Venue", "", {
+            "data-receptionist-room": String(room.id)
+          });
+          receptionistChoices.appendChild(choice);
+        });
+      }
+      receptionistChoices.appendChild(createBackChoice());
+      receptionistChoices.appendChild(createChoice("Just look around", "receptionist-choice-secondary", {
+        "data-receptionist-close": "true"
+      }));
+    };
+    const renderVenue = room => {
+      receptionistState.activeRoomId = room.id;
+      const capacity = guideFact(room.capacity, "Capacity details available on request");
+      const rate = guideFact(room.rate, "Rate available on request");
+      setDialogue(room.title || room.venue_name || "Venue details", "Here is a quick look at this venue. What would you like to do next?");
+      receptionistChoices.replaceChildren();
+
+      const facts = document.createElement("dl");
+      facts.className = "receptionist-facts";
+      [["Capacity", capacity], ["Starting rate", rate]].forEach(([label, value]) => {
+        const row = document.createElement("div");
+        row.className = "receptionist-fact";
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const detail = document.createElement("dd");
+        detail.textContent = value;
+        row.append(term, detail);
+        facts.appendChild(row);
+      });
+      receptionistChoices.appendChild(facts);
+
+      const tourButton = createChoice("Start virtual tour", "receptionist-choice-primary", {
+        "data-receptionist-tour": "true"
+      });
+      const bookLink = document.createElement("a");
+      bookLink.className = "receptionist-choice receptionist-choice-link";
+      bookLink.href = getBookingUrl(room);
+      bookLink.textContent = "Book this venue";
+      bookLink.setAttribute("data-receptionist-book", "true");
+      const anotherButton = createChoice("Choose another", "receptionist-choice-secondary", {
+        "data-receptionist-another": "true"
+      });
+      receptionistChoices.append(tourButton, bookLink, anotherButton);
+    };
+    const restoreBackgroundInert = () => {
+      receptionistState.inertElements.forEach(({ element, wasInert }) => {
+        if ("inert" in element) element.inert = wasInert;
+      });
+      receptionistState.inertElements = [];
+    };
+    const setBackgroundInert = isInert => {
+      if (!isInert) {
+        restoreBackgroundInert();
+        return;
+      }
+      receptionistState.inertElements = backgroundElements
+        .filter(element => "inert" in element)
+        .map(element => ({ element, wasInert: element.inert }));
+      receptionistState.inertElements.forEach(({ element }) => {
+        element.inert = true;
+      });
+    };
+    const closeGuide = () => {
+      if (!receptionistState.isOpen) return;
+      receptionistState.isOpen = false;
+      receptionistRoot.classList.remove("is-open");
+      receptionistRoot.classList.add("is-closing");
+      document.body.classList.remove("showroom-receptionist-open");
+      restoreBackgroundInert();
+      window.clearTimeout(receptionistState.closeTimer);
+      receptionistState.closeTimer = window.setTimeout(() => {
+        receptionistRoot.hidden = true;
+        receptionistRoot.classList.remove("is-closing");
+        receptionistReopen.hidden = false;
+        const focusTarget = receptionistState.previousFocus instanceof HTMLElement && receptionistState.previousFocus.isConnected
+          ? receptionistState.previousFocus
+          : receptionistReopen;
+        focusTarget.focus();
+      }, 220);
+    };
+    const openGreeting = opener => {
+      window.clearTimeout(receptionistState.closeTimer);
+      receptionistState.previousFocus = opener instanceof HTMLElement ? opener : receptionistReopen;
+      const isInitialGreeting = !receptionistState.hasOpened;
+      receptionistState.isOpen = true;
+      receptionistState.hasOpened = true;
+      receptionistReopen.hidden = true;
+      renderGreeting({ announce: !isInitialGreeting });
+      receptionistRoot.hidden = false;
+      receptionistRoot.classList.remove("is-closing");
+      document.body.classList.add("showroom-receptionist-open");
+      setBackgroundInert(true);
+      window.requestAnimationFrame(() => {
+        receptionistRoot.classList.add("is-open");
+        window.requestAnimationFrame(focusFirstChoice);
+      });
+    };
+    const focusableInGuide = () => Array.from(receptionistDialog.querySelectorAll(
+      "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"
+    )).filter(element => !element.hidden && element.getClientRects().length > 0);
+
+    receptionistRoot.addEventListener("click", event => {
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-intent], [data-receptionist-room], [data-receptionist-tour], [data-receptionist-another]") : null;
+      if (!target) return;
+      if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) {
+        closeGuide();
+        return;
+      }
+      if (target.hasAttribute("data-receptionist-back")) {
+        renderGreeting();
+        focusFirstChoice();
+        return;
+      }
+      if (target.hasAttribute("data-receptionist-intent")) {
+        renderCategory(target.getAttribute("data-receptionist-intent"));
+        focusFirstChoice();
+        return;
+      }
+      if (target.hasAttribute("data-receptionist-room")) {
+        const room = dataMap[target.getAttribute("data-receptionist-room")];
+        if (room) {
+          activateVenue(room.id);
+          renderVenue(room);
+          focusFirstChoice();
+        } else {
+          renderCategory(receptionistState.activeCategory);
+          focusFirstChoice();
+        }
+        return;
+      }
+      if (target.hasAttribute("data-receptionist-tour")) {
+        closeGuide();
+        return;
+      }
+      if (target.hasAttribute("data-receptionist-another")) {
+        renderCategory(receptionistState.activeCategory);
+        focusFirstChoice();
+      }
+    });
+    receptionistReopen.addEventListener("click", () => openGreeting(receptionistReopen));
+    document.addEventListener("keydown", event => {
+      if (!receptionistState.isOpen) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeGuide();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = focusableInGuide();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    receptionistState.hasOpened = false;
+    window.setTimeout(() => {
+      if (!receptionistState.hasOpened) openGreeting();
+    }, 0);
+  }
+
+  // --- 10. Photo Gallery Swap Mode ---
   btnViewPhotos.addEventListener("click", () => {
     window.scrollTo({ top: 0, behavior: "instant" });
     wrapper.classList.add("mode-photos");

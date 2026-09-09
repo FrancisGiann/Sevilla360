@@ -344,6 +344,38 @@ window.process = {
 
     </div>
 
+    <!-- Virtual receptionist: the showroom remains visible while the guide introduces the available tours. -->
+    <div class="showroom-receptionist" id="showroom-receptionist" hidden>
+        <div class="showroom-receptionist-scrim" data-receptionist-close aria-hidden="true"></div>
+        <div class="showroom-receptionist-dialog" role="dialog" aria-modal="true"
+            aria-labelledby="receptionist-title" aria-describedby="receptionist-message" tabindex="-1">
+            <div class="receptionist-portrait-wrap">
+                <img class="receptionist-portrait" src="assets/img/showroom-receptionist.webp"
+                    alt="" aria-hidden="true" width="1024" height="1536">
+            </div>
+            <div class="receptionist-panel">
+                <div class="receptionist-panel-head">
+                    <div>
+                        <p class="receptionist-label">M.I. Sevilla Resort &amp; Events Place</p>
+                        <h2 id="receptionist-title">Welcome</h2>
+                    </div>
+                    <button type="button" class="receptionist-skip" data-receptionist-skip>Skip introduction</button>
+                </div>
+                <p class="receptionist-message" id="receptionist-message">
+                    Welcome to M.I. Sevilla Resort &amp; Events Place. I’m your virtual receptionist. How may I help you today?
+                </p>
+                <p class="receptionist-live" id="receptionist-live" aria-live="polite" aria-atomic="true"></p>
+                <div class="receptionist-choices" id="receptionist-choices" role="group" aria-label="Receptionist choices">
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Event Hall">Plan an event</button>
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Hotel Room">Book a hotel room</button>
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Resort Villa">Explore a resort villa</button>
+                    <button type="button" class="receptionist-choice receptionist-choice-secondary" data-receptionist-close>Just look around</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <button type="button" class="receptionist-reopen" id="receptionist-reopen" hidden>Ask receptionist</button>
+
     <!-- Mobile Info Modal -->
     <div class="modal-overlay" id="info-modal" style="z-index: 999999;">
         <!-- Extremely high z-index to sit over fullscreen! -->

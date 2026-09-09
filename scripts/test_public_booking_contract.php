@@ -15,6 +15,9 @@ $lock_dates_php = $read('actions/bookings/lock_dates.php');
 $admin_status_php = $read('actions/admin/update_booking_status.php');
 $index_css = $read('assets/css/index.css');
 $ui_refinement_css = $read('assets/css/ui-refinement.css');
+$showroom_php = $read('showroom.php');
+$showroom_js = $read('assets/js/showroom.js');
+$showroom_css = $read('assets/css/showroom.css');
 $submit_start = strpos($booking_js, 'async submitOnlineBooking()');
 $submit_body = $submit_start === false ? '' : substr($booking_js, $submit_start);
 $guest_redirect_position = strpos($submit_body, "window.location.href = 'auth.php?destination=booking_resume';");
@@ -70,6 +73,12 @@ $checks = [
     'invalid or post-setup lock success releases the fresh hold' => $lock_method_start !== false && str_contains(substr($booking_js, $lock_method_start), 'let serverLockCreated = false;') && str_contains(substr($booking_js, $lock_method_start), 'serverLockCreated = true;') && str_contains(substr($booking_js, $lock_method_start), "fetch('actions/bookings/unlock_dates.php'") && str_contains(substr($booking_js, $lock_method_start), "The server did not return a valid hold expiry."),
     'admin override cancellation path is retired' => !preg_match('/force' . '.?' . 'cancel/i', $admin_status_php . $read('includes/admin-page/admin_bookings.php') . $read('assets/js/admin-page/admin_bookings.js')) && str_contains($admin_status_php, "throw new Exception('Invalid action provided.')"),
     'ordinary admin cancellation only accepts pending bookings' => $cancel_position !== false && str_contains($cancel_body, "locked_booking['booking_status'] ?? '') !== 'Pending'") && str_contains($cancel_body, 'Only Pending bookings can be declined or cancelled.'),
+    'showroom receptionist exposes an accessible skippable dialog' => str_contains($showroom_php, 'id="showroom-receptionist"') && str_contains($showroom_php, 'role="dialog"') && str_contains($showroom_php, 'aria-modal="true"') && str_contains($showroom_php, 'aria-labelledby="receptionist-title"') && str_contains($showroom_php, 'aria-describedby="receptionist-message"') && str_contains($showroom_php, 'data-receptionist-skip') && str_contains($showroom_php, 'id="receptionist-reopen"'),
+    'showroom receptionist includes the approved intent flow hooks' => str_contains($showroom_php, 'data-receptionist-intent="Event Hall"') && str_contains($showroom_php, 'data-receptionist-intent="Hotel Room"') && str_contains($showroom_php, 'data-receptionist-intent="Resort Villa"') && str_contains($showroom_php, 'data-receptionist-close') && str_contains($showroom_js, 'tourableVenues') && str_contains($showroom_js, 'pano_urls') && str_contains($showroom_js, 'room.gallery'),
+    'showroom receptionist builds dynamic facts as safe DOM text' => str_contains($showroom_js, 'receptionistChoices.replaceChildren') && str_contains($showroom_js, 'document.createElement("dl")') && str_contains($showroom_js, 'detail.textContent = value') && str_contains($showroom_js, 'button.textContent = label') && !str_contains($showroom_js, 'receptionistChoices.innerHTML'),
+    'showroom dropdown and receptionist share venue activation' => substr_count($showroom_js, 'function activateVenue(roomId)') === 1 && str_contains($showroom_js, 'activateVenue(this.getAttribute("data-room"))') && str_contains($showroom_js, 'activateVenue(room.id)') && str_contains($showroom_js, 'activateVenue(targetItem.getAttribute("data-room"))'),
+    'showroom receptionist reuses the venue booking contract' => str_contains($showroom_js, 'function getBookingUrl(room)') && str_contains($showroom_js, 'venue_id: String(room.venue_id)') && str_contains($showroom_js, 'category: String(room.category || "")') && str_contains($showroom_js, 'room_type: String(room.room_type || "")') && str_contains($showroom_js, 'venue_name: String(room.venue_name || "")') && str_contains($showroom_js, 'bookLink.href = getBookingUrl(room)'),
+    'showroom receptionist ships responsive focus and reduced-motion states' => str_contains($showroom_css, '.showroom-receptionist.is-open') && str_contains($showroom_css, '.receptionist-reopen') && str_contains($showroom_css, '@media (max-width: 700px)') && str_contains($showroom_css, '@media (prefers-reduced-motion: reduce)') && str_contains($showroom_js, 'event.key === "Escape"') && str_contains($showroom_js, 'event.key !== "Tab"'),
 ];
 
 $failed = 0;
