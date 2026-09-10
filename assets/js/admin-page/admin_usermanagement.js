@@ -14,6 +14,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const customerFilters = document.querySelectorAll(".cust-filter");
     const staffModal = document.getElementById("staffModal");
     const historyModal = document.getElementById("historyModal");
+    const promoteModal = document.getElementById("promoteStaffModal");
+    const promoteForm = document.getElementById("promoteStaffForm");
+    const promotePassword = document.getElementById("promoteStaffPassword");
+    const promoteError = document.getElementById("promoteStaffError");
+    const promoteButton = document.getElementById("confirmPromoteStaff");
     const staffForm = document.getElementById("staffForm");
     const formError = document.getElementById("staffFormError");
     const saveButton = document.getElementById("btnSaveStaff");
@@ -27,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeModal = null;
     let lastFocusedElement = null;
     let staffSubmitting = false;
+    let promotionSubmitting = false;
 
     const notify = (title, message, type = "info") => {
         if (typeof window.showAlert === "function") window.showAlert(title, message, type);
@@ -164,6 +170,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (historyBody) historyBody.replaceChildren();
     }
 
+    function closePromoteModal() {
+        closeModal(promoteModal);
+        promoteForm?.reset();
+        if (promoteError) { promoteError.textContent = ""; promoteError.hidden = true; }
+    }
+
     function modalFocusableElements(modal) {
         if (!modal) return [];
         return [...modal.querySelectorAll(
@@ -192,13 +204,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll(".close-staff-modal").forEach((button) => button.addEventListener("click", closeStaffModal));
     document.querySelectorAll(".close-history-modal").forEach((button) => button.addEventListener("click", closeHistoryModal));
-    [staffModal, historyModal].forEach((modal) => modal?.addEventListener("click", (event) => {
-        if (event.target === modal) modal === staffModal ? closeStaffModal() : closeHistoryModal();
+    [staffModal, historyModal, promoteModal].forEach((modal) => modal?.addEventListener("click", (event) => {
+        if (event.target === modal) modal === staffModal ? closeStaffModal() : modal === historyModal ? closeHistoryModal() : closePromoteModal();
     }));
     document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && activeModal) {
             if (activeModal === staffModal) closeStaffModal();
-            else closeHistoryModal();
+            else if (activeModal === historyModal) closeHistoryModal();
+            else closePromoteModal();
             return;
         }
         trapModalFocus(event);
@@ -347,7 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const isArchive = action === "archive";
         const title = isArchive ? "Archive staff account" : "Restore staff account";
         const message = isArchive
-            ? "Archive this staff account? Sign-in access will be disabled, while the account details and records are retained."
+            ? `Archive ${button.dataset.name || "this staff account"}? Sign-in access will be blocked, while the account details and records are retained.`
             : "Restore this staff account? Sign-in access will be enabled again.";
         if (!await confirmAction(title, message)) return;
         const originalText = button.textContent;
@@ -366,6 +379,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll(".btn-staff-lifecycle").forEach((button) => {
         button.addEventListener("click", () => handleStaffLifecycle(button));
+    });
+
+    function openPromoteModal(button) {
+        if (!promoteModal || !promoteForm || promotionSubmitting) return;
+        document.getElementById("promoteStaffUserId").value = button.dataset.id || "";
+        document.getElementById("promoteStaffName").textContent = button.dataset.name || "this staff account";
+        promotePassword.value = "";
+        promoteError.textContent = "";
+        promoteError.hidden = true;
+        openModal(promoteModal, button);
+        window.setTimeout(() => promotePassword.focus(), 0);
+    }
+    document.querySelectorAll(".btn-staff-promote").forEach((button) => button.addEventListener("click", () => openPromoteModal(button)));
+    document.querySelectorAll(".close-promote-staff-modal").forEach((button) => button.addEventListener("click", closePromoteModal));
+    promoteForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (promotionSubmitting || !promoteForm.reportValidity()) return;
+        promotionSubmitting = true;
+        promoteButton.disabled = true;
+        promoteButton.textContent = "Promoting…";
+        promoteError.hidden = true;
+        try {
+            const data = await requestJson("actions/admin/manage_staff.php", {
+                action: "promote",
+                user_id: document.getElementById("promoteStaffUserId").value,
+                current_password: promotePassword.value
+            });
+            closePromoteModal();
+            notify("Staff account promoted", data.message, "success");
+            window.location.reload();
+        } catch (error) {
+            promoteError.textContent = error.message || "The promotion could not be completed.";
+            promoteError.hidden = false;
+        } finally {
+            promotionSubmitting = false;
+            promoteButton.disabled = false;
+            promoteButton.textContent = "Promote to admin";
+        }
     });
 
     function historyRow(values, className = "") {

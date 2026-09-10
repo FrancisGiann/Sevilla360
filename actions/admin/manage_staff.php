@@ -5,6 +5,7 @@ header('Content-Type: application/json; charset=UTF-8');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
+require_once __DIR__ . '/../../includes/rate_limit.php';
 
 final class StaffManagementException extends RuntimeException
 {
@@ -136,6 +137,22 @@ function staff_management_find_target(mysqli $conn, int $userId, bool $forUpdate
     return $target;
 }
 
+function staff_management_current_admin_password(mysqli $conn): string
+{
+    $adminId = (int)($_SESSION['user_id'] ?? 0);
+    $statement = staff_management_prepare($conn, "SELECT u.password_hash
+                                                   FROM users u
+                                                   INNER JOIN staff s ON s.user_id = u.id
+                                                   WHERE u.id = ? AND u.role = 'admin' AND s.status = 'active'
+                                                   LIMIT 1");
+    $statement->bind_param('i', $adminId);
+    if (!$statement->execute()) throw new RuntimeException('Unable to verify the acting administrator.');
+    $row = $statement->get_result()->fetch_assoc();
+    $statement->close();
+    $hash = $row['password_hash'] ?? '';
+    return is_string($hash) ? $hash : '';
+}
+
 function staff_management_audit(mysqli $conn, string $action): void
 {
     $statement = staff_management_prepare($conn, "INSERT INTO audit_logs (user_id, module, action, ip_address)
@@ -170,13 +187,27 @@ if ($action === 'delete') {
 if ($action === 'edit') {
     staff_management_error(422, 'Staff profiles are read-only in User Management. Staff may update their own name, phone, and password from Settings.');
 }
-if (!in_array($action, ['add', 'archive', 'restore'], true)) {
+if (!in_array($action, ['add', 'archive', 'restore', 'promote'], true)) {
     staff_management_error(422, 'Invalid staff action.');
 }
 if ($action === 'add' && array_key_exists('role', $data)) {
     $requestedRole = $data['role'];
     if (!is_string($requestedRole) || strcasecmp(trim($requestedRole), 'staff') !== 0) {
         staff_management_error(422, 'Only staff accounts can be created from User Management.');
+    }
+}
+
+if ($action === 'promote') {
+    $currentPassword = $data['current_password'] ?? null;
+    if (!is_string($currentPassword) || $currentPassword === '' || strlen($currentPassword) > 255) {
+        staff_management_error(422, 'Enter your current administrator password to promote a staff account.');
+    }
+    if (!check_rate_limit($conn, 'staff_promotion_confirmation', 5, 15)) {
+        staff_management_error(429, 'Too many password confirmation attempts. Please try again in 15 minutes.');
+    }
+    $adminHash = staff_management_current_admin_password($conn);
+    if ($adminHash === '' || !password_verify($currentPassword, $adminHash)) {
+        staff_management_error(403, 'The administrator password could not be confirmed.');
     }
 }
 
@@ -218,6 +249,22 @@ try {
 
         staff_management_audit($conn, "Created staff account {$profile['email']}");
         $message = 'Staff account added successfully.';
+    } elseif ($action === 'promote') {
+        $userId = staff_management_user_id($data);
+        $target = staff_management_find_target($conn, $userId);
+        if ($target['status'] !== 'active') {
+            throw new StaffManagementException('Only active staff accounts can be promoted.', 409);
+        }
+        $promoteStatement = staff_management_prepare($conn, "UPDATE users SET role = 'admin' WHERE id = ? AND role = 'staff'");
+        $promoteStatement->bind_param('i', $userId);
+        if (!$promoteStatement->execute() || $promoteStatement->affected_rows !== 1) {
+            throw new StaffManagementException('That staff account is no longer eligible for promotion.', 409);
+        }
+        $promoteStatement->close();
+        $actorId = (int)($_SESSION['user_id'] ?? 0);
+        staff_management_audit($conn, "Promoted staff account {$target['full_name']} ({$target['email']}, target user ID {$userId}) to admin; actor user ID {$actorId}");
+        clear_rate_limit($conn, 'staff_promotion_confirmation');
+        $message = 'Staff account promoted to administrator. The new role takes effect on the next sign-in.';
     } else {
         $userId = staff_management_user_id($data);
         if ($action === 'archive' && $userId === (int)($_SESSION['user_id'] ?? 0)) {

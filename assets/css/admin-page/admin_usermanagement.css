@@ -188,6 +188,7 @@
 .action-restore {
   color: #4a7c59;
 }
+.action-promote { color: #8c602d; }
 /* --- Filter Pills (Matches Bookings Design) --- */
 .filter-pills {
   display: flex;
@@ -518,6 +519,8 @@
 body.um-modal-open {
   overflow: hidden;
 }
+
+.um-modal-content strong { color: var(--color-dark); }
 
 .um-history-message td {
   color: var(--color-dark-light);

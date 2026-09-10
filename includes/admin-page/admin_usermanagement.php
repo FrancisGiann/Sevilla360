@@ -51,7 +51,7 @@ $today = date('Y-m-d');
 
     <div class="um-card">
         <div class="staff-filter-controls" id="staffFilterControls" role="group" aria-label="Staff account status">
-            <span class="staff-filter-label">Show</span>
+            <span class="staff-filter-label">Account access</span>
             <button type="button" class="staff-filter-btn active" data-staff-filter="active" aria-pressed="true">Active</button>
             <button type="button" class="staff-filter-btn" data-staff-filter="archived" aria-pressed="false">Archived</button>
             <button type="button" class="staff-filter-btn" data-staff-filter="all" aria-pressed="false">All</button>
@@ -118,9 +118,10 @@ $today = date('Y-m-d');
                         <?php if ($staff_id === (int)($_SESSION['user_id'] ?? 0)): ?>
                             <span class="um-current-account">Current account</span>
                         <?php elseif ($staff_status === 'active'): ?>
-                            <button type="button" class="action-archive btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-action="archive">Archive</button>
+                            <button type="button" class="action-archive btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="archive">Archive</button>
+                            <button type="button" class="action-promote btn-staff-promote" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="promote" aria-haspopup="dialog" aria-controls="promoteStaffModal">Promote to admin</button>
                         <?php else: ?>
-                            <button type="button" class="action-restore btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-action="restore">Restore</button>
+                            <button type="button" class="action-restore btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="restore">Restore</button>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -276,6 +277,27 @@ $today = date('Y-m-d');
             <div class="um-modal-actions">
                 <button type="button" class="btn btn-outline close-staff-modal">Cancel</button>
                 <button type="submit" class="btn btn-primary" id="btnSaveStaff">Create Staff Account</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Irreversible staff promotion dialog. The password field is intentionally
+     separate from the read-only staff profile dialog. -->
+<div class="um-modal-overlay" id="promoteStaffModal" aria-hidden="true">
+    <div class="um-modal-content" role="dialog" aria-modal="true" aria-labelledby="promoteStaffTitle" aria-describedby="promoteStaffDescription">
+        <h3 class="um-modal-title" id="promoteStaffTitle">Promote staff account</h3>
+        <p class="um-modal-description" id="promoteStaffDescription">Promoting <strong id="promoteStaffName"></strong> is irreversible in User Management. This changes the account role to administrator; the staff profile and active status are retained, and the new role takes effect on the next sign-in.</p>
+        <form id="promoteStaffForm">
+            <input type="hidden" id="promoteStaffUserId" value="">
+            <div class="um-form-group">
+                <label for="promoteStaffPassword">Your current administrator password</label>
+                <input type="password" id="promoteStaffPassword" autocomplete="current-password" required maxlength="255">
+            </div>
+            <div class="um-form-error" id="promoteStaffError" role="alert" hidden></div>
+            <div class="um-modal-actions">
+                <button type="button" class="btn btn-outline close-promote-staff-modal">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="confirmPromoteStaff">Promote to admin</button>
             </div>
         </form>
     </div>
