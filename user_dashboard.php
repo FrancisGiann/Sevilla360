@@ -977,7 +977,8 @@ $dashboard_status = static function (array $booking): array {
                     <?php for ($ratingOption = 1; $ratingOption <= 5; $ratingOption++): ?>
                     <label class="review-rating-option" for="review-rating-<?= $ratingOption ?>">
                         <input class="review-rating-input" type="radio" id="review-rating-<?= $ratingOption ?>" name="review_rating" value="<?= $ratingOption ?>" aria-label="<?= $ratingOption ?> out of 5">
-                        <span><?= $ratingOption ?></span>
+                        <i class="fa-solid fa-star review-star" aria-hidden="true"></i>
+                        <span class="sr-only"><?= $ratingOption ?> out of 5</span>
                     </label>
                     <?php endfor; ?>
                 </div>
