@@ -250,6 +250,162 @@ document.addEventListener("DOMContentLoaded", function () {
     actions.append(details, book); body.append(title, kind, rate, rating, facts, actions); article.appendChild(body);
     return article;
   };
+  const topRatedSection = document.getElementById('top-rated');
+  const reviewTrack = document.getElementById('idx-review-track');
+  const reviewViewport = document.getElementById('idx-review-viewport');
+  const reviewControls = document.getElementById('idx-review-controls');
+  const reviewDots = document.querySelector('.idx-review-dots');
+  const reviewPrev = document.querySelector('.idx-review-prev');
+  const reviewNext = document.querySelector('.idx-review-next');
+  const placeholderImage = 'assets/img/placeholder.jpg';
+  const catalogVenues = Object.values(catalog).flatMap(categoryVenues => Array.isArray(categoryVenues) ? categoryVenues : []);
+  const catalogByReviewKey = new Map(catalogVenues.map(venue => [String(venue.review_key || venue.key || ''), venue]));
+  const reviewCarouselState = { cards: [], page: 0, visible: 1, pageCount: 1 };
+
+  const reviewVisibleCount = () => window.innerWidth > 1024 ? 3 : (window.innerWidth >= 768 ? 2 : 1);
+  const setReviewImageFallback = image => {
+    image.onerror = null;
+    image.src = placeholderImage;
+  };
+  const toPublicReview = review => {
+    if (!review || typeof review !== 'object') return null;
+    const reviewText = String(review.review_text ?? '').trim();
+    const reviewer = String(review.reviewer ?? '').trim();
+    const reviewKey = String(review.review_key ?? '').trim();
+    const rating = Number(review.rating);
+    if (!reviewText || !reviewer || !reviewKey || !Number.isInteger(rating) || rating < 1 || rating > 5) return null;
+    const venue = catalogByReviewKey.get(reviewKey) || {};
+    const venueName = String(venue.venue_name || venue.building_name || review.venue_name || 'Sevilla360 venue').trim();
+    const category = String(venue.category || review.category || '').trim();
+    const roomType = String(venue.room_type || review.room_type || '').trim();
+    return {
+      reviewText,
+      reviewer,
+      rating,
+      createdAt: String(review.created_at ?? ''),
+      reviewKey,
+      venueName: venueName || 'Sevilla360 venue',
+      category,
+      roomType,
+      image: String(venue.images?.[0] || placeholderImage),
+    };
+  };
+  const makeTestimonialCard = review => {
+    const article = document.createElement('article');
+    article.className = 'idx-testimonial-card';
+    const image = document.createElement('img');
+    image.src = review.image;
+    image.alt = review.roomType ? `${review.venueName}, ${review.roomType}` : review.venueName;
+    image.loading = 'lazy';
+    image.addEventListener('error', () => setReviewImageFallback(image), {once: true});
+    const body = document.createElement('div');
+    body.className = 'idx-testimonial-body';
+    const rating = document.createElement('div');
+    rating.className = 'idx-testimonial-rating';
+    rating.setAttribute('aria-label', `${review.rating} out of 5 stars`);
+    for (let star = 1; star <= 5; star += 1) {
+      const icon = document.createElement('i');
+      icon.className = `fa-solid fa-star ${star <= review.rating ? 'is-filled' : 'is-empty'}`;
+      icon.setAttribute('aria-hidden', 'true');
+      rating.appendChild(icon);
+    }
+    const score = document.createElement('span');
+    score.className = 'idx-testimonial-rating-text';
+    score.textContent = `${review.rating} out of 5 stars`;
+    rating.appendChild(score);
+    const quote = document.createElement('blockquote');
+    quote.className = 'idx-testimonial-quote';
+    quote.textContent = review.reviewText;
+    const footer = document.createElement('footer');
+    footer.className = 'idx-testimonial-footer';
+    const reviewer = document.createElement('strong');
+    reviewer.textContent = review.reviewer;
+    const venue = document.createElement('span');
+    venue.textContent = review.roomType ? `${review.venueName} · ${review.roomType}` : `${review.venueName} · ${review.category}`;
+    footer.append(reviewer, venue);
+    body.append(rating, quote, footer);
+    article.append(image, body);
+    return article;
+  };
+  const updateReviewCarousel = (requestedPage = reviewCarouselState.page) => {
+    if (!reviewTrack || !reviewCarouselState.cards.length) return;
+    reviewCarouselState.visible = reviewVisibleCount();
+    reviewCarouselState.pageCount = Math.max(1, Math.ceil(reviewCarouselState.cards.length / reviewCarouselState.visible));
+    reviewCarouselState.page = Math.max(0, Math.min(requestedPage, reviewCarouselState.pageCount - 1));
+    reviewTrack.style.setProperty('--idx-review-visible', String(reviewCarouselState.visible));
+    reviewTrack.style.transform = `translateX(-${reviewCarouselState.page * 100}%)`;
+    reviewCarouselState.cards.forEach((card, index) => {
+      const isVisible = index >= reviewCarouselState.page * reviewCarouselState.visible && index < (reviewCarouselState.page + 1) * reviewCarouselState.visible;
+      card.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+    });
+    if (reviewPrev) reviewPrev.disabled = reviewCarouselState.page === 0;
+    if (reviewNext) reviewNext.disabled = reviewCarouselState.page >= reviewCarouselState.pageCount - 1;
+    if (reviewControls) reviewControls.hidden = reviewCarouselState.cards.length <= reviewCarouselState.visible;
+    if (reviewDots) {
+      reviewDots.replaceChildren();
+      for (let page = 0; page < reviewCarouselState.pageCount; page += 1) {
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = 'idx-review-dot';
+        dot.setAttribute('aria-label', `Show guest review page ${page + 1} of ${reviewCarouselState.pageCount}`);
+        if (page === reviewCarouselState.page) dot.setAttribute('aria-current', 'page');
+        dot.addEventListener('click', () => updateReviewCarousel(page));
+        reviewDots.appendChild(dot);
+      }
+    }
+  };
+  const renderFeaturedReviews = reviews => {
+    if (!topRatedSection || !reviewTrack) return;
+    const usableReviews = reviews.map(toPublicReview).filter(Boolean).slice(0, 12);
+    if (!usableReviews.length) {
+      topRatedSection.hidden = true;
+      return;
+    }
+    reviewTrack.replaceChildren();
+    reviewCarouselState.cards = usableReviews.map(makeTestimonialCard);
+    reviewCarouselState.cards.forEach(card => reviewTrack.appendChild(card));
+    reviewCarouselState.visible = reviewVisibleCount();
+    reviewCarouselState.page = 0;
+    updateReviewCarousel(0);
+    topRatedSection.hidden = false;
+  };
+  if (topRatedSection && reviewTrack && reviewViewport) {
+    fetch('actions/public/get_featured_reviews.php', {headers: {'X-Sevilla-Background': 'true'}})
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Featured reviews request failed')))
+      .then(data => data?.success && Array.isArray(data.reviews) ? renderFeaturedReviews(data.reviews) : renderFeaturedReviews([]))
+      .catch(() => renderFeaturedReviews([]));
+
+    reviewPrev?.addEventListener('click', () => updateReviewCarousel(reviewCarouselState.page - 1));
+    reviewNext?.addEventListener('click', () => updateReviewCarousel(reviewCarouselState.page + 1));
+    reviewViewport.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') { event.preventDefault(); updateReviewCarousel(reviewCarouselState.page - 1); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); updateReviewCarousel(reviewCarouselState.page + 1); }
+    });
+    let touchStart = null;
+    const swipeThreshold = 56;
+    reviewViewport.addEventListener('touchstart', event => {
+      const touch = event.changedTouches[0];
+      touchStart = touch ? {x: touch.clientX, y: touch.clientY} : null;
+    }, {passive: true});
+    reviewViewport.addEventListener('touchend', event => {
+      if (!touchStart) return;
+      const touch = event.changedTouches[0];
+      const deltaX = (touch?.clientX ?? touchStart.x) - touchStart.x;
+      const deltaY = (touch?.clientY ?? touchStart.y) - touchStart.y;
+      if (Math.abs(deltaX) >= swipeThreshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.25) updateReviewCarousel(reviewCarouselState.page + (deltaX < 0 ? 1 : -1));
+      touchStart = null;
+    }, {passive: true});
+    let reviewResizeFrame = null;
+    window.addEventListener('resize', () => {
+      if (!reviewCarouselState.cards.length || reviewResizeFrame) return;
+      reviewResizeFrame = window.requestAnimationFrame(() => {
+        reviewResizeFrame = null;
+        const priorFirstVisible = reviewCarouselState.page * reviewCarouselState.visible;
+        const nextVisible = reviewVisibleCount();
+        updateReviewCarousel(Math.round(priorFirstVisible / nextVisible));
+      });
+    }, {passive: true});
+  }
   const updateCarousel = (section, cards, index) => {
     const selected = (index + cards.length) % cards.length;
     const track = section.querySelector('.idx-catalog-track');

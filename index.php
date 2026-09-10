@@ -143,6 +143,23 @@ include 'includes/header.php';
         </div>
     </section>
 
+    <section class="idx-top-rated" id="top-rated" aria-labelledby="top-rated-title" hidden>
+        <div class="idx-top-rated-head">
+            <h2 id="top-rated-title">What guests are saying</h2>
+            <p>Thoughtful stays and celebrations, remembered in their own words.</p>
+        </div>
+        <div class="idx-review-carousel" id="idx-review-carousel">
+            <div class="idx-review-viewport" id="idx-review-viewport" tabindex="0" role="region" aria-label="Guest reviews carousel" aria-live="polite">
+                <div class="idx-review-track" id="idx-review-track"></div>
+            </div>
+            <div class="idx-review-controls" id="idx-review-controls" hidden>
+                <button type="button" class="idx-review-prev" aria-label="Previous guest review page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                <div class="idx-review-dots" role="group" aria-label="Guest review pages"></div>
+                <button type="button" class="idx-review-next" aria-label="Next guest review page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+            </div>
+        </div>
+    </section>
+
     <!-- ===================== EXPERIENCES ===================== -->
     <section class="idx-experiences" id="experiences">
         <div class="idx-experiences-head reveal">
@@ -261,7 +278,7 @@ include 'includes/header.php';
 
     <script>
     window.publicVenueCatalog = <?php echo json_encode($public_venues, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES); ?>;
-    </script>
+</script>
 
 </main>
 
