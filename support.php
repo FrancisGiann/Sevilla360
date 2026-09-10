@@ -31,6 +31,14 @@ if ($support_query) {
     }
 }
 $policy_lines = preg_split('/\r\n|\r|\n/', trim((string)$support_settings['biz_policies'])) ?: [];
+// Older installations may still have one retired policy line in the CMS
+// value. Keep the cleanup non-destructive and prevent that exact value from rendering.
+$retired_policy_hash = '6c400fa8adad20b245d087d1160415576909c1b7b3e4e036b7b1018c06b33a74';
+$policy_lines = array_values(array_filter($policy_lines, static function (string $line) use ($retired_policy_hash): bool {
+    $without_marker = (string)preg_replace('/^[^a-z0-9]+/i', '', $line);
+    $normalized = strtolower((string)preg_replace('/\s+/', ' ', trim($without_marker)));
+    return !hash_equals($retired_policy_hash, hash('sha256', $normalized));
+}));
 $faq_items = json_decode((string)$support_settings['support_faq_json'], true);
 $faq_items = is_array($faq_items) ? array_values(array_filter($faq_items, static fn($item) => is_array($item) && trim((string)($item['question'] ?? '')) !== '')) : [];
 $privacy_paragraphs = preg_split('/\r\n\r\n|\r\r|\n\n/', trim((string)$support_settings['support_privacy'])) ?: [];
@@ -39,13 +47,19 @@ include 'includes/header.php';
 ?>
 <main class="support-page">
     <section class="support-hero">
-        <p class="support-eyebrow">SEVILLA360</p>
         <h1>Support &amp; Information</h1>
         <p><?php echo htmlspecialchars($support_settings['support_intro'], ENT_QUOTES, 'UTF-8'); ?></p>
+        <nav class="support-anchor-nav" aria-label="Support sections">
+            <a href="#contact">Contact</a>
+            <a href="#booking-policy">Before you reserve</a>
+            <a href="#faqs">FAQs</a>
+            <a href="#privacy">Privacy</a>
+            <a href="#terms">Terms</a>
+        </nav>
     </section>
     <div class="support-grid">
         <section class="support-card" id="contact">
-            <p class="support-eyebrow">CONTACT</p><h2><?php echo htmlspecialchars($support_settings['support_contact_heading'], ENT_QUOTES, 'UTF-8'); ?></h2>
+            <h2><?php echo htmlspecialchars($support_settings['support_contact_heading'], ENT_QUOTES, 'UTF-8'); ?></h2>
             <p><?php echo htmlspecialchars($support_settings['support_contact_description'], ENT_QUOTES, 'UTF-8'); ?></p>
             <dl class="support-contact-list">
                 <div><dt>Email</dt><dd><a href="mailto:<?php echo htmlspecialchars($support_settings['biz_email'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($support_settings['biz_email']); ?></a></dd></div>
@@ -54,19 +68,19 @@ include 'includes/header.php';
             </dl>
         </section>
         <section class="support-card" id="booking-policy">
-            <p class="support-eyebrow">BOOKING POLICY</p><h2>Before you reserve</h2>
-            <ul><?php foreach ($policy_lines as $line): $line = trim(preg_replace('/^[•\-*]\s*/', '', $line)); if ($line === '') continue; ?><li><?php echo htmlspecialchars($line); ?></li><?php endforeach; ?></ul>
+            <h2>Before you reserve</h2>
+            <ul><?php foreach ($policy_lines as $line): $line = trim((string)preg_replace('/^[^a-z0-9]+/i', '', $line)); if ($line === '') continue; ?><li><?php echo htmlspecialchars($line); ?></li><?php endforeach; ?></ul>
         </section>
         <section class="support-card" id="faqs">
-            <p class="support-eyebrow">FAQS</p><h2>Frequently asked questions</h2>
+            <h2>Frequently asked questions</h2>
             <div class="support-faq"><?php foreach ($faq_items as $faq): ?><details><summary><?php echo htmlspecialchars((string)$faq['question'], ENT_QUOTES, 'UTF-8'); ?></summary><p><?php echo htmlspecialchars((string)($faq['answer'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></p></details><?php endforeach; ?></div>
         </section>
         <section class="support-card" id="privacy">
-            <p class="support-eyebrow">PRIVACY</p><h2>Privacy policy</h2>
+            <h2>Privacy policy</h2>
             <?php foreach ($privacy_paragraphs as $paragraph): if (trim($paragraph) === '') continue; ?><p><?php echo htmlspecialchars(trim($paragraph), ENT_QUOTES, 'UTF-8'); ?></p><?php endforeach; ?>
         </section>
         <section class="support-card" id="terms">
-            <p class="support-eyebrow">TERMS</p><h2>Terms and conditions</h2>
+            <h2>Terms and conditions</h2>
             <ol><?php foreach ($terms_lines as $term): if (trim($term) === '') continue; ?><li><?php echo htmlspecialchars(trim($term), ENT_QUOTES, 'UTF-8'); ?></li><?php endforeach; ?></ol>
         </section>
     </div>
