@@ -62,14 +62,13 @@
                 <p class="widget-placeholder-text">Loading maintenance…</p>
             </div>
         </section>
-    </div>
-
-    <!-- Charts Section (Booking Pipeline) -->
-    <div class="charts-grid-2">
-        <div class="chart-card">
-            <h3>Booking Pipeline</h3>
-            <div class="canvas-wrapper"><canvas id="statusChart"></canvas></div>
-        </div>
+        <section class="overview-module overview-pipeline" aria-labelledby="overview-pipeline-title">
+            <div class="module-heading">
+                <h3 id="overview-pipeline-title"><i class="fa-solid fa-chart-pie"></i> Booking Pipeline</h3>
+                <a href="admin_dashboard.php?page=bookings">View bookings</a>
+            </div>
+            <div class="canvas-wrapper canvas-wrapper-compact"><canvas id="statusChart"></canvas></div>
+        </section>
     </div>
 
     <!-- Operations Section: Today's Itinerary & Major Events Radar -->

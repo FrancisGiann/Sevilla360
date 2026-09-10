@@ -330,9 +330,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const statusCanvas = document.getElementById("statusChart");
         if (statusCanvas) {
             new Chart(statusCanvas.getContext("2d"), {
-                type: "pie",
+                type: "doughnut",
                 data: { labels: ["Confirmed", "Pending", "Cancelled", "Completed"], datasets: [{ data: chartsData.status, backgroundColor: [colors.green, colors.gold, colors.red, "#a8b99d"], borderWidth: 0, hoverOffset: 4 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } } }
+                options: { responsive: true, maintainAspectRatio: false, cutout: "68%", plugins: { legend: { position: "bottom", labels: { usePointStyle: true, boxWidth: 10, boxHeight: 10, padding: 12, font: { size: 10 } } } } }
             });
         }
     }
