@@ -156,6 +156,44 @@ document.addEventListener("DOMContentLoaded", function () {
   let activeImageIndex = 0;
   let previousFocus = null;
   let modalCalendar = null;
+  const scrollLock = { y: 0, htmlOverflow: '', bodyOverflow: '', bodyPaddingRight: '', bodyPosition: '', bodyTop: '', bodyWidth: '', locked: false };
+  const lockPageScroll = () => {
+    if (scrollLock.locked) return;
+    const html = document.documentElement;
+    const body = document.body;
+    scrollLock.y = window.scrollY;
+    scrollLock.htmlOverflow = html.style.overflow;
+    scrollLock.bodyOverflow = body.style.overflow;
+    scrollLock.bodyPaddingRight = body.style.paddingRight;
+    scrollLock.bodyPosition = body.style.position;
+    scrollLock.bodyTop = body.style.top;
+    scrollLock.bodyWidth = body.style.width;
+    const scrollbarWidth = Math.max(0, window.innerWidth - html.clientWidth);
+    html.classList.add('idx-scroll-locked');
+    body.classList.add('idx-modal-open');
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollLock.y}px`;
+    body.style.width = '100%';
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+    scrollLock.locked = true;
+  };
+  const unlockPageScroll = () => {
+    if (!scrollLock.locked) return;
+    const html = document.documentElement;
+    const body = document.body;
+    html.classList.remove('idx-scroll-locked');
+    body.classList.remove('idx-modal-open');
+    html.style.overflow = scrollLock.htmlOverflow;
+    body.style.overflow = scrollLock.bodyOverflow;
+    body.style.paddingRight = scrollLock.bodyPaddingRight;
+    body.style.position = scrollLock.bodyPosition;
+    body.style.top = scrollLock.bodyTop;
+    body.style.width = scrollLock.bodyWidth;
+    scrollLock.locked = false;
+    window.requestAnimationFrame(() => window.scrollTo({left: 0, top: scrollLock.y, behavior: 'auto'}));
+  };
   const money = value => {
     if (value === null || value === undefined || value === '') return 'Rate on request';
     const amount = Number(value);
@@ -359,12 +397,12 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null);
     }
     setModalImage(0); updateContinue();
-    modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); document.body.classList.add('idx-modal-open');
+    modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); lockPageScroll();
     modal.querySelector('.idx-modal-close')?.focus();
   };
   const closeVenueModal = () => {
     if (!modal) return;
-    modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); document.body.classList.remove('idx-modal-open'); activeVenue = null;
+    modal.hidden = true; modal.setAttribute('aria-hidden', 'true'); activeVenue = null; unlockPageScroll();
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   };
   modal?.querySelector('.idx-modal-close')?.addEventListener('click', closeVenueModal);
