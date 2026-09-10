@@ -36,6 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const valBeds = document.getElementById("val-beds");
   const valStatus = document.getElementById("val-status");
   const valRate = document.getElementById("val-rate");
+  const valRating = document.getElementById("val-rating");
   const valDesc = document.getElementById("val-desc");
   const amenitiesGrid = document.querySelector(".amenities-grid");
   const galleryTitle = document.getElementById("gallery-title");
@@ -63,6 +64,81 @@ document.addEventListener("DOMContentLoaded", () => {
       activeRoomId: null,
       closeTimer: null,
       inertElements: []
+  };
+
+  const reviewCache = new Map();
+  const reviewRequests = new Map();
+  const reviewTargets = () => [
+      { aggregate: valRating, list: document.getElementById("showroom-reviews-list") },
+      { aggregate: document.getElementById("info-modal-rating"), list: document.getElementById("info-modal-reviews-list") }
+  ].filter(target => target.aggregate || target.list);
+  const renderReviewMessage = (list, message, className = "showroom-review-state") => {
+      if (!list) return;
+      const state = document.createElement("p");
+      state.className = className;
+      state.textContent = message;
+      list.replaceChildren(state);
+  };
+  const renderReviews = (data) => {
+      const count = Number(data?.rating_count || 0);
+      const average = Number(data?.rating_average || 0);
+      const aggregateText = count > 0
+          ? `${average.toFixed(1)} out of 5 · ${count} review${count === 1 ? "" : "s"}`
+          : "No ratings yet";
+      reviewTargets().forEach(({ aggregate, list }) => {
+          if (aggregate) aggregate.textContent = aggregateText;
+          if (!list) return;
+          list.replaceChildren();
+          const reviews = Array.isArray(data?.reviews) ? data.reviews.slice(0, 3) : [];
+          if (!reviews.length) {
+              renderReviewMessage(list, "No ratings yet");
+              return;
+          }
+          reviews.forEach(review => {
+              const item = document.createElement("article");
+              item.className = "showroom-review";
+              const author = document.createElement("strong");
+              const rating = Math.min(5, Math.max(1, Number(review.rating || 0)));
+              author.textContent = `${String(review.reviewer || "Guest")} · ${rating} out of 5`;
+              const text = document.createElement("p");
+              text.textContent = String(review.review_text || "");
+              item.append(author, text);
+              list.appendChild(item);
+          });
+      });
+  };
+  const setReviewsLoading = () => reviewTargets().forEach(({ aggregate, list }) => {
+      if (aggregate) aggregate.textContent = "Loading ratings…";
+      renderReviewMessage(list, "Loading reviews…");
+  });
+  const setReviewsError = () => reviewTargets().forEach(({ aggregate, list }) => {
+      if (aggregate) aggregate.textContent = "Ratings unavailable";
+      renderReviewMessage(list, "Reviews are unavailable right now. Please try again later.", "showroom-review-state showroom-review-state-error");
+  });
+  const loadVenueReviews = (room) => {
+      const key = String(room?.review_key || "");
+      if (!key) { setReviewsError(); return Promise.resolve(null); }
+      if (reviewCache.has(key)) {
+          const cached = reviewCache.get(key);
+          renderReviews(cached);
+          return Promise.resolve(cached);
+      }
+      if (reviewRequests.has(key)) return reviewRequests.get(key);
+      setReviewsLoading();
+      const request = fetch(`actions/public/get_venue_reviews.php?venue_key=${encodeURIComponent(key)}`, {
+          headers: { "X-Sevilla-Background": "true" }
+      }).then(async response => {
+          const data = await response.json().catch(() => null);
+          if (!response.ok || !data?.success) throw new Error(data?.message || "Review request failed");
+          reviewCache.set(key, data);
+          if (currentRoomId === room.id) renderReviews(data);
+          return data;
+      }).catch(error => {
+          if (currentRoomId === room.id) setReviewsError();
+          return null;
+      }).finally(() => reviewRequests.delete(key));
+      reviewRequests.set(key, request);
+      return request;
   };
 
   // Hide hint instantly on user interaction
@@ -230,6 +306,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("info-modal-cap").innerText = room.capacity;
       document.getElementById("info-modal-beds").innerText = room.beds || 'Not applicable';
       document.getElementById("info-modal-rate").innerText = room.rate;
+      setReviewsLoading();
+      loadVenueReviews(room);
 
       const modalAmenities = document.getElementById("info-modal-amenities");
       if (modalAmenities && amenitiesGrid) {
@@ -354,6 +432,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (valBeds) valBeds.textContent = room.beds || 'Not applicable';
     valStatus.textContent = room.status;
     valRate.textContent = room.rate;
+    setReviewsLoading();
+    loadVenueReviews(room);
     galleryTitle.textContent = room.title + " Gallery";
     if (valDesc) valDesc.textContent = room.description;
     if (topRoomLabel) topRoomLabel.textContent = room.title;

@@ -45,6 +45,9 @@ if ($venues_query) {
         $showroom_data[$safe_id] = [
             'id' => $safe_id,
             'venue_id' => $v['id'],
+            'review_key' => $v['category'] === 'Hotel Room'
+                ? 'hotel-' . md5($v['venue_name'] . ' - ' . ($v['room_type'] ?? ''))
+                : (strtolower((string)$v['category']) === 'event hall' ? 'event-' : 'villa-') . (int)$v['id'],
             'title' => strtoupper($display_name),
             'category' => $v['category'],
             'room_type' => $v['room_type'] ?? '',
@@ -304,6 +307,13 @@ window.process = {
                     <div class="amenity"><i class="fa-solid fa-square-parking"></i> Ample Parking</div>
                     <div class="amenity"><i class="fa-solid fa-wheelchair"></i> Wheelchair Accessible</div>
                 </div>
+                <section class="showroom-reviews" aria-labelledby="showroom-reviews-title">
+                    <h3 class="details-title" id="showroom-reviews-title">GUEST REVIEWS</h3>
+                    <p class="showroom-rating" id="val-rating" aria-live="polite">Loading ratings…</p>
+                    <div class="showroom-reviews-list" id="showroom-reviews-list" aria-live="polite">
+                        <p class="showroom-review-state">Loading reviews…</p>
+                    </div>
+                </section>
                 <div class="detail-row" style="margin-top: 20px;">
                     <span class="d-label">CURRENTLY VIEWING</span>
                     <span class="d-value" id="val-title">--</span>
@@ -400,6 +410,14 @@ window.process = {
                     <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">RATE</span> <span
                             id="info-modal-rate">--</span></div>
                 </div>
+
+                <section class="showroom-reviews showroom-reviews-mobile" aria-labelledby="info-modal-reviews-title">
+                    <h4 id="info-modal-reviews-title">Guest reviews</h4>
+                    <p class="showroom-rating" id="info-modal-rating" aria-live="polite">Loading ratings…</p>
+                    <div class="showroom-reviews-list" id="info-modal-reviews-list" aria-live="polite">
+                        <p class="showroom-review-state">Loading reviews…</p>
+                    </div>
+                </section>
 
                 <!-- We will copy the amenities grid into here dynamically! -->
                 <div id="info-modal-amenities" class="amenities-grid"
