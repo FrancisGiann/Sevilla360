@@ -792,6 +792,13 @@ body.no-scroll .footer {
 .showroom-receptionist.is-reopening.is-ready .receptionist-choices { transition-delay: 130ms; }
 .showroom-receptionist.is-reopening.is-ready .receptionist-choices > * { transition-delay: 170ms; }
 
+.showroom-receptionist.is-settled .receptionist-choices > *,
+.showroom-receptionist.is-settled .receptionist-panel-head > div,
+.showroom-receptionist.is-settled .receptionist-message,
+.showroom-receptionist.is-settled .receptionist-choices {
+  transition-delay: 0ms !important;
+}
+
 .showroom-receptionist.is-closing {
   opacity: 0;
   visibility: visible;
@@ -849,6 +856,68 @@ body.no-scroll .footer {
 
 .showroom-receptionist.is-closing .showroom-receptionist-dialog {
   transform: translateY(.6rem);
+}
+
+/* --- Receptionist Thinking State --- */
+.showroom-receptionist.is-thinking .receptionist-choices {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 200ms ease;
+}
+
+.receptionist-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}
+
+.receptionist-thinking-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-gold, #c4984f);
+  border-radius: 50%;
+  animation: receptionist-dot-pulse 1.2s infinite ease-in-out both;
+}
+
+.receptionist-thinking-dots span:nth-child(1) { animation-delay: 0s; }
+.receptionist-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.receptionist-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes receptionist-dot-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+/* --- Cinematic 360° Tour Handoff --- */
+.showroom-receptionist.is-tour-handoff {
+  pointer-events: none;
+}
+
+.showroom-receptionist.is-tour-handoff .showroom-receptionist-backdrop img {
+  transform: scale(1.5);
+  filter: blur(2px) brightness(.62);
+  transition: transform 600ms cubic-bezier(.25, .8, .25, 1), filter 600ms cubic-bezier(.25, .8, .25, 1);
+}
+
+.showroom-receptionist.is-tour-handoff .receptionist-panel-head,
+.showroom-receptionist.is-tour-handoff .receptionist-choices,
+.showroom-receptionist.is-tour-handoff .receptionist-portrait-wrap,
+.showroom-receptionist.is-tour-handoff .receptionist-skip,
+.showroom-receptionist.is-tour-handoff .receptionist-sound {
+  opacity: 0;
+  transform: translateY(-0.5rem);
+  transition: opacity 450ms ease-out, transform 450ms ease-out;
+  pointer-events: none;
 }
 
 .receptionist-portrait-wrap {
@@ -1125,16 +1194,20 @@ body.no-scroll .footer {
   pointer-events: auto;
   opacity: 1;
   transform: none;
+  transition: none;
 }
 
 .showroom-receptionist.is-choices-revealed .receptionist-choices > * {
   animation: receptionist-choice-resolve 420ms cubic-bezier(.2, .82, .24, 1) both;
 }
 
-.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(2) { animation-delay: 55ms; }
-.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(3) { animation-delay: 110ms; }
-.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(4) { animation-delay: 165ms; }
-.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(5) { animation-delay: 220ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(2) { animation-delay: 120ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(3) { animation-delay: 240ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(4) { animation-delay: 360ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(5) { animation-delay: 480ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(6) { animation-delay: 600ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(7) { animation-delay: 720ms; }
+.showroom-receptionist.is-choices-revealed .receptionist-choices > :nth-child(8) { animation-delay: 840ms; }
 
 @keyframes receptionist-choice-resolve {
   from { opacity: 0; transform: translateY(.35rem); }
@@ -1304,6 +1377,41 @@ body.no-scroll .footer {
   overflow-wrap: anywhere;
 }
 
+.receptionist-shortlist-details {
+  display: block;
+  width: 100%;
+  margin-top: .15rem;
+}
+
+.receptionist-shortlist-details .receptionist-shortlist-summary {
+  display: inline-block;
+  color: #e7c891;
+  font-size: .68rem;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: .02em;
+}
+
+.receptionist-shortlist-details .receptionist-shortlist-summary::after {
+  content: " ▾";
+  font-size: .6rem;
+}
+
+.receptionist-shortlist-details[data-open] .receptionist-shortlist-summary::after {
+  content: " ▴";
+}
+
+.receptionist-shortlist-details .receptionist-shortlist-facts {
+  display: none;
+  margin-top: .25rem;
+  padding-top: .2rem;
+  border-top: 1px solid rgba(231, 200, 145, .18);
+}
+
+.receptionist-shortlist-details[data-open] .receptionist-shortlist-facts {
+  display: block;
+}
+
 .receptionist-description,
 .receptionist-rationale,
 .receptionist-rating,
@@ -1367,13 +1475,20 @@ body.no-scroll .footer {
   width: max-content;
   min-height: 2.75rem;
   margin-top: .25rem;
-  padding: .35rem .15rem;
-  border: 0;
-  border-bottom: 1px solid rgba(231, 200, 145, .55);
-  background: transparent;
+  padding: .55rem .85rem;
+  border: 1px solid rgba(231, 200, 145, .45);
+  border-radius: .25rem;
+  background: rgba(20, 16, 12, .38);
   color: #e7c891;
   font-size: .75rem;
   font-weight: 600;
+  letter-spacing: .03em;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.receptionist-back-text:hover {
+  border-color: #e7c891;
+  background: rgba(160, 119, 72, .55);
 }
 
 .receptionist-photo-counter {
@@ -2526,4 +2641,14 @@ body.showroom-receptionist-open .showroom-container .details-box {
   #interaction-hint .hint-icon { animation: none !important; }
   .slide-in-left,
   .slide-in-right { animation: none !important; }
+
+  .showroom-receptionist.is-tour-handoff .showroom-receptionist-backdrop img,
+  .showroom-receptionist.is-tour-handoff .receptionist-panel-head,
+  .showroom-receptionist.is-tour-handoff .receptionist-choices {
+    transition: none !important;
+  }
+  .receptionist-thinking-dots span {
+    animation: none !important;
+    opacity: 0.8;
+  }
 }

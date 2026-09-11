@@ -194,6 +194,7 @@ include 'includes/header.php';
 <!-- Pass PHP Data to Javascript -->
 <script>
 window.showroomData = <?php echo json_encode($showroom_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.userName = <?php echo json_encode(!empty($_SESSION['first_name']) ? $_SESSION['first_name'] : (!empty($_SESSION['username']) ? $_SESSION['username'] : null)); ?>;
 </script>
 
 <!-- EXACT Three.js version required by Panolens -->

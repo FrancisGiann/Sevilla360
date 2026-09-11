@@ -61,7 +61,36 @@ document.addEventListener("DOMContentLoaded", () => {
   const receptionistAmbience = document.getElementById("receptionist-ambience");
   const receptionistReopen = document.getElementById("receptionist-reopen");
   const receptionistBackdropImage = document.getElementById("receptionist-backdrop-image");
-  const receptionistGreeting = "Welcome to M.I. Sevilla Resort & Events Place. I’m your virtual receptionist. How may I help you today?";
+  const getUserName = () => {
+    if (typeof window.userName === "string" && window.userName.trim()) {
+      return window.userName.trim();
+    }
+    const profileEl = document.querySelector(".user-profile-name, [data-user-name], .user-profile .name");
+    if (profileEl) {
+      const text = profileEl.getAttribute("data-user-name") || profileEl.textContent;
+      if (text && text.trim()) return text.trim();
+    }
+    const userBtn = document.getElementById("userMenuBtn");
+    if (userBtn) {
+      const text = userBtn.textContent.trim();
+      if (text && text.toLowerCase() !== "account" && text.toLowerCase() !== "login") {
+        return text;
+      }
+    }
+    try {
+      const stored = sessionStorage.getItem("userName");
+      if (stored && stored.trim()) return stored.trim();
+    } catch (e) {}
+    return null;
+  };
+  const resolveReceptionistGreeting = () => {
+    const name = getUserName();
+    if (name) {
+      return `Welcome back, ${name}. I'm your virtual receptionist.`;
+    }
+    return "Welcome to M.I. Sevilla Resort & Events Place. I’m your virtual receptionist. How may I help you today?";
+  };
+  let receptionistGreeting = resolveReceptionistGreeting();
   const receptionistState = {
       isOpen: false,
       hasOpened: false,
@@ -792,6 +821,30 @@ document.addEventListener("DOMContentLoaded", () => {
     const receptionistPanel = receptionistRoot.querySelector(".receptionist-panel");
     const categoryLabels = { "Event Hall": "event", "Hotel Room": "hotel", "Resort Villa": "villa" };
     const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, preference: null, startDate: null, endDate: null };
+    const saveGuideContext = () => {
+      try {
+        const memory = {
+          groupSize: guideContext.groupSize,
+          preference: guideContext.preference
+        };
+        sessionStorage.setItem("guideContext", JSON.stringify(memory));
+      } catch (e) {}
+    };
+    const restoreGuideContext = () => {
+      try {
+        const raw = sessionStorage.getItem("guideContext");
+        if (!raw) return;
+        const memory = JSON.parse(raw);
+        if (memory && typeof memory === "object") {
+          if (memory.groupSize !== undefined && memory.groupSize !== null) {
+            guideContext.groupSize = memory.groupSize;
+          }
+          if (memory.preference !== undefined && memory.preference !== null) {
+            guideContext.preference = memory.preference;
+          }
+        }
+      } catch (e) {}
+    };
     const guideState = {
       responseMode: "overview",
       returnStep: "greeting",
@@ -816,7 +869,8 @@ document.addEventListener("DOMContentLoaded", () => {
       dialogueRevealComplete: false,
       dialogueRequiresContinue: false,
       dialogueRevealTimer: null,
-      entranceOwnsDialogue: false
+      entranceOwnsDialogue: false,
+      thinkingTimer: null
     };
     let activeRationale = "";
     let receptionistPhotoIndex = 0;
@@ -1109,6 +1163,130 @@ document.addEventListener("DOMContentLoaded", () => {
       return wrap;
     };
     const createBackChoice = () => createChoice("Back to welcome", "receptionist-choice-secondary", { "data-receptionist-back": "true" });
+    let audioCtx = null;
+    let droneNodes = null;
+    const getAudioContext = () => {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      return audioCtx;
+    };
+    const startSpaDrone = () => {
+      const ctx = getAudioContext();
+      if (!ctx || droneNodes) return;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(500, ctx.currentTime);
+      filter.Q.setValueAtTime(1.0, ctx.currentTime);
+      const lfoFilter = ctx.createOscillator();
+      const lfoFilterGain = ctx.createGain();
+      lfoFilter.frequency.setValueAtTime(0.12, ctx.currentTime); // Faster LFO for 'fun' breathing
+      lfoFilterGain.gain.setValueAtTime(250, ctx.currentTime);
+      lfoFilter.connect(lfoFilterGain);
+      lfoFilterGain.connect(filter.frequency);
+      lfoFilter.start();
+      const droneGain = ctx.createGain();
+      droneGain.gain.setValueAtTime(0.35, ctx.currentTime);
+      // G Major 7 (G2, B2, D3, F#3) - Warm, mid-low, premium but happy/fun
+      const voices = [
+        { freq: 98.00, type: "sine", detune: 0, gain: 0.35 },    // G2
+        { freq: 123.47, type: "sine", detune: -4, gain: 0.25 },  // B2
+        { freq: 146.83, type: "triangle", detune: 3, gain: 0.2 },// D3
+        { freq: 185.00, type: "sine", detune: -2, gain: 0.15 },  // F#3
+        { freq: 196.00, type: "sine", detune: 5, gain: 0.1 }     // G3
+      ];
+      const oscs = voices.map(v => {
+        const osc = ctx.createOscillator();
+        const vGain = ctx.createGain();
+        osc.type = v.type;
+        osc.frequency.setValueAtTime(v.freq, ctx.currentTime);
+        osc.detune.setValueAtTime(v.detune, ctx.currentTime);
+        vGain.gain.setValueAtTime(v.gain, ctx.currentTime);
+        osc.connect(vGain);
+        vGain.connect(filter);
+        osc.start();
+        return osc;
+      });
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0, ctx.currentTime);
+      filter.connect(droneGain);
+      droneGain.connect(masterGain);
+      masterGain.connect(ctx.destination);
+      droneNodes = { filter, lfoFilter, lfoFilterGain, droneGain, oscs, masterGain };
+    };
+    const playTickSound = (isClick = false) => {
+      if (!receptionistState.soundEnabled) return;
+      const ctx = getAudioContext();
+      if (!ctx || ctx.state !== "running") return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const duration = isClick ? 0.05 : 0.03;
+      const volume = isClick ? 0.6 : 0.25;
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(isClick ? 120 : 160, now);
+      osc.frequency.exponentialRampToValueAtTime(40, now + duration);
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    };
+    const playCascadeChime = () => {
+      if (!receptionistState.soundEnabled) return;
+      const ctx = getAudioContext();
+      if (!ctx || ctx.state !== "running") return;
+      const choices = receptionistChoices.querySelectorAll(".receptionist-choice");
+      const count = Math.min(choices.length || 3, 6);
+      if (count <= 0) return;
+      const now = ctx.currentTime;
+      for (let i = 0; i < count; i++) {
+        const noteTime = now + (i * 0.120);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(90 - (i * 5), noteTime);
+        osc.frequency.exponentialRampToValueAtTime(30, noteTime + 0.04);
+        gain.gain.setValueAtTime(0, noteTime);
+        gain.gain.linearRampToValueAtTime(0.4, noteTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.08);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.1);
+      }
+    };
+    const playSuccessChime = () => {
+      if (!receptionistState.soundEnabled) return;
+      const ctx = getAudioContext();
+      if (!ctx || ctx.state !== "running") return;
+      const now = ctx.currentTime;
+      const freqs = [146.83, 110.00];
+      freqs.forEach(freq => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        osc.type = "triangle";
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(400, now);
+        filter.frequency.exponentialRampToValueAtTime(100, now + 2.0);
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 3.0);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 3.1);
+      });
+    };
     const updateSoundControls = () => {
       receptionistSoundButtons.forEach(button => {
         button.setAttribute("aria-pressed", receptionistState.soundEnabled ? "true" : "false");
@@ -1122,6 +1300,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const fadeAmbienceTo = (target, onComplete = null) => {
       if (!receptionistAmbience) return;
       window.clearTimeout(receptionistState.soundFadeTimer);
+      const ctx = getAudioContext();
+      if (droneNodes && ctx) {
+        const now = ctx.currentTime;
+        const currentGain = droneNodes.masterGain.gain.value;
+        droneNodes.masterGain.gain.cancelScheduledValues(now);
+        droneNodes.masterGain.gain.setValueAtTime(currentGain, now);
+        droneNodes.masterGain.gain.linearRampToValueAtTime(target, now + 0.35);
+      }
       const start = Number(receptionistAmbience.volume) || 0;
       const startedAt = Date.now();
       const duration = 260;
@@ -1150,8 +1336,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       try {
         window.clearTimeout(receptionistState.soundFadeTimer);
+        startSpaDrone();
         receptionistAmbience.volume = 0;
-        await receptionistAmbience.play();
         receptionistState.soundEnabled = true;
         // Keep the optional ambience clearly below dialogue and viewer audio.
         fadeAmbienceTo(0.14);
@@ -1172,12 +1358,36 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     document.addEventListener("visibilitychange", () => {
       if (!receptionistAmbience || !receptionistState.soundEnabled) return;
-      if (document.hidden) receptionistAmbience.pause();
-      else receptionistAmbience.play().catch(() => {
-        receptionistState.soundUnavailable = true;
-        receptionistState.soundEnabled = false;
-        updateSoundControls();
-      });
+      const ctx = getAudioContext();
+      if (document.hidden) {
+        if (ctx && ctx.state === "running") ctx.suspend().catch(() => {});
+        receptionistAmbience.pause();
+      } else {
+        if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+        fadeAmbienceTo(0.14);
+      }
+    });
+    let lastHoverChoice = null;
+    receptionistChoices.addEventListener("pointerover", event => {
+      const choice = event.target instanceof Element ? event.target.closest(".receptionist-choice") : null;
+      if (choice && choice !== lastHoverChoice) {
+        lastHoverChoice = choice;
+        playTickSound(false);
+      }
+    });
+    receptionistChoices.addEventListener("pointerout", event => {
+      const choice = event.target instanceof Element ? event.target.closest(".receptionist-choice") : null;
+      if (choice === lastHoverChoice) {
+        const related = event.relatedTarget;
+        if (related instanceof Element && choice.contains(related)) return;
+        lastHoverChoice = null;
+      }
+    });
+    receptionistChoices.addEventListener("pointerdown", event => {
+      const choice = event.target instanceof Element ? event.target.closest(".receptionist-choice") : null;
+      if (choice) {
+        playTickSound(true);
+      }
     });
     const resetGuideScroll = () => {
       if (receptionistPanel) receptionistPanel.scrollTop = 0;
@@ -1251,6 +1461,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setChoicesGated(false);
       if (receptionistContinue) receptionistContinue.hidden = true;
       if (receptionistState.entranceSettled && !receptionistRoot.classList.contains("is-entering")) focusFirstChoice();
+      playCascadeChime();
       return true;
     };
     const setDialogue = (title, message, announce = true, options = {}) => {
@@ -1262,7 +1473,6 @@ document.addEventListener("DOMContentLoaded", () => {
         receptionistRoot.classList.add("is-line-priming");
         receptionistRoot.classList.remove("is-choices-revealed", "is-line-complete", "is-line-reveal");
         setChoicesGated(true);
-        receptionistRoot.getBoundingClientRect();
       }
       receptionistTitle.textContent = title;
       receptionistMessage.textContent = message;
@@ -1270,6 +1480,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // the visual line mask and Continue cue are still resolving.
       receptionistLive.textContent = message;
       resetGuideScroll();
+      if (!entrance) receptionistRoot.getBoundingClientRect();
       armDialogue(Boolean(options.requireContinue), entrance);
       if (!entrance) receptionistRoot.classList.remove("is-line-priming");
     };
@@ -1317,7 +1528,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (receptionistPhotoCounter) receptionistPhotoCounter.textContent = `${receptionistPhotoIndex + 1} / ${images.length}`;
     };
     const resetContext = () => {
+      window.clearTimeout(guideState.thinkingTimer);
+      receptionistRoot.classList.remove("is-thinking");
       Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
+      restoreGuideContext();
       receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
       receptionistRoot.classList.remove("is-date-state");
       guideState.responseMode = "overview";
@@ -1341,6 +1555,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderGreeting = ({ announce = true, requireContinue = false, entrance = false } = {}) => {
       resetContext();
+      receptionistGreeting = resolveReceptionistGreeting();
       receptionistState.activeCategory = null;
       receptionistState.activeRoomId = null;
       activeRationale = "";
@@ -1523,7 +1738,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const exactFitRooms = category === "Hotel Room" && guideContext.preference === "value"
         ? rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit)
         : null;
-      setDialogue("A considered shortlist", `${shortlistOrder}${dateSummary ? ` ${dateSummary}` : ""}`, announce);
+      setDialogue("Recommended for you", `${shortlistOrder}${dateSummary ? ` ${dateSummary}` : ""}`, announce);
+      playSuccessChime();
       receptionistChoices.replaceChildren();
       ranked.slice(0, 3).forEach((selected, index) => {
         const choice = createChoice(selected.room.title || selected.room.venue_name || "Venue", "receptionist-choice-venue receptionist-shortlist-choice", {
@@ -1534,10 +1750,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const note = document.createElement("span");
         note.className = "receptionist-choice-note receptionist-shortlist-reason";
         note.textContent = rationaleFor(selected.room, category, requested, guideContext.preference, context, exactFitRooms);
+        const details = document.createElement("span");
+        details.className = "receptionist-shortlist-details";
+        details.addEventListener("click", e => {
+          e.stopPropagation();
+          if (details.hasAttribute("data-open")) details.removeAttribute("data-open");
+          else details.setAttribute("data-open", "true");
+        });
+        const summary = document.createElement("span");
+        summary.className = "receptionist-shortlist-summary";
+        summary.textContent = "View details";
         const facts = document.createElement("span");
         facts.className = "receptionist-shortlist-facts";
         facts.textContent = shortlistFactsFor(selected.room, category, requested);
-        choice.append(note, facts);
+        details.append(summary, facts);
+        choice.append(note, details);
         receptionistChoices.appendChild(choice);
       });
       if (!ranked.length) {
@@ -1610,25 +1837,44 @@ document.addEventListener("DOMContentLoaded", () => {
       guideState.allPage = 0;
       guideState.selectionOrigin = "shortlist";
       guideState.selectedAllPage = 0;
-      if (selection.hasExactFit) {
-        renderShortlist();
-        return;
-      }
-      const label = categoryLabels[category] || "venue";
-      const requestedText = numericFact(guideContext.groupSize) === null ? "your group" : `${formatNumber(numericFact(guideContext.groupSize))} guests`;
-      const premiumGap = category === "Hotel Room" && guideContext.preference === "premium";
-      const changeIntentLabel = category === "Event Hall" ? "Change occasion" : category === "Resort Villa" ? "Change purpose" : null;
-      setDialogue(premiumGap ? "No Premium / VIP match" : "No exact capacity match", premiumGap
-        ? `I couldn’t find a media-ready room that both fits ${requestedText} and is explicitly labeled Premium or VIP. You can change preference, adjust the guest count, or view every media-ready option.`
-        : `I couldn’t find a media-ready ${label} with known capacity for ${requestedText}. You can adjust the group size or view every media-ready option.`, true);
-      receptionistChoices.replaceChildren(
-        createChoice("Change guest count", "receptionist-choice-primary", { "data-receptionist-change-group": "true" }),
-        ...(changeIntentLabel ? [createChoice(changeIntentLabel, "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
-        ...(premiumGap ? [createChoice("Change preference", "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
-        createChoice("View all anyway", "receptionist-choice-secondary", { "data-receptionist-view-all": "true" }),
-        createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" }),
-        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
-      );
+
+      window.clearTimeout(guideState.thinkingTimer);
+      receptionistRoot.classList.add("is-thinking");
+      setChoicesGated(true);
+      receptionistChoices.replaceChildren();
+      setDialogue("Checking availability...", "Checking availability...", false);
+      const dots = document.createElement("span");
+      dots.className = "receptionist-thinking-dots";
+      dots.setAttribute("aria-hidden", "true");
+      const dot1 = document.createElement("span");
+      const dot2 = document.createElement("span");
+      const dot3 = document.createElement("span");
+      dots.append(dot1, dot2, dot3);
+      receptionistMessage.appendChild(dots);
+
+      guideState.thinkingTimer = window.setTimeout(() => {
+        receptionistRoot.classList.remove("is-thinking");
+        if (!receptionistState.isOpen) return;
+        if (selection.hasExactFit) {
+          renderShortlist();
+          return;
+        }
+        const label = categoryLabels[category] || "venue";
+        const requestedText = numericFact(guideContext.groupSize) === null ? "your group" : `${formatNumber(numericFact(guideContext.groupSize))} guests`;
+        const premiumGap = category === "Hotel Room" && guideContext.preference === "premium";
+        const changeIntentLabel = category === "Event Hall" ? "Change occasion" : category === "Resort Villa" ? "Change purpose" : null;
+        setDialogue(premiumGap ? "No Premium / VIP match" : "No exact capacity match", premiumGap
+          ? `I couldn’t find a media-ready room that both fits ${requestedText} and is explicitly labeled Premium or VIP. You can change preference, adjust the guest count, or view every media-ready option.`
+          : `I couldn’t find a media-ready ${label} with known capacity for ${requestedText}. You can adjust the group size or view every media-ready option.`, true);
+        receptionistChoices.replaceChildren(
+          createChoice("Change guest count", "receptionist-choice-primary", { "data-receptionist-change-group": "true" }),
+          ...(changeIntentLabel ? [createChoice(changeIntentLabel, "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
+          ...(premiumGap ? [createChoice("Change preference", "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
+          createChoice("View all anyway", "receptionist-choice-secondary", { "data-receptionist-view-all": "true" }),
+          createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" }),
+          createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
+        );
+      }, 800);
     };
     const renderAvailabilityError = () => {
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
@@ -1975,18 +2221,30 @@ document.addEventListener("DOMContentLoaded", () => {
       // the transition; its loading overlay remains visible until the
       // panorama reports ready, while gallery-only venues enter the existing
       // photo mode.
-      closeGuide(() => {
-        if (!hasPanorama(room) && hasGallery(room) && btnViewPhotos) btnViewPhotos.click();
-      });
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      if (reducedMotion) {
+        closeGuide(() => {
+          if (!hasPanorama(room) && hasGallery(room) && btnViewPhotos) btnViewPhotos.click();
+        });
+        return;
+      }
+      receptionistRoot.classList.add("is-tour-handoff");
+      window.setTimeout(() => {
+        closeGuide(() => {
+          receptionistRoot.classList.remove("is-tour-handoff");
+          if (!hasPanorama(room) && hasGallery(room) && btnViewPhotos) btnViewPhotos.click();
+        });
+      }, 600);
     };
     const closeGuide = (afterClose = null) => {
       if (!receptionistState.isOpen) return;
       receptionistState.isOpen = false;
       receptionistState.entranceSequence += 1;
       window.clearTimeout(receptionistState.entranceTimer);
+      window.clearTimeout(guideState.thinkingTimer);
       clearEntranceEnd();
       receptionistState.entranceSettled = false;
-      receptionistRoot.classList.remove("is-entering", "is-priming", "is-ready", "is-reopening");
+      receptionistRoot.classList.remove("is-entering", "is-priming", "is-ready", "is-reopening", "is-tour-handoff", "is-thinking", "is-settled");
       if (receptionistDialog.contains(document.activeElement)) document.activeElement.blur();
       disableGuideFocus();
       receptionistRoot.classList.remove("is-open"); receptionistRoot.classList.add("is-closing");
@@ -1998,7 +2256,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentRoomId) queueInteractionHint(currentRoomId);
       window.clearTimeout(receptionistState.closeTimer);
       receptionistState.closeTimer = window.setTimeout(() => {
-        receptionistRoot.hidden = true; receptionistRoot.classList.remove("is-closing"); receptionistReopen.hidden = false; document.documentElement.classList.remove("showroom-receptionist-open");
+        receptionistRoot.hidden = true; receptionistRoot.classList.remove("is-closing", "is-tour-handoff", "is-thinking"); receptionistReopen.hidden = false; document.documentElement.classList.remove("showroom-receptionist-open");
         restoreGuideFocus();
         showQueuedInteractionHint();
         if (typeof afterClose === "function") afterClose();
@@ -2010,6 +2268,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.clearTimeout(receptionistState.closeTimer);
       window.clearTimeout(receptionistState.entranceTimer);
       clearEntranceEnd();
+      restoreGuideContext();
       const entranceSequence = ++receptionistState.entranceSequence;
       receptionistState.previousFocus = opener instanceof HTMLElement ? opener : receptionistReopen;
       const isInitialGreeting = !receptionistState.hasOpened;
@@ -2033,11 +2292,12 @@ document.addEventListener("DOMContentLoaded", () => {
         window.clearTimeout(receptionistState.entranceTimer);
         clearEntranceEnd();
         receptionistState.entranceSettled = true;
+        receptionistRoot.classList.add("is-settled");
         focusFirstChoice();
       };
       const revealEntrance = () => {
         if (!receptionistState.isOpen || entranceSequence !== receptionistState.entranceSequence) return;
-        receptionistRoot.classList.remove("is-entering", "is-priming");
+        receptionistRoot.classList.remove("is-entering", "is-priming", "is-settled");
         receptionistRoot.classList.add("is-open", "is-ready");
         if (!guideState.dialogueRequiresContinue) revealDialogueChoices();
         if (reducedMotion) {
@@ -2086,7 +2346,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!target) return;
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
       if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) { closeGuide(); return; }
-      if (target.hasAttribute("data-receptionist-start-over")) { renderGreeting({ announce: true, reset: true, requireContinue: true }); focusFirstChoice(); return; }
+      if (target.hasAttribute("data-receptionist-start-over")) {
+        try { sessionStorage.removeItem("guideContext"); } catch (e) {}
+        renderGreeting({ announce: true, reset: true, requireContinue: true });
+        focusFirstChoice();
+        return;
+      }
       if (target.hasAttribute("data-receptionist-back")) { renderGreeting({ announce: true, reset: true }); focusFirstChoice(); return; }
       if (target.hasAttribute("data-receptionist-overview")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueOverview(room); focusFirstChoice(); } return; }
       if (target.hasAttribute("data-receptionist-menu")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueMenu(room); focusFirstChoice(); } return; }
@@ -2147,11 +2412,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (target.hasAttribute("data-receptionist-intent")) {
         const category = target.getAttribute("data-receptionist-intent"); resetContext(); receptionistState.activeCategory = category; guideContext.intent = category;
-        renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize"); focusFirstChoice(); return;
+        if (category === "Hotel Room" && numericFact(guideContext.groupSize) !== null) {
+          if (guideContext.preference === null) renderQuestion(category, "preference");
+          else if (!guideContext.startDate) renderQuestion(category, "checkInDate");
+          else renderRecommendations();
+        } else {
+          renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize");
+        }
+        focusFirstChoice(); return;
       }
       if (target.hasAttribute("data-receptionist-answer")) {
         const key = target.getAttribute("data-answer-key"); const value = target.getAttribute("data-receptionist-answer");
         guideContext[key] = key === "groupSize" ? Number(value) : value;
+        saveGuideContext();
         const category = receptionistState.activeCategory;
         if (category === "Event Hall" && key === "occasion") {
           if (numericFact(guideContext.groupSize) === null) renderQuestion(category, "groupSize"); else renderRecommendations();
