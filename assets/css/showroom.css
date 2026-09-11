@@ -683,6 +683,15 @@ body.no-scroll .footer {
   visibility: visible;
 }
 
+/* The priming state is applied while the root is still hidden. It freezes the
+   authored entering geometry so static dialog styles cannot interpolate into
+   the first visible frame. */
+.showroom-receptionist.is-priming,
+.showroom-receptionist.is-priming * {
+  transition: none !important;
+  animation: none !important;
+}
+
 .showroom-receptionist.is-entering::before {
   clip-path: inset(0);
   opacity: 1;
@@ -885,6 +894,45 @@ body.no-scroll .footer {
   justify-content: flex-start;
 }
 
+/* Conversational states share one centered reading column. The factual venue
+   overview opts out so its description, facts, and sharp media keep their
+   editorial split layout. */
+.showroom-receptionist:not(.is-venue-overview) .receptionist-panel-head {
+  width: min(100%, 42rem);
+  margin-inline: auto;
+  justify-content: center;
+  text-align: left;
+}
+
+.showroom-receptionist:not(.is-venue-overview) .receptionist-panel-head > div {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.showroom-receptionist:not(.is-venue-overview) .receptionist-message {
+  width: min(100%, 42rem);
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+.showroom-receptionist:not(.is-venue-overview) .receptionist-choices {
+  width: min(100%, 42rem);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.showroom-receptionist:not(.is-venue-overview) .receptionist-date-question {
+  justify-self: center;
+}
+
+@media (min-width: 701px) {
+  .showroom-receptionist.is-venue-dialogue .receptionist-panel {
+    padding-left: clamp(1.25rem, 7vw, 8rem);
+  }
+}
+
 .receptionist-panel-head {
   display: flex;
   align-items: flex-start;
@@ -968,12 +1016,13 @@ body.no-scroll .footer {
 
 .receptionist-continue {
   display: inline-flex;
-  width: max-content;
+  width: min(100%, 42rem);
+  max-width: 42rem;
   min-width: 7.5rem;
   min-height: 2.75rem;
   align-items: center;
   justify-content: center;
-  margin: 1rem 0 0;
+  margin: 1rem auto 0;
   padding: .7rem 1.2rem;
   border: 1px solid #c69a5d;
   border-radius: .25rem;
@@ -994,7 +1043,7 @@ body.no-scroll .footer {
   opacity: .65;
   filter: blur(2px);
   transform: translateY(.3rem);
-  transition: clip-path 780ms cubic-bezier(.2, .82, .24, 1), opacity 680ms ease, filter 780ms ease, transform 780ms cubic-bezier(.2, .82, .24, 1);
+  transition: clip-path 420ms cubic-bezier(.2, .82, .24, 1), opacity 380ms ease, filter 420ms ease, transform 420ms cubic-bezier(.2, .82, .24, 1);
 }
 
 .showroom-receptionist.is-line-reveal .receptionist-panel-head > div {
@@ -1002,7 +1051,7 @@ body.no-scroll .footer {
   filter: blur(2px);
   opacity: .7;
   transform: translateY(.3rem);
-  transition: clip-path 780ms cubic-bezier(.2, .82, .24, 1), filter 780ms ease, opacity 680ms ease, transform 780ms cubic-bezier(.2, .82, .24, 1);
+  transition: clip-path 420ms cubic-bezier(.2, .82, .24, 1), filter 420ms ease, opacity 380ms ease, transform 420ms cubic-bezier(.2, .82, .24, 1);
 }
 
 .showroom-receptionist.is-entering .receptionist-continue {
@@ -1137,30 +1186,6 @@ body.no-scroll .footer {
   bottom: calc(max(1.25rem, env(safe-area-inset-bottom)) + 4.3rem);
   z-index: 900;
 }
-
-.receptionist-handoff-clone {
-  position: fixed;
-  inset: 0;
-  z-index: 1000002;
-  width: 100vw;
-  height: 100svh;
-  display: grid;
-  place-items: end center;
-  overflow: hidden;
-  border-radius: .2rem;
-  background: #17130f;
-  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .42);
-  pointer-events: none;
-  transform: translate3d(var(--handoff-x, 0), var(--handoff-y, 0), 0) scale(var(--handoff-scale-x, 1), var(--handoff-scale-y, 1));
-  transform-origin: top left;
-  transition: transform 680ms cubic-bezier(.2, .82, .24, 1), border-radius 680ms ease;
-}
-
-.receptionist-handoff-clone.is-expanded { transform: none; border-radius: 0; }
-.receptionist-handoff-clone img { width: 100%; height: 100%; object-fit: cover; }
-.receptionist-handoff-clone span { position: absolute; bottom: 8vh; padding: .5rem .8rem; border-radius: 999px; background: rgba(17, 14, 11, .7); color: #fffaf1; font-size: .75rem; }
-.showroom-receptionist.is-handoff .receptionist-panel,
-.showroom-receptionist.is-handoff .receptionist-portrait-wrap { opacity: 0; transition: opacity 240ms ease; }
 
 .receptionist-choices {
   display: grid;
@@ -1701,15 +1726,17 @@ body.showroom-receptionist-open .showroom-container .details-box {
 
 @media (min-width: 701px) {
   .showroom-receptionist:not(.is-venue-state) .receptionist-panel {
-    padding-left: clamp(18rem, 36vw, 36rem);
+    padding-left: clamp(1.25rem, 7vw, 8rem);
     padding-bottom: clamp(2rem, 5vh, 3.5rem);
   }
 
   .showroom-receptionist:not(.is-venue-state) .receptionist-panel-head,
   .showroom-receptionist:not(.is-venue-state) .receptionist-message,
   .showroom-receptionist:not(.is-venue-state) .receptionist-choices {
-    margin-left: 0;
-    margin-right: 0;
+    width: min(100%, 42rem);
+    max-width: 42rem;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .showroom-receptionist:not(.is-venue-state) .receptionist-choices {
@@ -1720,7 +1747,7 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .showroom-receptionist.is-date-state .receptionist-panel {
     padding-top: 1rem;
     padding-bottom: 1rem;
-    padding-left: clamp(18rem, 25vw, 24rem);
+    padding-left: clamp(1.25rem, 7vw, 8rem);
   }
 
   .showroom-receptionist.is-date-state .receptionist-panel h2 {
@@ -1729,7 +1756,7 @@ body.showroom-receptionist-open .showroom-container .details-box {
   }
 
   .showroom-receptionist.is-date-state .receptionist-message {
-    max-width: 38rem;
+    max-width: 42rem;
     margin-top: .45rem;
     font-size: .95rem;
     line-height: 1.35;
@@ -1740,14 +1767,17 @@ body.showroom-receptionist-open .showroom-container .details-box {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
     width: min(100%, 42rem);
+    max-width: 42rem;
     gap: .35rem;
     margin-top: .55rem;
   }
 
   .showroom-receptionist.is-date-state .receptionist-date-question {
+    width: 100%;
+    max-width: none;
     gap: .35rem;
     padding: 0;
-    justify-self: start;
+    justify-self: stretch;
   }
 
   .showroom-receptionist.is-date-state .receptionist-choice {
@@ -1756,7 +1786,25 @@ body.showroom-receptionist-open .showroom-container .details-box {
   }
 
   .showroom-receptionist.is-venue-state .receptionist-panel {
-    padding-left: clamp(18rem, 25vw, 24rem);
+    padding-left: clamp(1.25rem, 7vw, 8rem);
+  }
+
+  .showroom-receptionist.is-venue-state .receptionist-panel-head,
+  .showroom-receptionist.is-venue-state .receptionist-message,
+  .showroom-receptionist.is-venue-state .receptionist-choices {
+    width: min(100%, 72rem);
+    max-width: 72rem;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+  }
+
+  .showroom-receptionist.is-venue-state .receptionist-panel-head {
+    justify-content: flex-start;
+  }
+
+  .showroom-receptionist.is-venue-state .receptionist-message {
+    max-width: 72rem;
   }
 
   .showroom-receptionist.is-venue-state .receptionist-sharp-image {
@@ -1769,6 +1817,14 @@ body.showroom-receptionist-open .showroom-container .details-box {
     max-width: 72rem;
     gap: 1rem 2rem;
     margin-inline: auto;
+  }
+
+  .showroom-receptionist.is-venue-state .receptionist-showcase,
+  .showroom-receptionist.is-venue-state .receptionist-primary-actions,
+  .showroom-receptionist.is-venue-state .receptionist-secondary-actions {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
   }
 }
 
@@ -2212,8 +2268,9 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .showroom-receptionist.is-venue-state .receptionist-amenities { display: none; }
 
   .receptionist-continue {
-    width: 100%;
-    margin-top: .6rem;
+    width: min(100%, 32rem);
+    max-width: 32rem;
+    margin: .6rem auto 0;
     min-height: 2.75rem;
   }
 
@@ -2256,6 +2313,33 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .showroom-receptionist.is-date-state .receptionist-calendar-selected {
     min-height: .8rem;
     font-size: .62rem;
+  }
+
+  /* Keep mobile/tablet conversational states in one centered reading column;
+     copy remains left-aligned while calendar and controls share its edges. */
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-panel-head,
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-message,
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-choices,
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-date-question {
+    width: min(100%, 32rem);
+    max-width: 32rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-panel-head,
+  .showroom-receptionist:not(.is-venue-overview) .receptionist-message {
+    text-align: left;
+  }
+
+  .showroom-receptionist.is-date-state .receptionist-choices {
+    width: min(100%, 32rem);
+    max-width: 32rem;
+  }
+
+  .showroom-receptionist.is-date-state .receptionist-date-question {
+    width: 100%;
+    max-width: none;
   }
 
   .receptionist-reopen {
@@ -2305,8 +2389,6 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .receptionist-choice,
   .receptionist-reopen,
   .receptionist-continue,
-  .receptionist-handoff-clone,
-  .receptionist-handoff-clone img,
   .showroom-receptionist.is-choices-revealed .receptionist-choices > * {
     transition: none !important;
   }
@@ -2337,8 +2419,6 @@ body.showroom-receptionist-open .showroom-container .details-box {
     opacity: 1;
     transform: none;
   }
-
-  .receptionist-handoff-clone { transform: none !important; border-radius: 0; }
 
   #interaction-hint .hint-icon { animation: none !important; }
   .slide-in-left,

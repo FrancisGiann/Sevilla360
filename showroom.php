@@ -424,7 +424,6 @@ window.process = {
     </button>
     <button type="button" class="receptionist-sound receptionist-sound-launcher" data-receptionist-sound-toggle
         aria-pressed="false" aria-label="Turn on resort ambience" hidden>Sound off</button>
-
     <!-- Mobile Info Modal -->
     <div class="modal-overlay" id="info-modal" style="z-index: 999999;">
         <!-- Extremely high z-index to sit over fullscreen! -->

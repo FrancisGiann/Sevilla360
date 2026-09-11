@@ -74,7 +74,6 @@ document.addEventListener("DOMContentLoaded", () => {
       entranceEndHandler: null,
       entranceSettled: false,
       entranceSequence: 0,
-      keepHandoff: false,
       inertElements: [],
       dialogFocusState: [],
       soundEnabled: false,
@@ -813,13 +812,11 @@ document.addEventListener("DOMContentLoaded", () => {
       sharpImage: null,
       sharpImageFallbacks: [],
       entranceDuration: 0,
-      shortlistIndex: 0,
       dialogueChoicesRevealed: false,
       dialogueRevealComplete: false,
       dialogueRequiresContinue: false,
       dialogueRevealTimer: null,
-      handoffTimer: null,
-      handoffClone: null
+      entranceOwnsDialogue: false
     };
     let activeRationale = "";
     let receptionistPhotoIndex = 0;
@@ -1156,7 +1153,8 @@ document.addEventListener("DOMContentLoaded", () => {
         receptionistAmbience.volume = 0;
         await receptionistAmbience.play();
         receptionistState.soundEnabled = true;
-        fadeAmbienceTo(0.3);
+        // Keep the optional ambience clearly below dialogue and viewer audio.
+        fadeAmbienceTo(0.14);
         updateSoundControls();
       } catch (error) {
         receptionistState.soundUnavailable = true;
@@ -1210,27 +1208,35 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistRoot.classList.remove("is-line-reveal");
       receptionistRoot.classList.add("is-line-complete");
     };
-    const armDialogue = (requireContinue = false) => {
+    const armDialogue = (requireContinue = false, entrance = false) => {
       window.clearTimeout(guideState.dialogueRevealTimer);
       guideState.dialogueChoicesRevealed = false;
       guideState.dialogueRequiresContinue = Boolean(requireContinue);
+      guideState.entranceOwnsDialogue = Boolean(entrance);
       guideState.dialogueRevealComplete = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || false;
       if (receptionistContinue) {
         receptionistContinue.hidden = !guideState.dialogueRequiresContinue;
         receptionistContinue.disabled = false;
         receptionistContinue.textContent = "Continue";
       }
-      receptionistRoot.classList.remove("is-choices-revealed", "is-line-complete");
-      receptionistRoot.classList.add("is-line-reveal");
+      receptionistRoot.classList.remove("is-choices-revealed", "is-line-complete", "is-line-reveal");
       setChoicesGated(true);
+      if (entrance) {
+        // The staged entrance owns the first reveal. Keeping the line classes
+        // off prevents the normal dialogue animation from replaying over it.
+        guideState.dialogueRevealComplete = true;
+        return;
+      }
+      receptionistRoot.classList.add("is-line-reveal");
       if (guideState.dialogueRevealComplete) {
         receptionistRoot.classList.add("is-line-complete");
+        guideState.entranceOwnsDialogue = false;
         if (!guideState.dialogueRequiresContinue) revealDialogueChoices();
       } else {
         guideState.dialogueRevealTimer = window.setTimeout(() => {
           completeDialogueReveal();
           if (!guideState.dialogueRequiresContinue) revealDialogueChoices();
-        }, 780);
+        }, 420);
       }
     };
     const revealDialogueChoices = () => {
@@ -1254,7 +1260,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // the visual line mask and Continue cue are still resolving.
       receptionistLive.textContent = message;
       resetGuideScroll();
-      armDialogue(Boolean(options.requireContinue));
+      armDialogue(Boolean(options.requireContinue), Boolean(options.entrance));
     };
     const dialogueChoicesObserver = new MutationObserver(() => {
       if (!guideState.dialogueChoicesRevealed) setChoicesGated(true);
@@ -1301,12 +1307,11 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const resetContext = () => {
       Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
-      receptionistRoot.classList.remove("is-venue-state");
+      receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
       receptionistRoot.classList.remove("is-date-state");
       guideState.responseMode = "overview";
       guideState.returnStep = "greeting";
       guideState.shortlist = [];
-      guideState.shortlistIndex = 0;
       guideState.allVenues = [];
       guideState.allPage = 0;
       guideState.selectionOrigin = "shortlist";
@@ -1323,7 +1328,7 @@ document.addEventListener("DOMContentLoaded", () => {
       guideState.sharpImage = null;
       guideState.sharpImageFallbacks = [];
     };
-    const renderGreeting = ({ announce = true, requireContinue = false } = {}) => {
+    const renderGreeting = ({ announce = true, requireContinue = false, entrance = false } = {}) => {
       resetContext();
       receptionistState.activeCategory = null;
       receptionistState.activeRoomId = null;
@@ -1331,7 +1336,7 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistPhotoIndex = 0;
       receptionistPhotoCounter = null;
       setBackdrop(dataMap[currentRoomId]);
-      setDialogue("Welcome", receptionistGreeting, announce, { requireContinue });
+      setDialogue("Welcome", receptionistGreeting, announce, { requireContinue, entrance });
       receptionistChoices.replaceChildren(
         createChoice("Event", "", { "data-receptionist-intent": "Event Hall" }),
         createChoice("Hotel", "", { "data-receptionist-intent": "Hotel Room" }),
@@ -1341,7 +1346,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderQuestion = (category, key) => {
       receptionistState.activeCategory = category;
-      receptionistRoot.classList.remove("is-venue-state");
+      receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const label = categoryLabels[category] || "venue";
       let title = "A little more detail";
       let message = "";
@@ -1369,6 +1374,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (key === "eventDate" || key === "checkInDate" || key === "visitDate") {
         receptionistRoot.classList.add("is-date-state");
+        receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
         setDialogue(dateQuestionTitle(category), dateQuestionMessage(category));
         receptionistChoices.replaceChildren(
           createDateQuestion(category),
@@ -1447,7 +1453,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return "A media-ready venue to explore; confirm capacity with the team when booking.";
     };
     const renderShortlist = (announce = true) => {
-      receptionistRoot.classList.remove("is-date-state", "is-venue-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
       const ranked = guideState.shortlist;
       const requested = numericFact(guideContext.groupSize);
@@ -1455,30 +1461,18 @@ document.addEventListener("DOMContentLoaded", () => {
       const dateSummary = availabilityDateSummary(category);
       setDialogue("A considered shortlist", `These ${label}s are ordered around your group and preferences.${dateSummary ? ` ${dateSummary}` : ""}`, announce);
       receptionistChoices.replaceChildren();
-      guideState.shortlistIndex = Math.min(Math.max(guideState.shortlistIndex, 0), Math.max(0, ranked.length - 1));
-      const selected = ranked[guideState.shortlistIndex];
-      if (selected) {
-        const choice = createChoice(selected.room.title || selected.room.venue_name || "Venue", "receptionist-choice-venue", { "data-receptionist-room": String(selected.room.id), "data-receptionist-list-origin": "shortlist" });
+      ranked.slice(0, 3).forEach((selected, index) => {
+        const choice = createChoice(selected.room.title || selected.room.venue_name || "Venue", "receptionist-choice-venue receptionist-shortlist-choice", {
+          "data-receptionist-room": String(selected.room.id),
+          "data-receptionist-list-origin": "shortlist",
+          "data-receptionist-shortlist-rank": String(index + 1)
+        });
         const note = document.createElement("span");
         note.className = "receptionist-choice-note";
         note.textContent = rationaleFor(selected.room, category, requested, guideContext.preference, guideContext.occasion || guideContext.purpose);
         choice.appendChild(note);
         receptionistChoices.appendChild(choice);
-        if (ranked.length > 1) {
-          const pager = document.createElement("div");
-          pager.className = "receptionist-pager receptionist-shortlist-pager";
-          const previous = createPhotoArrow("Previous recommendation", "data-receptionist-shortlist-prev", "fa-chevron-left");
-          const counter = document.createElement("span");
-          counter.className = "receptionist-photo-counter";
-          counter.setAttribute("aria-live", "polite");
-          counter.textContent = `${guideState.shortlistIndex + 1} of ${ranked.length}`;
-          const next = createPhotoArrow("Next recommendation", "data-receptionist-shortlist-next", "fa-chevron-right");
-          previous.disabled = guideState.shortlistIndex === 0;
-          next.disabled = guideState.shortlistIndex >= ranked.length - 1;
-          pager.append(previous, counter, next);
-          receptionistChoices.appendChild(pager);
-        }
-      }
+      });
       if (!ranked.length) {
         const empty = document.createElement("p");
         empty.className = "receptionist-empty";
@@ -1492,7 +1486,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     };
     const renderAllPage = (announce = true) => {
-      receptionistRoot.classList.remove("is-date-state", "is-venue-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
       const requested = numericFact(guideContext.groupSize);
       const all = guideState.allVenues;
@@ -1541,11 +1535,10 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     };
     const renderRecommendations = () => {
-      receptionistRoot.classList.remove("is-date-state", "is-venue-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
       const selection = selectVenues(category, guideContext.groupSize, guideContext.preference);
       guideState.shortlist = selection.matches;
-      guideState.shortlistIndex = 0;
       guideState.allVenues = rankVenues(category, guideContext.groupSize, guideContext.preference);
       guideState.allPage = 0;
       guideState.selectionOrigin = "shortlist";
@@ -1571,7 +1564,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     };
     const renderAvailabilityError = () => {
-      receptionistRoot.classList.remove("is-date-state", "is-venue-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       setDialogue("Date check unavailable", "The current calendar could not be checked, so I won’t guess at availability. No hold was created.");
       receptionistChoices.replaceChildren(
         createChoice("Retry", "receptionist-choice-primary", { "data-receptionist-date-submit": "true" }),
@@ -1580,7 +1573,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     };
     const renderNoAvailability = () => {
-      receptionistRoot.classList.remove("is-date-state", "is-venue-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       setDialogue("Nothing available on that date", "The current calendar shows no available media-ready options for that date. No hold was created.");
       receptionistChoices.replaceChildren(
         createChoice("Change date", "receptionist-choice-primary", { "data-receptionist-change-date": "true" }),
@@ -1655,7 +1648,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const groupLabel = requested => requested === null ? "your selected group" : `${formatNumber(requested)}-person group`;
     const renderVenueOverview = room => {
       receptionistRoot.classList.add("is-venue-state");
-      receptionistRoot.classList.remove("is-date-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-dialogue");
+      receptionistRoot.classList.add("is-venue-overview");
       guideState.responseMode = "overview";
       guideState.returnStep = "venueOverview";
       guideState.includedAmenities = [];
@@ -1763,7 +1757,8 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderVenueMenu = room => {
       receptionistRoot.classList.add("is-venue-state");
-      receptionistRoot.classList.remove("is-date-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-overview");
+      receptionistRoot.classList.add("is-venue-dialogue");
       guideState.responseMode = "menu";
       guideState.returnStep = "venueOverview";
       setDialogue("More about this venue", "Choose one next step and I’ll keep the current venue, answers, date, and photo in place.");
@@ -1782,7 +1777,8 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderResponse = (room, mode) => {
       receptionistRoot.classList.add("is-venue-state");
-      receptionistRoot.classList.remove("is-date-state");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-overview");
+      receptionistRoot.classList.add("is-venue-dialogue");
       guideState.responseMode = mode;
       guideState.returnStep = "venueOverview";
       const title = mode === "why" ? "Why this fits" : "What’s included";
@@ -1905,64 +1901,16 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistState.entranceEndTarget = null;
       receptionistState.entranceEndHandler = null;
     };
-    const clearVenueHandoff = () => {
-      window.clearTimeout(guideState.handoffTimer);
-      guideState.handoffTimer = null;
-      if (guideState.handoffClone?.isConnected) guideState.handoffClone.remove();
-      guideState.handoffClone = null;
-      receptionistRoot.classList.remove("is-handoff");
-    };
-    const startVenueHandoff = room => {
+    const openVenueMedia = room => {
       if (!room) { closeGuide(); return; }
-      clearVenueHandoff();
-      const sourceImage = guideState.sharpImage;
-      const source = sourceImage?.currentSrc || sourceImage?.src || venueImages(room)[receptionistPhotoIndex] || "assets/img/placeholder.jpg";
-      const rect = sourceImage?.getBoundingClientRect?.();
-      const clone = document.createElement("div");
-      clone.className = "receptionist-handoff-clone";
-      const image = document.createElement("img");
-      image.alt = "";
-      image.src = source;
-      const label = document.createElement("span");
-      label.textContent = hasPanorama(room) ? "Opening the 360° view…" : "Opening venue photos…";
-      clone.append(image, label);
-      document.body.appendChild(clone);
-      if (rect && rect.width > 0 && rect.height > 0) {
-        clone.style.setProperty("--handoff-x", `${rect.left}px`);
-        clone.style.setProperty("--handoff-y", `${rect.top}px`);
-        clone.style.setProperty("--handoff-scale-x", `${rect.width / window.innerWidth}`);
-        clone.style.setProperty("--handoff-scale-y", `${rect.height / window.innerHeight}`);
-      }
-      guideState.handoffClone = clone;
-      receptionistRoot.classList.add("is-handoff");
-      const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      const startedAt = Date.now();
-      const finish = () => {
-        if (!guideState.handoffClone) return;
-        clearVenueHandoff();
-      };
-      const finishWhenReady = () => {
-        const loading = hasPanorama(room) && panoLoadingOverlay && panoLoadingOverlay.style.display !== "none";
-        const maxWait = reduced ? 1000 : 5200;
-        if (loading && Date.now() - startedAt < maxWait) {
-          guideState.handoffTimer = window.setTimeout(finishWhenReady, 140);
-          return;
-        }
-        finish();
-      };
-      const closeAfterTransition = () => {
-        receptionistState.keepHandoff = true;
-        closeGuide(() => {
-          if (!hasPanorama(room) && hasGallery(room) && btnViewPhotos) btnViewPhotos.click();
-          finishWhenReady();
-        });
-      };
-      requestAnimationFrame(() => {
-        if (!guideState.handoffClone) return;
-        clone.classList.add("is-expanded");
-        closeAfterTransition();
+      // The venue overview image is a gallery/panorama preview, not a shared
+      // element. Close the guide and let the already-active viewer state own
+      // the transition; its loading overlay remains visible until the
+      // panorama reports ready, while gallery-only venues enter the existing
+      // photo mode.
+      closeGuide(() => {
+        if (!hasPanorama(room) && hasGallery(room) && btnViewPhotos) btnViewPhotos.click();
       });
-      guideState.handoffTimer = window.setTimeout(finish, reduced ? 1000 : 5200);
     };
     const closeGuide = (afterClose = null) => {
       if (!receptionistState.isOpen) return;
@@ -1971,9 +1919,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.clearTimeout(receptionistState.entranceTimer);
       clearEntranceEnd();
       receptionistState.entranceSettled = false;
-      if (!receptionistState.keepHandoff) clearVenueHandoff();
-      receptionistState.keepHandoff = false;
-      receptionistRoot.classList.remove("is-entering", "is-ready", "is-reopening");
+      receptionistRoot.classList.remove("is-entering", "is-priming", "is-ready", "is-reopening");
       if (receptionistDialog.contains(document.activeElement)) document.activeElement.blur();
       disableGuideFocus();
       receptionistRoot.classList.remove("is-open"); receptionistRoot.classList.add("is-closing");
@@ -1997,8 +1943,6 @@ document.addEventListener("DOMContentLoaded", () => {
       window.clearTimeout(receptionistState.closeTimer);
       window.clearTimeout(receptionistState.entranceTimer);
       clearEntranceEnd();
-      receptionistState.keepHandoff = false;
-      clearVenueHandoff();
       const entranceSequence = ++receptionistState.entranceSequence;
       receptionistState.previousFocus = opener instanceof HTMLElement ? opener : receptionistReopen;
       const isInitialGreeting = !receptionistState.hasOpened;
@@ -2006,11 +1950,13 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistSoundButtons.filter(button => button !== receptionistRoot.querySelector("[data-receptionist-sound-toggle]")).forEach(button => { button.hidden = true; });
       restoreGuideFocus();
       clearInteractionHint();
-      renderGreeting({ announce: !isInitialGreeting, requireContinue: isInitialGreeting });
-      receptionistRoot.hidden = false;
-      receptionistRoot.classList.remove("is-closing", "is-ready", "is-reopening");
-      receptionistRoot.classList.add("is-entering");
+      receptionistRoot.classList.remove("is-closing", "is-priming", "is-ready", "is-reopening");
+      receptionistRoot.classList.add("is-entering", "is-priming");
       if (!isInitialGreeting) receptionistRoot.classList.add("is-reopening");
+      // Build the greeting under the hidden root with its entrance state
+      // already active, so stale content never paints before the reveal.
+      renderGreeting({ announce: !isInitialGreeting, requireContinue: isInitialGreeting, entrance: true });
+      receptionistRoot.hidden = false;
       document.body.classList.add("showroom-receptionist-open"); document.documentElement.classList.add("showroom-receptionist-open"); setBackgroundInert(true);
       focusGuideDialog();
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -2024,8 +1970,9 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       const revealEntrance = () => {
         if (!receptionistState.isOpen || entranceSequence !== receptionistState.entranceSequence) return;
-        receptionistRoot.classList.remove("is-entering");
+        receptionistRoot.classList.remove("is-entering", "is-priming");
         receptionistRoot.classList.add("is-open", "is-ready");
+        if (!guideState.dialogueRequiresContinue) revealDialogueChoices();
         if (reducedMotion) {
           settleEntrance();
           return;
@@ -2040,15 +1987,24 @@ document.addEventListener("DOMContentLoaded", () => {
         firstChoice.addEventListener("transitionend", onEnd);
         receptionistState.entranceTimer = window.setTimeout(settleEntrance, guideState.entranceDuration + 350);
       };
+      if (reducedMotion) {
+        revealEntrance();
+        return;
+      }
       window.requestAnimationFrame(() => {
         if (!receptionistState.isOpen || entranceSequence !== receptionistState.entranceSequence) return;
-        receptionistRoot.classList.add("is-open");
-        // Commit the entering frame before revealing it. This prevents the
-        // browser from coalescing hidden and ready styles into one paint.
+        // Prime the already-rendered entering frame before any transition can
+        // run. The next frame removes priming, and only the following frame
+        // switches to the ready state, preventing a static-dialog flash.
         receptionistRoot.getBoundingClientRect();
         window.requestAnimationFrame(() => {
           if (!receptionistState.isOpen || entranceSequence !== receptionistState.entranceSequence) return;
-          revealEntrance();
+          receptionistRoot.classList.remove("is-priming");
+          receptionistRoot.getBoundingClientRect();
+          window.requestAnimationFrame(() => {
+            if (!receptionistState.isOpen || entranceSequence !== receptionistState.entranceSequence) return;
+            revealEntrance();
+          });
         });
       });
     };
@@ -2059,7 +2015,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : focusable;
     };
     receptionistRoot.addEventListener("click", event => {
-      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-room], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-shortlist-prev], [data-receptionist-shortlist-next], [data-receptionist-continue]") : null;
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-room], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
       if (!target) return;
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
       if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) { closeGuide(); return; }
@@ -2118,10 +2074,6 @@ document.addEventListener("DOMContentLoaded", () => {
         focusFirstChoice(); return;
       }
       if (target.hasAttribute("data-receptionist-view-all")) { guideState.allPage = 0; renderAllPage(); focusFirstChoice(); return; }
-      if (target.hasAttribute("data-receptionist-shortlist-prev") || target.hasAttribute("data-receptionist-shortlist-next")) {
-        guideState.shortlistIndex += target.hasAttribute("data-receptionist-shortlist-next") ? 1 : -1;
-        renderShortlist(false); focusFirstChoice(); return;
-      }
       if (target.hasAttribute("data-receptionist-all-prev") || target.hasAttribute("data-receptionist-all-next")) {
         guideState.allPage += target.hasAttribute("data-receptionist-all-next") ? 1 : -1;
         renderAllPage(); focusFirstChoice(); return;
@@ -2181,7 +2133,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         return;
       }
-      if (target.hasAttribute("data-receptionist-tour")) { const room = dataMap[receptionistState.activeRoomId]; startVenueHandoff(room); return; }
+      if (target.hasAttribute("data-receptionist-tour")) { const room = dataMap[receptionistState.activeRoomId]; openVenueMedia(room); return; }
     });
     receptionistReopen.addEventListener("click", () => openGreeting(receptionistReopen));
     document.addEventListener("keydown", event => {
