@@ -1473,6 +1473,7 @@ body.no-scroll .footer {
 
 .receptionist-back-text {
   width: max-content;
+  align-self: start;
   min-height: 2.75rem;
   margin-top: .25rem;
   padding: .55rem .85rem;
@@ -1642,6 +1643,7 @@ body.no-scroll .footer {
 
 .receptionist-response {
   display: grid;
+  grid-column: 1 / -1;
   gap: .7rem;
   min-height: 9.5rem;
   max-height: none;

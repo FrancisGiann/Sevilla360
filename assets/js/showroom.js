@@ -1242,25 +1242,23 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!receptionistState.soundEnabled) return;
       const ctx = getAudioContext();
       if (!ctx || ctx.state !== "running") return;
-      const choices = receptionistChoices.querySelectorAll(".receptionist-choice");
-      const count = Math.min(choices.length || 3, 6);
-      if (count <= 0) return;
+      
       const now = ctx.currentTime;
-      for (let i = 0; i < count; i++) {
-        const noteTime = now + (i * 0.120);
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(90 - (i * 5), noteTime);
-        osc.frequency.exponentialRampToValueAtTime(30, noteTime + 0.04);
-        gain.gain.setValueAtTime(0, noteTime);
-        gain.gain.linearRampToValueAtTime(0.4, noteTime + 0.005);
-        gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.08);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(noteTime);
-        osc.stop(noteTime + 0.1);
-      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(90, now);
+      osc.frequency.exponentialRampToValueAtTime(30, now + 0.04);
+      
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.4, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.1);
     };
     const playSuccessChime = () => {
       if (!receptionistState.soundEnabled) return;
