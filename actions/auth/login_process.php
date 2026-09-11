@@ -91,18 +91,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
-    // A password match proves ownership, but a role/login-type mismatch still
-    // receives the generic response so portal membership is not disclosed.
-    $role_matches_login = ($login_type === 'admin' && in_array($user['role'], ['admin', 'staff'], true))
-        || ($login_type === 'customer' && $user['role'] === 'customer');
-    if (!$role_matches_login) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => LOGIN_GENERIC_CREDENTIAL_ERROR, 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
-    }
-
     // Account-specific status messages are reachable only after the submitted
-    // password has been verified and the login portal matches the role.
+    // password has been verified.
     if ((int)$user['is_verified'] === 0) {
         $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'Please verify your email address first!', 'type' => 'warning'];
         // Reopen the verification dialog after an interrupted attempt so the

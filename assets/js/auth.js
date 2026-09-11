@@ -5,16 +5,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const viewLogin = document.getElementById("view-user-login");
   const viewRegister = document.getElementById("view-user-register");
   const viewTerms = document.getElementById("view-terms");
-  const viewAdmin = document.getElementById("view-admin-login");
   const viewForgot = document.getElementById("view-forgot-password");
 
-  const allViews = [viewLogin, viewRegister, viewTerms, viewAdmin, viewForgot];
+  const allViews = [viewLogin, viewRegister, viewTerms, viewForgot];
 
   // --- Trigger Elements ---
   const linkGotoRegister = document.getElementById("link-goto-register");
   const linkGotoLogin = document.getElementById("link-goto-login");
-  const btnGotoAdmin = document.getElementById("btn-goto-admin");
-  const linkBackLogin = document.getElementById("link-back-login");
   const linkGotoTerms = document.getElementById("link-goto-terms");
   const btnAgreeTerms = document.getElementById("btn-agree-terms");
   const agreeCheckbox = document.getElementById("agree-checkbox");
@@ -201,8 +198,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Event Listeners for Navigation ---
   if(linkGotoRegister) linkGotoRegister.addEventListener("click", () => switchView(viewRegister));
   if(linkGotoLogin) linkGotoLogin.addEventListener("click", () => switchView(viewLogin));
-  if(btnGotoAdmin) btnGotoAdmin.addEventListener("click", () => switchView(viewAdmin));
-  if(linkBackLogin) linkBackLogin.addEventListener("click", () => switchView(viewLogin));
   if(linkGotoTerms) linkGotoTerms.addEventListener("click", () => switchView(viewTerms));
   const openForgotPassword = (event) => {
       event.preventDefault();
@@ -211,8 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
       switchView(viewForgot);
   };
   forgotTriggers.forEach((trigger) => trigger.addEventListener("click", openForgotPassword));
-  if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(forgotOrigin === 'admin' ? viewAdmin : viewLogin));
-  if (forgotOrigin === 'admin') switchView(viewAdmin);
+  if(linkBackLoginForgot) linkBackLoginForgot.addEventListener("click", () => switchView(viewLogin));
 
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {

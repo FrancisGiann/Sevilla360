@@ -20,7 +20,10 @@ $venues_query = $conn->query("
 // 2. Setup Base Arrays
 $website_slots = [
     'home-hero' => ['title' => 'Landing Page - Hero Banner', 'badge' => 'Homepage', 'type' => 'standard'],
-    'home-about' => ['title' => 'Homepage - About/Welcome Photo', 'badge' => 'Homepage', 'type' => 'standard']
+    'home-about' => ['title' => 'Homepage - About/Welcome Photo', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-exp-1' => ['title' => 'Homepage - Experience 1', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-exp-2' => ['title' => 'Homepage - Experience 2', 'badge' => 'Homepage', 'type' => 'standard'],
+    'home-exp-3' => ['title' => 'Homepage - Experience 3', 'badge' => 'Homepage', 'type' => 'standard']
 ];
 
 $venue_standard_slots = []; // Distinct array for venue standard slots

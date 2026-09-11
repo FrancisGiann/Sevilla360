@@ -3,11 +3,9 @@ require_once __DIR__ . '/includes/session_init.php';
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 
 require_once 'config/db_connect.php';
-require_once 'includes/google_oauth.php';
 require_once __DIR__ . '/includes/customer_login_recovery.php';
 require_once __DIR__ . '/includes/booking_intent.php';
 booking_auth_capture_request();
-$google_oauth_enabled = google_oauth_is_configured();
 $forgot_origin = in_array($_GET['origin'] ?? '', ['customer', 'admin'], true) ? $_GET['origin'] : 'customer';
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
@@ -108,11 +106,6 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <?php endif; ?>
 
                     <button type="submit" class="btn btn-primary btn-full">SIGN IN &rarr;</button>
-                    <?php if ($google_oauth_enabled): ?>
-                    <a class="btn btn-secondary btn-full google-login-btn" href="actions/auth/google_start.php">Continue with Google</a>
-                    <small class="auth-consent-note">By continuing, you agree to our Terms of Service and Privacy Policy.</small>
-                    <?php endif; ?>
-                    <button type="button" class="btn btn-secondary btn-full" id="btn-goto-admin">ADMIN LOGIN</button>
                 </form>
 
                 <div class="auth-footer">
@@ -226,45 +219,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <button type="button" class="btn btn-primary btn-full" id="btn-agree-terms">I AGREE</button>
             </div>
 
-            <!-- VIEW 4: ADMIN LOGIN -->
-            <div id="view-admin-login" class="auth-view">
-                <h2 class="auth-title">Administrator Portal</h2>
-                <p class="auth-subtitle">Secure system access</p>
 
-                <form id="form-admin" action="actions/auth/login_process.php" method="POST">
-                    <!-- CSRF TOKEN INJECTED HERE -->
-                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-                    <input type="hidden" name="login_type" value="admin">
-
-                    <!-- HONEYPOT FIELD -->
-                    <div style="display:none; position:absolute; left:-9999px;">
-                        <label for="website_url_admin">Leave this empty:</label>
-                        <input type="text" name="website_url_honeypot" id="website_url_admin" value="" autocomplete="off">
-                    </div>
-
-                    <div class="form-group">
-                        <label>ADMIN EMAIL</label>
-                        <input type="email" name="email" class="form-control" placeholder="admin@sevilla360.com"
-                            required>
-                    </div>
-
-                    <button type="button" class="forgot-link" data-forgot-password data-origin="admin">Forgot password?</button>
-                    <div class="form-group">
-                        <label>PASSWORD</label>
-                        <div class="password-wrapper">
-                            <input type="password" name="password" class="form-control"
-                                placeholder="Enter admin password" required>
-                            <span class="password-toggle">SHOW</span>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary btn-full">LOGIN AS ADMIN</button>
-                </form>
-
-                <div class="auth-footer">
-                    <a id="link-back-login" style="cursor: pointer;">&larr; Back to User Login</a>
-                </div>
-            </div>
 
             <!-- VIEW 5: FORGOT PASSWORD -->
             <div id="view-forgot-password" class="auth-view">

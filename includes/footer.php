@@ -34,6 +34,7 @@ $footer_social_links = array_values(array_filter($footer_social_links, static fu
                     <li><a href="index.php#about">About</a></li>
                     <li><a href="index.php#experiences">Events</a></li>
                     <li><a href="index.php#accommodations">Accommodations</a></li>
+                    <li><a href="index.php#location">Location</a></li>
                     <li><a href="showroom.php">Virtual Showroom</a></li>
                 </ul>
             </nav>

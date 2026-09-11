@@ -70,7 +70,7 @@ if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
 }
 
 // Fetch the current system CMS images used by the homepage.
-$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms WHERE slot_assignment IN ('home-hero', 'home-about')");
+$cms_query = $conn->query("SELECT slot_assignment, file_path FROM media_cms WHERE slot_assignment IN ('home-hero', 'home-about', 'home-exp-1', 'home-exp-2', 'home-exp-3')");
 $cms_images = [];
 if ($cms_query) {
     while ($row = $cms_query->fetch_assoc()) {
@@ -79,6 +79,15 @@ if ($cms_query) {
 }
 function get_cms_image($slot_name, $default_url, $cms_images) {
     return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+}
+
+// Fetch business info for the location section.
+$biz_info = ['biz_address' => 'Dmoit Lucena City', 'biz_phone' => '+63 912 345 6789', 'biz_email' => 'reservations@sevilla360.com', 'biz_map_embed' => ''];
+$biz_query = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('biz_address', 'biz_phone', 'biz_email', 'biz_map_embed')");
+if ($biz_query) {
+    while ($biz_row = $biz_query->fetch_assoc()) {
+        $biz_info[$biz_row['setting_key']] = $biz_row['setting_value'];
+    }
 }
 
 include 'includes/header.php';
@@ -171,37 +180,37 @@ include 'includes/header.php';
         <div class="idx-experiences-grid">
             <article class="idx-exp-card reveal" style="transition-delay: 0.1s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="https://images.unsplash.com/photo-1517457373958-b7bdd4587205?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                    <img src="<?php echo get_cms_image('home-exp-1', 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
                         alt="Meetings & Conferences">
                     <span class="idx-exp-num">01</span>
                 </div>
-                <h3>Meetings &amp; Conferences</h3>
+                <div class="idx-exp-content"><h3>Meetings &amp; Conferences</h3>
                 <span class="idx-exp-rule"></span>
                 <p>Considered spaces for focused work — natural light, quiet acoustics and service
-                    that anticipates.</p>
+                    that anticipates.</p></div>
             </article>
 
             <article class="idx-exp-card reveal" style="transition-delay: 0.2s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                    <img src="<?php echo get_cms_image('home-exp-2', 'https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
                         alt="Weddings">
                     <span class="idx-exp-num">02</span>
                 </div>
-                <h3>Weddings</h3>
+                <div class="idx-exp-content"><h3>Weddings</h3>
                 <span class="idx-exp-rule"></span>
                 <p>Garden ceremonies that drift into candlelit evenings, held together by an
-                    unhurried elegance.</p>
+                    unhurried elegance.</p></div>
             </article>
 
             <article class="idx-exp-card reveal" style="transition-delay: 0.3s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                    <img src="<?php echo get_cms_image('home-exp-3', 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
                         alt="Debut">
                     <span class="idx-exp-num">03</span>
                 </div>
-                <h3>Debut</h3>
+                <div class="idx-exp-content"><h3>Debut</h3>
                 <span class="idx-exp-rule"></span>
-                <p>A ballroom of gold and glass — a coming of age staged with quiet grandeur.</p>
+                <p>A ballroom of gold and glass — a coming of age staged with quiet grandeur.</p></div>
             </article>
         </div>
     </section>
@@ -269,17 +278,58 @@ include 'includes/header.php';
                             <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--past" aria-hidden="true"></span><span>Past date</span></li>
                         </ul>
                     </div>
-                    <p class="idx-modal-calendar-note">This calendar checks availability only; it never places a hold.</p>
+                    <p class="idx-modal-calendar-note">Select your dates here to pre-fill your booking. No hold is placed until checkout.</p>
                 </div>
                 <a class="idx-btn idx-btn-gold idx-modal-continue" href="booking.php">Continue booking</a>
             </div>
         </div>
     </div>
 
+    <!-- ===================== LOCATION ===================== -->
+    <section class="idx-location" id="location">
+        <div class="idx-location-inner">
+            <div class="idx-location-info reveal">
+                <span class="idx-script">Visit Us</span>
+                <h2>Find Your Way Here</h2>
+                <span class="idx-rule-gold"></span>
+                <p class="idx-location-address">
+                    <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                    <?php echo htmlspecialchars($biz_info['biz_address'], ENT_QUOTES, 'UTF-8'); ?>
+                </p>
+                <p class="idx-location-phone">
+                    <i class="fa-solid fa-phone" aria-hidden="true"></i>
+                    <?php echo htmlspecialchars($biz_info['biz_phone'], ENT_QUOTES, 'UTF-8'); ?>
+                </p>
+                <p class="idx-location-email">
+                    <i class="fa-solid fa-envelope" aria-hidden="true"></i>
+                    <a href="mailto:<?php echo htmlspecialchars($biz_info['biz_email'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($biz_info['biz_email'], ENT_QUOTES, 'UTF-8'); ?></a>
+                </p>
+                <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($biz_info['biz_address']); ?>" target="_blank" rel="noopener noreferrer" class="idx-btn idx-btn-outline-dark idx-location-directions">
+                    <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i> Get Directions
+                </a>
+            </div>
+            <div class="idx-location-map reveal">
+                <?php
+                    $map_src = !empty(trim($biz_info['biz_map_embed']))
+                        ? htmlspecialchars(trim($biz_info['biz_map_embed']), ENT_QUOTES, 'UTF-8')
+                        : 'https://maps.google.com/maps?q=' . urlencode('M.I. Sevilla Resort ' . $biz_info['biz_address']) . '&t=&z=15&ie=UTF8&iwloc=&output=embed';
+                ?>
+                <iframe
+                    src="<?php echo $map_src; ?>"
+                    width="100%"
+                    height="100%"
+                    style="border:0;"
+                    allowfullscreen=""
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade"
+                    title="M.I. Sevilla Resort & Events Place location"></iframe>
+            </div>
+        </div>
+    </section>
+
     <script>
     window.publicVenueCatalog = <?php echo json_encode($public_venues, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES); ?>;
-</script>
-
+    </script>
 </main>
 
 <?php include 'includes/footer.php'; ?>

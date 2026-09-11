@@ -91,6 +91,7 @@ $nav = [
     'about'           => ['label' => 'About',            'url' => 'index.php#about',         'target' => 'about'],
     'experiences'     => ['label' => 'Events',           'url' => 'index.php#experiences',   'target' => 'experiences'],
     'accommodations'  => ['label' => 'Accommodations',   'url' => 'index.php#accommodations','target' => 'accommodations'],
+    'location'        => ['label' => 'Location',          'url' => 'index.php#location',      'target' => 'location'],
     'showroom'        => ['label' => 'Virtual Showroom', 'url' => 'showroom.php',            'target' => 'showroom'],
 ];
 ?>

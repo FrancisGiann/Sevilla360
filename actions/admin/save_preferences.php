@@ -51,6 +51,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'biz_email' => trim($_POST['biz_email'] ?? 'reservations@sevilla360.com'),
         'biz_phone' => trim($_POST['biz_phone'] ?? '+63 912 345 6789'),
         'biz_address' => trim($_POST['biz_address'] ?? '123 Resort Drive, Paradise City'),
+        'biz_map_embed' => trim($_POST['biz_map_embed'] ?? ''),
         'biz_policies' => trim($_POST['biz_policies'] ?? ''),
     ];
 

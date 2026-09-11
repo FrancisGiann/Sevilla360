@@ -492,10 +492,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const facts = modal.querySelector('.idx-modal-facts');
     const amenities = modal.querySelector('.idx-modal-amenities');
     const checkoutBoundaryLegend = modal.querySelector('[data-calendar-legend="checkout-boundary"]');
+    
     if (title) title.textContent = venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     if (rate) rate.textContent = rateText(venue, false);
     if (rating) rating.textContent = ratingText(venue);
+
     const reviewsList = document.getElementById('idx-modal-reviews-list');
     if (reviewsList) {
       reviewsList.replaceChildren();
@@ -520,6 +522,7 @@ document.addEventListener("DOMContentLoaded", function () {
           reviewsList.replaceChildren(); const empty = document.createElement('p'); empty.textContent = 'No ratings yet'; reviewsList.appendChild(empty);
         });
     }
+    
     if (checkoutBoundaryLegend) checkoutBoundaryLegend.hidden = venue.category !== 'Hotel Room';
     if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
     if (facts) {

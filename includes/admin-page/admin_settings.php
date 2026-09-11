@@ -365,7 +365,15 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             <div class="form-group settings-field-wide">
                                 <label>Business Address</label>
                                 <input type="text" name="biz_address" class="form-control"
-                                    value="<?php echo htmlspecialchars($current_settings['biz_address'] ?? '123 Resort Drive, Paradise City'); ?>">
+                                    value="<?php echo htmlspecialchars($current_settings['biz_address'] ?? '123 Resort Drive, Paradise City'); ?>"
+                                    placeholder="Full street address, city, province">
+                            </div>
+                            <div class="form-group settings-field-wide">
+                                <label>Google Maps Embed URL <span style="font-weight:normal;color:#9a8e82;font-size:.82em;">(Shown on homepage location section)</span></label>
+                                <input type="url" name="biz_map_embed" class="form-control"
+                                    value="<?php echo htmlspecialchars($current_settings['biz_map_embed'] ?? ''); ?>"
+                                    placeholder="Paste the iframe src URL from Google Maps → Share → Embed a map">
+                                <small style="color:#9a8e82;margin-top:.35rem;display:block;">Go to <a href="https://maps.google.com" target="_blank" rel="noopener" style="color:var(--gold);">Google Maps</a>, find your location, click <strong>Share → Embed a map</strong>, copy the <code>src="..."</code> URL from the iframe code.</small>
                             </div>
                             <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
