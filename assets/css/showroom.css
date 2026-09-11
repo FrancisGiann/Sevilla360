@@ -679,7 +679,6 @@ body.no-scroll .footer {
 }
 
 .showroom-receptionist.is-entering {
-  opacity: 1;
   visibility: visible;
 }
 
@@ -1038,19 +1037,37 @@ body.no-scroll .footer {
 .receptionist-continue:hover { background: #b98b50; border-color: #e7c891; transform: translateY(-.1rem); }
 .receptionist-continue[hidden] { display: none; }
 
-.showroom-receptionist.is-line-reveal .receptionist-message {
+/* Prime follow-up dialogue in a hidden state before replacing its text, so
+   the previous visible line cannot animate out as the next one is prepared. */
+.showroom-receptionist.is-line-priming .receptionist-panel-head > div,
+.showroom-receptionist.is-line-priming .receptionist-message {
   clip-path: inset(0 100% 0 0);
-  opacity: .65;
+  opacity: 0 !important;
   filter: blur(2px);
   transform: translateY(.3rem);
+  transition: none !important;
+}
+
+.showroom-receptionist.is-line-priming .receptionist-choices {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+  transition: none !important;
+}
+
+.showroom-receptionist.is-line-reveal .receptionist-message {
+  clip-path: inset(0);
+  opacity: 1;
+  filter: none;
+  transform: none;
   transition: clip-path 420ms cubic-bezier(.2, .82, .24, 1), opacity 380ms ease, filter 420ms ease, transform 420ms cubic-bezier(.2, .82, .24, 1);
 }
 
 .showroom-receptionist.is-line-reveal .receptionist-panel-head > div {
-  clip-path: inset(0 100% 0 0);
-  filter: blur(2px);
-  opacity: .7;
-  transform: translateY(.3rem);
+  clip-path: inset(0);
+  filter: none;
+  opacity: 1;
+  transform: none;
   transition: clip-path 420ms cubic-bezier(.2, .82, .24, 1), filter 420ms ease, opacity 380ms ease, transform 420ms cubic-bezier(.2, .82, .24, 1);
 }
 
@@ -1963,6 +1980,51 @@ body.showroom-receptionist-open .showroom-container .details-box {
   }
 }
 
+/* Tablets need separate portrait and reading areas; the desktop overlay puts
+   the centered conversation over the portrait at these widths. */
+@media (min-width: 701px) and (max-width: 1200px) {
+  .showroom-receptionist:not(.is-venue-state):not(.is-date-state) .receptionist-portrait-wrap {
+    inset: 18svh auto 10svh 0;
+    width: 34%;
+  }
+
+  .showroom-receptionist:not(.is-venue-state):not(.is-date-state) .receptionist-portrait {
+    object-position: left center;
+  }
+
+  .showroom-receptionist:not(.is-venue-state):not(.is-date-state) .receptionist-panel {
+    inset: 50% 0 auto 34%;
+    height: auto;
+    max-height: calc(100svh - 8rem);
+    padding: 1.25rem clamp(1.25rem, 2.5vw, 2rem) calc(5rem + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    transform: translateY(-50%);
+    background: linear-gradient(180deg, rgba(20, 16, 12, .35), rgba(20, 16, 12, .94));
+  }
+
+  .showroom-receptionist.is-date-state .receptionist-panel,
+  .showroom-receptionist.is-venue-state .receptionist-panel {
+    inset: 50% 0 auto;
+    height: auto;
+    max-height: calc(100svh - 8rem);
+    overflow-y: auto;
+    transform: translateY(-50%);
+  }
+
+  .showroom-receptionist:not(.is-venue-state):not(.is-date-state) .receptionist-panel h2 {
+    font-size: clamp(2rem, 4vw, 3rem);
+  }
+
+  .showroom-receptionist:not(.is-venue-state):not(.is-date-state) .receptionist-choices {
+    flex-shrink: 0;
+  }
+
+  .showroom-receptionist.is-date-state .receptionist-portrait-wrap,
+  .showroom-receptionist.is-venue-state .receptionist-portrait-wrap {
+    display: none;
+  }
+}
+
 @media (max-width: 700px) {
   .showroom-reviews { display: none; }
   .showroom-reviews-mobile { display: block; }
@@ -2386,6 +2448,12 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .showroom-receptionist.is-ready .receptionist-message,
   .showroom-receptionist.is-ready .receptionist-choices,
   .showroom-receptionist.is-ready .receptionist-choices > *,
+  .showroom-receptionist.is-line-reveal .receptionist-message,
+  .showroom-receptionist.is-line-reveal .receptionist-panel-head > div,
+  .showroom-receptionist.is-line-complete .receptionist-message,
+  .showroom-receptionist.is-choices-revealed .receptionist-message,
+  .showroom-receptionist.is-line-complete .receptionist-panel-head > div,
+  .showroom-receptionist.is-choices-revealed .receptionist-panel-head > div,
   .receptionist-choice,
   .receptionist-reopen,
   .receptionist-continue,

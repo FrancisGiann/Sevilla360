@@ -1254,13 +1254,24 @@ document.addEventListener("DOMContentLoaded", () => {
       return true;
     };
     const setDialogue = (title, message, announce = true, options = {}) => {
+      const entrance = Boolean(options.entrance);
+      if (!entrance) {
+        // Freeze the outgoing dialogue in its hidden state before replacing
+        // its text. Otherwise the existing line-reveal transition first
+        // animates the old, already-visible copy out of the scene.
+        receptionistRoot.classList.add("is-line-priming");
+        receptionistRoot.classList.remove("is-choices-revealed", "is-line-complete", "is-line-reveal");
+        setChoicesGated(true);
+        receptionistRoot.getBoundingClientRect();
+      }
       receptionistTitle.textContent = title;
       receptionistMessage.textContent = message;
       // Keep the full dialogue available to assistive technology even while
       // the visual line mask and Continue cue are still resolving.
       receptionistLive.textContent = message;
       resetGuideScroll();
-      armDialogue(Boolean(options.requireContinue), Boolean(options.entrance));
+      armDialogue(Boolean(options.requireContinue), entrance);
+      if (!entrance) receptionistRoot.classList.remove("is-line-priming");
     };
     const dialogueChoicesObserver = new MutationObserver(() => {
       if (!guideState.dialogueChoicesRevealed) setChoicesGated(true);
