@@ -17,8 +17,9 @@ $venues_query = $conn->query("
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
-    WHERE v.status != 'Inactive'
+    WHERE v.status = 'Available'
     GROUP BY v.id, v.category, v.name, hr.room_type
+    ORDER BY v.id ASC, hr.room_type ASC
 ");
 
 $showroom_data = [];
@@ -29,18 +30,39 @@ if ($venues_query) {
         $safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
         
         $cap = 'N/A'; $rate = 'N/A';
+        $capacity_value = null; $rate_value = null; $beds_value = null;
         $beds = '';
         if ($v['category'] === 'Hotel Room') {
-            $cap = $v['max_capacity'] . ' pax'; $rate = '₱' . number_format($v['nightly_rate']) . ' /night';
+            $capacity_value = is_numeric($v['max_capacity']) ? (int)$v['max_capacity'] : null;
+            $rate_value = is_numeric($v['nightly_rate']) ? (float)$v['nightly_rate'] : null;
+            $cap = $capacity_value !== null ? $capacity_value . ' pax' : 'N/A';
+            $rate = $rate_value !== null ? '₱' . number_format($rate_value) . ' /night' : 'N/A';
             $minBeds = (int)($v['min_bed_count'] ?? 0); $maxBeds = (int)($v['max_bed_count'] ?? 0);
-            $beds = $minBeds === $maxBeds ? $minBeds . ' ' . ($minBeds === 1 ? 'bed' : 'beds') : $minBeds . '–' . $maxBeds . ' beds';
+            $beds_value = $maxBeds > 0 ? $maxBeds : ($minBeds > 0 ? $minBeds : null);
+            $beds = $beds_value === null ? '' : ($minBeds === $maxBeds ? $minBeds . ' ' . ($minBeds === 1 ? 'bed' : 'beds') : $minBeds . '–' . $maxBeds . ' beds');
         }
-        if ($v['category'] === 'Event Hall') { $cap = $v['eh_cap'] . ' pax'; $rate = '₱' . number_format($v['eh_rate']) . ' /day'; }
-        if ($v['category'] === 'Resort Villa') { $cap = $v['vi_cap'] . ' pax'; $rate = '₱' . number_format($v['vi_rate']) . ' /day'; }
+        if ($v['category'] === 'Event Hall') {
+            $capacity_value = is_numeric($v['eh_cap']) ? (int)$v['eh_cap'] : null;
+            $rate_value = is_numeric($v['eh_rate']) ? (float)$v['eh_rate'] : null;
+            $cap = $capacity_value !== null ? $capacity_value . ' pax' : 'N/A';
+            $rate = $rate_value !== null ? '₱' . number_format($rate_value) . ' /day' : 'N/A';
+        }
+        if ($v['category'] === 'Resort Villa') {
+            $capacity_value = is_numeric($v['vi_cap']) ? (int)$v['vi_cap'] : null;
+            $rate_value = is_numeric($v['vi_rate']) ? (float)$v['vi_rate'] : null;
+            $cap = $capacity_value !== null ? $capacity_value . ' pax' : 'N/A';
+            $rate = $rate_value !== null ? '₱' . number_format($rate_value) . ' /day' : 'N/A';
+        }
 
-        // Fallback text 
-        $desc = !empty($v['description']) ? $v['description'] : "Experience ultimate luxury and comfort at $display_name.";
-        $amenities = !empty($v['amenities']) ? explode(',', $v['amenities']) : ['Free Wi-Fi', 'Fully Air-Conditioned'];
+        // Keep fallback copy factual and category-safe when CMS description is absent.
+        $category_fallback = match ($v['category']) {
+            'Event Hall' => 'event space',
+            'Hotel Room' => 'hotel room',
+            'Resort Villa' => 'resort villa',
+            default => 'venue'
+        };
+        $desc = !empty($v['description']) ? $v['description'] : "Explore this $category_fallback in the Sevilla360 showroom.";
+        $amenities = !empty($v['amenities']) ? explode(',', $v['amenities']) : [];
 
         $showroom_data[$safe_id] = [
             'id' => $safe_id,
@@ -53,8 +75,14 @@ if ($venues_query) {
             'room_type' => $v['room_type'] ?? '',
             'venue_name' => $v['venue_name'],
             'capacity' => $cap,
+            'capacity_value' => $capacity_value,
+            'capacity_numeric' => $capacity_value,
             'beds' => $beds,
+            'beds_value' => $beds_value,
+            'beds_numeric' => $beds_value,
             'rate' => $rate,
+            'rate_value' => $rate_value,
+            'rate_numeric' => $rate_value,
             'status' => $v['status'],
             'description' => $desc,
             'amenities' => $amenities,
@@ -165,7 +193,7 @@ include 'includes/header.php';
 
 <!-- Pass PHP Data to Javascript -->
 <script>
-window.showroomData = <?php echo json_encode($showroom_data); ?>;
+window.showroomData = <?php echo json_encode($showroom_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 
 <!-- EXACT Three.js version required by Panolens -->
@@ -228,18 +256,18 @@ window.process = {
             <div class="gallery-header ui-photos">
                 <div>
                     <span class="photo-room-title" id="gallery-title">--</span>
-                    <span id="gallery-counter"
+                    <span id="gallery-counter" aria-live="polite"
                         style="color: var(--color-gold); margin-left: 10px; font-weight: bold;"></span>
                 </div>
                 <button class="btn-back" id="btn-back-to-360">Back to 360</button>
             </div>
 
-            <button class="slider-arrow left ui-photos" id="slide-prev">
+            <button class="slider-arrow left ui-photos" id="slide-prev" aria-label="Previous photo">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 12H5M12 19l-7-7 7-7" />
                 </svg>
             </button>
-            <button class="slider-arrow right ui-photos" id="slide-next">
+            <button class="slider-arrow right ui-photos" id="slide-next" aria-label="Next photo">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
@@ -296,8 +324,7 @@ window.process = {
                 <h3 class="details-title">VENUE DETAILS</h3>
                 <!-- NEW: The Description -->
                 <p class="venue-description" id="val-desc">
-                    Experience ultimate luxury and comfort. This venue features stunning architecture, natural lighting,
-                    and everything you need to make your event unforgettable.
+                    Explore the selected venue in the Sevilla360 showroom. Details and media update when a venue is selected.
                 </p>
 
                 <!-- NEW: Amenities Grid -->
@@ -356,6 +383,9 @@ window.process = {
 
     <!-- Virtual receptionist: the showroom remains visible while the guide introduces the available tours. -->
     <div class="showroom-receptionist" id="showroom-receptionist" hidden>
+        <div class="showroom-receptionist-backdrop" aria-hidden="true">
+            <img id="receptionist-backdrop-image" src="assets/img/placeholder.jpg" alt="" decoding="async">
+        </div>
         <div class="showroom-receptionist-scrim" data-receptionist-close aria-hidden="true"></div>
         <div class="showroom-receptionist-dialog" role="dialog" aria-modal="true"
             aria-labelledby="receptionist-title" aria-describedby="receptionist-message" tabindex="-1">
@@ -363,28 +393,37 @@ window.process = {
                 <img class="receptionist-portrait" src="assets/img/showroom-receptionist.webp"
                     alt="" aria-hidden="true" width="1024" height="1536">
             </div>
+            <button type="button" class="receptionist-skip" data-receptionist-skip>Skip introduction</button>
             <div class="receptionist-panel">
                 <div class="receptionist-panel-head">
                     <div>
-                        <p class="receptionist-label">M.I. Sevilla Resort &amp; Events Place</p>
                         <h2 id="receptionist-title">Welcome</h2>
                     </div>
-                    <button type="button" class="receptionist-skip" data-receptionist-skip>Skip introduction</button>
                 </div>
                 <p class="receptionist-message" id="receptionist-message">
                     Welcome to M.I. Sevilla Resort &amp; Events Place. I’m your virtual receptionist. How may I help you today?
                 </p>
+                <button type="button" class="receptionist-continue" id="receptionist-continue"
+                    data-receptionist-continue>Continue</button>
                 <p class="receptionist-live" id="receptionist-live" aria-live="polite" aria-atomic="true"></p>
                 <div class="receptionist-choices" id="receptionist-choices" role="group" aria-label="Receptionist choices">
-                    <button type="button" class="receptionist-choice" data-receptionist-intent="Event Hall">Plan an event</button>
-                    <button type="button" class="receptionist-choice" data-receptionist-intent="Hotel Room">Book a hotel room</button>
-                    <button type="button" class="receptionist-choice" data-receptionist-intent="Resort Villa">Explore a resort villa</button>
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Event Hall">Event</button>
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Hotel Room">Hotel</button>
+                    <button type="button" class="receptionist-choice" data-receptionist-intent="Resort Villa">Villa</button>
                     <button type="button" class="receptionist-choice receptionist-choice-secondary" data-receptionist-close>Just look around</button>
                 </div>
             </div>
+            <button type="button" class="receptionist-sound" data-receptionist-sound-toggle
+                aria-pressed="false" aria-label="Turn on resort ambience">Sound off</button>
+            <audio id="receptionist-ambience" preload="none" loop src="assets/audio/receptionist-ambience.wav"></audio>
         </div>
     </div>
-    <button type="button" class="receptionist-reopen" id="receptionist-reopen" hidden>Ask receptionist</button>
+    <button type="button" class="receptionist-reopen" id="receptionist-reopen" aria-label="Ask receptionist" hidden>
+        <span class="receptionist-reopen-face" aria-hidden="true"><img src="assets/img/showroom-receptionist.webp" alt=""></span>
+        <span>Ask receptionist</span>
+    </button>
+    <button type="button" class="receptionist-sound receptionist-sound-launcher" data-receptionist-sound-toggle
+        aria-pressed="false" aria-label="Turn on resort ambience" hidden>Sound off</button>
 
     <!-- Mobile Info Modal -->
     <div class="modal-overlay" id="info-modal" style="z-index: 999999;">
