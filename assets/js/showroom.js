@@ -1447,21 +1447,67 @@ document.addEventListener("DOMContentLoaded", () => {
       const matches = ranked.filter(item => item.exactFit && (preference !== "premium" || item.vip)).slice(0, 3);
       return { matches, hasExactFit: matches.length > 0 };
     };
-    const rationaleFor = (room, category, requestedCapacity, preference, occasionOrPurpose = null) => {
-      const capacity = numericFact(room.capacity_value);
-      const requested = numericFact(requestedCapacity);
-      if (requested !== null && capacity !== null && capacity >= requested) {
-        if (category === "Event Hall" && occasionOrPurpose) return `A media-ready match for your ${occasionOrPurpose} plans, with capacity for up to ${formatNumber(capacity)} guests.`;
-        if (category === "Resort Villa" && occasionOrPurpose) return `A media-ready villa to explore for your ${occasionOrPurpose} stay, with capacity for up to ${formatNumber(capacity)} guests.`;
-        if (category === "Hotel Room" && preference === "value" && numericFact(room.rate_value) !== null) return "A lower listed rate among rooms that fit your group.";
-        if (category === "Hotel Room" && preference === "value") return "Capacity fits your group; a comparable rate is not listed.";
-        if (category === "Hotel Room" && preference === "space" && numericFact(room.capacity_value) !== null && numericFact(room.beds_value) !== null) return "Strong listed capacity and bed count among the rooms that fit.";
-        if (category === "Hotel Room" && preference === "space") return "Capacity fits your group; room space or bed details are incomplete.";
-        if (category === "Hotel Room" && preference === "premium" && /vip|premium/i.test(`${room.room_type || ""} ${room.title || ""}`)) return "A premium or VIP room type that fits your group.";
-        return `Capacity for up to ${formatNumber(capacity)} guests, matching your group.`;
+    const explicitTierFor = room => {
+      const source = `${room.room_type || ""} ${room.title || ""}`;
+      const tiers = [];
+      if (/\bpremium\b/i.test(source)) tiers.push("Premium");
+      if (/\bvip\b/i.test(source)) tiers.push("VIP");
+      return tiers.join(" / ");
+    };
+    const listedRateFor = (room, category) => {
+      const listedRate = guideFact(room.rate, null);
+      if (listedRate) return listedRate;
+      const rate = numericFact(room.rate_value);
+      if (rate === null) return "Not listed";
+      const unit = category === "Hotel Room" ? " /night" : " /day";
+      return `₱${formatNumber(rate)}${unit}`;
+    };
+    const listedBedsFor = room => {
+      const listedBeds = guideFact(room.beds, null);
+      if (listedBeds) return listedBeds;
+      const beds = numericFact(room.beds_value);
+      return beds === null ? "Not listed" : `${formatNumber(beds)} bed${beds === 1 ? "" : "s"}`;
+    };
+    const capacityComparisonFor = (capacity, requested) => {
+      if (requested !== null && capacity !== null) {
+        const surplus = capacity - requested;
+        if (surplus === 0) return `Fit: accommodates your ${formatNumber(requested)} guests exactly`;
+        if (surplus > 0) return `Fit: accommodates your ${formatNumber(requested)} guests with room for ${formatNumber(surplus)} more`;
+        return `Fit: capacity up to ${formatNumber(capacity)}, below your ${formatNumber(requested)}-guest request`;
       }
-      if (capacity !== null && requested !== null) return `Nearest available capacity: up to ${formatNumber(capacity)} guests.`;
-      return "A media-ready venue to explore; confirm capacity with the team when booking.";
+      if (requested !== null) return `Fit: capacity not listed for your ${formatNumber(requested)}-guest request`;
+      if (capacity !== null) return `Fit: capacity up to ${formatNumber(capacity)} guests`;
+      return "Fit: capacity not listed · confirm guest fit during booking";
+    };
+    const ratePositionFor = (room, exactFitRooms) => {
+      const pricedRooms = exactFitRooms.filter(item => item.rate !== null);
+      const position = pricedRooms.findIndex(item => item.room.id === room.id);
+      if (position < 0) return "Rate position unavailable; no starting rate is listed";
+      const total = pricedRooms.length;
+      return `Listed rate position: #${position + 1} of ${total} exact-fit room${total === 1 ? "" : "s"} with rates listed`;
+    };
+    const rationaleFor = (room, category, requestedCapacity, preference, occasionOrPurpose = null, exactFitRooms = null) => {
+      const requested = numericFact(requestedCapacity);
+      if (category === "Event Hall" || category === "Resort Villa") {
+        const context = occasionOrPurpose ? `For your ${occasionOrPurpose} plans; ` : "";
+        return `${context}${requested !== null ? "Capacity fit is the ranking basis; closest fit is shown first." : "Capacity data is shown; no guest count was requested."}`;
+      }
+      if (category === "Hotel Room" && preference === "value") {
+        const matching = Array.isArray(exactFitRooms) ? exactFitRooms : rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit);
+        return `Best value · ${ratePositionFor(room, matching)}`;
+      }
+      if (category === "Hotel Room" && preference === "space") return "Extra space · shortlist ordered by listed capacity, then beds";
+      if (category === "Hotel Room" && preference === "premium") {
+        const tier = explicitTierFor(room);
+        return tier ? `Explicit ${tier} designation listed` : "Premium/VIP designation is not listed";
+      }
+      return requested !== null ? "Capacity fit for your guest request" : "Capacity details are shown for comparison";
+    };
+    const shortlistFactsFor = (room, category, requestedCapacity) => {
+      const requested = numericFact(requestedCapacity);
+      const facts = [capacityComparisonFor(numericFact(room.capacity_value), requested), `Listed starting rate: ${listedRateFor(room, category)}`];
+      if (category === "Hotel Room") facts.push(`Beds: ${listedBedsFor(room)}`);
+      return facts.join(" · ");
     };
     const renderShortlist = (announce = true) => {
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
@@ -1470,7 +1516,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const requested = numericFact(guideContext.groupSize);
       const label = categoryLabels[category] || "venue";
       const dateSummary = availabilityDateSummary(category);
-      setDialogue("A considered shortlist", `These ${label}s are ordered around your group and preferences.${dateSummary ? ` ${dateSummary}` : ""}`, announce);
+      const context = guideContext.occasion || guideContext.purpose;
+      const shortlistOrder = category === "Hotel Room"
+        ? `These ${label}s are ordered around your group and ${preferenceLabel(guideContext.preference).toLowerCase()} preference.`
+        : `These ${label}s are ordered by capacity fit;${context ? ` your ${context} ${category === "Event Hall" ? "occasion" : "purpose"} is shown for context.` : " closest fit is shown first."}`;
+      const exactFitRooms = category === "Hotel Room" && guideContext.preference === "value"
+        ? rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit)
+        : null;
+      setDialogue("A considered shortlist", `${shortlistOrder}${dateSummary ? ` ${dateSummary}` : ""}`, announce);
       receptionistChoices.replaceChildren();
       ranked.slice(0, 3).forEach((selected, index) => {
         const choice = createChoice(selected.room.title || selected.room.venue_name || "Venue", "receptionist-choice-venue receptionist-shortlist-choice", {
@@ -1479,9 +1532,12 @@ document.addEventListener("DOMContentLoaded", () => {
           "data-receptionist-shortlist-rank": String(index + 1)
         });
         const note = document.createElement("span");
-        note.className = "receptionist-choice-note";
-        note.textContent = rationaleFor(selected.room, category, requested, guideContext.preference, guideContext.occasion || guideContext.purpose);
-        choice.appendChild(note);
+        note.className = "receptionist-choice-note receptionist-shortlist-reason";
+        note.textContent = rationaleFor(selected.room, category, requested, guideContext.preference, context, exactFitRooms);
+        const facts = document.createElement("span");
+        facts.className = "receptionist-shortlist-facts";
+        facts.textContent = shortlistFactsFor(selected.room, category, requested);
+        choice.append(note, facts);
         receptionistChoices.appendChild(choice);
       });
       if (!ranked.length) {
