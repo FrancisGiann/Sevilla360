@@ -118,6 +118,21 @@
 .settings-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
 .settings-field-wide { grid-column: 1 / -1; }
 .pricing-section-card { margin-top: 0; }
+.manual-payment-deadline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 260px); align-items: end; gap: 22px; margin-bottom: 20px; }
+.manual-payment-deadline h3 { margin: 0 0 6px; color: var(--color-dark); font-family: var(--font-heading); font-weight: 500; }
+.manual-payment-deadline p { margin: 0; color: var(--color-dark-light); line-height: 1.55; }
+.manual-payment-deadline .form-group { margin: 0; }
+.manual-payment-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.manual-payment-method { min-width: 0; margin: 0; }
+.manual-payment-method legend { padding: 0 8px; color: var(--color-dark); font-family: var(--font-heading); font-size: 1.25rem; }
+.manual-payment-enabled { display: flex; align-items: center; gap: 9px; margin: 4px 0 18px; color: var(--color-dark); font-weight: 600; }
+.manual-payment-enabled input { width: 18px; height: 18px; accent-color: var(--color-gold); }
+.manual-payment-current-qr { display: block; width: min(180px, 100%); max-height: 180px; object-fit: contain; margin-top: 12px; background: #fff; border: 1px solid rgba(42, 37, 34, .14); border-radius: 8px; padding: 8px; }
+#manual-payment-settings-status { min-height: 1.5em; margin-top: 16px; color: var(--color-dark-light); }
+@media (max-width: 760px) {
+  .manual-payment-methods { grid-template-columns: minmax(0, 1fr); }
+  .manual-payment-deadline { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
 .pricing-groups { display: grid; gap: 22px; }
 .pricing-group { padding-top: 18px; border-top: 1px solid rgba(42, 37, 34, .1); }
 .pricing-group:first-child { padding-top: 0; border-top: 0; }
@@ -403,7 +418,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
   font-weight: 500;
   box-shadow: 0 20px 40px rgba(42, 37, 34, 0.12);
   z-index: 9999;
-  transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: bottom 0.5s ease-out;
 }
 
 .toast-notification.show { bottom: 40px; }

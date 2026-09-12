@@ -9,7 +9,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Confirm the site opens through the web server (not by opening `.php` files directly).
 - [ ] Use a staging database with realistic venue, hotel room, villa, event-hall, media, and price data.
 - [ ] Create separate accounts: unverified customer, verified customer, suspended customer, staff, and admin.
-- [ ] Prepare an inbox for email testing and a PayMongo **test** account/webhook endpoint.
+- [ ] Prepare an inbox for email testing and configure staging-only GCash, Maya, and bank-transfer instructions with test QR images.
 - [ ] Prepare dates that are: available, already booked, under blocking maintenance, past, today, and a multi-night range.
 - [ ] Record the initial booking/payment/venue counts so test data can be identified and cleaned up safely.
 - [ ] In browser developer tools, keep Console and Network open; verify there are no unexpected JavaScript errors or failed requests during every flow.
@@ -60,17 +60,29 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 ## 4. Booking submission and payment
 
 - [ ] Submit a valid booking once: exactly one booking/reference number is created and confirmation feedback is shown.
-- [ ] Double-click Submit, refresh during submission, and use browser Back/Forward; no duplicate booking or payment session should be created.
+- [ ] For a payable Hotel or Villa booking, confirm the saved booking ID opens payment proof on the booking page, with the reserved/awaiting-proof state, server-calculated amount, and deadline; the dashboard remains a later recovery path.
+- [ ] With every customer payment method disabled, confirm booking details still load, the method list is empty, submission remains disabled, and the customer gets a clear resort-contact/retry path. Restore a configured method before testing a proof upload.
+- [ ] Force a payment-details network/API/parse failure and confirm booking, amount, and deadline become an unavailable state with retry/contact recovery rather than remaining on loading placeholders.
+- [ ] Submit proof from the immediate booking-page step and confirm only then that the customer is routed to My Bookings; verify dashboard Submit payment buttons still open the same component.
+- [ ] Submit an Event Hall inquiry and confirm it reports inquiry success without opening the immediate payment-proof step.
+- [ ] Double-click Submit, refresh during submission, and use browser Back/Forward; no duplicate booking should be created.
 - [ ] Submit after selecting conflicting dates in another browser; submission must fail cleanly and must not create a partial booking.
 - [ ] Submit with altered client-side values (price, venue ID, guests, dates, add-on amount) using browser developer tools; the server must reject or recalculate values correctly.
 - [ ] Verify booking status, payment status, amount paid, total, source, add-ons, event/villa details, and allocated rooms in the dashboard/database match the submitted booking.
 - [ ] For each supported payment scheme, test staff-recorded manual payment references. Verify booking confirmation, payment record, receipt email, notification, and amount.
-- [ ] For each supported payment scheme, test successful payment using PayMongo test mode. Verify redirect/return behavior, booking confirmation, payment record, receipt email, notification, and amount.
+- [ ] Verify customer dashboard instructions and exact amount for 100% Full, 50% Downpayment, and 20% Reservation schemes; verify subsequent proofs use the full remaining balance.
+- [ ] Submit GCash QR, Maya QR, and bank-transfer proofs with valid images and references. Approval must create one successful payment, confirm the booking, notify the customer, and send the receipt after commit.
+- [ ] Reject a proof with a reason; confirm the customer sees it and an unpaid booking receives a fresh 24-hour window. Confirm the hold deadline pauses during pending review.
+- [ ] Verify duplicate normalized references are rejected; invalid characters, unsupported/corrupt images, SVG/PDF, oversized files, and oversized dimensions are rejected.
+- [ ] Save payment settings concurrently from two admin sessions; a stale save must retain the latest QR paths for untouched methods, and old QR files are removed only after commit.
+- [ ] Verify a pending proof blocks staff Collect Payment, approval/review records a payment exactly once under repeated/concurrent requests, and overpayment is rejected.
+- [ ] Finalize an Event Hall inquiry; only then should its customer dashboard show a payment amount and deadline.
+- [ ] Expire a wholly-unpaid online hold with `php scripts/expire_unpaid_bookings.php`; verify it cancels and releases inventory, while partial/paid or pending-review bookings are not cancelled.
+- [ ] Verify a customer can stream only their own proof; staff/admin can review it; a direct unauthenticated web request to the private storage directory is denied.
+- [ ] Verify historical payment receipts still render and historical checkout-session/payment rows remain intact.
+- [ ] Confirm retired checkout, sync, reconcile, and webhook endpoints return HTTP 410 and make no outbound payment-provider requests.
 - [ ] Test failed, cancelled, abandoned, delayed, and partial/downpayment manual payments; status and amount must remain accurate and staff can record approved references for remaining balances where allowed.
-- [ ] Test failed, cancelled, abandoned, delayed, and partial/downpayment PayMongo payments; status and amount must remain accurate and the customer must be able to pay the remaining balance where allowed.
 - [ ] Submit the same manual payment reference twice and verify duplicate transaction protection.
-- [ ] Deliver the same PayMongo webhook twice; payment must be recorded only once.
-- [ ] Send a webhook with missing, invalid, or expired signature, malformed JSON, unknown reference, and non-payment event; it must not update a booking.
 - [ ] Verify event-hall inquiry does not incorrectly require/record an online payment.
 - [ ] Verify receipt content: recipient, reference, venue, payment status, amount, currency, and no incorrect guest data.
 - [ ] Open an eligible customer/staff receipt and verify the response is an inline `application/pdf` document, the PDF text contains authoritative booking/payment details, allocated rooms, successful transaction IDs, totals, balance, and the verification reference, and no external fonts/assets are requested.
@@ -139,7 +151,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Test URL/query/body IDs with another user's booking, venue, backup, media, maintenance, and staff IDs; cross-account access/modification must be denied.
 - [ ] Test SQL-injection-like input (`' OR 1=1 --`) in login, search, booking, and settings fields; no data is exposed or altered.
 - [ ] Test stored and reflected XSS-like input (`<script>alert(1)</script>`) in all user-entered fields; script must never execute.
-- [ ] Check sensitive responses, redirects, HTML, browser storage, logs, and error messages for passwords, database credentials, API keys, webhook secrets, or full payment data.
+- [ ] Check sensitive responses, redirects, HTML, browser storage, logs, and error messages for passwords, database credentials, service tokens, private receipt contents, or full payment data.
 - [ ] Confirm production uses HTTPS, secure cookies, appropriate session expiry, and logout invalidates the session.
 - [ ] Trigger invalid requests/server-side errors; users receive safe messages and the app does not expose stack traces or SQL errors.
 - [ ] Run `node --test realtime/test/*.test.mjs` and `php scripts/test_google_oauth.php`; record live Redis/WebSocket and Google credential checks separately because they require deployment infrastructure/configuration.
@@ -152,7 +164,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Test with slow 3G/network interruption. Loading states are clear, retries do not duplicate records, and errors are understandable.
 - [ ] Check page titles, language/spelling, currency/date format, required-field labels, error messages, contrast, image alt text, and form error announcement.
 - [ ] Run a final end-to-end booking as a clean customer account and reconcile it in the admin dashboard, calendar, payments, email inbox, notifications, and audit log.
-- [ ] Review unresolved failures. Release only when all critical items (authentication, availability, booking duplication, payment/webhook, authorization, backups) pass or have an accepted documented mitigation.
+- [ ] Review unresolved failures. Release only when all critical items (authentication, availability, booking duplication, manual-payment proof review/expiry, authorization, backups) pass or have an accepted documented mitigation.
 
 ## Suggested test evidence table
 

@@ -6,6 +6,7 @@ require_once '../../includes/request_context.php';
 require_once '../../includes/refund_helper.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/booking_lifecycle.php';
+require_once __DIR__ . '/../../includes/manual_payment.php';
 $booking_completion_sql = booking_completion_sql('b');
 
 // Auth Guard: Must be a logged-in customer
@@ -117,7 +118,8 @@ try {
 
     } else {
         // SCENARIO B: They haven't paid anything yet! Instantly cancel it.
-        $stmt_cancel = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', updated_at = NOW() WHERE id = ?");
+        manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, null, 'Customer cancelled the unpaid booking before payment proof review.');
+        $stmt_cancel = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL, updated_at = NOW() WHERE id = ?");
         $stmt_cancel->bind_param("i", $booking_id);
         $stmt_cancel->execute();
         record_cancellation_history($conn, $booking_id, $existing ? (int)$existing['id'] : null, 'cancelled', $reason, 0.0, 0.0, $fee_percent, null, (int)$_SESSION['user_id']);

@@ -66,7 +66,7 @@ body {
   .btn-primary-dash, .btn-outline-dash, .btn-action, .btn-save,
   .btn-quick-action, .btn-modal, .btn-gold):hover:not(:disabled) { transform: translateY(-2px); }
 :where(.idx-btn-gold, .btn-primary, .btn-primary-dash, .btn-save, .save-btn,
-  .btn-quick-action:not(.outline), .btn-gold, .btn-gold-save, .btn-paymongo,
+  .btn-quick-action:not(.outline), .btn-gold, .btn-gold-save, .btn-book-submit,
   .btn-confirm-walkin, .btn-export-csv, .btn-modal-primary) {
   background: var(--color-gold) !important;
   border-color: var(--color-gold) !important;
@@ -74,7 +74,7 @@ body {
   box-shadow: 0 7px 18px rgba(168, 117, 61, .18) !important;
 }
 :where(.idx-btn-gold, .btn-primary, .btn-primary-dash, .btn-save, .save-btn,
-  .btn-quick-action:not(.outline), .btn-gold, .btn-gold-save, .btn-paymongo,
+  .btn-quick-action:not(.outline), .btn-gold, .btn-gold-save, .btn-book-submit,
   .btn-confirm-walkin, .btn-export-csv, .btn-modal-primary):hover:not(:disabled) {
   background: var(--color-gold-hover) !important;
   border-color: var(--color-gold-hover) !important;

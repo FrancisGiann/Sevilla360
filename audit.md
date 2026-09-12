@@ -2,8 +2,9 @@
 
 - **Repository:** `/var/www/html/Sevilla360` (branch `main`, HEAD `c5cbc85`)
 - **Audit date:** August 25, 2026
+- **Historical scope note:** This report describes the repository as audited on August 25, 2026, when PayMongo checkout/webhooks were present. That integration was retired on September 12, 2026; customer payments now use submitted GCash, Maya, or bank-transfer proof reviewed by staff. Provider-path details below are historical, not current implementation claims.
 - **Method:** Static code review (all 7 passes), read-only runtime checks (`php -l`, `node --check`, `composer validate`, `git diff --check`, `git status`). No database mutations, no emails sent, no PayMongo calls, no browser execution, no repository modifications other than this file.
-- **Stack:** PHP 8.1+, MySQL/MariaDB, vanilla HTML/CSS/JS, PayMongo checkout + webhooks, Google OIDC, PHPMailer, Dompdf, Redis/WebSocket Pub/Sub with polling fallback, Panolens.js 360 showroom, local Media CMS storage under `assets/uploads`.
+- **Stack at audit date:** PHP 8.1+, MySQL/MariaDB, vanilla HTML/CSS/JS, PayMongo checkout + webhooks (retired September 12, 2026; manual proof verification is current), Google OIDC, PHPMailer, Dompdf, Redis/WebSocket Pub/Sub with polling fallback, Panolens.js 360 showroom, local Media CMS storage under `assets/uploads`.
 
 ---
 
@@ -21,7 +22,7 @@
 |---|---|
 | `php -l` on every project PHP file — all clean | Live XSS exploitation (browser) |
 | `node --check` on every project JS/MJS file — all clean | Concurrent race windows |
-| `composer validate` — valid (license warning only) | Webhook delivery/replay against PayMongo |
+| `composer validate` — valid (license warning only) | PayMongo webhook delivery/replay (then-current integration; retired September 12, 2026) |
 | `git diff --check` — clean | Google OIDC round-trip |
 | `git status` — user's vendor/autoload modifications + one untracked upload preserved untouched | Redis/WebSocket transport under load |
 | — | PDF rendering in a real browser |
@@ -44,17 +45,17 @@ Items requiring runtime confirmation are flagged per finding below.
 
 | Boundary | Components |
 |---|---|
-| **Anonymous** | `index.php`, `showroom.php`, `support.php`, `auth.php`, `actions/bookings/fetch_dates.php`, `actions/bookings/get_room_availability.php`, `actions/bookings/paymongo_webhook.php` (HMAC-gated) |
+| **Anonymous** | `index.php`, `showroom.php`, `support.php`, `auth.php`, `actions/bookings/fetch_dates.php`, `actions/bookings/get_room_availability.php`; legacy `actions/bookings/paymongo_webhook.php` now returns HTTP 410 (the historical HMAC handler was removed) |
 | **Customer** | `booking.php`, `user_dashboard.php`, `actions/user/*`, `actions/bookings/{lock_dates,unlock_dates,submit_online}.php`, `print_receipt.php` (owner-or-staff authorization) |
 | **Staff + Admin** | `admin_dashboard.php` (guarded by `includes/auth_guard.php`: per-request account-status revalidation, 30-min idle timeout), bookings / walk-in / maintenance / calendar / settings modules |
 | **Admin-only** | User management, audit log, Media CMS, backup endpoints, `manage_staff`, `suspend_user`, `save_venue/hotspot/preferences/support_content` |
-| **External services** | PayMongo (checkout sessions + signed webhook), Google OIDC (state + nonce), SMTP via PHPMailer, Redis pub/sub → WebSocket gateway (origin allowlist, JWT channel auth) with polling fallback |
+| **External services** | Google OIDC (state + nonce), SMTP via PHPMailer, Redis pub/sub → WebSocket gateway (origin allowlist, JWT channel auth) with polling fallback. PayMongo was part of the audit-date system but is retired; manual payment instructions/proof review are current. |
 
 Key data flows verified end-to-end:
 
 - Registration → OTP email → verification → login
 - Password reset (token issuance → reset form)
-- Online booking: date locks → server-side pricing → PayMongo checkout → signed webhook → `credit_verified_payment()` (row-locked, idempotent)
+- Current online payment: server-priced booking → customer submits GCash/Maya/bank-transfer reference and receipt → authorized staff approve/reject; payment credit is row-locked and idempotent. At audit date this flow instead used PayMongo checkout and a signed webhook.
 - Admin walk-in booking with hold-proof re-verification
 - Event Hall inquiry → admin finalize invoice (`reallocate_event_hall_addons()`)
 - Customer cancel/refund (fee snapshotting), reschedule with add-on reallocation
@@ -354,7 +355,7 @@ Key data flows verified end-to-end:
 | 20 | Event inquiry still displays estimated total | **PASS** (pre-submission) | Estimate card `booking.php:132–136`, updated `booking.js:1054–1055`; post-submission intentionally "To Be Arranged" until quotation (`user_dashboard.php:352–357`) | Decide whether estimate should persist post-submit |
 | 21 | Admin export exists & authorized | **PASS** | `export_bookings.php:5–8` staff/admin gate; formula-injection guard `csv_safe_value` :67–89 | Large-dataset timing |
 | 22 | Responsive behavior | **PASS** | Breakpoints 992/900/768/640/576/480 (admin down to 420); tables collapse to cards (`admin_bookings.css:162–166,865–868`); no fixed widths > 375px found | Physical 320px device spot-check |
-| 23 | PayMongo remains intact and safe | **PASS** | HMAC verify `hash_equals` both te/li (`paymongo_webhook.php:27–60`); amount/currency cross-checks (:92–100); single locked/idempotent crediting path with checkout-session binding (`payment_service.php:8–87`); provider-ID regex (`paymongo.php:95`); reconciliation reference check `hash_equals` (`payment_service.php:107`); snapshotted refund fee% (migration 012, `refund_helper.php`) | Webhook replay integration test |
+| 23 | PayMongo verification (historical; retired September 12, 2026) | **RETIRED** | At audit date, static review judged the then-existing HMAC, amount/currency checks, checkout binding, and reconciliation protections favorably. Those provider implementation files and active flows were subsequently removed; legacy provider routes return HTTP 410. Current customer payments use manual proof submission and authorized staff review. | Manual proof approval/rejection, duplicate/concurrent review, and expiry E2E |
 | 24 | No receptionist module added | **PASS** | Grep "receptionist" across php/js/css = 0 hits; roles remain admin/staff/customer | None |
 | 25 | No manual-booking-time feature added | **PASS** | Grep patterns = 0 hits | None |
 | 26 | Local Media CMS uploads still function safely | **PASS** | finfo MIME sniffing + forced extension (`upload_media.php:160–214`), byte/pixel/decompression limits (:171–208), random filenames, transactional replace w/ post-commit unlink (:218–255); delete guarded by realpath containment (`delete_media.php:115–127`); hotspot-reference deletion guards; `assets/uploads/.htaccess` kills PHP execution & non-image serving | nginx-equivalent config if not Apache |
@@ -366,8 +367,8 @@ Key data flows verified end-to-end:
 Existing tests are minimal: `scripts/test_receipt_itemization.php`, `scripts/test_verification_integrity.php`, `scripts/test_google_oauth.php` (static/dry), `realtime/test/` (Node). Missing coverage, prioritized:
 
 1. **Booking concurrency** — simultaneous submits on same villa/hotel unit; lock-vs-submit expiry race; walk-in hold-proof expiring mid-submission.
-2. **Webhook replay/idempotency** — duplicate `checkout_session.payment.paid`; replayed signature with same transaction_id; payment arriving after cancellation (must reject per `payment_service.php:50`).
-3. **Late PayMongo payment** — after lock expiry/window; reconciliation when checkout exceeds balance (`payment_service.php:126–130`).
+2. **Manual proof review/idempotency** — repeated or concurrent approve/reject requests, same-reference corrected resubmission, customer cancellation racing review, and staff collection racing pending proof.
+3. **Manual hold expiry** — expiry-boundary race, pending-review exemption, and Event Hall deadline only after quote finalization.
 4. **OTP concurrency** — parallel verifies on the same code (the conditional-update predicate at `verify_process.php:50–69` deserves a real race test).
 5. **Google OIDC claims** — bad issuer; `aud` array without `azp`; iat skew; `sub` re-linking; suspended-user callback.
 6. **Receipt itemization** — priced vs informational room allocations (`receipt_itemization_plan` branches); balance rounding.
@@ -427,7 +428,7 @@ Existing tests are minimal: `scripts/test_receipt_itemization.php`, `scripts/tes
 ### Before October deployment
 
 6. **F-07** schema/migration hardening + indexes; **F-13** server-side limits; **F-14** prepare-hoisting in reschedule/lock loops; **F-15** move lock GC out of the public endpoint.
-7. Build the concurrency/webhook test suite (Section 5 items 1–3, 7).
+7. Build the booking/manual-payment concurrency test suite (Section 5 items 1–3, 7); the historical PayMongo webhook suite no longer applies.
 
 ### Post-capstone
 
@@ -441,9 +442,9 @@ Genuinely implemented and verified in code:
 
 - **Sessions:** strict mode; HttpOnly/SameSite=Lax/conditional-Secure cookies; `session_regenerate_id(true)` on every privilege change (`login_process.php:104`, verify/Google callbacks); 30-min idle timeout; per-request account-status revalidation that immediately kills suspended accounts (`auth_guard.php:19–46`).
 - **CSRF:** consistent `hash_equals` session-token comparison on every audited state-changing endpoint (both form-field and `X-CSRF-TOKEN` header variants); token rotated after authentication transitions.
-- **Rate limiting:** atomic single-statement upsert closing the check-then-increment race (`rate_limit.php:32–43`); applied to login, register, OTP verify/resend, password reset, payment sync.
+- **Rate limiting:** atomic single-statement upsert closing the check-then-increment race (`rate_limit.php:32–43`); applied to login, register, OTP verify/resend, and password reset.
 - **SQL:** uniformly prepared statements; the only dynamic SQL fragments are whitelisted constants (overlap predicates from `booking_rules.php`) — no injection path found.
-- **Payments:** webhook HMAC verification with constant-time compare and dual test/live secrets; amount AND currency AND provider-reference AND checkout-session-binding verification; one shared row-locked idempotent crediting path for webhook/sync/admin reconciliation backed by `UNIQUE(transaction_id)` (migration 008); overpayment guard; terminal-state refusal; post-commit email/notification dispatch so provider state never rolls back.
+- **Payments:** current flow validates customer-owned manual proof, fingerprints normalized method/reference values, and uses locked/idempotent staff approval with overpayment and terminal-state guards; receipt email follows commit. Historical audit-date PayMongo HMAC, checkout-binding, and reconciliation controls are not current code paths.
 - **Booking integrity:** venue-row `FOR UPDATE` serialization; session-scoped date holds with hold-proof re-verification; category-correct overlap semantics (event halls inclusive; overnight checkout-exclusive); maintenance blocks always inclusive; server-authoritative pricing and guest capacities; deterministic lock ordering documented at call sites; outbox events written inside business transactions.
 - **Backups:** HMAC-signed dumps failing closed without strong `APP_KEY`; preflight restore into isolated schema; protected filenames; pre-restore safety snapshot.
 - **Uploads/media:** content-sniffed MIME → forced safe extension; byte/pixel bomb limits; randomized filenames; realpath containment on delete; hotspot-reference deletion guards; Apache hardening in the uploads directory.
@@ -457,8 +458,8 @@ Genuinely implemented and verified in code:
 ## 9. Audit limitations
 
 - **No browser runtime:** XSS execution (F-01), responsive rendering, focus behavior, and inline PDF display were traced statically, not executed.
-- **No disposable database:** concurrency races, migration re-runs, and webhook replays were reasoned from code/DDL, not exercised; the base `sevilla360` schema dump was not in the repo, so column types/FKs for core tables could not be confirmed (see F-07).
-- **No external calls:** PayMongo sandbox, Google OIDC round-trip, SMTP delivery, and Redis/WebSocket transport were not contacted, per audit rules.
+- **No disposable database:** concurrency races, migration re-runs, and payment-review/expiry behavior were reasoned from code/DDL, not exercised; the base `sevilla360` schema dump was not in the repo, so column types/FKs for core tables could not be confirmed (see F-07).
+- **No external calls:** At audit time, the PayMongo sandbox, Google OIDC round-trip, SMTP delivery, and Redis/WebSocket transport were not contacted, per audit rules. PayMongo has since been retired.
 - **Worktree preservation:** user modifications (vendor/composer autoload files, one new upload image `assets/uploads/venue_rafael_down_vip_suite_360_fed1f77b1e07bca7.jpg`) were observed via `git status` and left untouched; findings exclude vendor internals.
 - **Secrets:** `.env` contents were never opened; only `.env.example` variable names were listed. `.env` is confirmed untracked in git (`git ls-files` = 0 matches).
 - **Coverage depth:** delegated agent passes covered the endpoint authz matrix and UX checklist; their key negative results (no missing auth guards beyond those reported) were spot-verified by direct reads of representative files, but not every one of the 80+ endpoints was independently re-read line-by-line.

@@ -34,6 +34,7 @@
         <!-- Booking Status Filter Tabs -->
         <div class="booking-tabs" id="bookingFilters">
             <button class="tab-btn active" data-filter="all">All</button>
+            <button class="tab-btn" data-filter="awaiting_verification">Awaiting Verification</button>
             <button class="tab-btn tab-action-req" data-filter="action_req">Action Required</button>
             <button class="tab-btn" data-filter="partial">Balances Due</button>
             <button class="tab-btn" data-filter="pending">Pending</button>
@@ -44,6 +45,7 @@
         <label class="booking-filter-select-label" for="bookingFilterSelect">Booking status</label>
         <select class="booking-filter-select" id="bookingFilterSelect" aria-label="Filter bookings by status">
             <option value="all">All</option>
+            <option value="awaiting_verification">Awaiting Verification</option>
             <option value="action_req">Action Required</option>
             <option value="partial">Balances Due</option>
             <option value="pending">Pending</option>
@@ -212,6 +214,28 @@
                 <button class="btn-modal btn-dark" id="btn-admin-resend"><i class="fa-solid fa-envelope"></i> <span>Resend Email</span></button>
             </div>
         </div>
+
+        <section class="admin-modal manual-proof-review-modal" id="manualPaymentReviewModal" role="dialog" aria-modal="true" aria-labelledby="manual-proof-title" aria-describedby="manual-proof-status" tabindex="-1">
+            <h3 class="modal-main-title" id="manual-proof-title">Review payment proof</h3>
+            <p class="manual-proof-context" id="manual-proof-context">Booking and customer details</p>
+            <div class="summary-grid manual-proof-summary">
+                <span class="label">Expected amount:</span><strong class="value" id="manual-proof-amount">—</strong>
+                <span class="label">Method:</span><strong class="value" id="manual-proof-method">—</strong>
+                <span class="label">Transaction reference:</span><strong class="value" id="manual-proof-reference">—</strong>
+            </div>
+            <figure class="manual-proof-preview-wrap">
+                <img id="manual-proof-preview" src="assets/img/Logo.png" alt="Customer-submitted payment receipt" hidden>
+                <figcaption>Protected customer receipt preview</figcaption>
+            </figure>
+            <label class="form-label-med" for="manual-proof-rejection-reason">Rejection reason <span>(required when rejecting)</span></label>
+            <textarea id="manual-proof-rejection-reason" class="form-input-padded" rows="3" maxlength="500" aria-describedby="manual-proof-status" placeholder="Explain what needs to be corrected"></textarea>
+            <p class="manual-proof-status" id="manual-proof-status" role="status" aria-live="polite" hidden></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-modal btn-modal-cancel close-modal">Close</button>
+                <button type="button" class="btn-modal btn-modal-danger" id="btn-reject-manual-proof">Reject proof</button>
+                <button type="button" class="btn-modal btn-modal-primary" id="btn-approve-manual-proof">Approve payment</button>
+            </div>
+        </section>
 
         <!-- Collect Payment Modal -->
         <div class="admin-modal modal-sm" id="paymentModal">

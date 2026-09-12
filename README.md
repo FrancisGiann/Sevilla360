@@ -46,6 +46,41 @@ disabled. The PDF contains authoritative booking/payment values and a
 verification reference; it is not presented as tamper-proof, so support should
 verify that reference against current server records.
 
+## Manual payment expiry
+
+Apply `migrations/020_manual_payment_submissions.sql` before accepting customer
+payment proof. Configure at least one GCash, Maya, or bank-transfer method and
+its real account/QR details in Admin Settings. Run the CLI-only expiry command
+every five minutes as the application account so unpaid online holds release
+promptly:
+
+```cron
+*/5 * * * * cd /var/www/html/Sevilla360 && /usr/bin/php scripts/expire_unpaid_bookings.php
+```
+
+After a payable Hotel or Villa booking is saved, the booking page opens the
+payment-proof step immediately. If no method is enabled, the booking details
+and server-calculated amount/deadline still load; proof submission stays disabled
+and the customer is directed to contact the resort or return later. Event Hall
+inquiries remain payment-free until staff finalizes a quote.
+
+The command cancels only wholly unpaid online bookings past their deadline;
+pending receipt review, partial payments, and paid bookings are exempt. Set
+`PAYMENT_PROOF_DIR` in `.env` to an absolute path outside the project and
+document root (for example `/var/lib/sevilla360/payment-proofs`). The resolver
+fails closed for missing, broad, or web-root paths. Provision the directory to
+the PHP runtime account (shown as `apache` below) with private permissions:
+
+```sh
+sudo install -d -o apache -g apache -m 0700 /var/lib/sevilla360/payment-proofs
+```
+
+If PHP-FPM or the scheduled job runs as a different account, use a private
+shared group for those service accounts and grant group-only access instead.
+Do not make proof storage world-readable or world-writable. Verify from the
+deployed host that requesting the configured filesystem path through the web
+server is impossible; no proof files are placed in the served project tree.
+
 On an Apache host using the `apache` account, provision the private backup directory outside the web root. For this project, `/var/lib/sevilla360/backups` is the recommended path:
 
 ```sh

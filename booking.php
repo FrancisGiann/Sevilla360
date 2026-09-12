@@ -1,7 +1,13 @@
 <?php
 $page_title = 'Book Your Stay - SEVILLA360';
-$extra_css = 'assets/css/booking.css?v=' . time(); 
-$extra_js = 'assets/js/booking.js?v=' . time();    
+$extra_css = [
+    'assets/css/booking.css?v=' . time(),
+    'assets/css/manual_payment.css?v=' . filemtime(__DIR__ . '/assets/css/manual_payment.css'),
+];
+$extra_js = [
+    'assets/js/manual_payment.js?v=' . filemtime(__DIR__ . '/assets/js/manual_payment.js'),
+    'assets/js/booking.js?v=' . filemtime(__DIR__ . '/assets/js/booking.js'),
+];
 $active_page = 'booking';              
 require_once 'includes/session_init.php';
 require_once 'includes/booking_intent.php';
@@ -237,7 +243,7 @@ unset($villa);
                     </div>
 
                     <!-- Action Buttons -->
-                    <button class="btn btn-paymongo" id="btn-proceed">PROCEED TO PAYMENT</button>
+                    <button class="btn btn-book-submit" id="btn-proceed">SUBMIT BOOKING</button>
                     <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
                 </div>
             </div>
@@ -248,6 +254,7 @@ unset($villa);
 
 <!-- INJECT THE MODALS -->
 <?php include 'includes/partials/booking_modals.php'; ?>
+<?php include 'includes/partials/manual_payment_modal.php'; ?>
 
 <script>
 window.bookingAuth = <?php echo json_encode([

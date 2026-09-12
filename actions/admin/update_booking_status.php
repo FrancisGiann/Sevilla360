@@ -21,6 +21,7 @@ require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/refund_helper.php';
 require_once __DIR__ . '/../../includes/realtime.php';
+require_once __DIR__ . '/../../includes/manual_payment.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -136,7 +137,8 @@ try {
         if (($locked_booking['booking_status'] ?? '') !== 'Pending') {
             throw new Exception('Only Pending bookings can be declined or cancelled.');
         }
-        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled' WHERE id = ?");
+        manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, (int)$_SESSION['user_id'], 'Booking was cancelled or declined before payment proof review.');
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
         $message = "Booking #$ref_no has been cancelled!";
@@ -144,6 +146,7 @@ try {
     }
     elseif ($action === 'finalize_event_invoice') {
         if ($b_info['category'] !== 'Event Hall') throw new Exception('Only Event Hall bookings can receive an event quotation.');
+        manual_payment_assert_no_pending_for_quote($conn, $booking_id);
 
         // Finalizing an invoice confirms the inquiry, so re-check the same
         // inclusive Event Hall inventory conditions as the explicit confirm
@@ -221,6 +224,13 @@ try {
         $stmt_b->bind_param("idddsi", $guests, $base_rate, $addons_amount, $new_total, $scheme, $booking_id);
         $stmt_b->execute();
 
+        $payment_hours = manual_payment_deadline_hours($conn);
+        $payment_due_sql = $new_total > 0 ? "DATE_ADD(NOW(), INTERVAL {$payment_hours} HOUR)" : 'NULL';
+        $stmt_due = $conn->prepare("UPDATE bookings SET payment_due_at = {$payment_due_sql} WHERE id = ?");
+        if (!$stmt_due) throw new Exception('Unable to set the Event Hall payment deadline.');
+        $stmt_due->bind_param('i', $booking_id);
+        if (!$stmt_due->execute()) throw new Exception('Unable to set the Event Hall payment deadline.');
+
         // 3. Update Event Details (including internal admin notes)
         $admin_notes = isset($data['admin_notes']) ? trim($data['admin_notes']) : null;
         $stmt_e = $conn->prepare("INSERT INTO booking_event_details (booking_id, event_style, event_type, admin_notes) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_style = VALUES(event_style), event_type = VALUES(event_type), admin_notes = VALUES(admin_notes)");
@@ -255,74 +265,27 @@ try {
             error_log('Invoice email delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
         }
 
-        create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Please review it on your dashboard.");
+        create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Review the amount and submit your payment reference and receipt from the dashboard within {$payment_hours} hours.");
 
         $message = "Invoice finalized and sent to customer!";
     }elseif ($action === 'add_payment') {
-        $amount_to_add = floatval($data['amount']);
-        $method = $data['method'];
-        $trans_id = !empty($data['transaction_id']) ? $data['transaction_id'] : 'CASH-' . time();
-
-        $stmt_check = $conn->prepare("SELECT total_amount, amount_paid FROM bookings WHERE id = ?");
-        $stmt_check->bind_param("i", $booking_id);
-        $stmt_check->execute();
-        $res = $stmt_check->get_result();
-
-        if ($res->num_rows === 0) throw new Exception('Booking not found.');
-        $booking = $res->fetch_assoc();
-
-        if ($is_pending_event_hall) {
-            throw new Exception('Finalize the Event Hall invoice first before recording payment for this inquiry.');
-        }
-
-        // GUARD AGAINST OVERPAYMENT
-        $current_paid = floatval($booking['amount_paid']);
-        $total = floatval($booking['total_amount']);
-        $remaining_due = $total - $current_paid;
-
-        if ($amount_to_add <= 0) {
-            throw new Exception("Payment amount must be greater than zero.");
-        }
-        if ($remaining_due <= 0) {
-            throw new Exception("This booking is already fully paid. No balance remaining.");
-        }
-        if ($amount_to_add > $remaining_due + 0.01) {
-            throw new Exception("Amount exceeds the remaining balance of ₱" . number_format($remaining_due, 2) . ".");
-        }
-
-        // Idempotency
-        if (!empty($data['transaction_id'])) {
-            $stmt_dupe = $conn->prepare("SELECT id FROM payments WHERE transaction_id = ?");
-            $stmt_dupe->bind_param("s", $trans_id);
-            $stmt_dupe->execute();
-            if ($stmt_dupe->get_result()->num_rows > 0) {
-                throw new Exception("This transaction ID has already been recorded.");
-            }
-        }
-
-        $new_amount_paid = $current_paid + $amount_to_add;
-        $new_payment_status = ($new_amount_paid >= $total && $total > 0) ? 'Paid' : (($new_amount_paid > 0) ? 'Partial' : 'Unpaid');
-
-        $stmt_pay = $conn->prepare("INSERT INTO payments (booking_id, transaction_id, payment_method, amount, status) VALUES (?, ?, ?, ?, 'Success')");
-        $stmt_pay->bind_param("issd", $booking_id, $trans_id, $method, $amount_to_add);
-        $stmt_pay->execute();
-
-        $stmt_update = $conn->prepare("UPDATE bookings SET payment_status = ?, amount_paid = ?, booking_status = 'Confirmed' WHERE id = ?");
-        $stmt_update->bind_param("sdi", $new_payment_status, $new_amount_paid, $booking_id);
-        $stmt_update->execute();
-
-        $message = "Payment of ₱" . number_format($amount_to_add, 2) . " received successfully!";
-
-        // Send email receipt for admin manual payments
-        try {
-            $email_status = ($new_payment_status === 'Paid') ? 'Fully Paid' : 'Partially Paid (Manual Payment)';
-            send_booking_receipt($c_email, $c_name, $ref_no, $v_name, $new_amount_paid, $email_status);
-        } catch (Throwable $mail_e) {
-            // Silently fail so the admin doesn't get an error popup if Gmail is slow
-            error_log('Admin payment receipt delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
-        }
-
-        create_user_notification($conn, $c_user_id, "Payment Received", "A payment of ₱" . number_format($amount_to_add, 2) . " for your booking at $v_name has been confirmed.");
+        if (!isset($data['amount']) || !is_scalar($data['amount']) || !is_numeric($data['amount'])) throw new Exception('Enter a valid payment amount.');
+        $amount_to_add = (float)$data['amount'];
+        $method = trim((string)($data['method'] ?? ''));
+        $trans_id = trim((string)($data['transaction_id'] ?? ''));
+        if ($trans_id === '' && $method === 'Cash') $trans_id = 'CASH-' . bin2hex(random_bytes(16));
+        $locked_payment_booking = $locked_booking;
+        $locked_payment_booking['venue_category'] = $b_info['category'];
+        $credit = manual_payment_credit_locked($conn, $locked_payment_booking, $amount_to_add, $method, $trans_id);
+        $new_amount_paid = $credit['amount_paid'];
+        $new_payment_status = $credit['payment_status'];
+        $message = "Payment of ₱" . number_format($credit['amount'], 2) . " received successfully!";
+        create_user_notification($conn, $c_user_id, 'Payment Received', 'A payment of ₱' . number_format($credit['amount'], 2) . ' for your booking at ' . $v_name . ' has been confirmed.');
+        $postCommitActions[] = [
+            'kind' => 'manual_payment_receipt', 'email' => $c_email, 'name' => $c_name,
+            'reference' => $ref_no, 'venue' => $v_name, 'amount_paid' => $new_amount_paid,
+            'status' => $new_payment_status === 'Paid' ? 'Fully Paid' : 'Partially Paid (Manual Payment)',
+        ];
         // =========================================================
     }
     elseif ($action === 'reschedule') {
@@ -599,7 +562,8 @@ try {
             throw new Exception('A valid refund transaction/reference ID is required.');
         }
 
-        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded' WHERE id = ?");
+        manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, (int)$_SESSION['user_id'], 'Booking was cancelled as part of refund processing before payment proof review.');
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_status = 'Refunded', payment_due_at = NULL WHERE id = ?");
         $stmt->bind_param("i", $booking_id);
         $stmt->execute();
 
@@ -755,6 +719,15 @@ try {
                 create_user_notification($conn, $postCommitAction['user_id'], 'Reschedule Rejected', 'Your request to reschedule ' . $postCommitAction['venue_name'] . ' was declined. Your original dates remain secured.');
             } catch (Throwable $notificationError) {
                 error_log('Reschedule rejection notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'manual_payment_receipt') {
+            try {
+                send_booking_receipt(
+                    $postCommitAction['email'], $postCommitAction['name'], $postCommitAction['reference'],
+                    $postCommitAction['venue'], $postCommitAction['amount_paid'], $postCommitAction['status']
+                );
+            } catch (Throwable $mailError) {
+                error_log('Admin manual payment receipt delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
             }
         }
     }

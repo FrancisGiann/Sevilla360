@@ -507,7 +507,7 @@
 
 .calendar-dropdown.active {
   display: block;
-  animation: dropDownAnim 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: dropDownAnim 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes dropDownAnim {
@@ -1398,4 +1398,27 @@
   background-color: var(--color-gold);
   color: white;
   border: none;
+}
+
+.manual-proof-review-modal { max-width: 720px; width: min(94vw, 720px); padding: 28px; }
+.manual-proof-review-modal:focus { outline: none; }
+.manual-proof-context { margin: 0 0 16px; color: var(--color-dark-light); text-align: center; line-height: 1.5; }
+.manual-proof-summary { grid-template-columns: minmax(150px, .6fr) minmax(0, 1.4fr); gap: 8px 14px; }
+.manual-proof-summary .value { overflow-wrap: anywhere; }
+.manual-proof-preview-wrap { display: grid; justify-items: center; gap: 8px; margin: 16px 0; padding: 12px; border: 1px solid rgba(42, 37, 34, .15); background: #f9f7f3; }
+.manual-proof-preview-wrap img { display: block; max-width: 100%; max-height: 48vh; object-fit: contain; }
+.manual-proof-preview-wrap img[hidden] { display: none; }
+.manual-proof-preview-wrap figcaption { color: var(--color-dark-light); font-size: .78rem; }
+.manual-proof-review-modal > label { display: block; margin: 8px 0; }
+.manual-proof-review-modal textarea { width: 100%; min-height: 88px; padding: 10px; border: 1px solid rgba(42, 37, 34, .24); font: inherit; resize: vertical; }
+.manual-proof-review-modal :is(button, textarea):focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+.manual-proof-status { padding: 10px; border: 1px solid rgba(71, 115, 89, .32); background: rgba(71, 115, 89, .08); color: #31513d; font-size: .86rem; }
+.manual-proof-status[data-error="true"] { border-color: rgba(164, 56, 49, .35); background: rgba(164, 56, 49, .08); color: #802a24; }
+.manual-proof-review-modal .modal-actions button:disabled { cursor: wait; opacity: .65; }
+
+@media (max-width: 640px) {
+  .manual-proof-review-modal { width: calc(100vw - 20px); max-height: 94dvh; padding: 24px 16px; }
+  .manual-proof-summary { grid-template-columns: 1fr; gap: 4px; }
+  .manual-proof-summary .value { margin-bottom: 8px; }
+  .manual-proof-preview-wrap img { max-height: 40vh; }
 }

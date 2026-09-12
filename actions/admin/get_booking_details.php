@@ -94,12 +94,6 @@ try {
     $tx_res = $st_tx->get_result()->fetch_assoc();
     $transaction_id = $tx_res ? $tx_res['transaction_id'] : null;
 
-    $st_checkout = $conn->prepare("SELECT id, provider_session_id, checkout_url, amount, currency, status, provider_status, expires_at FROM booking_checkout_sessions WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
-    if (!$st_checkout) throw new Exception('Unable to load checkout reconciliation details.');
-    $st_checkout->bind_param('i', $booking_id);
-    if (!$st_checkout->execute()) throw new Exception('Unable to load checkout reconciliation details.');
-    $checkout_session = $st_checkout->get_result()->fetch_assoc();
-
     // Fetch Cancellation Data
     $st_cx = $conn->prepare("SELECT refund_amount, refund_transaction_id, fee_deducted, fee_percent, status, admin_reply FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
     $st_cx->bind_param("i", $booking_id);
@@ -114,7 +108,6 @@ try {
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,
         'transaction_id' => $transaction_id,
-        'checkout_session' => $checkout_session,
         'cancellation' => $cx_res
     ]]);
 } catch (Exception $e) {

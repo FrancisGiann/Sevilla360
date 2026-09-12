@@ -5,6 +5,7 @@ require_once 'config/db_connect.php';
 require_once 'includes/refund_helper.php';
 require_once 'includes/realtime.php';
 require_once 'includes/booking_lifecycle.php';
+require_once 'includes/manual_payment.php';
 $refund_fee_percent = get_refund_fee_percent($conn);
 $realtime_client_config = realtime_client_config();
 $booking_completion_sql = booking_completion_sql('b');
@@ -36,10 +37,13 @@ $stmt_stats->close();
 $stmt_upcoming = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
         b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
-        b.payment_status, v.name AS venue_name,
+        b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
+        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_rejection_reason,
+        b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
@@ -79,7 +83,9 @@ $stmt_bookings = $conn->prepare("
         cx.status AS cancel_status,
         rr.status AS resched_status,
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
-        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating','created','paid') AND bcs.provider_session_id IS NOT NULL) AS has_checkout_session,
+        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_rejection_reason,
         (SELECT p2.transaction_id FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS transaction_id
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
@@ -118,14 +124,6 @@ if ($reviewsTableCheck instanceof mysqli_result && $reviewsTableCheck->num_rows 
     while ($review = $reviewResult->fetch_assoc()) $reviewsByBooking[(int)$review['booking_id']] = $review;
     $reviewStmt->close();
 }
-$payment_sync_booking_id = null;
-foreach ($bookings as $booking_row) {
-    if (!empty($booking_row['has_checkout_session']) && !booking_is_completed($booking_row) && $booking_row['booking_status'] !== 'Cancelled' && $booking_row['payment_status'] !== 'Paid') {
-        $payment_sync_booking_id = (int)$booking_row['id'];
-        break;
-    }
-}
-
 // 4. Fetch Notifications
 $stmt_notifs = $conn->prepare("SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
 $stmt_notifs->bind_param("i", $user_id);
@@ -150,10 +148,12 @@ while ($row = $notifs_result->fetch_assoc()) {
 $stmt_overview_recent = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
         b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
-        b.payment_status, v.name AS venue_name,
+        b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
+        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ?
@@ -168,22 +168,19 @@ $stmt_overview_recent->close();
 $stmt_attention = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
         b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
-        b.payment_status, v.name AS venue_name,
+        b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status IN ('creating', 'created', 'paid') AND bcs.provider_session_id IS NOT NULL) AS checkout_pending
+        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
       AND (
         b.booking_status = 'Pending'
         OR (b.booking_status = 'Confirmed' AND b.payment_status IN ('Unpaid', 'Partial'))
-        OR (b.payment_status IN ('Unpaid', 'Partial') AND EXISTS (
-            SELECT 1 FROM booking_checkout_sessions bcs_pending
-            WHERE bcs_pending.booking_id = b.id
-              AND bcs_pending.status IN ('creating', 'created', 'paid')
-              AND bcs_pending.provider_session_id IS NOT NULL
-        ))
+        OR EXISTS (SELECT 1 FROM manual_payment_submissions mps_pending WHERE mps_pending.booking_id = b.id AND mps_pending.status = 'pending')
         OR EXISTS (SELECT 1 FROM cancellations cx2 WHERE cx2.booking_id = b.id AND cx2.status = 'Pending')
         OR EXISTS (SELECT 1 FROM reschedule_requests rr2 WHERE rr2.booking_id = b.id AND rr2.status = 'Pending')
       )
@@ -210,11 +207,19 @@ $dashboard_status = static function (array $booking): array {
     if (!empty($booking['cancel_pending'])) return ['Pending refund', 'badge-cancelled'];
     if (!empty($booking['resched_pending'])) return ['Reschedule requested', 'badge-reschedule'];
     if ($booking['booking_status'] === 'Cancelled') return ['Cancelled', 'badge-cancelled'];
-    if (!empty($booking['checkout_pending']) && in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return ['Payment in progress', 'badge-pending'];
+    if (!empty($booking['manual_payment_pending'])) return ['Awaiting verification', 'badge-pending'];
+    if (($booking['manual_submission_status'] ?? '') === 'rejected') return ['Proof rejected', 'badge-cancelled'];
     if ($booking['booking_status'] === 'Pending') return ['Pending review', 'badge-pending'];
     if ($booking['payment_status'] === 'Paid') return ['Fully paid', 'badge-paid'];
     if ($booking['payment_status'] === 'Partial') return ['Partially paid', 'badge-partial'];
+    if (!empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return ['Payment window expired', 'badge-cancelled'];
     return ['Payment due', 'badge-pending'];
+};
+$can_submit_manual_payment = static function (array $booking): bool {
+    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true) || !empty($booking['manual_payment_pending'])) return false;
+    if (($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') return false;
+    if ($booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return false;
+    return true;
 };
 ?>
 <!DOCTYPE html>
@@ -246,6 +251,7 @@ $dashboard_status = static function (array $booking): array {
     <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
+    <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
 </head>
 
 <body class="dashboard-body">
@@ -408,8 +414,8 @@ $dashboard_status = static function (array $booking): array {
                             </div>
                             <div class="overview-card-actions">
                                 <button type="button" class="btn-outline-dash btn-details" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><i class="fa-solid fa-file-invoice"></i> View details</button>
-                                <?php if ($upcoming_booking['payment_status'] !== 'Paid' && $upcoming_booking['booking_status'] !== 'Cancelled'): ?>
-                                <button type="button" class="btn-primary-dash btn-pay-now" data-id="<?php echo (int)$upcoming_booking['id']; ?>">Pay now</button>
+                                <?php if ($can_submit_manual_payment($upcoming_booking)): ?>
+                                <button type="button" class="btn-primary-dash btn-submit-payment" data-id="<?php echo (int)$upcoming_booking['id']; ?>">Submit payment</button>
                                 <?php endif; ?>
                             </div>
                             <?php else: ?>
@@ -577,6 +583,16 @@ $dashboard_status = static function (array $booking): array {
                                             $filter_data = 'Cancelled';
                                         }
 
+                                        if (!$is_completed && !empty($b['manual_payment_pending']) && $display_status !== 'Cancelled') {
+                                            $badge_class = 'badge-pending';
+                                            $status_text = 'Awaiting Verification';
+                                            $filter_data = 'Pending';
+                                        } elseif (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && $display_status !== 'Cancelled') {
+                                            $badge_class = 'badge-cancelled';
+                                            $status_text = 'Proof Rejected';
+                                            $filter_data = 'Pending';
+                                        }
+
                                         // OVERRIDE TEXT IF A REQUEST IS PENDING
                                         if (!$is_completed && $b['cancel_status'] === 'Pending') {
                                             $status_text = 'Pending Refund';
@@ -611,14 +627,12 @@ $dashboard_status = static function (array $booking): array {
                                         </td>
                                         <td data-label="Actions">
                                             <div class="action-cell">
-                                                <?php if (!$is_completed && $b['cancel_status'] !== 'Pending' && ($display_status === 'Pending' || ($display_status === 'Confirmed' && in_array($b['payment_status'], ['Unpaid', 'Partial'])))): ?>
-                                                <?php if (!$is_pending_inquiry): ?>
-                                                <button class="btn-action btn-pay btn-pay-now"
-                                                    data-id="<?php echo $b['id']; ?>">Pay Now</button>
+                                            <?php if (!$is_completed && $b['cancel_status'] !== 'Pending' && $can_submit_manual_payment($b)): ?>
+                                                <button class="btn-action btn-pay btn-submit-payment"
+                                                    data-id="<?php echo (int)$b['id']; ?>"><?php echo ($b['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment'; ?></button>
                                                 <?php endif; ?>
-                                                <?php if (!$is_completed && !empty($b['has_checkout_session']) && $b['payment_status'] !== 'Paid' && $display_status !== 'Cancelled'): ?>
-                                                <button class="btn-action btn-outline-action btn-sync-payment" data-id="<?php echo (int)$b['id']; ?>">Sync Payment</button>
-                                                <?php endif; ?>
+                                                <?php if (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && !empty($b['manual_rejection_reason'])): ?>
+                                                <p class="payment-rejection-note">Reason: <?php echo htmlspecialchars($b['manual_rejection_reason']); ?></p>
                                                 <?php endif; ?>
 
                                                 <?php if (!$is_completed && $display_status !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
@@ -690,7 +704,7 @@ $dashboard_status = static function (array $booking): array {
                         </nav>
                         <?php endif; ?>
                     </div>
-                    <p class="footer-note">Status Pending means payment has not been confirmed yet. Use 'Pay Now' to complete.</p>
+                    <p class="footer-note">Online payment is verified by staff after you submit a transfer reference and receipt image. Pending proof pauses the payment window.</p>
                 </div>
 
                 <!-- ================= TAB: SETTINGS ================= -->
@@ -966,6 +980,8 @@ $dashboard_status = static function (array $booking): array {
         </div>
     </div>
 
+    <?php include __DIR__ . '/includes/partials/manual_payment_modal.php'; ?>
+
     <!-- Venue Review Modal -->
     <div class="modal-overlay" id="modal-review" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
         <div class="modal-box review-modal-box">
@@ -1014,23 +1030,8 @@ $dashboard_status = static function (array $booking): array {
     <script src="assets/js/password_policy.js?v=<?= time() ?>"></script>
 
     <!-- Specific User Dashboard JS -->
+    <script src="assets/js/manual_payment.js?v=<?= filemtime(__DIR__ . '/assets/js/manual_payment.js'); ?>"></script>
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
-
-    <?php if (isset($_GET['payment']) && in_array($_GET['payment'], ['success', 'failed'], true)): ?>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const paymentResult = <?php echo json_encode($_GET['payment']); ?>;
-            if (paymentResult === 'success') {
-                const syncButton = document.querySelector('.btn-sync-payment[data-id="<?php echo (int)($payment_sync_booking_id ?? 0); ?>"]');
-                if (syncButton) syncButton.click();
-                showAlert('Payment Submitted', 'Refreshing payment status from the payment provider.', 'success');
-            } else {
-                showAlert('Payment Not Completed', 'No payment was completed. Your booking remains available for payment from the dashboard.', 'error');
-            }
-            if (window.history?.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-        });
-    </script>
-    <?php endif; ?>
 
 </body>
 

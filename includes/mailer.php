@@ -472,7 +472,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                 </div>
 
                 <div style='text-align: center; margin-top: 30px;'>
-                    <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>Pay Now to Secure Booking</a>
+                    <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>View payment instructions and submit receipt</a>
                 </div>
 
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>

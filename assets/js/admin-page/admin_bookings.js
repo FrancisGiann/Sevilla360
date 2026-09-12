@@ -98,6 +98,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const pagCurrent = document.getElementById("pag-current-page");
     const pagTotalPages = document.getElementById("pag-total-pages");
     const pagTotalRows = document.getElementById("pag-total-rows");
+    const manualProofModal = document.getElementById('manualPaymentReviewModal');
+    const manualProofStatus = document.getElementById('manual-proof-status');
+    let proofReviewInvoker = null;
   
     let currentPage = 1;
     const rowsPerPage = 15;
@@ -233,6 +236,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const customerName = `${b.first_name} ${b.last_name}`;
             const displayStatus = b.display_booking_status || b.booking_status;
             const isCompleted = displayStatus === 'Completed';
+            const hasPendingProof = Number(b.pending_payment_submission_id) > 0;
             const actualRoomType = (b.venue_category === 'Hotel Room') ? b.hotel_room_type : b.venue_category;
             const totalAmt = parseFloat(b.total_amount) || 0;
             const amtPaid = parseFloat(b.amount_paid) || 0;
@@ -260,6 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (b.cancel_status === 'Pending') { badgeClass = 'status-pending-refund'; statusText = 'Pending Refund'; }
                 else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
             }
+            if (hasPendingProof && displayStatus !== 'Cancelled' && !isCompleted) { badgeClass = 'status-pending'; statusText = 'Awaiting Verification'; }
   
             const fadeClass = (displayStatus === 'Cancelled') ? 'faded-text' : '';
   
@@ -270,9 +275,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
                                    <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price / Finalize</button>`;
                 } else {
-                    actionBtns += `<button class="btn-action btn-confirm open-approve" data-id="${b.id}">Approve</button>
-                                   <button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>
-                                   <button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
+                    actionBtns += `<button class="btn-action btn-confirm open-approve" data-id="${b.id}">Approve</button>`;
+                    if (!hasPendingProof) actionBtns += `<button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>`;
+                    actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
                                    <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price</button>`;
                 }
             } 
@@ -283,15 +288,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else if (b.resched_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
                 } else {
-                    if (['Unpaid', 'Partial'].includes(b.payment_status) && balanceDue > 0) {
+                    if (!hasPendingProof && ['Unpaid', 'Partial'].includes(b.payment_status) && balanceDue > 0) {
                         actionBtns += `<button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>`;
                     }
                     actionBtns += `<button class="btn-action btn-reschedule open-reschedule" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-type="${actualRoomType}" data-date="${dateStr}">Reschedule</button>`;
                 }
             }
             actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
-            if (!isCompleted && Number(b.has_checkout_session) === 1 && b.payment_status !== 'Paid' && displayStatus !== 'Cancelled') {
-                actionBtns += `<button class="btn-action btn-confirm open-reconcile" data-id="${b.id}">Sync PayMongo</button>`;
+            if (hasPendingProof) {
+                const attr = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+                actionBtns += `<button type="button" class="btn-action btn-confirm open-manual-proof" data-id="${Number(b.id)}" data-submission-id="${Number(b.pending_payment_submission_id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}">Review Proof</button>`;
             }
 
             html += `
@@ -462,17 +468,81 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     // 4. Modal System Close Logic
     // =========================================================
+    const modalOverlay = document.getElementById('modalOverlay');
     const closeModal = () => {
+      const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : null;
       modalOverlay.classList.remove("active");
       document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
       const refundTx = document.getElementById('refund-transaction-id');
       const refundReason = document.getElementById('refund-rejection-reason');
       if (refundTx) { refundTx.value = ''; refundTx.required = false; }
       if (refundReason) { refundReason.value = ''; refundReason.required = false; }
+      if (manualProofStatus) { manualProofStatus.hidden = true; manualProofStatus.textContent = ''; }
+      const proofImage = document.getElementById('manual-proof-preview');
+      if (proofImage) { proofImage.hidden = true; proofImage.removeAttribute('src'); }
+      const rejectionReason = document.getElementById('manual-proof-rejection-reason');
+      if (rejectionReason) rejectionReason.value = '';
+      if (manualProofModal) delete manualProofModal.dataset.submissionId;
+      proofReviewInvoker = null;
+      if (restoreProofFocus?.isConnected) window.requestAnimationFrame(() => restoreProofFocus.focus());
     };
   
     document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
     modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+
+    const reviewManualProof = async decision => {
+      const submissionId = manualProofModal?.dataset.submissionId;
+      const reason = document.getElementById('manual-proof-rejection-reason')?.value.trim() || '';
+      if (!submissionId) return;
+      if (decision === 'reject' && (!reason || reason.length > 500)) {
+        manualProofStatus.textContent = 'Enter a rejection reason between 1 and 500 characters.';
+        manualProofStatus.hidden = false;
+        manualProofStatus.dataset.error = 'true';
+        document.getElementById('manual-proof-rejection-reason')?.focus();
+        return;
+      }
+      const approveButton = document.getElementById('btn-approve-manual-proof');
+      const rejectButton = document.getElementById('btn-reject-manual-proof');
+      approveButton.disabled = true;
+      rejectButton.disabled = true;
+      const button = decision === 'approve' ? approveButton : rejectButton;
+      const originalText = button.textContent;
+      button.textContent = 'Saving…';
+      manualProofStatus.textContent = 'Recording the review…';
+      manualProofStatus.hidden = false;
+      manualProofStatus.dataset.error = 'false';
+      try {
+        const response = await fetch('actions/admin/review_manual_payment.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'Accept': 'application/json' },
+          body: JSON.stringify({ submission_id: submissionId, decision, rejection_reason: reason })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Payment review could not be completed.');
+        closeModal();
+        showAlert(decision === 'approve' ? 'Payment verified' : 'Proof rejected', result.message, 'success');
+        loadBookings({ suppressUrlSearchAction: true });
+      } catch (error) {
+        manualProofStatus.textContent = error.message || 'Payment review could not be completed.';
+        manualProofStatus.hidden = false;
+        manualProofStatus.dataset.error = 'true';
+      } finally {
+        approveButton.disabled = false;
+        rejectButton.disabled = false;
+        button.textContent = originalText;
+      }
+    };
+    document.getElementById('btn-approve-manual-proof')?.addEventListener('click', () => reviewManualProof('approve'));
+    document.getElementById('btn-reject-manual-proof')?.addEventListener('click', () => reviewManualProof('reject'));
+    document.addEventListener('keydown', event => {
+      if (!manualProofModal?.classList.contains('active')) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(manualProofModal.querySelectorAll('button:not([disabled]), textarea:not([disabled])')).filter(item => item.offsetParent !== null);
+      if (!focusable.length) { event.preventDefault(); manualProofModal.focus(); return; }
+      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1).focus(); }
+      else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
+    });
   
     // =========================================================
     // 5. HELPER TO RE-BIND DYNAMIC BUTTONS AFTER AJAX LOAD
@@ -694,25 +764,35 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
 
-
-        document.querySelectorAll('.open-reconcile').forEach(btn => {
+        document.querySelectorAll('.open-manual-proof').forEach(btn => {
             btn.addEventListener('click', function() {
-                const button = this;
-                button.disabled = true;
-                button.textContent = 'Syncing...';
-                fetch('actions/admin/reconcile_payment.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-                    body: JSON.stringify({ booking_id: button.getAttribute('data-id') })
-                }).then(r => r.json()).then(data => {
-                    if (data.success) showAlert('Payment Synced', data.message, 'success');
-                    else showAlert('Sync Failed', data.message || 'Unable to reconcile payment.', 'error');
-                    loadBookings();
-                }).catch(() => showAlert('Sync Failed', 'Network or server error.', 'error'))
-                  .finally(() => { button.disabled = false; button.textContent = 'Sync PayMongo'; });
+                proofReviewInvoker = this;
+                manualProofModal.dataset.submissionId = this.dataset.submissionId;
+                document.getElementById('manual-proof-context').textContent = `Booking ${this.dataset.ref || `#${this.dataset.id}`} · ${this.dataset.customer || 'Customer'} · ${this.dataset.venue || 'Venue'} · ${this.dataset.date || 'Date'}`;
+                document.getElementById('manual-proof-amount').textContent = `₱${Number(this.dataset.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                document.getElementById('manual-proof-method').textContent = this.dataset.method || '—';
+                document.getElementById('manual-proof-reference').textContent = this.dataset.reference || '—';
+                document.getElementById('manual-proof-rejection-reason').value = '';
+                manualProofStatus.hidden = true;
+                manualProofStatus.textContent = '';
+                const proofImage = document.getElementById('manual-proof-preview');
+                manualProofStatus.textContent = 'Loading protected receipt…';
+                manualProofStatus.hidden = false;
+                manualProofStatus.dataset.error = 'false';
+                proofImage.onload = () => { manualProofStatus.hidden = true; manualProofStatus.textContent = ''; };
+                proofImage.onerror = () => {
+                    proofImage.hidden = true;
+                    manualProofStatus.textContent = 'The protected receipt could not be loaded. Refresh the booking list or contact an administrator.';
+                    manualProofStatus.hidden = false;
+                    manualProofStatus.dataset.error = 'true';
+                };
+                proofImage.src = `actions/user/payment_proof.php?id=${encodeURIComponent(this.dataset.submissionId)}`;
+                proofImage.hidden = false;
+                modalOverlay.classList.add('active');
+                manualProofModal.classList.add('active');
+                window.requestAnimationFrame(() => manualProofModal.focus());
             });
         });
-
        // REVIEW RESCHEDULE REQUEST MODAL
        const reviewReschedModal = document.getElementById("reviewReschedModal");
       

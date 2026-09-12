@@ -343,6 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
     cancel: document.getElementById("modal-cancel"),
     reschedule: document.getElementById("modal-reschedule"),
     details: document.getElementById("modal-details"),
+    "manual-payment": document.getElementById("modal-manual-payment"),
     review: document.getElementById("modal-review"),
     alert: document.getElementById("uniAlertModal"),
   };
@@ -988,52 +989,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }, this);
   });
 
-  // --- 7. PayMongo Payment Actions ---
-  document.querySelectorAll('.btn-sync-payment').forEach(btn => {
-      btn.addEventListener('click', function() {
-          const originalText = this.innerText;
-          this.innerText = 'Syncing...';
-          this.disabled = true;
-          fetch('actions/user/sync_payment.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-              body: JSON.stringify({ booking_id: this.getAttribute('data-id') })
-          }).then(res => res.json()).then(data => {
-              showAlert(data.success ? 'Payment Updated' : 'Payment Not Updated', data.message || 'Payment status could not be refreshed.', data.success ? 'success' : 'error', data.success);
-              if (data.success) setTimeout(() => window.location.reload(), 800);
-              else { this.innerText = originalText; this.disabled = false; }
-          }).catch(() => {
-              showAlert('Network Error', 'Payment status could not be refreshed.', 'error');
-              this.innerText = originalText;
-              this.disabled = false;
-          });
-      });
-  });
-
-  document.querySelectorAll('.btn-pay-now').forEach(btn => {
-      btn.addEventListener('click', function() {
-          const bookingId = this.getAttribute('data-id');
-          const originalText = this.innerText;
-          this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-          this.disabled = true;
-          fetch('actions/user/pay_existing.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-              body: JSON.stringify({ booking_id: bookingId })
-          }).then(res => res.json()).then(data => {
-              if (data.success) window.location.href = data.checkout_url;
-              else {
-                  showAlert('Payment Error', data.message, 'error');
-                  this.innerHTML = originalText;
-                  this.disabled = false;
-              }
-          }).catch(() => {
-              showAlert('Network Error', 'Network error occurred.', 'error');
-              this.innerHTML = originalText;
-              this.disabled = false;
-          });
-      });
-  });
+  // --- 7. Shared customer manual-payment component ---
+  window.manualPaymentDialog = window.ManualPayment?.create({ csrfToken, openModal, closeModal }) || null;
 
   // --- 8. Completed-stay venue reviews ---
   let reviewBookingId = null;
@@ -1069,5 +1026,14 @@ document.addEventListener("DOMContentLoaded", () => {
       closeModal(); showAlert('Review submitted', data.message, 'success', true);
     } catch (error) { setReviewStatus(error.message); } finally { submit.disabled = false; submit.classList.remove('is-submitting'); submit.removeAttribute('aria-busy'); }
   });
+
+  let paymentProofSubmitted = false;
+  try {
+    paymentProofSubmitted = window.sessionStorage.getItem('manual-payment-proof-submitted') === '1';
+    window.sessionStorage.removeItem('manual-payment-proof-submitted');
+  } catch (error) { /* Private browsing may disable storage; the booking remains visible below. */ }
+  if (paymentProofSubmitted) {
+    window.setTimeout(() => showAlert('Proof submitted', 'Your payment proof is awaiting verification. You can follow its status under My Bookings.', 'success'), 0);
+  }
 
 });

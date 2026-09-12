@@ -2,7 +2,7 @@
 require_once __DIR__ . '/session_init.php';
 require_once __DIR__ . '/admin_notifications.php';
 $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
-$extra_css   = isset($extra_css) ? $extra_css : '';
+$extra_css   = isset($extra_css) ? (array)$extra_css : [];
 $active_page = isset($active_page) ? $active_page : '';
 $current_route = basename((string)(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ''));
 if ($active_page === '') {
@@ -114,9 +114,9 @@ $nav = [
 
     <link rel="stylesheet" href="assets/css/style.css?v=<?php echo time(); ?>">
     <link rel="stylesheet" href="assets/css/header.css?v=<?php echo time(); ?>">
-    <?php if (!empty($extra_css)): ?>
-    <link rel="stylesheet" href="<?php echo $extra_css; ?>">
-    <?php endif; ?>
+    <?php foreach ($extra_css as $stylesheet): if (empty($stylesheet)) continue; ?>
+    <link rel="stylesheet" href="<?php echo htmlspecialchars((string)$stylesheet, ENT_QUOTES, 'UTF-8'); ?>">
+    <?php endforeach; ?>
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/ui-refinement.css'); ?>">
 </head>
 

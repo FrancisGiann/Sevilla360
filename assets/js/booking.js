@@ -11,6 +11,13 @@ class BookingController {
     constructor() {
         this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         this.auth = window.bookingAuth || { isCustomer: false, isStaff: false, resume: false };
+        this.manualPayment = window.ManualPayment?.create({
+            csrfToken: this.csrfToken,
+            onSubmitted: () => {
+                try { window.sessionStorage.setItem('manual-payment-proof-submitted', '1'); } catch (error) { /* Dashboard still shows the submitted booking. */ }
+                window.location.assign('user_dashboard.php');
+            }
+        }) || null;
         this.draftKey = 'sevilla360.booking-draft.v1';
         this.draftTtlMs = 2 * 60 * 60 * 1000;
         this.state = {
@@ -981,7 +988,7 @@ class BookingController {
             opt.dataset.checkOut = room.check_out_time || '';
             opt.dataset.description = room.venue_description || '';
             opt.dataset.amenities = room.venue_amenities || '';
-            opt.textContent = `${room.building_name} (${room.total_inventory} Units) — ₱${parseInt(room.nightly_rate).toLocaleString()}/night`;
+            opt.textContent = `${room.building_name} (${room.total_inventory} Units)`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = false;
@@ -1792,7 +1799,7 @@ class BookingController {
             });
 
             if (proceedBtn) {
-                proceedBtn.innerText = this.auth.isCustomer ? "PROCEED TO PAYMENT" : "SIGN IN TO RESERVE";
+                proceedBtn.innerText = this.auth.isCustomer ? "SUBMIT BOOKING" : "SIGN IN TO RESERVE";
                 proceedBtn.style.backgroundColor = "var(--color-gold)";
             }
         }
@@ -1997,7 +2004,7 @@ class BookingController {
     }
 
     // =========================================================================
-    // SUBMISSION & PAYMONGO REDIRECT
+    // Submit a booking or Event Hall inquiry.
     // =========================================================================
     async submitOnlineBooking() {
         if (!this.state.activeCalendar?.startDate) {
@@ -2069,7 +2076,7 @@ class BookingController {
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
         formData.append("policy_consent", termsCheck.value === '1' ? "1" : "0");
-        formData.append("policy_version", "terms-v2-refund-fee");
+        formData.append("policy_version", "terms-v3-manual-payment");
         
         formData.append("contact_phone", phoneInput.value.trim());
         formData.append("save_contact_default", this.getEl('save-contact-default')?.checked ? '1' : '0');
@@ -2142,6 +2149,7 @@ class BookingController {
             formData.append('room_end_date', this.formatSafeDate(stay.end));
         }
 
+        let bookingSaved = false;
         try {
             btn.innerText = "PROCESSING...";
             btn.disabled = true;
@@ -2153,28 +2161,38 @@ class BookingController {
             });
             if (res.status === 401) {
                 showAlert("Session Expired", "Your session has expired. Please sign in again.", "error", true);
+                btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "SUBMIT BOOKING";
+                btn.disabled = false;
                 return;
             }
             const data = await res.text();
             const response = data.split('|');
             
-            if (response[0] === 'CheckoutUrl') {
-                // The server has created the booking before returning the
-                // provider URL. Do not resurrect this completed selection if
-                // the customer returns from payment later.
+            if (response[0] === 'Success') {
+                bookingSaved = true;
                 this.clearDraft();
-                window.location.href = response[1];
-            } else if (response[0] === 'Success') {
-                this.clearDraft();
-                showAlert("Notice", "Success! Redirecting to Dashboard.");
-                window.location.href = "user_dashboard.php"; 
+                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "BOOKING RESERVED";
+                if (context.roomType === 'Event Hall') {
+                    showAlert("Inquiry submitted", "Your Event Hall inquiry is on its way. We will send the finalized quotation to your dashboard.", 'success');
+                } else {
+                    const bookingId = response[2] || '';
+                    if (!this.manualPayment || !/^[1-9]\d*$/.test(bookingId)) {
+                        showAlert("Booking reserved", "Your booking was saved, but payment details could not be opened. Go to My Bookings and choose Submit payment to continue.", 'error');
+                    } else {
+                        this.manualPayment.openBooking(bookingId, btn);
+                    }
+                }
             } else {
-                throw new Error(response[1]);
+                throw new Error(response[1] || 'Booking could not be submitted. Please try again.');
             }
         } catch (error) {
             showAlert("Notice", "Error: " + error.message);
-                btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "PROCEED TO PAYMENT";
-            btn.disabled = false;
+            if (!bookingSaved) {
+                btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "SUBMIT BOOKING";
+                btn.disabled = false;
+            } else {
+                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "BOOKING RESERVED";
+            }
         }
     }
 }

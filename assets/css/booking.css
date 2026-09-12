@@ -796,7 +796,7 @@ textarea:focus {
   text-decoration: underline;
 }
 
-.btn-paymongo {
+.btn-book-submit {
   width: 100%;
   background-color: var(--color-gold);
   color: white;
@@ -805,7 +805,7 @@ textarea:focus {
   font-weight: 600;
 }
 
-.btn-paymongo:hover {
+.btn-book-submit:hover {
   background-color: var(--color-gold-hover);
 }
 

@@ -77,9 +77,11 @@ $footer_social_links = array_values(array_filter($footer_social_links, static fu
 <script src="assets/js/calendar.js?v=<?php echo time(); ?>"></script>
 
 <!-- Page Specific Script (Loads dynamically) -->
-<?php if (isset($extra_js) && !empty($extra_js) && $extra_js !== 'assets/js/index.js'): ?>
-<script src="<?php echo $extra_js; ?>"></script>
+<?php foreach ((array)($extra_js ?? []) as $script): ?>
+<?php if (!empty($script) && $script !== 'assets/js/index.js'): ?>
+<script src="<?php echo htmlspecialchars((string)$script, ENT_QUOTES, 'UTF-8'); ?>"></script>
 <?php endif; ?>
+<?php endforeach; ?>
 
 </body>
 

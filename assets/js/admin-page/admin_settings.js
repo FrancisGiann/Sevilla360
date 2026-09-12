@@ -173,6 +173,40 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const manualPaymentForm = document.getElementById('form-manual-payment-settings');
+  const manualPaymentSave = document.getElementById('btn-save-manual-payment-settings');
+  const manualPaymentStatus = document.getElementById('manual-payment-settings-status');
+  manualPaymentForm?.addEventListener('change', () => { isFormDirty = true; });
+  manualPaymentSave?.addEventListener('click', async () => {
+    const hours = document.getElementById('manual-payment-deadline');
+    if (!hours || !/^[0-9]+$/.test(hours.value) || Number(hours.value) < 1 || Number(hours.value) > 168) {
+      hours?.focus();
+      if (manualPaymentStatus) manualPaymentStatus.textContent = 'Set a deadline between 1 and 168 hours.';
+      return;
+    }
+    const originalText = manualPaymentSave.textContent;
+    manualPaymentSave.disabled = true;
+    manualPaymentSave.textContent = 'Saving…';
+    if (manualPaymentStatus) manualPaymentStatus.textContent = 'Saving payment instructions…';
+    try {
+      const response = await fetch('actions/admin/save_manual_payment_settings.php', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken },
+        body: new FormData(manualPaymentForm)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Payment instructions could not be saved.');
+      isFormDirty = false;
+      if (manualPaymentStatus) manualPaymentStatus.textContent = data.message;
+      showToast();
+    } catch (error) {
+      if (manualPaymentStatus) manualPaymentStatus.textContent = error.message || 'Payment instructions could not be saved.';
+    } finally {
+      manualPaymentSave.disabled = false;
+      manualPaymentSave.textContent = originalText;
+    }
+  });
+
   // =========================================================
   // 3B. PUBLIC SUPPORT CONTENT
   // =========================================================

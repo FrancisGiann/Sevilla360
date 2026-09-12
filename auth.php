@@ -204,8 +204,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
                 <div class="terms-content">
                     <ol>
-                        <li><strong>Booking & Payments:</strong> All reservations require a valid payment method. A
-                            booking is confirmed once the required payment is successfully processed.</li>
+                        <li><strong>Booking & Payments:</strong> Online Hotel Room and Resort Villa bookings have a 24-hour payment window. Submit your transfer reference and receipt image from your dashboard; the window pauses while staff review the proof, and a rejection starts a fresh 24-hour window. An Event Hall inquiry has no payment deadline until the resort finalizes its quotation. A booking is confirmed when the required payment is verified.</li>
                         <li><strong>Cancellation & Refunds:</strong> Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time. The fee percentage and refund amount are snapshotted when the request is submitted; resort-initiated cancellation decisions follow the existing refund workflow.</li>
                         <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for
                             illustrative purposes. Actual arrangements and lighting may slightly vary.</li>

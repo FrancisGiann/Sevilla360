@@ -4,9 +4,9 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
-require_once '../../includes/paymongo.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/notifications.php';
+require_once '../../includes/manual_payment.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -35,7 +35,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // The accepted legal text is server-owned.  A posted version may be
         // retained by older clients for compatibility, but it can never
         // select which policy is recorded for this booking.
-        $policy_version = 'terms-v2-refund-fee';
+        $policy_version = 'terms-v3-manual-payment';
 
         $sDate = trim($_POST['start_date'] ?? '');
         $eDate = trim($_POST['end_date'] ?? '');
@@ -196,9 +196,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
+        $dueHours = manual_payment_deadline_hours($conn);
+        $dueExpression = $venue_category === 'Event Hall' ? 'NULL' : "DATE_ADD(NOW(), INTERVAL {$dueHours} HOUR)";
         $stmt_book = $conn->prepare("
-            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, source, policy_accepted_at, policy_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', 'Online', NOW(), ?)
+            INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, payment_due_at, source, policy_accepted_at, policy_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', {$dueExpression}, 'Online', NOW(), ?)
         ");
         $stmt_book->bind_param("siissisddss",
             $ref_no, $customer_id, $venue_id, $sDate, $eDate,
@@ -383,8 +385,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt_unlock->execute();
         unset($_SESSION['locked_venue_id']);
 
-        // Online hotel/villa requests still use PayMongo. Event Hall remains
-        // an inquiry with an estimated quote and no upfront payment.
+        // Hotel and villa bookings receive a 24-hour manual payment window.
+        // Event Hall inquiries stay deadline-free until staff finalizes a quote.
         $amount_due = 0.0;
         if ($venue_category !== 'Event Hall') {
             if ($scheme === '100% Full') $amount_due = $true_total;
@@ -394,57 +396,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if ($amount_due > 0) {
-            $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
-            $domain = $_SERVER['HTTP_HOST'];
-            $success_url = $protocol . '://' . $domain . '/Sevilla360/user_dashboard.php?payment=success';
-            $cancel_url = $protocol . '://' . $domain . '/Sevilla360/user_dashboard.php?payment=failed';
-            $centavos = (int)round($amount_due * 100);
-            $safe_room_name = preg_replace('/[^a-zA-Z0-9\s]/', '', (string)($_POST['room_type'] ?? $venue_category));
-            $safe_phone = !empty($contact_phone) ? $contact_phone : '09171234567';
-            $payload = ['data' => ['attributes' => [
-                'billing' => ['name' => $customer_name, 'email' => $customer_email, 'phone' => $safe_phone],
-                'send_email_receipt' => false,
-                'show_description' => false,
-                'show_line_items' => true,
-                'description' => "Sevilla360 Booking: $ref_no",
-                'line_items' => [[
-                    'currency' => 'PHP',
-                    'amount' => $centavos,
-                    'name' => "Booking Deposit ($scheme)",
-                    'description' => $safe_room_name,
-                    'quantity' => 1
-                ]],
-                'payment_method_types' => ['card', 'gcash', 'paymaya'],
-                'reference_number' => $ref_no,
-                'success_url' => $success_url,
-                'cancel_url' => $cancel_url
-            ]]];
-
-            create_user_notification(
-                $conn,
-                $_SESSION['user_id'],
-                'Booking Submitted',
-                "Your booking request for " . trim((string)($_POST['room_name'] ?? $venue_category)) . " has been saved. Complete the PayMongo payment to confirm it."
-            );
-            realtime_enqueue_event($conn, 'admin', 'booking.created', [
-                'booking_id' => (int)$booking_id,
-                'reference_no' => (string)$ref_no,
-                'customer_id' => (int)$_SESSION['user_id'],
-                'venue_category' => (string)$venue_category,
-            ]);
-            if (!$conn->commit()) throw new Exception('Unable to save booking.');
-            $db_committed = true;
-            try {
-                $checkout = paymongo_create_or_reuse_checkout($conn, $booking_id, $amount_due, 0.0, $payload);
-                echo 'CheckoutUrl|' . $checkout['checkout_url'];
-            } catch (Throwable $provider_error) {
-                error_log('Online PayMongo checkout creation failed: ' . get_class($provider_error));
-                echo "Error|Booking {$ref_no} was saved as Pending/Unpaid. Payment setup could not be completed; open your dashboard and retry. Reference: {$ref_no}";
-            }
-            exit();
+            $event_message = 'Your booking request has been saved. Open your dashboard to review payment instructions and submit your transfer reference and receipt image within ' . $dueHours . ' hours.';
+        } else {
+            $event_message = "Your event inquiry for " . trim((string)($_POST['room_name'] ?? 'Event Hall')) . " has been sent successfully. An admin will review it shortly.";
         }
-
-        $event_message = "Your event inquiry for " . trim((string)($_POST['room_name'] ?? 'Event Hall')) . " has been sent successfully. An admin will review it shortly.";
         create_user_notification($conn, $_SESSION['user_id'], 'Booking Submitted', $event_message);
         realtime_enqueue_event($conn, 'admin', 'booking.created', [
             'booking_id' => (int)$booking_id,
@@ -456,11 +411,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $db_committed = true;
         try {
             require_once '../../includes/mailer.php';
-            send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'] ?? 'Event Hall', 0, 'Inquiry Sent (Pending)');
-        } catch (Exception $mail_e) {
+            $email_status = $amount_due > 0 ? 'Payment proof required within ' . $dueHours . ' hours' : 'Inquiry Sent (Pending)';
+            send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'] ?? $venue_category, 0, $email_status);
+        } catch (Throwable $mail_e) {
             error_log('Online booking email delivery failed: ' . get_class($mail_e));
         }
-        echo 'Success|' . $ref_no;
+        // Keep the existing pipe response fields stable and append the
+        // server-generated booking ID for the immediate payment step.
+        echo 'Success|' . $ref_no . '|' . (int)$booking_id;
 
     } catch (Exception $e) {
         if (!$db_committed) $conn->rollback();

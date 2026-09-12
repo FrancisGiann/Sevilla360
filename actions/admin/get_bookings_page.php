@@ -49,7 +49,9 @@ if ($venueFilter !== 'All') {
 
 // Status Filtering Logic
 if ($statusFilter === 'action_req') {
-    $where_clauses[] = "b.booking_status != 'Cancelled' AND NOT $booking_completion_sql AND (cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid'))";
+    $where_clauses[] = "b.booking_status != 'Cancelled' AND NOT $booking_completion_sql AND (cx.status = 'Pending' OR rr.status = 'Pending' OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid') OR EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id = b.id AND mps_action.status = 'pending'))";
+} elseif ($statusFilter === 'awaiting_verification') {
+    $where_clauses[] = "EXISTS (SELECT 1 FROM manual_payment_submissions mps_filter WHERE mps_filter.booking_id = b.id AND mps_filter.status = 'pending')";
 } elseif ($statusFilter === 'partial') {
     $where_clauses[] = "(b.booking_status = 'Confirmed' AND NOT $booking_completion_sql AND b.payment_status IN ('Partial', 'Unpaid'))";
 } elseif ($statusFilter === 'confirmed') {
@@ -94,7 +96,10 @@ try {
             cx.status AS cancel_status, cx.reason AS cancel_reason, cx.fee_percent AS cancel_fee_percent, cx.fee_deducted AS cancel_fee, cx.refund_amount AS cancel_refund,
             rr.status AS resched_status, rr.new_start_date, rr.new_end_date, rr.reason AS resched_reason
             , EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled
-            , EXISTS (SELECT 1 FROM booking_checkout_sessions bcs WHERE bcs.booking_id = b.id AND bcs.status = 'created' AND bcs.provider_session_id IS NOT NULL) AS has_checkout_session
+            , (SELECT mps.id FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending' ORDER BY mps.id DESC LIMIT 1) AS pending_payment_submission_id
+            , (SELECT mps.payment_method FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending' ORDER BY mps.id DESC LIMIT 1) AS pending_payment_method
+            , (SELECT mps.expected_amount FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending' ORDER BY mps.id DESC LIMIT 1) AS pending_payment_expected_amount
+            , (SELECT mps.transaction_reference FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending' ORDER BY mps.id DESC LIMIT 1) AS pending_payment_reference
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id
@@ -105,6 +110,7 @@ try {
         GROUP BY b.id
         ORDER BY 
             CASE 
+                WHEN EXISTS (SELECT 1 FROM manual_payment_submissions mps_order WHERE mps_order.booking_id = b.id AND mps_order.status = 'pending') THEN 2
                 WHEN cx.status = 'Pending' THEN 1 
                 WHEN rr.status = 'Pending' THEN 1 
                 ELSE 0 

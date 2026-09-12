@@ -1,0 +1,131 @@
+.manual-payment-overlay {
+  z-index: 9999;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+.manual-payment-modal {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: min(92dvh, 900px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(22px, 4vw, 32px);
+  background: var(--color-beige, #f7f3eb);
+  color: var(--color-dark, #2a2522);
+}
+.manual-payment-modal > .modal-title { padding-inline: 26px; }
+.manual-payment-close {
+  position: absolute;
+  inset: 12px 12px auto auto;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(42, 37, 34, .2);
+  background: transparent;
+  color: var(--color-dark, #2a2522);
+  cursor: pointer;
+}
+.manual-payment-close:focus-visible,
+#manual-payment-form input:focus-visible,
+#manual-payment-form select:focus-visible,
+#manual-payment-form button:focus-visible,
+.manual-payment-status a:focus-visible {
+  outline: 2px solid var(--color-gold, #a67c45);
+  outline-offset: 2px;
+}
+#manual-payment-intro { color: var(--color-dark-light, #62584f); line-height: 1.55; }
+.manual-payment-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 18px 0;
+}
+.manual-payment-summary p {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  margin: 0;
+  padding: 11px;
+  border: 1px solid rgba(42, 37, 34, .14);
+  background: rgba(255, 255, 255, .55);
+}
+.manual-payment-summary span { color: var(--color-dark-light, #62584f); font-size: .76rem; }
+.manual-payment-summary strong { overflow-wrap: anywhere; font-size: .9rem; }
+#manual-payment-form { display: grid; min-width: 0; gap: 9px; }
+#manual-payment-form label { margin-top: 6px; color: var(--color-dark, #2a2522); font-size: .88rem; font-weight: 700; }
+#manual-payment-form input,
+#manual-payment-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(42, 37, 34, .28);
+  border-radius: 2px;
+  background: #fff;
+  color: var(--color-dark, #2a2522);
+  font: inherit;
+}
+#manual-payment-form :disabled { cursor: not-allowed; opacity: .65; }
+#manual-payment-reference-help { color: var(--color-dark-light, #62584f); font-size: .8rem; line-height: 1.45; }
+.manual-payment-instructions {
+  display: flex;
+  min-width: 0;
+  min-height: 84px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid rgba(42, 37, 34, .14);
+  background: rgba(255, 255, 255, .55);
+}
+.manual-payment-instructions p { margin: 4px 0; overflow-wrap: anywhere; color: var(--color-dark-light, #62584f); font-size: .86rem; }
+.manual-payment-qr { width: min(130px, 38%); max-height: 130px; object-fit: contain; }
+.manual-payment-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(71, 115, 89, .32);
+  background: rgba(71, 115, 89, .08);
+  color: #31513d;
+  font-size: .9rem;
+  line-height: 1.45;
+}
+.manual-payment-status[data-error="true"] { border-color: rgba(164, 56, 49, .38); background: rgba(164, 56, 49, .08); color: #802a24; }
+.manual-payment-status[hidden] { display: none; }
+.manual-payment-status a,
+.manual-payment-status button { min-height: 40px; color: inherit; font: inherit; }
+.manual-payment-status a { display: inline-flex; align-items: center; font-weight: 700; }
+.manual-payment-status button { padding: 6px 10px; border: 1px solid currentColor; background: transparent; cursor: pointer; }
+.manual-payment-modal .modal-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.manual-payment-modal .modal-actions .btn-modal { min-height: 44px; }
+.manual-payment-modal .btn-modal {
+  flex: 1;
+  padding: 12px;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.manual-payment-modal .btn-go-back { background: #d4b58e; color: #2a2522; }
+.manual-payment-modal .btn-go-back:hover { background: #c2a178; }
+.manual-payment-modal .btn-confirm { background: var(--color-gold, #a67c45); color: #fff; }
+.manual-payment-modal .btn-confirm:hover:not(:disabled) { background: #8a6538; }
+.manual-payment-modal .btn-modal:disabled { cursor: not-allowed; opacity: .6; }
+
+@media (max-width: 600px) {
+  .manual-payment-overlay { align-items: flex-start; }
+  .manual-payment-modal { width: 100%; max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding: 24px 18px 20px; }
+  .manual-payment-summary { grid-template-columns: 1fr; }
+  .manual-payment-summary p { grid-template-columns: minmax(120px, .8fr) minmax(0, 1fr); align-items: center; }
+  .manual-payment-modal .modal-actions { flex-direction: column-reverse; }
+  .manual-payment-modal .modal-actions .btn-modal { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manual-payment-overlay,
+  .manual-payment-modal { transition-duration: 1ms !important; }
+}

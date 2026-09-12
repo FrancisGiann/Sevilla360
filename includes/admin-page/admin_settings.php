@@ -1,5 +1,6 @@
 <?php
 require_once 'config/db_connect.php';
+require_once __DIR__ . '/../manual_payment.php';
 
 // 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -18,18 +19,20 @@ $refund_fee_percent = preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refu
     : '3.00';
 $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
 $social_links = is_array($social_links) ? $social_links : [];
+$manual_payment_instructions = manual_payment_load_instructions($conn);
+$manual_payment_deadline_hours = manual_payment_deadline_hours($conn);
 $support_defaults = [
     'support_intro' => 'Everything you need to plan your event or stay with confidence.',
     'support_contact_heading' => 'We are here to help',
     'support_contact_description' => 'Reach our team for booking questions, venue details, or help with an existing reservation.',
     'support_faq_json' => json_encode([
-        ['question' => 'How long are online dates held?', 'answer' => 'Confirmed selections are temporarily locked while you complete a paid booking. If the lock expires, select the dates again.'],
+        ['question' => 'How long are online dates held?', 'answer' => "Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while staff review your submitted payment reference and receipt; if proof is rejected, a fresh 24-hour window begins."],
         ['question' => 'Are hotel rooms priced per night?', 'answer' => "Yes. Hotel stays require at least one night, and the checkout date may coincide with another guest's check-in."],
-        ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and contacts you about the final quotation and schedule. No online payment is required when the inquiry is submitted.'],
+        ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and finalizes the quotation. No payment deadline starts until that quotation is finalized; then you can submit the reference and receipt from your dashboard.'],
         ['question' => 'Where can I see my booking status?', 'answer' => 'Sign in and open your User Dashboard to view status, payment information, notifications, and booking details.']
     ], JSON_UNESCAPED_SLASHES),
     'support_privacy' => "We collect the information needed to create and manage reservations, communicate with guests, process payments, and provide resort services.\n\nAccount and booking information is available only to the customer it belongs to and authorized resort staff or administrators. Contact us if you need help reviewing or correcting your information.",
-    'support_terms' => "Bookings are subject to availability and the selected payment or inquiry process.\nMaximum capacities and venue rules are enforced.\nCancellation and refund handling follows the applicable booking policy and administrator review.\nGuests are responsible for damage to resort property.\nVirtual showroom images are illustrative; actual arrangements and lighting may vary."
+    'support_terms' => "Bookings are subject to availability and the selected payment or inquiry process.\nOnline Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.\nMaximum capacities and venue rules are enforced.\nCancellation and refund handling follows the applicable booking policy and administrator review.\nGuests are responsible for damage to resort property.\nVirtual showroom images are illustrative; actual arrangements and lighting may vary."
 ];
 $support_content = [];
 foreach ($support_defaults as $key => $default) {
@@ -37,11 +40,21 @@ foreach ($support_defaults as $key => $default) {
 }
 $support_faq = json_decode($support_content['support_faq_json'], true);
 $support_faq = is_array($support_faq) && count($support_faq) ? $support_faq : [
-    ['question' => 'How long are online dates held?', 'answer' => 'Confirmed selections are temporarily locked while you complete a paid booking. If the lock expires, select the dates again.'],
+    ['question' => 'How long are online dates held?', 'answer' => 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while staff review your submitted payment reference and receipt; a rejected proof starts a fresh 24-hour window.'],
     ['question' => 'Are hotel rooms priced per night?', 'answer' => "Yes. Hotel stays require at least one night, and the checkout date may coincide with another guest's check-in."],
     ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and contacts you about the final quotation and schedule. No online payment is required when the inquiry is submitted.'],
     ['question' => 'Where can I see my booking status?', 'answer' => 'Sign in and open your User Dashboard to view status, payment information, notifications, and booking details.']
 ];
+foreach ($support_faq as &$faqItem) {
+    if (($faqItem['question'] ?? '') === 'How long are online dates held?') {
+        $faqItem['answer'] = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while staff review your submitted payment reference and receipt; if proof is rejected, a fresh 24-hour window begins.';
+    } elseif (($faqItem['question'] ?? '') === 'What happens after an Event Hall inquiry?') {
+        $faqItem['answer'] = 'The resort team reviews the inquiry and finalizes the quotation. No payment deadline starts until that quotation is finalized; then you can submit the reference and receipt from your dashboard.';
+    }
+}
+unset($faqItem);
+$paymentTerms = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.';
+if (!str_contains((string)$support_content['support_terms'], 'payment window pauses')) $support_content['support_terms'] .= "\n" . $paymentTerms;
 
 // 2. Fetch all Venues and their specific child-table data
 $venues_query = $conn->query("
@@ -87,6 +100,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             <button class="tab-link" data-target="panel-venues">Manage Venues</button>
             <button class="tab-link" data-target="panel-support">Support &amp; Information</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
+            <button class="tab-link" data-target="panel-payments">Customer Payments</button>
             <?php endif; ?>
         </div>
         <label class="settings-tab-select-label" for="settingsTabSelect">Settings section</label>
@@ -96,6 +110,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             <option value="panel-venues">Manage Venues</option>
             <option value="panel-support">Support &amp; Information</option>
             <option value="panel-prefs">System Preferences</option>
+            <option value="panel-payments">Customer Payments</option>
             <?php endif; ?>
         </select>
 
@@ -454,6 +469,62 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     </div>
                 </form>
             </div>
+
+            <!-- PANEL 5: Manual customer payment instructions -->
+            <?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
+            <div class="settings-panel" id="panel-payments">
+                <h2 class="panel-heading">Customer Payments</h2>
+                <p class="settings-section-note">Choose the transfer methods customers can use, then provide account details and optional QR images. Proof is reviewed by staff before a payment is recorded.</p>
+                <form id="form-manual-payment-settings" class="settings-form" enctype="multipart/form-data" onsubmit="return false;">
+                    <div class="manual-payment-deadline settings-section-card">
+                        <div>
+                            <h3>Payment window</h3>
+                            <p>New online bookings and rejected proofs receive this many hours to submit payment.</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="manual-payment-deadline">Deadline (hours)</label>
+                            <input type="number" class="form-control" id="manual-payment-deadline" name="deadline_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_deadline_hours; ?>" required>
+                        </div>
+                    </div>
+                    <div class="manual-payment-methods">
+                    <?php foreach (MANUAL_PAYMENT_METHODS as $method_key => $method_label): $method_settings = $manual_payment_instructions[$method_key]; ?>
+                        <fieldset class="manual-payment-method settings-section-card">
+                            <legend><?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?></legend>
+                            <label class="manual-payment-enabled">
+                                <input type="checkbox" name="methods[<?php echo htmlspecialchars($method_key, ENT_QUOTES, 'UTF-8'); ?>][enabled]" value="1" <?php echo $method_settings['enabled'] ? 'checked' : ''; ?>>
+                                Offer <?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?> to customers
+                            </label>
+                            <div class="form-grid settings-form-grid">
+                                <div class="form-group">
+                                    <label for="payment-<?php echo $method_key; ?>-name">Account name</label>
+                                    <input id="payment-<?php echo $method_key; ?>-name" name="methods[<?php echo $method_key; ?>][account_name]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_name'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label for="payment-<?php echo $method_key; ?>-number">Account number</label>
+                                    <input id="payment-<?php echo $method_key; ?>-number" name="methods[<?php echo $method_key; ?>][account_number]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_number'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
+                                </div>
+                                <div class="form-group settings-field-wide">
+                                    <label for="payment-<?php echo $method_key; ?>-details">Transfer instructions</label>
+                                    <textarea id="payment-<?php echo $method_key; ?>-details" name="methods[<?php echo $method_key; ?>][details]" class="form-control" rows="2" maxlength="1000"><?php echo htmlspecialchars($method_settings['details'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                </div>
+                                <div class="form-group settings-field-wide">
+                                    <label for="payment-<?php echo $method_key; ?>-qr">QR image <span class="field-help">JPEG, PNG, or WebP; up to 5 MiB. Leave blank to keep the current image.</span></label>
+                                    <input id="payment-<?php echo $method_key; ?>-qr" name="qr_<?php echo $method_key; ?>" class="form-control" type="file" accept="image/jpeg,image/png,image/webp">
+                                    <?php if ($method_settings['qr_path'] !== ''): ?>
+                                    <img class="manual-payment-current-qr" src="<?php echo htmlspecialchars($method_settings['qr_path'], ENT_QUOTES, 'UTF-8'); ?>" alt="Current <?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?> payment QR code">
+                                    <?php else: ?>
+                                    <p class="field-help">No QR image uploaded.</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </fieldset>
+                    <?php endforeach; ?>
+                    </div>
+                    <p class="field-help" id="manual-payment-settings-status" role="status" aria-live="polite"></p>
+                    <div class="panel-footer"><button type="button" id="btn-save-manual-payment-settings" class="btn btn-primary save-btn">Save Payment Instructions</button></div>
+                </form>
+            </div>
+            <?php endif; ?>
 
             <?php endif; ?>
 
