@@ -43,6 +43,23 @@ $top_rated_render_body = $top_rated_render_start === false || $top_rated_render_
 $xss_fixture = '<img src=x onerror=alert(1)> & <special>';
 $cancel_position = strpos($admin_status_php, "elseif (\$action === 'cancel')");
 $cancel_body = $cancel_position === false ? '' : substr($admin_status_php, $cancel_position, 500);
+$extract_css_rule_body = static function (string $css, string $selector): string {
+    $matches = [];
+    preg_match_all('/([^{}]+)\{([^{}]*)\}/s', $css, $matches, PREG_SET_ORDER);
+    $bodies = [];
+    foreach ($matches as $match) {
+        if (in_array($selector, array_map('trim', explode(',', trim($match[1]))), true)) {
+            $bodies[] = $match[2];
+        }
+    }
+    return implode("\n", $bodies);
+};
+$villa_detail_selector = '.idx-page .idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark';
+$villa_detail_base_rule = $extract_css_rule_body($ui_refinement_css, $villa_detail_selector);
+$villa_detail_hover_rule = $extract_css_rule_body($ui_refinement_css, $villa_detail_selector . ':hover');
+$villa_detail_focus_rule = $extract_css_rule_body($ui_refinement_css, $villa_detail_selector . ':focus-visible');
+$has_important_css_declaration = static fn(string $rule, string $property, string $value): bool =>
+    preg_match('/(?:^|;)\s*' . preg_quote($property, '/') . '\s*:\s*' . preg_quote($value, '/') . '\s*!important\s*(?:;|$)/', $rule) === 1;
 $checks = [
     'booking page is session-backed and not customer-guarded' => str_contains($booking_php, "require_once 'includes/session_init.php';") && !str_contains($booking_php, "require 'includes/auth_guard.php';"),
     'saved phone lookup is customer-only' => str_contains($booking_php, 'if ($booking_is_customer)') && str_contains($booking_php, '$saved_contact_phone ='),
@@ -70,7 +87,18 @@ $checks = [
     'modal gallery contains thumbnail overflow without scrollbar chrome' => str_contains($index_css, '.idx-modal-gallery { position: relative; min-width: 0;') && str_contains($index_css, 'overflow: hidden; background: var(--idx-ink)') && str_contains($index_css, 'overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain') && str_contains($index_css, 'scrollbar-width: none') && str_contains($index_css, '.idx-modal-thumbnails::-webkit-scrollbar') && str_contains($index_js, "scrollIntoView({ inline: 'nearest', block: 'nearest' })"),
     'mobile modal clears the fixed header with a safe bounded layer' => str_contains($index_css, 'z-index: 2000') && str_contains($index_css, '--idx-mobile-header-offset: calc(72px + env(safe-area-inset-top, 0px))') && str_contains($index_css, 'align-items: start; justify-items: center') && str_contains($index_css, 'padding: calc(var(--idx-mobile-header-offset) + 1rem) 1rem 1rem') && str_contains($index_css, 'max-height: calc(100svh - var(--idx-mobile-header-offset) - 2rem)'),
     'single venue carousels remove dead controls and keep many-item navigation' => str_contains($index_js, "shell.classList.toggle('idx-catalog-shell-single', isSingle)") && str_contains($index_js, "section.dataset.carouselState = isSingle ? 'single' : 'multi'") && str_contains($index_css, '.idx-catalog-shell-single { padding-bottom: 0; }') && str_contains($index_css, '.idx-carousel-controls[hidden] { display: none; }') && str_contains($index_css, 'idx-catalog-shell:not(.idx-catalog-shell-single):not(.idx-catalog-shell-empty)'),
-    'villa detail action wins later important outline overrides' => str_contains($ui_refinement_css, '.idx-page .idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark') && str_contains($ui_refinement_css, 'color: var(--idx-paper) !important') && str_contains($ui_refinement_css, 'color: var(--idx-ink) !important'),
+    'villa detail action has visible base colors and inverted hover or focus colors' => $villa_detail_base_rule !== ''
+        && $has_important_css_declaration($villa_detail_base_rule, 'background', 'transparent')
+        && $has_important_css_declaration($villa_detail_base_rule, 'border-color', 'var(--idx-ink)')
+        && $has_important_css_declaration($villa_detail_base_rule, 'color', 'var(--idx-ink)')
+        && $villa_detail_hover_rule !== ''
+        && $has_important_css_declaration($villa_detail_hover_rule, 'background', 'var(--idx-ink)')
+        && $has_important_css_declaration($villa_detail_hover_rule, 'border-color', 'var(--idx-ink)')
+        && $has_important_css_declaration($villa_detail_hover_rule, 'color', 'var(--idx-paper)')
+        && $villa_detail_focus_rule !== ''
+        && $has_important_css_declaration($villa_detail_focus_rule, 'background', 'var(--idx-ink)')
+        && $has_important_css_declaration($villa_detail_focus_rule, 'border-color', 'var(--idx-ink)')
+        && $has_important_css_declaration($villa_detail_focus_rule, 'color', 'var(--idx-paper)'),
     'venue rows stay compact with a layered villa image treatment' => str_contains($index_css, 'height: clamp(18rem, 28vw, 19rem)') && str_contains($index_css, 'grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr)') && str_contains($index_css, 'background: transparent; box-shadow: none') && str_contains($index_css, 'top: -3.25rem') === false && str_contains($index_css, 'left: -3.25rem'),
     'homepage rows retain editorial spacing and usable carousel controls' => str_contains($index_css, '.idx-catalog-heading::after') && str_contains($index_css, 'top: clamp(9rem, 14vw, 11rem)') && str_contains($index_css, 'min-height: 44px') && str_contains($index_css, 'font-variant-numeric: tabular-nums') && str_contains($index_css, '.idx-catalog-section--resort-villa .idx-carousel-controls button'),
     'modal is framed, viewport bounded, and mobile scroll fallback remains' => str_contains($index_css, 'width: min(78rem, 100%)') && str_contains($index_css, 'grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr)') && str_contains($index_css, 'height: min(84svh, 44rem)') && str_contains($index_css, 'max-height: min(84svh, calc(100svh - 2rem))') && str_contains($index_css, 'overflow: hidden') && str_contains($index_css, 'overflow-y: auto; overscroll-behavior: contain') && str_contains($index_css, 'max-height: calc(100svh - var(--idx-mobile-header-offset) - 2rem); overflow: auto') && str_contains($index_css, '@media (max-height: 640px) and (min-width: 768px)') && !str_contains($index_js, 'const rateFacts'),

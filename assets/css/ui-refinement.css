@@ -210,15 +210,15 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .idx-btn-outline-light:hover { background: rgba(255, 253, 249, .12) !important; border-color: var(--idx-paper) !important; }
 .idx-page .idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark {
   background: transparent !important;
-  border-color: rgba(255, 253, 249, .66) !important;
-  color: var(--idx-paper) !important;
+  border-color: var(--idx-ink) !important;
+  color: var(--idx-ink) !important;
   box-shadow: none !important;
 }
 .idx-page .idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark:hover,
 .idx-page .idx-catalog-section--resort-villa .idx-catalog-card-actions .idx-btn-outline-dark:focus-visible {
-  background: var(--idx-paper) !important;
-  border-color: var(--idx-paper) !important;
-  color: var(--idx-ink) !important;
+  background: var(--idx-ink) !important;
+  border-color: var(--idx-ink) !important;
+  color: var(--idx-paper) !important;
 }
 .idx-exp-card img, .idx-reserve-grid img, .idx-reserve-row-dark img, .idx-reserve-centered-imgwrap img { transition: transform 360ms var(--ui-ease), filter 360ms var(--ui-ease); }
 .idx-reserve-centered-card { border-radius: var(--ui-radius-md); }
