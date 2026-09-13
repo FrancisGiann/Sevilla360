@@ -1,10 +1,14 @@
 <?php
 $page_title = 'Virtual Showroom | SEVILLA360';
 $extra_css = 'assets/css/showroom.css?v=' . time();
-$extra_js = 'assets/js/showroom.js?v=' . time();
+$extra_js = [
+    'assets/js/panorama-view-compat.js?v=' . time(),
+    'assets/js/showroom.js?v=' . time(),
+];
 $active_page = 'showroom';
 
 require_once 'config/db_connect.php';
+require_once 'includes/showroom_tour.php';
 
 // 1. Fetch all venues
 $venues_query = $conn->query("
@@ -94,7 +98,7 @@ if ($venues_query) {
 
 // 2. Fetch Media from CMS and attach to the correct showroom venue
 // Primary panoramas are shown first; stable media IDs keep navigation intact.
-$media_query = $conn->query("SELECT id, slot_assignment, file_path, media_type, is_primary FROM media_cms ORDER BY is_primary DESC, id ASC");
+$media_query = $conn->query("SELECT id, slot_assignment, file_path, file_name, media_type, is_primary, showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov FROM media_cms ORDER BY is_primary DESC, id ASC");
 
 $pano_index_map = []; // [ base_id => [ media_id => pano_url_index ] ]
 $legacy_pano_media_ids = []; // [ base_id => media IDs in historical id-ascending order ]
@@ -115,6 +119,17 @@ if ($media_query) {
                 $current_index = count($showroom_data[$base_id]['pano_urls']);
                 $showroom_data[$base_id]['pano_urls'][] = $m['file_path'];
                 $showroom_data[$base_id]['pano_media_ids'][] = (int)$m['id'];
+                if ($m['showroom_view_x'] !== null && $m['showroom_view_y'] !== null && $m['showroom_view_z'] !== null && $m['showroom_fov'] !== null) {
+                    if (!isset($showroom_data[$base_id]['showroom_views'])) {
+                        $showroom_data[$base_id]['showroom_views'] = [];
+                    }
+                    $showroom_data[$base_id]['showroom_views'][(string)(int)$m['id']] = [
+                        'x' => (float)$m['showroom_view_x'],
+                        'y' => (float)$m['showroom_view_y'],
+                        'z' => (float)$m['showroom_view_z'],
+                        'fov' => (float)$m['showroom_fov'],
+                    ];
+                }
                 $pano_index_map[$base_id][$m['id']] = $current_index;
                 $legacy_pano_media_ids[$base_id][] = (int)$m['id'];
             }
@@ -141,7 +156,7 @@ foreach ($legacy_pano_media_ids as $base_id => $legacy_ids) {
 
 // 3. Fetch hotspots and group by venue + pano index
 $hotspots_query = $conn->query("
-    SELECT id, media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id
+    SELECT id, media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id, arrow_rotation
     FROM showroom_hotspots
 ");
 if ($hotspots_query) {
@@ -149,6 +164,24 @@ if ($hotspots_query) {
         $media_id = $h['media_id'];
         foreach ($pano_index_map as $base_id => $media_to_index) {
             if (isset($media_to_index[$media_id])) {
+                $resolved_target_media_id = null;
+                if ($h['type'] === 'nav') {
+                    $legacy_ids = $legacy_pano_media_ids[$base_id] ?? [];
+                    $venue_media_ids = array_map('intval', array_keys($media_to_index));
+                    $resolved_target_media_id = showroom_tour_resolve_target_media_id(
+                        (int)$media_id,
+                        $h['target_media_id'],
+                        $h['target_pano_index'],
+                        $legacy_ids,
+                        $venue_media_ids
+                    );
+                    // Broken navigation references remain visible in the admin
+                    // editor but must never create dead controls for guests.
+                    if ($resolved_target_media_id === null) {
+                        break;
+                    }
+                }
+
                 $pano_index = $media_to_index[$media_id];
                 if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'])) {
                     $showroom_data[$base_id]['hotspots_by_pano_index'] = [];
@@ -165,7 +198,8 @@ if ($hotspots_query) {
                     'position_y' => $h['position_y'],
                     'position_z' => $h['position_z'],
                     'target_pano_index' => $h['target_pano_index'],
-                    'target_media_id' => $h['target_media_id'],
+                    'target_media_id' => $resolved_target_media_id ?? $h['target_media_id'],
+                    'arrow_rotation' => max(0, min(359, (int)$h['arrow_rotation'])),
                 ];
                 break;
             }
@@ -187,6 +221,10 @@ foreach($showroom_data as $id => $data) {
         }
     }
 }
+
+// Keep every hotel venue as its own selectable destination, grouped in the
+// same room-type order as booking.php for a faster scan of the long list.
+$grouped_hotel_rooms = showroom_tour_group_hotel_venues($grouped_showroom['Hotel Room']);
 
 include 'includes/header.php';
 ?>
@@ -220,16 +258,25 @@ window.process = {
             <!-- === 360 UI Elements === -->
             <div class="viewer-label ui-360" id="top-room-label">Showroom</div>
 
-            <button id="btn-info" class="ui-360 top-right-btn" title="Venue Information">
-                <i class="fa-solid fa-circle-info"></i>
+            <div class="showroom-destinations ui-360" id="showroom-destinations">
+                <button type="button" id="btn-showroom-destinations" aria-controls="showroom-destinations-list" aria-expanded="false" disabled>
+                    <i class="fa-solid fa-signs-post" aria-hidden="true"></i>
+                    <span>Destinations</span>
+                    <span class="showroom-destinations-count" id="showroom-destinations-count" aria-hidden="true">0</span>
+                </button>
+                <div id="showroom-destinations-list" class="showroom-destinations-list" role="group" aria-label="Destinations from this panorama" hidden></div>
+            </div>
+
+            <button type="button" id="btn-info" class="ui-360 top-right-btn" title="Venue Information" aria-label="Venue information">
+                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
             </button>
 
             <div class="viewer-controls ui-360" id="viewer-controls">
 
-                <button id="btn-reload-pano" title="Reload 360"><i class="fa-solid fa-rotate-right"></i></button>
-                <button id="btn-zoom-in" title="Zoom In"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
-                <button id="btn-zoom-out" title="Zoom Out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
-                <button id="btn-fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+                <button type="button" id="btn-reset-view" title="Reset View" aria-label="Reset panorama view"><i class="fa-solid fa-compass" aria-hidden="true"></i></button>
+                <button type="button" id="btn-zoom-in" title="Zoom In" aria-label="Zoom in"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
+                <button type="button" id="btn-zoom-out" title="Zoom Out" aria-label="Zoom out"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
+                <button type="button" id="btn-fullscreen" title="Fullscreen" aria-label="Toggle fullscreen"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
             </div>
 
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>
@@ -290,25 +337,60 @@ window.process = {
                     <?php foreach($grouped_showroom as $category => $venues): ?>
                     <?php if (!empty($venues)): ?>
 
+                    <?php
+                        $menu_id = 'dropdown-' . str_replace(' ', '-', $category);
+                        $is_hotel_menu = $category === 'Hotel Room';
+                        $master_aria_label = $is_hotel_menu
+                            ? 'Hotel Rooms; ' . count($grouped_hotel_rooms) . ' room types, ' . count($venues) . ' venues'
+                            : $category . 's';
+                    ?>
+
                     <!-- Master Pill Wrapper -->
-                    <div class="pill-dropdown-wrapper">
+                    <div class="pill-dropdown-wrapper<?php echo $is_hotel_menu ? ' hotel-room-dropdown' : ''; ?>">
                         <button
+                            type="button"
                             class="master-pill <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
-                            data-category="<?php echo htmlspecialchars($category); ?>">
+                            data-category="<?php echo htmlspecialchars($category, ENT_QUOTES, 'UTF-8'); ?>"
+                            aria-label="<?php echo htmlspecialchars($master_aria_label, ENT_QUOTES, 'UTF-8'); ?>"
+                            aria-controls="<?php echo htmlspecialchars($menu_id, ENT_QUOTES, 'UTF-8'); ?>"
+                            aria-expanded="false">
                             <?php echo htmlspecialchars($category); ?>s
                             <i class="fa-solid fa-chevron-up"
                                 style="margin-left: 8px; font-size: 0.75rem; transition: transform 0.3s;"></i>
                         </button>
 
                         <!-- Floating Dropdown Menu -->
-                        <div class="pill-dropdown-menu <?php echo ($category === $first_available_category) ? 'active' : ''; ?>"
-                            id="dropdown-<?php echo str_replace(' ', '-', $category); ?>">
+                        <div class="pill-dropdown-menu<?php echo ($category === $first_available_category) ? ' active' : ''; ?><?php echo $is_hotel_menu ? ' hotel-room-groups-menu' : ''; ?>"
+                            id="<?php echo htmlspecialchars($menu_id, ENT_QUOTES, 'UTF-8'); ?>"
+                            role="group"
+                            aria-label="<?php echo htmlspecialchars($category === 'Hotel Room' ? 'Hotel rooms grouped by room type' : $category . ' venues', ENT_QUOTES, 'UTF-8'); ?>">
+                            <?php if ($is_hotel_menu): ?>
+                            <div class="hotel-room-groups">
+                                <?php $hotel_group_index = 0; foreach ($grouped_hotel_rooms as $room_type => $room_venues): $hotel_group_index++; ?>
+                                <?php $heading_id = 'hotel-room-type-heading-' . $hotel_group_index; ?>
+                                <div class="hotel-room-group" role="group" aria-labelledby="<?php echo htmlspecialchars($heading_id, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <h3 class="hotel-room-group-title" id="<?php echo htmlspecialchars($heading_id, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars((string)$room_type, ENT_QUOTES, 'UTF-8'); ?></h3>
+                                    <div class="hotel-room-group-items">
+                                        <?php foreach ($room_venues as $id => $data): ?>
+                                        <button type="button" class="dropdown-item<?php echo ($id === $first_available_room) ? ' active' : ''; ?>"
+                                            data-room="<?php echo htmlspecialchars((string)$id, ENT_QUOTES, 'UTF-8'); ?>"
+                                            <?php echo ($id === $first_available_room) ? 'aria-current="true"' : ''; ?>>
+                                            <?php echo htmlspecialchars(ucwords(strtolower((string)$data['title'])), ENT_QUOTES, 'UTF-8'); ?>
+                                        </button>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php else: ?>
                             <?php foreach($venues as $id => $data): ?>
-                            <button class="dropdown-item <?php echo ($id === $first_available_room) ? 'active' : ''; ?>"
-                                data-room="<?php echo $id; ?>">
-                                <?php echo ucwords(strtolower($data['title'])); ?>
+                            <button type="button" class="dropdown-item<?php echo ($id === $first_available_room) ? ' active' : ''; ?>"
+                                data-room="<?php echo htmlspecialchars((string)$id, ENT_QUOTES, 'UTF-8'); ?>"
+                                <?php echo ($id === $first_available_room) ? 'aria-current="true"' : ''; ?>>
+                                <?php echo htmlspecialchars(ucwords(strtolower((string)$data['title'])), ENT_QUOTES, 'UTF-8'); ?>
                             </button>
                             <?php endforeach; ?>
+                            <?php endif; ?>
                         </div>
                     </div>
 

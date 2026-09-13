@@ -280,9 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
                       <img src="${photo.file_path}?v=${Date.now()}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           
-                          <button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
-                              <i class="fa-solid fa-star" aria-hidden="true"></i>
-                          </button>
+                          ${currentManageType === '360'
+                              ? '<span class="mg-primary-managed">Starting scene is set in Tour Setup</span>'
+                              : `<button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
+                                  <i class="fa-solid fa-star" aria-hidden="true"></i>
+                              </button>`}
                           
                           <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${photo.file_name}</span>
                           

@@ -16,6 +16,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentPanoIndex = 0; 
   let activePanoramas = []; 
   let roomLoadToken = 0;
+  let venueActivationToken = 0;
+  let lastFramedPanorama = null;
+  let lastFramedActivationToken = -1;
+  const panoramaControlReady = new WeakSet();
 
   let currentZoom = 1;
   let panX = 0;
@@ -26,6 +30,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let hasSeenHint = false;
   let hintPending = false;
   let hintReadyRoomId = null;
+  let autoRotateTimer = null;
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   // --- 2. DOM Elements ---
   const panoContainer = document.getElementById("pano-container");
@@ -46,7 +52,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnSwitch = document.getElementById("btn-switch-mode");
   const currentSlideImg = document.getElementById("current-slide-img");
   const wrapper = document.getElementById("showroom-wrapper");
+  const bigViewerBox = document.querySelector('.big-viewer-box');
   const topRoomLabel = document.getElementById("top-room-label");
+  const destinationsButton = document.getElementById('btn-showroom-destinations');
+  const destinationsCount = document.getElementById('showroom-destinations-count');
+  const destinationsList = document.getElementById('showroom-destinations-list');
+  const destinationsControl = document.getElementById('showroom-destinations');
   const interactionHint = document.getElementById("interaction-hint");
   let hintTimeout;
 
@@ -259,17 +270,18 @@ document.addEventListener("DOMContentLoaded", () => {
   no360Wrapper.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5; background-size: cover; background-position: center;";
   no360Wrapper.innerHTML = `
       <div style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6);"></div>
-      <div style="position:relative; z-index:1000; text-align:center; color:white; padding: 20px;">
-          <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:15px; opacity:0.9;">
+      <div class="showroom-view-fallback">
+          <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
               <circle cx="8.5" cy="8.5" r="1.5"></circle>
               <polyline points="21 15 16 10 5 21"></polyline>
           </svg>
-          <h2 style="font-family: var(--font-body), sans-serif; font-weight:600; font-size: 1.4rem; margin-bottom:8px; letter-spacing: 1px;">STANDARD VIEW</h2>
-          <p style="font-family: var(--font-body), sans-serif; opacity:0.8; font-size: 0.95rem;">No 360° tour available for this venue.</p>
+          <h2 class="showroom-view-fallback-title">STANDARD VIEW</h2>
+          <p class="showroom-view-fallback-message">No 360° tour available for this venue.</p>
+          <button type="button" class="showroom-retry-button" hidden>Retry 360° view</button>
       </div>
   `;
-  document.querySelector(".big-viewer-box").appendChild(no360Wrapper);
+  bigViewerBox?.appendChild(no360Wrapper);
 
   // --- 4. Initialize Panolens 360 Viewer ---
   if (!panoContainer) return;
@@ -277,13 +289,43 @@ document.addEventListener("DOMContentLoaded", () => {
   const viewer = new PANOLENS.Viewer({
     container: panoContainer,
     controlBar: false, 
-    autoRotate: true,
+    autoRotate: false,
     autoRotateSpeed: 0.5,
     antialias: true, 
     cameraFov: 85    
   });
   
   viewer.renderer.setPixelRatio(window.devicePixelRatio);
+
+  const pauseAutoRotation = () => {
+      window.clearTimeout(autoRotateTimer);
+      autoRotateTimer = null;
+      if (typeof viewer.disableAutoRate === 'function') viewer.disableAutoRate();
+  };
+  const scheduleAutoRotation = () => {
+      pauseAutoRotation();
+      if (reducedMotionQuery.matches || document.hidden || wrapper.classList.contains('mode-photos') || !currentRoomId || activePanoramas.length === 0) return;
+      autoRotateTimer = window.setTimeout(() => {
+          if (!reducedMotionQuery.matches && !document.hidden && !wrapper.classList.contains('mode-photos') && activePanoramas.length > 0 && typeof viewer.enableAutoRate === 'function') {
+              viewer.enableAutoRate();
+          }
+      }, 5000);
+  };
+  const viewerActivity = () => scheduleAutoRotation();
+
+  bigViewerBox?.addEventListener('pointerdown', viewerActivity, { passive: true });
+  bigViewerBox?.addEventListener('pointermove', viewerActivity, { passive: true });
+  bigViewerBox?.addEventListener('touchstart', viewerActivity, { passive: true });
+  bigViewerBox?.addEventListener('wheel', viewerActivity, { passive: true });
+  bigViewerBox?.addEventListener('keydown', viewerActivity);
+  document.addEventListener('visibilitychange', () => {
+      if (document.hidden) pauseAutoRotation();
+      else scheduleAutoRotation();
+  });
+  reducedMotionQuery.addEventListener?.('change', event => {
+      if (event.matches) pauseAutoRotation();
+      else scheduleAutoRotation();
+  });
 
   window.addEventListener('resize', () => {
       if (viewer && panoContainer.style.visibility === "visible") {
@@ -293,23 +335,73 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 5. Custom 360 UI Controls ---
   document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+      viewerActivity();
       viewer.camera.fov = Math.max(30, viewer.camera.fov - 10); 
       viewer.camera.updateProjectionMatrix(); 
   });
   
   document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+      viewerActivity();
       viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); 
       viewer.camera.updateProjectionMatrix(); 
   });
   
   document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
+      viewerActivity();
       if (!document.fullscreenElement) {
           panoContainer.requestFullscreen().then(() => { setTimeout(() => viewer.onWindowResize(), 100); });
       } else {
           document.exitFullscreen().then(() => { setTimeout(() => viewer.onWindowResize(), 100); });
       }
   });
+  document.getElementById('btn-info')?.addEventListener('click', viewerActivity);
+  const resetViewButton = document.getElementById('btn-reset-view');
+  if (resetViewButton) resetViewButton.disabled = true;
   document.addEventListener('fullscreenchange', () => setTimeout(() => viewer.onWindowResize(), 100));
+
+  function closeDestinations(restoreFocus = false) {
+      if (!destinationsList || !destinationsButton) return;
+      destinationsList.hidden = true;
+      destinationsButton.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) destinationsButton.focus();
+  }
+
+  function enterPanorama(pano, viewerRef = viewer) {
+      if (!pano) return;
+      panoramaControlReady.delete(pano);
+      viewerRef.setPanorama(pano);
+  }
+
+  destinationsButton?.addEventListener('click', event => {
+      event.stopPropagation();
+      if (destinationsButton.disabled) return;
+      const isOpen = destinationsButton.getAttribute('aria-expanded') === 'true';
+      destinationsList.hidden = isOpen;
+      destinationsButton.setAttribute('aria-expanded', String(!isOpen));
+      viewerActivity();
+      if (!isOpen) destinationsList.querySelector('button')?.focus();
+  });
+
+  destinationsList?.addEventListener('click', event => {
+      const destinationButton = event.target.closest('[data-destination-index]');
+      if (!destinationButton) return;
+      const index = Number(destinationButton.dataset.destinationIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= activePanoramas.length || !activePanoramas[index]) return;
+      closeDestinations();
+      currentPanoIndex = index;
+      viewerActivity();
+      enterPanorama(activePanoramas[index]);
+  });
+
+  destinationsList?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+          event.preventDefault();
+          closeDestinations(true);
+      }
+  });
+  document.addEventListener('click', event => {
+      if (!event.target.closest('#showroom-destinations')) closeDestinations();
+  });
 
   function disposePanorama(pano) {
       if (!pano) return;
@@ -323,6 +415,93 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (e) { /* texture/geometry may already be disposed */ }
   }
 
+  function resolveHotspotTargetIndex(hotspot, roomData) {
+      const mediaIds = Array.isArray(roomData?.pano_media_ids) ? roomData.pano_media_ids.map(Number) : [];
+      const targetMediaId = Number(hotspot?.target_media_id);
+      if (Number.isInteger(targetMediaId) && targetMediaId > 0) return mediaIds.indexOf(targetMediaId);
+      if (hotspot?.target_media_id !== null && hotspot?.target_media_id !== undefined && hotspot?.target_media_id !== '') return -1;
+      const legacyIndex = Number(hotspot?.target_pano_index);
+      const legacyMediaIds = Array.isArray(roomData?.legacy_pano_media_ids) ? roomData.legacy_pano_media_ids.map(Number) : [];
+      const legacyMediaId = Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyMediaIds[legacyIndex] : null;
+      return Number.isInteger(legacyMediaId) ? mediaIds.indexOf(legacyMediaId) : -1;
+  }
+
+  function activeDestinations(roomData, viewIndex) {
+      const hotspots = roomData?.hotspots_by_pano_index?.[viewIndex] || [];
+      return hotspots.filter(hotspot => hotspot.type === 'nav').map(hotspot => ({
+          hotspot,
+          targetIndex: resolveHotspotTargetIndex(hotspot, roomData),
+          label: String(hotspot.title || 'Destination').trim().slice(0, 48)
+      })).filter(destination => destination.targetIndex >= 0 && destination.targetIndex < (roomData?.pano_urls?.length || 0) && destination.targetIndex !== viewIndex);
+  }
+
+  function updateDestinations(roomData, viewIndex) {
+      if (!destinationsButton || !destinationsList) return [];
+      const entries = activeDestinations(roomData, viewIndex);
+      destinationsList.replaceChildren();
+      entries.forEach(entry => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.destinationIndex = String(entry.targetIndex);
+          button.setAttribute('aria-label', `Go to ${entry.label}`);
+          button.textContent = entry.label;
+          destinationsList.appendChild(button);
+      });
+      destinationsButton.disabled = entries.length === 0;
+      destinationsButton.setAttribute('aria-label', entries.length ? `Destinations, ${entries.length} available` : 'No destinations from this view');
+      destinationsButton.title = entries.length ? `${entries.length} destination${entries.length === 1 ? '' : 's'} available from this view` : 'No destinations from this view';
+      if (destinationsCount) destinationsCount.textContent = String(entries.length);
+      closeDestinations();
+      return entries;
+  }
+
+  function applyPanoramaView(roomData, mediaIndex, duration) {
+      const mediaId = Array.isArray(roomData?.pano_media_ids) ? Number(roomData.pano_media_ids[mediaIndex]) : 0;
+      const saved = mediaId > 0 ? roomData?.showroom_views?.[String(mediaId)] : null;
+      const view = saved && [saved.x, saved.y, saved.z, saved.fov].every(value => Number.isFinite(Number(value)))
+          ? { x: Number(saved.x), y: Number(saved.y), z: Number(saved.z), fov: Number(saved.fov) }
+          : { x: 0, y: 0, z: -1, fov: 85 };
+      const fov = Math.min(100, Math.max(30, view.fov));
+      if (typeof viewer.setCameraFov === 'function') viewer.setCameraFov(fov);
+      else {
+          viewer.camera.fov = fov;
+          viewer.camera.updateProjectionMatrix();
+      }
+      // Keep the captured world-space vector unchanged for setControlCenter.
+      // The 0.12.1 tween fallback pre-negates a clone because that API mirrors X.
+      const center = new THREE.Vector3(view.x, view.y, view.z);
+      window.PanoramaViewCompat?.applyControlCenter(viewer, center, reducedMotionQuery.matches ? 0 : duration);
+  }
+
+  function synchronizePanoramaState(roomId, room, index, pano, panoramasRef, activationToken = venueActivationToken, transitionReady = false) {
+      if (activationToken !== venueActivationToken || currentRoomId !== roomId || room.panoFailed || viewer.panorama !== pano ||
+          panoCache[roomId] !== panoramasRef || activePanoramas !== panoramasRef || panoramasRef[index] !== pano) return false;
+
+      currentPanoIndex = index;
+      updateDestinations(room, index);
+      if (!transitionReady) return true;
+
+      // Viewer.add() installs Panolens' setCameraControl handler first. Our
+      // enter-fade-start listener runs afterward, once that internal target
+      // reset is complete; only this confirmed path applies the saved framing.
+      if (lastFramedPanorama === pano && lastFramedActivationToken === activationToken) return true;
+      lastFramedPanorama = pano;
+      lastFramedActivationToken = activationToken;
+      applyPanoramaView(room, index, 650);
+      scheduleAutoRotation();
+      return true;
+  }
+
+  function resetCurrentView() {
+      if (!currentRoomId || !activePanoramas.length) return;
+      const room = dataMap[currentRoomId];
+      if (!room) return;
+      applyPanoramaView(room, currentPanoIndex, reducedMotionQuery.matches ? 0 : 650);
+      viewerActivity();
+  }
+
+  document.getElementById('btn-reset-view')?.addEventListener('click', resetCurrentView);
+
   function showStandardFallback(room) {
       const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
       if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
@@ -331,7 +510,26 @@ document.addEventListener("DOMContentLoaded", () => {
       clearInteractionHint();
       no360Wrapper.style.backgroundImage = `url('${bgImg}')`;
       no360Wrapper.style.display = "flex";
+      const failed = Boolean(room.panoFailed);
+      const fallbackTitle = no360Wrapper.querySelector('.showroom-view-fallback-title');
+      const fallbackMessage = no360Wrapper.querySelector('.showroom-view-fallback-message');
+      const retryButton = no360Wrapper.querySelector('.showroom-retry-button');
+      if (fallbackTitle) fallbackTitle.textContent = failed ? '360° VIEW UNAVAILABLE' : 'STANDARD VIEW';
+      if (fallbackMessage) fallbackMessage.textContent = failed
+          ? 'This 360° tour could not be loaded. Retry the view or browse the venue photos.'
+          : 'No 360° tour available for this venue.';
+      if (retryButton) {
+          retryButton.hidden = !failed;
+          retryButton.onclick = () => {
+              room.panoFailed = false;
+              room.panoRetryCount = (Number(room.panoRetryCount) || 0) + 1;
+              activateVenue(currentRoomId);
+          };
+      }
       panoContainer.style.visibility = "hidden";
+      pauseAutoRotation();
+      updateDestinations(room, -1);
+      if (destinationsControl) destinationsControl.style.display = 'none';
       if (viewerControls) viewerControls.style.display = "none";
       if (btnSwitch) {
           btnSwitch.disabled = true;
@@ -342,6 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
           btnInfo.disabled = true;
           btnInfo.style.display = "none";
       }
+      if (resetViewButton) resetViewButton.disabled = true;
       valTitle.textContent = room.title;
   }
 
@@ -371,33 +570,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-  // Hard Reload (Memory Flush)
-  document.getElementById("btn-reload-pano")?.addEventListener("click", () => {
-      if (!currentRoomId) return;
-      const room = dataMap[currentRoomId];
-      if (!room || !room.pano_urls || room.pano_urls.length === 0) return;
-
-      if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
-
-      if (panoCache[currentRoomId]) {
-          panoCache[currentRoomId].forEach(oldPano => {
-              viewer.remove(oldPano);
-              if (oldPano.material) {
-                  if (oldPano.material.map) oldPano.material.map.dispose();
-                  oldPano.material.dispose();
-              }
-              if (oldPano.geometry) oldPano.geometry.dispose();
-          });
-          delete panoCache[currentRoomId];
-      }
-
-      room.pano_urls = room.pano_urls.map(url => {
-          let cleanUrl = url.split('?')[0]; 
-          return cleanUrl + '?t=' + new Date().getTime(); 
-      });
-
-      activateVenue(currentRoomId);
-  });
+  // Retry is only offered from the explicit error state; this control restores
+  // the saved/default framing without reloading assets or mutating pano_urls.
 
   // --- 6. Info Modal Logic (Mobile) ---
   const infoModal = document.getElementById("info-modal");
@@ -425,7 +599,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("click", (e) => { if (e.target === infoModal) infoModal.classList.remove("active"); });
 
 
-  function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef, roomData, isCurrentView) {
+  function attachHotspots(pano, hotspotsArray, viewerRef, panoramasRef, roomData, isCurrentView, currentViewIndex) {
       if (!hotspotsArray || hotspotsArray.length === 0) return;
 
       const escapeHotspotText = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({
@@ -437,29 +611,27 @@ document.addEventListener("DOMContentLoaded", () => {
       hotspotsArray.forEach(h => {
           const isNav = h.type === 'nav';
           const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
+          const destinationLabel = String(h.title || 'Destination').trim().slice(0, 48);
+          const targetIndex = isNav ? resolveHotspotTargetIndex(h, roomData) : -1;
+          if (isNav && (targetIndex < 0 || targetIndex >= (roomData?.pano_urls?.length || 0) || targetIndex === currentViewIndex)) return;
 
           const spot = new PANOLENS.Infospot(350, iconUrl);
           spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
 
           if (isNav) {
+              const rotation = Number(h.arrow_rotation);
+              if (spot.material && Number.isInteger(rotation) && rotation >= 0 && rotation <= 359) {
+                  spot.material.rotation = rotation * Math.PI / 180;
+                  spot.material.needsUpdate = true;
+              }
+              spot.addHoverText(escapeHotspotText(destinationLabel));
               spot.addEventListener('click', () => {
                   if (typeof isCurrentView === 'function' && !isCurrentView()) return;
-                  const targetMediaIds = Array.isArray(roomData?.pano_media_ids) ? roomData.pano_media_ids.map(Number) : [];
-                  const targetMediaId = Number(h.target_media_id);
-                  let idx = Number.isInteger(targetMediaId) && targetMediaId > 0
-                      ? targetMediaIds.indexOf(targetMediaId)
-                      : -1;
-                  if (idx < 0) {
-                      const legacyIndex = Number(h.target_pano_index);
-                      const legacyMediaIds = Array.isArray(roomData?.legacy_pano_media_ids)
-                          ? roomData.legacy_pano_media_ids.map(Number)
-                          : [];
-                      const legacyMediaId = Number.isInteger(legacyIndex) && legacyIndex >= 0
-                          ? legacyMediaIds[legacyIndex]
-                          : null;
-                      idx = Number.isInteger(legacyMediaId) ? targetMediaIds.indexOf(legacyMediaId) : -1;
+                  if (targetIndex >= 0 && targetIndex < panoramasRef.length && panoramasRef[targetIndex]) {
+                      currentPanoIndex = targetIndex;
+                      viewerActivity();
+                      enterPanorama(panoramasRef[targetIndex], viewerRef);
                   }
-                  if (idx >= 0 && idx < panoramasRef.length && panoramasRef[idx]) viewerRef.setPanorama(panoramasRef[idx]);
               });
           } else {
               spot.addHoverText(escapeHotspotText(h.title));
@@ -522,21 +694,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function activateVenue(roomId) {
     clearInteractionHint();
+    pauseAutoRotation();
+    closeDestinations();
     hintPending = false;
     hintReadyRoomId = null;
     const loadToken = ++roomLoadToken;
+    const activationToken = ++venueActivationToken;
     currentRoomId = roomId; 
     const room = dataMap[roomId];
     if (!room) return;
 
     // Keep every venue entry point on the same active state and renderer.
     document.querySelectorAll(".dropdown-item").forEach(item => {
-        item.classList.toggle("active", item.getAttribute("data-room") === roomId);
+        const isCurrent = item.getAttribute("data-room") === roomId;
+        item.classList.toggle("active", isCurrent);
+        if (isCurrent) item.setAttribute('aria-current', 'true');
+        else item.removeAttribute('aria-current');
     });
     document.querySelectorAll(".master-pill").forEach(master => {
         master.classList.toggle("active", master.getAttribute("data-category") === room.category);
     });
-    document.querySelectorAll(".pill-dropdown-wrapper").forEach(menu => menu.classList.remove("open"));
+    document.querySelectorAll(".pill-dropdown-wrapper").forEach(menu => {
+        menu.classList.remove("open");
+        menu.querySelector('.master-pill')?.setAttribute('aria-expanded', 'false');
+    });
     document.querySelectorAll(".master-pill").forEach(master => master.classList.remove("menu-open"));
 
     // Update Text Data
@@ -603,12 +784,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (panoUrls.length > 0) {
       // Show 3D Canvas
       no360Wrapper.style.display = "none";
+      if (destinationsControl) destinationsControl.style.display = 'block';
       panoContainer.style.visibility = "visible";
       if (viewerControls) viewerControls.style.display = "flex"; 
       if (btnInfo) {
           btnInfo.disabled = false;
           btnInfo.style.display = "flex";
       }
+      if (resetViewButton) resetViewButton.disabled = false;
       if (btnSwitch) btnSwitch.disabled = false;
 
       if (!panoCache[roomId]) {
@@ -616,13 +799,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
 
         const panoramas = [];
-        let loadedCount = 0;
-
         panoUrls.forEach((url, index) => {
             if (roomLoadToken !== loadToken || room.panoFailed) return;
             let pano;
+            const retryCount = Number(room.panoRetryCount) || 0;
+            const requestUrl = retryCount > 0 ? `${url}${String(url).includes('?') ? '&' : '?'}showroom_retry=${retryCount}` : url;
             try {
-                pano = new PANOLENS.ImagePanorama(url);
+                pano = new PANOLENS.ImagePanorama(requestUrl);
             } catch (e) {
                 handlePanoLoadFailure(roomId, loadToken, null, panoramas);
                 return;
@@ -656,27 +839,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 // A cached room may be revisited under a new load token. The
                 // room identity guards cross-room callbacks without disabling
                 // valid hotspot navigation on cached panoramas.
-                () => currentRoomId === roomId && !room.panoFailed
+                () => currentRoomId === roomId && !room.panoFailed,
+                index
             );
+
+            pano.addEventListener('enter', () => {
+                synchronizePanoramaState(roomId, room, index, pano, panoramas);
+            });
 
             pano.addEventListener("load", function () {
                 if (failureHandled || roomLoadToken !== loadToken || room.panoFailed) return;
-                loadedCount++;
                 if (index === 0 && panoLoadingOverlay) {
-                    
-                    // --- AUTO-RELOAD HACK ---
-                    // If this is the very first time this room is loaded, we auto-trigger 
-                    // the reload button. Since the images are now cached, the second load 
-                    // happens instantly and perfectly bypasses all Panolens timing bugs!
-                    if (!room.hasAutoReloaded) {
-                        room.hasAutoReloaded = true;
-                        const btn = document.getElementById("btn-reload-pano");
-                        if (btn) {
-                            btn.click();
-                            return; // Stop here, don't hide the overlay! Let the reload take over.
-                        }
-                    }
-
                     valTitle.textContent = room.title;
                     panoLoadingOverlay.style.display = "none";
                     
@@ -688,6 +861,12 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             
             viewer.add(pano);
+            // Register after Viewer.add() so this runs after Panolens' own
+            // enter-fade-start listener resets the orbit-control target.
+            pano.addEventListener('enter-fade-start', () => {
+                panoramaControlReady.add(pano);
+                synchronizePanoramaState(roomId, room, index, pano, panoramas, venueActivationToken, true);
+            });
             panoramas.push(pano);
         });
         if (roomLoadToken !== loadToken) return;
@@ -698,13 +877,21 @@ document.addEventListener("DOMContentLoaded", () => {
             panoCache[roomId] = panoramas;
             activePanoramas = panoCache[roomId];
             currentPanoIndex = 0;
-            viewer.setPanorama(activePanoramas[currentPanoIndex]);
+            const initialPanorama = activePanoramas[currentPanoIndex];
+            const alreadyCurrent = viewer.panorama === initialPanorama;
+            const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);
+            if (!canApplyImmediately) enterPanorama(initialPanorama);
+            synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, activationToken, canApplyImmediately);
         }
       } else {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
         activePanoramas = panoCache[roomId];
         currentPanoIndex = 0;
-        viewer.setPanorama(activePanoramas[currentPanoIndex]);
+        const initialPanorama = activePanoramas[currentPanoIndex];
+        const alreadyCurrent = viewer.panorama === initialPanorama;
+        const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);
+        if (!canApplyImmediately) enterPanorama(initialPanorama);
+        synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, activationToken, canApplyImmediately);
         queueInteractionHint(room.id);
       }
 
@@ -731,6 +918,64 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 8. Dropdown Pill Navigation Initialization ---
   const masterPills = document.querySelectorAll(".master-pill");
   const dropdownItems = document.querySelectorAll(".dropdown-item");
+  const categoryPills = document.querySelector('.master-category-pills');
+  const roomNavigation = document.querySelector('.room-navigation-wrapper');
+
+  function getHotelMenuSafeTop(viewportHeight, padding) {
+      const header = document.getElementById('siteHeader');
+      if (!header || typeof window.getComputedStyle !== 'function') return padding;
+
+      const headerStyle = window.getComputedStyle(header);
+      if ((headerStyle.position !== 'fixed' && headerStyle.position !== 'sticky')
+          || headerStyle.display === 'none'
+          || headerStyle.visibility === 'hidden') return padding;
+
+      const headerBounds = header.getBoundingClientRect();
+      const visibleTop = Math.max(0, headerBounds.top);
+      const visibleBottom = Math.min(viewportHeight, headerBounds.bottom);
+      if (headerBounds.width <= 0 || headerBounds.height <= 0 || visibleBottom <= visibleTop) return padding;
+
+      return Math.min(viewportHeight - padding, Math.max(padding, headerBounds.bottom + padding));
+  }
+
+  function positionHotelMenu(wrapper) {
+      if (!wrapper?.classList.contains('open')) return;
+      const button = wrapper.querySelector('.master-pill');
+      const menu = wrapper.querySelector('.hotel-room-groups-menu');
+      if (!button || !menu) return;
+
+      const bounds = button.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      const padding = 12;
+      const gap = 12;
+      const safeTop = getHotelMenuSafeTop(viewportHeight, padding);
+      const menuWidth = menu.getBoundingClientRect().width;
+      const left = Math.max(padding, Math.min(
+          bounds.left + (bounds.width - menuWidth) / 2,
+          viewportWidth - menuWidth - padding
+      ));
+      const desiredHeight = Math.min(560, viewportHeight * .68, viewportHeight - safeTop - padding);
+      const spaceAbove = Math.max(0, bounds.top - gap - safeTop);
+      const belowTop = Math.max(safeTop, bounds.bottom + gap);
+      const spaceBelow = Math.max(0, viewportHeight - belowTop - padding);
+      const contentHeight = Math.min(menu.scrollHeight, desiredHeight);
+      const placeAbove = spaceAbove >= contentHeight || spaceAbove >= spaceBelow;
+      const availableHeight = Math.min(desiredHeight, placeAbove ? spaceAbove : spaceBelow);
+      const visibleHeight = Math.min(menu.scrollHeight, availableHeight);
+      const top = placeAbove
+          ? Math.max(safeTop, bounds.top - gap - visibleHeight)
+          : Math.min(viewportHeight - padding - visibleHeight, belowTop);
+
+      menu.style.setProperty('--hotel-menu-left', `${Math.round(left)}px`);
+      menu.style.setProperty('--hotel-menu-top', `${Math.round(top)}px`);
+      menu.style.setProperty('--hotel-menu-max-height', `${Math.floor(availableHeight)}px`);
+  }
+
+  function repositionOpenHotelMenu() {
+      const openHotelMenu = document.querySelector('.hotel-room-dropdown.open');
+      if (openHotelMenu) positionHotelMenu(openHotelMenu);
+  }
 
   // A. Master Category Click (Toggle Menus)
   masterPills.forEach(master => {
@@ -742,24 +987,49 @@ document.addEventListener("DOMContentLoaded", () => {
           const isOpen = wrapper.classList.contains("open");
 
           // Close all menus and flip all arrows down
-          document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => w.classList.remove("open"));
+          document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => {
+              w.classList.remove("open");
+              w.querySelector('.master-pill')?.setAttribute('aria-expanded', 'false');
+          });
           masterPills.forEach(m => m.classList.remove("menu-open"));
 
           // If it wasn't open, open it!
           if (!isOpen) {
               wrapper.classList.add("open");
               this.classList.add("menu-open");
+              this.setAttribute('aria-expanded', 'true');
+              if (wrapper.classList.contains('hotel-room-dropdown')) positionHotelMenu(wrapper);
           }
       });
   });
+
+  // Keep clicks and touches on group headings or menu whitespace inside the
+  // navigation; the existing window handlers still close on true outside use.
+  categoryPills?.addEventListener('click', event => event.stopPropagation());
+  categoryPills?.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
 
   // Close menus if clicking or touching anywhere else on the screen
   const closeAllMenus = () => {
       document.querySelectorAll(".pill-dropdown-wrapper").forEach(w => w.classList.remove("open"));
       masterPills.forEach(m => m.classList.remove("menu-open"));
+      masterPills.forEach(m => m.setAttribute('aria-expanded', 'false'));
   };
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("touchstart", closeAllMenus, {passive: true});
+  roomNavigation?.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      const openWrapper = document.querySelector('.pill-dropdown-wrapper.open');
+      if (!openWrapper) return;
+      event.preventDefault();
+      const trigger = openWrapper.querySelector('.master-pill');
+      closeAllMenus();
+      trigger?.focus();
+  });
+  roomNavigation?.addEventListener('focusout', event => {
+      if (event.relatedTarget && !roomNavigation.contains(event.relatedTarget)) closeAllMenus();
+  });
+  window.addEventListener('resize', repositionOpenHotelMenu);
+  window.addEventListener('scroll', repositionOpenHotelMenu, true);
 
   // B. Specific Room Click Logic
   dropdownItems.forEach(item => {
@@ -769,8 +1039,10 @@ document.addEventListener("DOMContentLoaded", () => {
           // Close the menu
           closeAllMenus();
 
+          const roomId = this.getAttribute("data-room");
+
           // Dropdowns and the receptionist share one venue activation path.
-          activateVenue(this.getAttribute("data-room"));
+          activateVenue(roomId);
       });
   });
 
@@ -2489,6 +2761,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 10. Photo Gallery Swap Mode ---
   btnViewPhotos.addEventListener("click", () => {
+    pauseAutoRotation();
     window.scrollTo({ top: 0, behavior: "instant" });
     wrapper.classList.add("mode-photos");
     document.body.classList.add("no-scroll");
@@ -2496,6 +2769,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const exitPhotoMode = () => {
     wrapper.classList.remove("mode-photos");
     document.body.classList.remove("no-scroll");
+    scheduleAutoRotation();
   };
   // Delegate so both static controls continue to work even if the gallery
   // markup is replaced by a partial or browser interaction targets a child.

@@ -21,6 +21,21 @@ document.addEventListener("DOMContentLoaded", () => {
     let raycastEnabled = false;
     let hotspotListRequestToken = 0;
     let viewerRequestToken = 0;
+    let savedHotspotSpots = [];
+    let savedHotspots = [];
+    let savedView = null;
+    let viewDraft = null;
+    let viewDirty = false;
+    let hotspotDirty = false;
+    let previousFocus = null;
+    let activeViewIndex = 0;
+    let savedHotspotCount = 0;
+    let tourBusy = false;
+    let tourBusyButton = null;
+    let discardPromptOpen = false;
+    let hotspotListAbortController = null;
+    let tourToastTimeout = null;
+    const HOTSPOT_REQUEST_TIMEOUT_MS = 15000;
 
     // ============================================================
     // DOM ELEMENTS
@@ -35,9 +50,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetSelect = document.getElementById("hs-target-index");
     const formHeading = document.getElementById('hs-form-heading');
     const saveLabel = document.getElementById('hs-save-label');
-    
-    // Admin view switcher dropdown
     const adminViewSelector = document.getElementById("hs-admin-view-selector");
+    const viewDescription = document.getElementById("hs-view-description");
+    const startingSceneStatus = document.getElementById("hs-starting-scene-status");
+    const viewPresetStatus = document.getElementById("hs-view-preset-status");
+    const hotspotCountStatus = document.getElementById("hs-hotspot-count");
+    const saveViewButton = document.getElementById("btn-save-panorama-view");
+    const previewViewButton = document.getElementById("btn-preview-saved-view");
+    const clearViewButton = document.getElementById("btn-clear-panorama-view");
+    const setStartingSceneButton = document.getElementById("btn-make-starting-scene");
+    const setCurrentViewButton = document.getElementById("btn-set-current-view");
+    const closeModalButton = document.getElementById("btnCloseHotspotModal");
+    const loadingMessage = document.getElementById("hotspot-loading-message");
+    const editorStatus = document.getElementById('hs-editor-status');
+    const tourToast = document.getElementById('hotspot-tour-toast');
+    const retryViewerButton = document.getElementById("btn-retry-hotspot-view");
+    const rotationWrapper = document.getElementById("hs-arrow-rotation-wrapper");
+    const rotationRange = document.getElementById("hs-arrow-rotation-range");
+    const rotationInput = document.getElementById("hs-arrow-rotation");
+    const saveHotspotButton = document.getElementById("btn-save-hotspot");
 
     // ============================================================
     // CUSTOM HOTSPOT ICONS
@@ -54,14 +85,237 @@ document.addEventListener("DOMContentLoaded", () => {
     function setFormMode(editing) {
         if (formHeading) formHeading.textContent = editing ? 'Edit Hotspot' : 'New Hotspot';
         if (saveLabel) saveLabel.textContent = editing ? 'Update Pin' : 'Save Pin';
-        const saveButton = document.getElementById('btn-save-hotspot');
-        if (saveButton) saveButton.title = editing ? 'Update hotspot pin' : 'Save hotspot pin';
+        if (saveHotspotButton) saveHotspotButton.title = editing ? 'Update hotspot pin' : 'Save hotspot pin';
+    }
+
+    function currentPhoto() {
+        return currentPhotosArray[activeViewIndex] || null;
+    }
+
+    function photoLabel(photo, index = 0) {
+        if (!photo) return `View ${index + 1}`;
+        const fileLabel = String(photo.alt_text || photo.file_name || photo.file_path || '').split('/').pop().trim();
+        return fileLabel || `View ${index + 1}`;
+    }
+
+    function photoSavedView(photo) {
+        if (!photo) return null;
+        const keys = ['showroom_view_x', 'showroom_view_y', 'showroom_view_z', 'showroom_fov'];
+        const values = keys.map(key => Number(photo[key]));
+        if (keys.some(key => photo[key] === null || photo[key] === undefined || photo[key] === '') || values.some(value => !Number.isFinite(value))) return null;
+        if (Math.max(Math.abs(values[0]), Math.abs(values[1]), Math.abs(values[2])) > 10000 || values[3] < 30 || values[3] > 100) return null;
+        return { x: values[0], y: values[1], z: values[2], fov: values[3] };
+    }
+
+    function hasUnsavedChanges() {
+        return viewDirty || hotspotDirty || (pendingPoint !== null && !formWrapper.classList.contains('hidden'));
+    }
+
+    function setEditorStatus(message, state = 'info') {
+        if (!editorStatus) return;
+        editorStatus.textContent = String(message || '');
+        editorStatus.dataset.state = ['loading', 'success', 'error'].includes(state) ? state : 'info';
+    }
+
+    function showTourToast(message, detail = '') {
+        if (!tourToast) return;
+        const messageEl = tourToast.querySelector('[data-tour-toast-message]');
+        const detailEl = tourToast.querySelector('[data-tour-toast-detail]');
+        if (!messageEl) return;
+        window.clearTimeout(tourToastTimeout);
+        messageEl.textContent = String(message || '');
+        if (detailEl) {
+            detailEl.textContent = String(detail || '');
+            detailEl.hidden = !detail;
+        }
+        tourToast.classList.add('show');
+        tourToastTimeout = window.setTimeout(() => tourToast.classList.remove('show'), 3600);
+    }
+
+    function hasCustomConfirm() {
+        return typeof window.showConfirm === 'function' &&
+            Boolean(document.getElementById('globalConfirmModal')) &&
+            Boolean(document.getElementById('globalModalOverlay'));
+    }
+
+    async function askCustomConfirm(title, message) {
+        if (!hasCustomConfirm()) {
+            setEditorStatus('The confirmation dialog is unavailable. No changes were made.', 'error');
+            return false;
+        }
+        return window.showConfirm(title, message);
+    }
+
+    async function confirmDiscardChanges(action = 'leave this tour setup') {
+        if (!hasUnsavedChanges()) return true;
+        if (discardPromptOpen) return false;
+        discardPromptOpen = true;
+        try {
+            return await askCustomConfirm('Discard unsaved changes?', `Discard the unsaved hotspot or view changes and ${action}?`);
+        } finally {
+            discardPromptOpen = false;
+        }
+    }
+
+    function updateTourStatus(message = '') {
+        const photo = currentPhoto();
+        if (!photo) return;
+        const viewIsSet = savedView !== null;
+        const isStartingScene = Number(photo.is_primary) === 1;
+        if (startingSceneStatus) {
+            startingSceneStatus.textContent = isStartingScene ? 'Starting scene' : 'Not starting scene';
+            startingSceneStatus.classList.toggle('is-current', isStartingScene);
+        }
+        if (viewPresetStatus) {
+            viewPresetStatus.textContent = viewDirty ? 'View unsaved' : viewIsSet ? 'View set' : 'View not set';
+            viewPresetStatus.classList.toggle('is-unsaved', viewDirty);
+            viewPresetStatus.classList.toggle('is-set', viewIsSet && !viewDirty);
+            viewPresetStatus.classList.toggle('is-invalid', false);
+        }
+        if (hotspotCountStatus) hotspotCountStatus.textContent = `${savedHotspotCount} ${savedHotspotCount === 1 ? 'hotspot' : 'hotspots'}`;
+        if (viewDescription) {
+            const viewStatus = viewDirty
+                ? 'View Unsaved'
+                : viewIsSet
+                    ? (isStartingScene ? 'View Set · Starting Scene' : 'View Set · Applies on entry')
+                    : 'View Not Set';
+            const parts = [photoLabel(photo, activeViewIndex), isStartingScene ? 'Starting Scene' : 'Not Starting Scene', viewStatus, `${savedHotspotCount} ${savedHotspotCount === 1 ? 'hotspot' : 'hotspots'}`];
+            viewDescription.textContent = message ? `${message} · ${parts.join(' · ')}` : parts.join(' · ');
+        }
+        if (setStartingSceneButton) setStartingSceneButton.disabled = tourBusy || isStartingScene;
+        // Keep capture available while loading so it can opportunistically recognize a cached
+        // texture even if Panolens' one-shot load event was missed.
+        if (setCurrentViewButton) setCurrentViewButton.disabled = tourBusy || !viewer;
+        if (adminViewSelector) adminViewSelector.disabled = tourBusy;
+        if (closeModalButton) closeModalButton.disabled = tourBusy;
+        if (saveViewButton) saveViewButton.disabled = tourBusy || !viewDirty || !viewDraft;
+        if (previewViewButton) previewViewButton.disabled = tourBusy || !savedView || !viewer;
+        if (clearViewButton) clearViewButton.disabled = tourBusy || (!savedView && !viewDirty);
+        formWrapper?.querySelectorAll('button, input, select, textarea').forEach(control => {
+            control.disabled = tourBusy || (control === targetSelect && targetSelect.options.length === 0);
+        });
+        listEl?.querySelectorAll('button').forEach(button => { button.disabled = tourBusy; });
+    }
+
+    function setLoading(visible, message = 'Loading panorama…', isError = false) {
+        if (loadingEl) loadingEl.style.display = visible ? 'flex' : 'none';
+        if (loadingMessage) loadingMessage.textContent = message;
+        if (retryViewerButton) retryViewerButton.hidden = !isError;
+        loadingEl?.classList.toggle('is-error', isError);
+        if (visible) setEditorStatus(message, isError ? 'error' : 'loading');
+    }
+
+    function setButtonBusy(button, busy, busyText = 'Working…') {
+        if (!button) return;
+        const label = button.querySelector('[data-hotspot-button-label]');
+        if (busy) {
+            if (button.hasAttribute('aria-busy')) return;
+            button.dataset.idleHtml = button.innerHTML;
+            if (label) {
+                label.textContent = busyText;
+            } else {
+                const spinner = document.createElement('i');
+                spinner.className = 'fa-solid fa-circle-notch fa-spin';
+                spinner.setAttribute('aria-hidden', 'true');
+                button.replaceChildren(spinner);
+            }
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        } else {
+            if (button.dataset.idleHtml !== undefined) {
+                button.innerHTML = button.dataset.idleHtml;
+                delete button.dataset.idleHtml;
+            }
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
+    }
+
+    function abortHotspotListRequest() {
+        hotspotListRequestToken++;
+        if (hotspotListAbortController) {
+            hotspotListAbortController.abort();
+            hotspotListAbortController = null;
+        }
+    }
+
+    function selectedArrowRotation() {
+        const value = Number(rotationInput?.value ?? 0);
+        return Number.isInteger(value) && value >= 0 && value <= 359 ? value : null;
+    }
+
+    function applyArrowRotation(spot, degrees) {
+        if (!spot?.material || !Number.isInteger(degrees) || degrees < 0 || degrees > 359) return;
+        spot.material.rotation = degrees * Math.PI / 180;
+        spot.material.needsUpdate = true;
+    }
+
+    function clearSavedHotspotSpots() {
+        savedHotspotSpots.forEach(spot => {
+            try {
+                currentPanoMesh?.remove(spot);
+                if (spot.material?.map) spot.material.map.dispose();
+                spot.material?.dispose();
+            } catch (error) { /* the panorama or texture may already be disposed */ }
+        });
+        savedHotspotSpots = [];
+    }
+
+    function removeSavedHotspotSpot(id) {
+        const index = savedHotspotSpots.findIndex(spot => String(spot.userData?.hotspotId) === String(id));
+        if (index < 0) return;
+        const [spot] = savedHotspotSpots.splice(index, 1);
+        try {
+            currentPanoMesh?.remove(spot);
+            if (spot.material?.map) spot.material.map.dispose();
+            spot.material?.dispose();
+        } catch (error) { /* the panorama or texture may already be disposed */ }
+    }
+
+    function applyView(view, duration = 650) {
+        if (!viewer || !view || ![view.x, view.y, view.z, view.fov].every(value => Number.isFinite(Number(value)))) return false;
+        const fov = Number(view.fov);
+        if (fov < 30 || fov > 100) return false;
+        const center = new THREE.Vector3(Number(view.x), Number(view.y), Number(view.z));
+        if (!window.PanoramaViewCompat?.applyControlCenter(viewer, center, duration)) return false;
+        if (typeof viewer.setCameraFov === 'function') viewer.setCameraFov(fov);
+        else if (viewer.camera) {
+            viewer.camera.fov = fov;
+            viewer.camera.updateProjectionMatrix();
+        } else return false;
+        return true;
+    }
+
+    function getPanoramaViewCenter() {
+        if (!viewer || !currentPanoMesh || !viewer.camera || !window.THREE?.Raycaster) return null;
+        try {
+            viewer.camera.updateMatrixWorld(true);
+            currentPanoMesh.updateMatrixWorld(true);
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), viewer.camera);
+            const isHotspotObject = object => {
+                let node = object;
+                while (node && node !== currentPanoMesh) {
+                    if (node === pendingSpot || savedHotspotSpots.includes(node)) return true;
+                    node = node.parent;
+                }
+                return false;
+            };
+            const intersection = raycaster.intersectObject(currentPanoMesh, true).find(hit => !isHotspotObject(hit.object));
+            const point = intersection?.point;
+            if (!point || ![point.x, point.y, point.z].every(Number.isFinite)) return null;
+            const magnitude = Math.hypot(point.x, point.y, point.z);
+            if (magnitude < 0.1 || magnitude > 10000) return null;
+            return point.clone ? point.clone() : new THREE.Vector3(point.x, point.y, point.z);
+        } catch (error) {
+            return null;
+        }
     }
 
     // ============================================================
     // CREATE CUSTOM INFOSPOT
     // ============================================================
-    function createHotspotSpot(type, position) {
+    function createHotspotSpot(type, position, rotation = 0) {
         const icon = type === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
         const spot = new PANOLENS.Infospot(350, icon);
 
@@ -79,6 +333,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (spot.material && spot.material.map) {
             spot.material.map.needsUpdate = true;
         }
+        if (type === 'nav') applyArrowRotation(spot, Number.isInteger(rotation) ? rotation : 0);
 
         return spot;
     }
@@ -91,22 +346,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const selectedType = typeSelect?.value || "info";
         const icon = selectedType === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
+        const targetSpot = pendingSpot;
+        const rotation = selectedArrowRotation() ?? 0;
         const loader = new THREE.TextureLoader();
 
         loader.load(icon, (texture) => {
             texture.needsUpdate = true;
 
-            if (!pendingSpot.material) return;
-
-            if (pendingSpot.material.map) {
-                pendingSpot.material.map.dispose();
+            if (pendingSpot !== targetSpot || !targetSpot.material) {
+                texture.dispose();
+                return;
             }
 
-            pendingSpot.material.map = texture;
-            pendingSpot.material.transparent = true;
-            pendingSpot.material.alphaTest = 0.5;
-            pendingSpot.material.depthWrite = false;
-            pendingSpot.material.needsUpdate = true;
+            if (targetSpot.material.map) {
+                targetSpot.material.map.dispose();
+            }
+
+            targetSpot.material.map = texture;
+            targetSpot.material.transparent = true;
+            targetSpot.material.alphaTest = 0.5;
+            targetSpot.material.depthWrite = false;
+            targetSpot.material.needsUpdate = true;
+            if (selectedType === 'nav') applyArrowRotation(targetSpot, rotation);
         });
     }
 
@@ -124,6 +385,16 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingSpot = null;
     }
 
+    function discardCurrentHotspotDraft(restoreSavedPins = true) {
+        formWrapper.classList.add('hidden');
+        removeTemporarySpot();
+        pendingPoint = null;
+        hotspotDirty = false;
+        if (rotationInput) rotationInput.value = '0';
+        if (rotationRange) rotationRange.value = '0';
+        if (restoreSavedPins && currentPanoMesh && currentMediaId !== null) loadExistingHotspots(currentMediaId);
+    }
+
     // ============================================================
     // PLACE / OPEN HOTSPOT MODAL
     // ============================================================
@@ -133,53 +404,46 @@ document.addEventListener("DOMContentLoaded", () => {
             currentPhotosArray = (window.panoDataOrdered && window.panoDataOrdered[currentSlot]) || [];
 
             if (currentPhotosArray.length === 0) {
-                showAlert("Notice", "No panorama found for this slot.");
                 return;
             }
 
-            // Sync the ID perfectly to the first photo
-            currentMediaId = currentPhotosArray[0].id;
+            previousFocus = document.activeElement;
+            activeViewIndex = 0;
+            currentMediaId = Number(currentPhotosArray[0].id);
+            savedView = photoSavedView(currentPhotosArray[0]);
+            viewDraft = null;
+            viewDirty = false;
+            hotspotDirty = false;
+            savedHotspotCount = 0;
+            savedHotspots = [];
+            tourBusy = false;
+            setEditorStatus('Loading panorama preview…', 'loading');
+            document.getElementById("hotspot-modal-title").textContent = "Tour Setup & Hotspots — " + currentSlot.replace(/^venue_/, "").replace(/_360$/, "").replace(/_/g, " ");
 
-            document.getElementById("hotspot-modal-title").innerText =
-                "Place Hotspots — " + currentSlot.replace(/^venue_/, "").replace(/_360$/, "").replace(/_/g, " ");
-
-            // Populate Walk-To target dropdown (excluding the current view, set to 0 by default)
-            refreshTargetDropdown(0);
-
-            // Populate the admin view switcher
             if (adminViewSelector) {
-                adminViewSelector.innerHTML = "";
+                adminViewSelector.replaceChildren();
                 currentPhotosArray.forEach((p, idx) => {
                     const opt = document.createElement("option");
                     opt.value = idx;
-                    opt.innerText = `Editing: View ${idx + 1}`;
+                    const scenePrefix = Number(p.is_primary) === 1 ? 'Starting Scene · ' : '';
+                    opt.textContent = `View ${idx + 1} · ${scenePrefix}${photoLabel(p, idx)}`;
                     adminViewSelector.appendChild(opt);
                 });
-                
-                // Only show the dropdown if there is more than 1 image
-                const wrapper = document.getElementById("hs-admin-view-switcher-wrapper");
-                if (wrapper) {
-                    wrapper.style.display = currentPhotosArray.length > 1 ? "block" : "none";
-                }
-                adminViewSelector.style.display = "block"; // Keep the select itself visible within the wrapper
-                adminViewSelector.value = 0; // Reset to first view
+                adminViewSelector.value = '0';
             }
 
-            // Open modal
-            hotspotModal.classList.add("active");
+            refreshTargetDropdown(activeViewIndex);
             formWrapper.classList.add("hidden");
             setFormMode(false);
-            loadingEl.style.display = "flex";
-
-            // Clear any old temporary pin
             pendingPoint = null;
-            pendingSpot = null;
             raycastEnabled = false;
-
-            // Load the existing hotspots list immediately (independent of 3D viewer)
-            loadExistingHotspots(currentMediaId);
-
-            // Initialize viewer
+            listEl.innerHTML = '<p class="hotspot-empty-state">Loading saved hotspots…</p>';
+            listEl.setAttribute('aria-busy', 'true');
+            updateTourStatus();
+            hotspotModal.classList.add("active");
+            closeModalButton?.focus();
+            setEditorStatus('Loading panorama preview…', 'loading');
+            setLoading(true);
             initViewer(currentPhotosArray[0].file_path);
         });
     });
@@ -188,78 +452,327 @@ document.addEventListener("DOMContentLoaded", () => {
     // REFRESH WALK-TO TARGET DROPDOWN (excludes the currently editing view)
     // ============================================================
     function refreshTargetDropdown(currentViewIndex) {
-        targetSelect.innerHTML = "";
+        targetSelect.replaceChildren();
         currentPhotosArray.forEach((p, idx) => {
             if (idx === currentViewIndex) return; // Skip the current view
             const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.innerText = `View ${idx + 1}`;
+            opt.value = Number(p.id);
+            opt.textContent = `View ${idx + 1} · ${photoLabel(p, idx)}`;
             targetSelect.appendChild(opt);
         });
+        targetSelect.disabled = targetSelect.options.length === 0;
     }
 
     // ============================================================
     // ADMIN VIEW SWITCHER LOGIC
     // ============================================================
-    adminViewSelector?.addEventListener("change", (e) => {
+    adminViewSelector?.addEventListener("change", async (e) => {
         const selectedIndex = parseInt(e.target.value, 10);
         const selectedPhoto = currentPhotosArray[selectedIndex];
 
         if (!selectedPhoto) return;
+        if (!await confirmDiscardChanges('switch to another panorama')) {
+            adminViewSelector.value = String(activeViewIndex);
+            return;
+        }
 
-        // Clean up unsaved pins
-        formWrapper.classList.add("hidden");
-        removeTemporarySpot();
-        pendingPoint = null;
+        discardCurrentHotspotDraft(false);
+        activeViewIndex = selectedIndex;
         raycastEnabled = false;
-
-        // Sync the ID perfectly to the newly selected photo
-        currentMediaId = selectedPhoto.id;
-
-        // Immediately reload the list for the newly selected view
-        loadExistingHotspots(currentMediaId);
-
-        // Rebuild Walk-To dropdown excluding the newly active view
+        currentMediaId = Number(selectedPhoto.id);
+        savedView = photoSavedView(selectedPhoto);
+        viewDraft = null;
+        viewDirty = false;
+        hotspotDirty = false;
+        savedHotspotCount = 0;
+        listEl.innerHTML = '<p class="hotspot-empty-state">Loading saved hotspots…</p>';
+        listEl.setAttribute('aria-busy', 'true');
         refreshTargetDropdown(selectedIndex);
-
-        // Show loading screen and initialize the new viewer
-        loadingEl.style.display = "flex";
+        updateTourStatus();
+        setEditorStatus(`Loading ${photoLabel(selectedPhoto, selectedIndex)}…`, 'loading');
+        setLoading(true);
         initViewer(selectedPhoto.file_path);
     });
 
     // ============================================================
     // CLOSE MODAL
     // ============================================================
-    document.getElementById("btnCloseHotspotModal")?.addEventListener("click", () => {
+    function destroyViewer(instance) {
+        if (!instance) return;
+        try { instance.disableAutoRate?.(); } catch (error) { /* continue cleanup */ }
+        try { instance.unregisterMouseAndTouchEvents?.(); } catch (error) { /* continue cleanup */ }
+        let destroyed = false;
+        if (typeof instance.destroy === 'function') {
+            try {
+                instance.destroy();
+                destroyed = true;
+            } catch (error) { /* cancel the render loop manually below */ }
+        }
+        if (!destroyed) {
+            if (Number.isFinite(instance.requestAnimationId)) window.cancelAnimationFrame(instance.requestAnimationId);
+            try { instance.dispose?.(); } catch (error) { /* keep remaining control cleanup */ }
+        }
+        (Array.isArray(instance.controls) ? instance.controls : [instance.control])
+            .filter(Boolean)
+            .forEach(control => {
+                try { control.dispose?.(); } catch (error) { /* controls may already be disposed */ }
+            });
+    }
+
+    async function closeHotspotModal() {
+        if (tourBusy) {
+            setEditorStatus('Please wait for the current save to finish before closing the tour editor.', 'loading');
+            return;
+        }
+        if (!await confirmDiscardChanges('close this editor')) return;
         hotspotModal.classList.remove("active");
         formWrapper.classList.add("hidden");
-        
         removeTemporarySpot();
+        clearSavedHotspotSpots();
         pendingPoint = null;
         raycastEnabled = false;
-
-        if (viewer) {
-            viewer.dispose();
-            viewer = null;
-        }
+        viewerRequestToken++;
+        abortHotspotListRequest();
+        destroyViewer(viewer);
+        viewer = null;
+        panoContainer.onclick = null;
+        panoContainer.replaceChildren();
         currentPanoMesh = null;
+        currentMediaId = null;
+        savedView = null;
+        viewDraft = null;
+        viewDirty = false;
+        hotspotDirty = false;
+        savedHotspots = [];
+        savedHotspotCount = 0;
+        listEl.setAttribute('aria-busy', 'false');
+        tourBusy = false;
+        if (previousFocus?.isConnected) previousFocus.focus();
+        previousFocus = null;
+    }
+
+    closeModalButton?.addEventListener("click", () => { void closeHotspotModal(); });
+    hotspotModal.addEventListener('click', event => {
+        if (event.target === hotspotModal) void closeHotspotModal();
+    });
+    hotspotModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            void closeHotspotModal();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(hotspotModal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+            .filter(element => !element.hidden && !element.closest('.hidden'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+
+    async function postJson(url, body) {
+        const controller = new AbortController();
+        let timedOut = false;
+        const timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, HOTSPOT_REQUEST_TIMEOUT_MS);
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+            let data;
+            try {
+                data = await response.json();
+            } catch (error) {
+                if (timedOut) throw new Error('The request timed out. Your changes are still here; try again.');
+                throw new Error('The server returned an invalid response. Please try again.');
+            }
+            if (!response.ok || !data || data.success !== true) {
+                throw new Error(typeof data?.message === 'string' ? data.message : `Request failed (HTTP ${response.status}).`);
+            }
+            return data;
+        } catch (error) {
+            if (timedOut) throw new Error('The request timed out. Your changes are still here; try again.');
+            if (error?.name === 'AbortError') throw new Error('The request was cancelled. Your changes are still here; try again.');
+            throw error;
+        } finally {
+            window.clearTimeout(timeoutId);
+        }
+    }
+
+    function setTourBusy(busy, activeButton = null, busyText = 'Working…') {
+        if (busy) {
+            if (tourBusy) return false;
+            tourBusy = true;
+            tourBusyButton = activeButton;
+            if (tourBusyButton) setButtonBusy(tourBusyButton, true, busyText);
+        } else {
+            const completedButton = tourBusyButton;
+            tourBusyButton = null;
+            tourBusy = false;
+            if (completedButton) setButtonBusy(completedButton, false);
+        }
+        updateTourStatus();
+        return true;
+    }
+
+    function refreshViewOptions() {
+        if (!adminViewSelector) return;
+        adminViewSelector.replaceChildren();
+        currentPhotosArray.forEach((photo, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            const scenePrefix = Number(photo.is_primary) === 1 ? 'Starting Scene · ' : '';
+            option.textContent = `View ${index + 1} · ${scenePrefix}${photoLabel(photo, index)}`;
+            adminViewSelector.appendChild(option);
+        });
+        adminViewSelector.value = String(activeViewIndex);
+    }
+
+    setStartingSceneButton?.addEventListener('click', async () => {
+        const photo = currentPhoto();
+        if (!photo || Number(photo.is_primary) === 1 || !setTourBusy(true, setStartingSceneButton, 'Setting…')) return;
+        try {
+            const result = await postJson('actions/admin/set_primary_media.php', {
+                id: Number(photo.id),
+                slot_assignment: currentSlot
+            });
+            const primaryId = Number(result.primary_id);
+            currentPhotosArray.forEach(item => { item.is_primary = Number(item.id) === primaryId ? 1 : 0; });
+            refreshViewOptions();
+            updateTourStatus('Starting scene updated');
+            setEditorStatus('Starting scene updated.', 'success');
+            showTourToast('Starting scene updated.');
+        } catch (error) {
+            setEditorStatus(error.message || 'Unable to update starting scene. Please try again.', 'error');
+        } finally {
+            setTourBusy(false);
+        }
+    });
+
+    setCurrentViewButton?.addEventListener('click', () => {
+        if (!viewer || !syncPanoramaReadiness()) {
+            const failed = loadingEl?.classList.contains('is-error');
+            setEditorStatus(failed ? 'Panorama failed to load. Retry the preview before setting a view.' : 'Panorama is still loading. Try again when the preview is ready.', failed ? 'error' : 'loading');
+            return;
+        }
+        const center = getPanoramaViewCenter();
+        if (!center) {
+            setEditorStatus('The preview center could not be read. Move the panorama and try again.', 'error');
+            return;
+        }
+        const view = {
+            x: Number(center?.x),
+            y: Number(center?.y),
+            z: Number(center?.z),
+            fov: Number(viewer.camera?.fov)
+        };
+        const magnitude = Math.hypot(view.x, view.y, view.z);
+        if (![view.x, view.y, view.z, view.fov, magnitude].every(Number.isFinite) || magnitude < 0.1 || magnitude > 10000 || view.fov < 30 || view.fov > 100) {
+            setEditorStatus('View could not be captured. Move the panorama to a valid direction and try again.', 'error');
+            return;
+        }
+        viewDraft = view;
+        viewDirty = true;
+        updateTourStatus('Current view captured — save to publish it');
+        setEditorStatus('Current view captured. Save it to publish this framing.', 'success');
+    });
+
+    async function savePanoramaView(view) {
+        const photo = currentPhoto();
+        if (!photo || !setTourBusy(true, view === null ? clearViewButton : saveViewButton, view === null ? 'Clearing…' : 'Saving…')) return;
+        try {
+            const result = await postJson('actions/admin/save_panorama_view.php', {
+                media_id: Number(photo.id),
+                view
+            });
+            if (result.view) {
+                photo.showroom_view_x = result.view.x;
+                photo.showroom_view_y = result.view.y;
+                photo.showroom_view_z = result.view.z;
+                photo.showroom_fov = result.view.fov;
+                savedView = { ...result.view };
+            } else {
+                photo.showroom_view_x = null;
+                photo.showroom_view_y = null;
+                photo.showroom_view_z = null;
+                photo.showroom_fov = null;
+                savedView = null;
+            }
+            viewDraft = null;
+            viewDirty = false;
+            const successMessage = result.message || (view === null ? 'Default view cleared.' : 'Default view saved.');
+            const viewDetail = view === null
+                ? ''
+                : Number(photo.is_primary) === 1
+                    ? 'This framing will be used when guests enter the starting scene.'
+                    : 'This panorama is not the starting scene; its framing applies when guests enter it.';
+            updateTourStatus(successMessage);
+            setEditorStatus(viewDetail ? `${successMessage} ${viewDetail}` : successMessage, 'success');
+            showTourToast(successMessage, viewDetail);
+        } catch (error) {
+            setEditorStatus(error.message || 'Unable to save default view. Please try again.', 'error');
+        } finally {
+            setTourBusy(false);
+        }
+    }
+
+    saveViewButton?.addEventListener('click', () => {
+        if (viewDraft && viewDirty) savePanoramaView(viewDraft);
+    });
+
+    previewViewButton?.addEventListener('click', () => {
+        if (!savedView) return;
+        if (!viewer || !syncPanoramaReadiness(undefined, undefined, false)) {
+            setEditorStatus('Wait for the panorama preview to finish loading before previewing its saved view.', 'loading');
+            return;
+        }
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (applyView(savedView, reducedMotion ? 0 : 650)) setEditorStatus('Saved view previewed.', 'success');
+        else setEditorStatus('The saved view could not be previewed.', 'error');
+    });
+
+    clearViewButton?.addEventListener('click', () => {
+        if (savedView || viewDirty) savePanoramaView(null);
+    });
+
+    retryViewerButton?.addEventListener('click', () => {
+        const photo = currentPhoto();
+        if (photo) {
+            setEditorStatus(`Retrying ${photoLabel(photo, activeViewIndex)}…`, 'loading');
+            initViewer(photo.file_path);
+        }
     });
 
     // ============================================================
     // INITIALIZE PANOLENS VIEWER
     // ============================================================
     function initViewer(imageUrl) {
+        abortHotspotListRequest();
         const requestToken = ++viewerRequestToken;
         if (viewer) {
-            viewer.dispose();
+            removeTemporarySpot();
+            clearSavedHotspotSpots();
+            destroyViewer(viewer);
             viewer = null;
-            panoContainer.innerHTML = "";
+            panoContainer.replaceChildren();
         }
 
         currentPanoMesh = null;
+        savedHotspotSpots = [];
         pendingPoint = null;
-        pendingSpot = null;
         raycastEnabled = false;
+        setLoading(true);
 
         viewer = new PANOLENS.Viewer({
             container: panoContainer,
@@ -269,26 +782,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const pano = new PANOLENS.ImagePanorama(imageUrl);
 
-        pano.addEventListener("load", () => {
+        pano.addEventListener("load", () => syncPanoramaReadiness(pano, requestToken));
+        pano.addEventListener('error', () => {
             if (requestToken !== viewerRequestToken || !hotspotModal.classList.contains('active')) return;
-            loadingEl.style.display = "none";
+            currentPanoMesh = null;
+            raycastEnabled = false;
+            listEl.replaceChildren();
+            const failure = document.createElement('p');
+            failure.className = 'hotspot-list-error';
+            failure.textContent = 'Saved hotspots are unavailable until this panorama loads.';
+            listEl.appendChild(failure);
+            listEl.setAttribute('aria-busy', 'false');
+            setLoading(true, 'This panorama could not be loaded. Retry it or choose another view.', true);
+        });
+
+        // Panolens.Viewer.add() selects the first panorama itself. Calling setPanorama()
+        // again is a no-op and can hide initialization-order mistakes.
+        viewer.add(pano);
+        panoContainer.onclick = handlePanoClick;
+        syncPanoramaReadiness(pano, requestToken);
+    }
+
+    function syncPanoramaReadiness(pano = viewer?.panorama, requestToken = viewerRequestToken, applySavedFraming = true) {
+        if (requestToken !== viewerRequestToken || !hotspotModal.classList.contains('active') ||
+            !viewer || !pano || viewer.panorama !== pano || pano.loaded !== true || !pano.material?.map || !viewer.camera) {
+            return false;
+        }
+
+        if (currentPanoMesh !== pano || !raycastEnabled) {
             currentPanoMesh = pano;
             raycastEnabled = true;
-
-            // Load saved hotspots for this specific view
-            loadExistingHotspots(currentMediaId);
-        });
-        pano.addEventListener('error', () => {
-            if (requestToken !== viewerRequestToken) return;
-            loadingEl.style.display = 'none';
-            raycastEnabled = false;
-            showAlert('Notice', 'This panorama could not be loaded. Choose another view or try again.');
-        });
-
-        viewer.add(pano);
-        viewer.setPanorama(pano);
-
-        panoContainer.onclick = handlePanoClick;
+            setLoading(false);
+            setEditorStatus('Panorama ready. Click the preview to place a hotspot.', 'success');
+            savedView = photoSavedView(currentPhoto());
+            if (savedView && applySavedFraming) applyView(savedView, 0);
+            updateTourStatus();
+            void loadExistingHotspots(currentMediaId);
+        }
+        return true;
     }
 
     // ============================================================
@@ -331,9 +862,13 @@ document.addEventListener("DOMContentLoaded", () => {
             setFormMode(false);
             document.getElementById("hs-title").value = "";
             document.getElementById("hs-description").value = "";
+            if (rotationInput) rotationInput.value = '0';
+            if (rotationRange) rotationRange.value = '0';
         }
 
+        hotspotDirty = true;
         toggleTypeFields();
+        updateTourStatus('Hotspot changes are not saved');
     }
 
     // ============================================================
@@ -342,186 +877,303 @@ document.addEventListener("DOMContentLoaded", () => {
     typeSelect?.addEventListener("change", () => {
         toggleTypeFields();
         updateTemporarySpotIcon();
+        if (!formWrapper.classList.contains('hidden')) hotspotDirty = true;
     });
 
     function toggleTypeFields() {
         const isNav = typeSelect.value === "nav";
         descWrapper.classList.toggle("hidden", isNav);
         targetWrapper.classList.toggle("hidden", !isNav);
+        rotationWrapper?.classList.toggle('hidden', !isNav);
     }
 
     // ============================================================
     // CANCEL HOTSPOT
     // ============================================================
     document.getElementById("btn-cancel-hotspot")?.addEventListener("click", () => {
-        formWrapper.classList.add("hidden");
+        discardCurrentHotspotDraft(true);
         setFormMode(false);
-        pendingPoint = null;
-        removeTemporarySpot();
+        updateTourStatus();
+    });
+
+    document.querySelectorAll('#hotspot-form-wrapper input, #hotspot-form-wrapper textarea, #hotspot-form-wrapper select')
+        .forEach(field => field.addEventListener('input', () => {
+            if (formWrapper.classList.contains('hidden')) return;
+            hotspotDirty = true;
+            if (field === rotationRange) {
+                if (rotationInput) rotationInput.value = rotationRange.value;
+                applyArrowRotation(pendingSpot, Number(rotationRange.value));
+            } else if (field === rotationInput) {
+                const rotation = selectedArrowRotation();
+                if (rotation !== null) {
+                    if (rotationRange) rotationRange.value = String(rotation);
+                    applyArrowRotation(pendingSpot, rotation);
+                }
+            }
+            updateTourStatus('Hotspot changes are not saved');
+        }));
+
+    rotationInput?.addEventListener('blur', () => {
+        const value = Number(rotationInput.value);
+        if (!Number.isInteger(value) || value < 0 || value > 359) {
+            rotationInput.value = String(Math.max(0, Math.min(359, Number.isFinite(value) ? Math.round(value) : 0)));
+            if (rotationRange) rotationRange.value = rotationInput.value;
+            applyArrowRotation(pendingSpot, Number(rotationInput.value));
+        }
+    });
+
+    document.getElementById('btn-reset-arrow-rotation')?.addEventListener('click', () => {
+        if (rotationInput) rotationInput.value = '0';
+        if (rotationRange) rotationRange.value = '0';
+        applyArrowRotation(pendingSpot, 0);
+        hotspotDirty = true;
+        updateTourStatus('Hotspot changes are not saved');
     });
 
     // ============================================================
     // SAVE HOTSPOT
     // ============================================================
-    document.getElementById("btn-save-hotspot")?.addEventListener("click", () => {
+    saveHotspotButton?.addEventListener("click", async () => {
+        if (saveHotspotButton.disabled || tourBusy) return;
         const title = document.getElementById("hs-title").value.trim();
-
         if (!title) {
-            showAlert("Notice", "Please enter a title/label for this hotspot.");
+            setEditorStatus('Enter a guest label before saving this hotspot.', 'error');
+            document.getElementById('hs-title').focus();
             return;
         }
-
         if (!pendingPoint) {
-            showAlert("Notice", "No position captured — click on the panorama first.");
+            setEditorStatus('No position captured. Click the panorama preview to place the pin.', 'error');
             return;
         }
 
         const selectedType = typeSelect.value;
+        const arrowRotation = selectedType === 'nav' ? selectedArrowRotation() : 0;
+        if (selectedType === 'nav' && arrowRotation === null) {
+            setEditorStatus('Arrow direction must be a whole number from 0 to 359 degrees.', 'error');
+            rotationInput?.focus();
+            return;
+        }
+        const targetMediaId = selectedType === 'nav' ? Number(targetSelect.value) : null;
+        if (selectedType === 'nav' && (!Number.isSafeInteger(targetMediaId) || targetMediaId < 1 || targetSelect.disabled)) {
+            setEditorStatus('Add another panorama in this venue before creating a destination pin.', 'error');
+            return;
+        }
 
         const payload = {
             media_id: currentMediaId,
             type: selectedType,
-            title: title,
+            title,
             description: document.getElementById("hs-description").value.trim(),
             x: pendingPoint.x,
             y: pendingPoint.y,
             z: pendingPoint.z,
+            arrow_rotation: arrowRotation,
             id: pendingSpot?.userData?.hotspotId || null,
-            target_media_id: selectedType === "nav" ? parseInt(targetSelect.value, 10) : null,
+            target_media_id: targetMediaId,
             target_pano_index: null
         };
 
-        fetch("actions/admin/save_hotspot.php", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-Token": csrfToken
-            },
-            body: JSON.stringify(payload)
-        })
-        .then((res) => res.json())
-        .then((data) => {
-            if (data.success) {
-                formWrapper.classList.add("hidden");
-                setFormMode(false);
-                pendingPoint = null;
-                removeTemporarySpot();
-                loadExistingHotspots(currentMediaId);
-            } else {
-                showAlert("Notice", "Error: " + data.message);
+        if (!setTourBusy(true, saveHotspotButton, 'Saving…')) return;
+        setEditorStatus('Saving hotspot…', 'loading');
+        try {
+            await postJson('actions/admin/save_hotspot.php', payload);
+            formWrapper.classList.add('hidden');
+            setFormMode(false);
+            pendingPoint = null;
+            hotspotDirty = false;
+            removeTemporarySpot();
+            await loadExistingHotspots(currentMediaId);
+            updateTourStatus('Hotspot saved');
+            setEditorStatus('Hotspot saved.', 'success');
+            showTourToast(payload.id ? 'Hotspot updated.' : 'Hotspot saved.');
+        } catch (error) {
+            setEditorStatus(error.message || 'Unable to save hotspot. Please try again.', 'error');
+        } finally {
+            setTourBusy(false);
+        }
+    });
+
+    listEl.addEventListener('click', async event => {
+        const retryButton = event.target.closest('[data-retry-hotspots]');
+        if (retryButton) {
+            if (tourBusy) return;
+            retryButton.disabled = true;
+            setEditorStatus('Loading saved hotspots…', 'loading');
+            await loadExistingHotspots(currentMediaId);
+            return;
+        }
+
+        const editButton = event.target.closest('.btn-edit-hotspot');
+        if (editButton) {
+            const hotspot = savedHotspots.find(item => String(item.id) === String(editButton.dataset.id));
+            if (!hotspot || !currentPanoMesh) return;
+            if (hasUnsavedChanges()) {
+                if (!await confirmDiscardChanges('edit a saved hotspot')) return;
+                discardCurrentHotspotDraft(false);
             }
-        })
-        .catch(() => {
-            showAlert("Notice", "Network error saving hotspot.");
-        });
+
+            document.getElementById('hs-title').value = hotspot.title || '';
+            document.getElementById('hs-description').value = hotspot.description || '';
+            typeSelect.value = hotspot.type === 'nav' ? 'nav' : 'info';
+            const rotation = Number(hotspot.arrow_rotation);
+            if (rotationInput) rotationInput.value = String(Number.isInteger(rotation) && rotation >= 0 && rotation <= 359 ? rotation : 0);
+            if (rotationRange) rotationRange.value = rotationInput?.value || '0';
+            toggleTypeFields();
+            if (hotspot.type === 'nav') {
+                const targetId = Number(hotspot.resolved_target_media_id || hotspot.target_media_id || 0);
+                targetSelect.value = targetId > 0 ? String(targetId) : '';
+            }
+            pendingPoint = new THREE.Vector3(Number(hotspot.position_x), Number(hotspot.position_y), Number(hotspot.position_z));
+            removeTemporarySpot();
+            removeSavedHotspotSpot(hotspot.id);
+            pendingSpot = createHotspotSpot(typeSelect.value, pendingPoint, Number(rotationInput?.value || 0));
+            pendingSpot.userData.hotspotId = hotspot.id;
+            currentPanoMesh.add(pendingSpot);
+            setFormMode(true);
+            formWrapper.classList.remove('hidden');
+            hotspotDirty = true;
+            updateTourStatus('Editing an unsaved hotspot');
+            document.getElementById('hs-title').focus();
+            return;
+        }
+
+        const deleteButton = event.target.closest('.btn-delete-hotspot');
+        if (!deleteButton) return;
+        if (tourBusy) return;
+        const hotspotId = deleteButton.dataset.id;
+        const confirmed = await askCustomConfirm('Confirm Deletion', 'Delete this hotspot?');
+        if (!confirmed) return;
+        if (!setTourBusy(true, deleteButton, 'Deleting…')) return;
+        setEditorStatus('Deleting hotspot…', 'loading');
+        try {
+            await postJson('actions/admin/delete_hotspot.php', { id: hotspotId });
+            if (String(pendingSpot?.userData?.hotspotId || '') === String(hotspotId)) discardCurrentHotspotDraft(false);
+            await loadExistingHotspots(currentMediaId);
+            updateTourStatus('Hotspot deleted');
+            setEditorStatus('Hotspot deleted.', 'success');
+            showTourToast('Hotspot deleted.');
+        } catch (error) {
+            setEditorStatus(error.message || 'Unable to delete hotspot. Please try again.', 'error');
+        } finally {
+            setTourBusy(false);
+        }
     });
 
     // ============================================================
     // LOAD EXISTING HOTSPOTS
     // ============================================================
-    function loadExistingHotspots(mediaId) {
+    async function loadExistingHotspots(mediaId) {
+        abortHotspotListRequest();
+        if (!mediaId) return;
         const requestToken = ++hotspotListRequestToken;
-        fetch(`actions/admin/get_hotspots.php?media_id=${mediaId}`)
-        .then((res) => res.json())
-        .then((data) => {
+        const controller = new AbortController();
+        let timedOut = false;
+        hotspotListAbortController = controller;
+        const timeoutId = window.setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, HOTSPOT_REQUEST_TIMEOUT_MS);
+        listEl.setAttribute('aria-busy', 'true');
+        try {
+            const response = await fetch(`actions/admin/get_hotspots.php?media_id=${encodeURIComponent(mediaId)}`, { signal: controller.signal });
+            const data = await response.json();
+            if (!response.ok || !data?.success || !Array.isArray(data.hotspots)) {
+                throw new Error(typeof data?.message === 'string' ? data.message : 'Saved hotspots could not be loaded.');
+            }
             if (requestToken !== hotspotListRequestToken || String(mediaId) !== String(currentMediaId)) return;
-            listEl.innerHTML = "";
 
-            if (!data.success || data.hotspots.length === 0) {
-                listEl.innerHTML = '<p style="font-size:0.85rem; color:#888;">No hotspots placed yet.</p>';
-                return;
+            clearSavedHotspotSpots();
+            savedHotspots = data.hotspots;
+            savedHotspotCount = data.hotspots.length;
+            listEl.replaceChildren();
+            if (data.hotspots.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'hotspot-empty-state';
+                empty.textContent = 'No hotspots on this panorama yet. Click the preview to place one.';
+                listEl.appendChild(empty);
             }
 
-            data.hotspots.forEach((h) => {
-                listEl.insertAdjacentHTML(
-                    "beforeend",
-                    `
-                    <div class="hotspot-list-item" data-id="${escapeHtml(h.id)}">
-                        <div class="hs-info">
-                            <span class="hs-type-badge ${h.type === 'nav' ? 'nav' : 'info'}">
-                                ${escapeHtml(h.type === 'nav' ? 'Navigation' : 'Info')}
-                            </span>
-                            <strong>
-                                ${escapeHtml(h.title)}
-                            </strong>
-                        </div>
-                        <div class="hotspot-list-actions">
-                        <button type="button" class="hotspot-list-action btn-edit-hotspot" data-id="${escapeHtml(h.id)}" title="Edit or move hotspot" aria-label="Edit or move hotspot"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
-                        <button type="button" class="hotspot-list-action btn-delete-hotspot" data-id="${escapeHtml(h.id)}" title="Delete hotspot" aria-label="Delete hotspot">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                        </div>
-                    </div>
-                    `
-                );
+            data.hotspots.forEach(hotspot => {
+                const item = document.createElement('div');
+                item.className = 'hotspot-list-item';
+                item.dataset.id = String(hotspot.id);
+
+                const info = document.createElement('div');
+                info.className = 'hs-info';
+                const badge = document.createElement('span');
+                badge.className = `hs-type-badge ${hotspot.type === 'nav' ? 'nav' : 'info'}`;
+                badge.textContent = hotspot.type === 'nav' ? 'Navigation' : 'Information';
+                const title = document.createElement('strong');
+                title.textContent = String(hotspot.title || 'Untitled hotspot');
+                info.append(badge, title);
+                if (hotspot.type === 'nav' && Number(hotspot.target_valid) !== 1) {
+                    const warning = document.createElement('span');
+                    warning.className = 'hotspot-destination-warning';
+                    warning.textContent = 'Destination unavailable — edit to repair';
+                    info.appendChild(warning);
+                } else if (hotspot.type === 'nav' && hotspot.target_file_name) {
+                    const destination = document.createElement('span');
+                    destination.className = 'hotspot-list-destination';
+                    destination.textContent = `To: ${String(hotspot.target_file_name)}`;
+                    info.appendChild(destination);
+                }
+
+                const actions = document.createElement('div');
+                actions.className = 'hotspot-list-actions';
+                const edit = document.createElement('button');
+                edit.type = 'button';
+                edit.className = 'hotspot-list-action btn-edit-hotspot';
+                edit.dataset.id = String(hotspot.id);
+                edit.title = 'Edit or move hotspot';
+                edit.setAttribute('aria-label', `Edit ${String(hotspot.title || 'hotspot')}`);
+                edit.innerHTML = '<i class="fa-solid fa-pen" aria-hidden="true"></i>';
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'hotspot-list-action btn-delete-hotspot';
+                remove.dataset.id = String(hotspot.id);
+                remove.title = 'Delete hotspot';
+                remove.setAttribute('aria-label', `Delete ${String(hotspot.title || 'hotspot')}`);
+                remove.innerHTML = '<i class="fa-solid fa-trash" aria-hidden="true"></i>';
+                actions.append(edit, remove);
+                item.append(info, actions);
+                listEl.appendChild(item);
 
                 if (currentPanoMesh) {
                     try {
-                        const spot = createHotspotSpot(h.type, {
-                            x: parseFloat(h.position_x),
-                            y: parseFloat(h.position_y),
-                            z: parseFloat(h.position_z)
-                        });
-                        
-                        spot.addHoverText(escapeHtml(h.title));
+                        const spot = createHotspotSpot(hotspot.type, {
+                            x: Number(hotspot.position_x),
+                            y: Number(hotspot.position_y),
+                            z: Number(hotspot.position_z)
+                        }, Number(hotspot.arrow_rotation));
+                        spot.userData.hotspotId = hotspot.id;
+                        spot.addHoverText(escapeHtml(hotspot.title));
                         currentPanoMesh.add(spot);
-                    } catch(err) {
-                        console.error("Failed to render a hotspot in 3D: ", err);
+                        savedHotspotSpots.push(spot);
+                    } catch (error) {
+                        console.error('Failed to render a hotspot in 3D:', error);
                     }
                 }
             });
-
-            document.querySelectorAll(".btn-edit-hotspot").forEach((btn) => {
-                btn.addEventListener("click", function () {
-                    const hotspot = data.hotspots.find(item => String(item.id) === String(btn.getAttribute("data-id")));
-                    if (!hotspot || !currentPanoMesh) return;
-                    document.getElementById("hs-title").value = hotspot.title || "";
-                    document.getElementById("hs-description").value = hotspot.description || "";
-                    typeSelect.value = hotspot.type === "nav" ? "nav" : "info";
-                    toggleTypeFields();
-                    if (hotspot.type === "nav") {
-                        const legacyPhotos = [...currentPhotosArray].sort((a, b) => Number(a.id) - Number(b.id));
-                        const legacyIndex = parseInt(hotspot.target_pano_index, 10);
-                        const legacyTarget = hotspot.target_media_id || legacyPhotos[Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyIndex : -1]?.id;
-                        if (legacyTarget) targetSelect.value = String(legacyTarget);
-                    }
-                    pendingPoint = new THREE.Vector3(parseFloat(hotspot.position_x), parseFloat(hotspot.position_y), parseFloat(hotspot.position_z));
-                    removeTemporarySpot();
-                    pendingSpot = createHotspotSpot(typeSelect.value, pendingPoint);
-                    pendingSpot.userData.hotspotId = hotspot.id;
-                    currentPanoMesh.add(pendingSpot);
-                    setFormMode(true);
-                    formWrapper.classList.remove("hidden");
-                });
-            });
-
-            document.querySelectorAll(".btn-delete-hotspot").forEach((btn) => {
-                btn.addEventListener("click", function () {
-                    showConfirm("Confirm Deletion", "Delete this hotspot?").then(confirmed => {
-                        if (!confirmed) return;
-
-                        fetch("actions/admin/delete_hotspot.php", {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "X-CSRF-Token": csrfToken
-                            },
-                            body: JSON.stringify({ id: btn.getAttribute("data-id") })
-                        })
-                        .then((res) => res.json())
-                        .then((data) => {
-                            if (data.success) {
-                                initViewer(currentPhotosArray[adminViewSelector.value].file_path);
-                            } else {
-                                showAlert("Notice", "Error: " + data.message);
-                            }
-                        });
-                    });
-                });
-            });
-        })
-        .catch((error) => {
-            console.error("Error loading hotspots:", error);
-        });
+            listEl.setAttribute('aria-busy', 'false');
+            updateTourStatus();
+            if (!editorStatus?.textContent) setEditorStatus('Saved hotspots loaded.', 'success');
+        } catch (error) {
+            if (requestToken !== hotspotListRequestToken || String(mediaId) !== String(currentMediaId)) return;
+            listEl.replaceChildren();
+            const failure = document.createElement('p');
+            failure.className = 'hotspot-list-error';
+            failure.textContent = timedOut ? 'Loading saved hotspots timed out. Your current edits are unchanged; try again.' : error.message || 'Saved hotspots could not be loaded.';
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'hotspot-btn hotspot-btn-secondary';
+            retry.dataset.retryHotspots = 'true';
+            retry.textContent = 'Retry loading hotspots';
+            listEl.append(failure, retry);
+            listEl.setAttribute('aria-busy', 'false');
+            setEditorStatus(timedOut ? 'Loading saved hotspots timed out. Please retry.' : error.message || 'Saved hotspots could not be loaded.', 'error');
+        } finally {
+            window.clearTimeout(timeoutId);
+            if (hotspotListAbortController === controller) hotspotListAbortController = null;
+        }
     }
 });

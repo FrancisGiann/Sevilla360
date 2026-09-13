@@ -338,6 +338,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
     <!-- CMS Scripts -->
+    <script src="assets/js/panorama-view-compat.js?v=<?= time() ?>"></script>
     <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
     <script src="assets/js/admin-page/admin_hotspots.js?v=<?= time() ?>"></script>
     <?php endif; ?>

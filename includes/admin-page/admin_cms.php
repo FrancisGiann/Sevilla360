@@ -95,7 +95,7 @@ if ($result && $result->num_rows > 0) {
 // Separate ASC-ordered dataset specifically for hotspot placement
 // so "View 1/2/3" numbering always matches showroom.php's pano_urls order.
 $pano_asc_query = $conn->query("
-    SELECT id, slot_assignment, file_path 
+    SELECT id, slot_assignment, file_path, file_name, is_primary, showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov
     FROM media_cms 
     WHERE media_type = '360' AND slot_assignment LIKE '%\\_360'
     ORDER BY is_primary DESC, id ASC
@@ -412,89 +412,103 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
     </div>
 </div>
 
-<!-- 6. HOTSPOT PLACEMENT MODAL -->
+<!-- 6. TOUR SETUP & HOTSPOTS MODAL -->
 <div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
-    <div class="cms-modal-content hotspot-modal-content" style="max-width: 1100px; width: 95vw; padding: 0; overflow: hidden; border-radius: 12px;">
-
-        <!-- Modal Header -->
-        <div class="hotspot-modal-header" style="display:flex; justify-content:space-between; align-items:center; padding: 1.25rem 1.75rem; border-bottom: 1px solid rgba(42,37,34,0.1); background: var(--color-white);">
+    <div class="cms-modal-content hotspot-modal-content" role="dialog" aria-modal="true" aria-labelledby="hotspot-modal-title" tabindex="-1">
+        <div class="hotspot-modal-header">
             <div>
-                <h3 class="cms-modal-title" style="margin:0; font-size: 1.2rem;" id="hotspot-modal-title">Place Hotspots</h3>
-                <p style="margin: 3px 0 0; font-size: 0.82rem; color: var(--color-dark-light);">Click anywhere on the 360° preview to drop a pin. Drag to look around first.</p>
+                <h3 class="cms-modal-title" id="hotspot-modal-title">Tour Setup &amp; Hotspots</h3>
+                <p>Choose a starting scene and saved view, then place guest directions and information pins.</p>
             </div>
-            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal" style="padding: 8px 18px; font-size: 0.875rem;">✕ Close</button>
+            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal" aria-label="Close tour setup">Close</button>
         </div>
 
-        <!-- Modal Body -->
-        <div class="hotspot-modal-body" style="display: flex; height: 580px; padding: 1.25rem; gap: 1.25rem; background: #f5f4f1;">
-
-            <!-- LEFT: Panorama Viewer -->
-            <div class="hotspot-pano-panel" style="flex: 2; position: relative; background: #111; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-                <div id="hotspot-pano-container" style="width: 100%; height: 100%; cursor: crosshair;"></div>
-                <div id="hotspot-loading" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; background:rgba(0,0,0,0.7); gap: 10px; border-radius: 10px;">
-                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; color: var(--color-gold);"></i>
-                    <span style="font-size: 0.85rem; opacity: 0.8;">Loading panorama...</span>
+        <div class="hotspot-modal-body">
+            <section class="hotspot-tour-setup" aria-label="Panorama tour settings">
+                <div class="hotspot-view-selector">
+                    <label for="hs-admin-view-selector">Tour panorama</label>
+                    <select id="hs-admin-view-selector" aria-describedby="hs-view-description"></select>
+                    <p id="hs-view-description" class="hotspot-view-description" aria-live="polite"></p>
                 </div>
-            </div>
-
-            <!-- RIGHT: Single scrollable sidebar -->
-            <div class="hotspot-sidebar" style="flex: 1; min-width: 300px; max-width: 340px; display: flex; flex-direction: column; overflow-y: auto; background: white; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
-
-                <!-- View Switcher (hidden by default) -->
-                <div id="hs-admin-view-switcher-wrapper" style="display: none; padding: 14px 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">
-                    <label style="font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 7px;">Editing View</label>
-                    <select id="hs-admin-view-selector" style="width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid rgba(42,37,34,0.15); font-family: var(--font-body); font-size: 0.9rem; background: white; color: var(--color-dark); cursor: pointer; outline: none;">
-                    </select>
+                <div class="hotspot-tour-status" aria-live="polite" aria-atomic="true">
+                    <span id="hs-starting-scene-status" class="hotspot-state-pill">Starting scene</span>
+                    <span id="hs-view-preset-status" class="hotspot-state-pill">View not set</span>
+                    <span id="hs-hotspot-count" class="hotspot-state-pill">0 hotspots</span>
                 </div>
+                <div class="hotspot-tour-actions">
+                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-make-starting-scene"><span data-hotspot-button-label>Make Starting Scene</span></button>
+                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-set-current-view"><span data-hotspot-button-label>Set Current View</span></button>
+                    <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-panorama-view" disabled><span data-hotspot-button-label>Save View</span></button>
+                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-preview-saved-view" disabled><span data-hotspot-button-label>Preview Saved View</span></button>
+                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-clear-panorama-view" disabled><span data-hotspot-button-label>Clear Default</span></button>
+                </div>
+            </section>
 
-                <!-- New Hotspot Form (hidden until a pin is clicked) -->
-                <div id="hotspot-form-wrapper" class="hidden" style="padding: 16px; border-bottom: 1px solid rgba(42,37,34,0.08); background: white; flex-shrink: 0;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
-                        <div style="width: 4px; height: 18px; background: var(--color-gold); border-radius: 2px;"></div>
-                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);"><span id="hs-form-heading">New Hotspot</span></h4>
-                    </div>
+            <p id="hs-editor-status" class="hotspot-editor-status" role="status" aria-live="polite" aria-atomic="true">Choose a panorama to begin editing its tour.</p>
 
-                    <div style="margin-bottom: 12px;">
-                        <label for="hs-type" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Type</label>
-                        <select id="hs-type" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;">
-                            <option value="info">Info — shows description</option>
-                            <option value="nav">Navigation — walk to view</option>
-                        </select>
-                    </div>
-
-                    <div style="margin-bottom: 12px;">
-                        <label for="hs-title" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Title</label>
-                        <input type="text" id="hs-title" placeholder="e.g. Poolside Entrance" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; outline: none; box-sizing: border-box;">
-                    </div>
-
-                    <div id="hs-desc-wrapper" style="margin-bottom: 12px;">
-                        <label for="hs-description" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Description</label>
-                        <textarea id="hs-description" rows="3" placeholder="Shown when guest clicks the pin" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; resize: none; outline: none; box-sizing: border-box;"></textarea>
-                    </div>
-
-                    <div class="hidden" id="hs-target-wrapper" style="margin-bottom: 12px;">
-                        <label for="hs-target-index" style="display:block; font-size: 0.78rem; font-weight: 600; color: var(--color-dark-light); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">Walk To</label>
-                        <select id="hs-target-index" style="width:100%; padding: 9px 12px; border: 1px solid rgba(42,37,34,0.15); border-radius: 6px; font-family: var(--font-body); font-size: 0.875rem; background: white; outline: none;"></select>
-                    </div>
-
-                    <div class="hotspot-form-actions">
-                        <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-cancel-hotspot" title="Cancel hotspot editing"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Cancel</span></button>
-                        <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-hotspot" title="Save hotspot pin"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span id="hs-save-label">Save Pin</span></button>
+            <div class="hotspot-editor-stage">
+                <div class="hotspot-pano-panel">
+                    <div id="hotspot-pano-container" aria-label="360 degree panorama preview"></div>
+                    <div id="hotspot-loading" role="status" aria-live="polite">
+                        <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+                        <span id="hotspot-loading-message">Loading panorama…</span>
+                        <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-retry-hotspot-view" hidden><span data-hotspot-button-label>Retry panorama</span></button>
                     </div>
                 </div>
 
-                <!-- Existing Hotspots List -->
-                <div style="padding: 14px 16px; flex: 1;">
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                        <div style="width: 4px; height: 18px; background: var(--color-dark); border-radius: 2px;"></div>
-                        <h4 style="margin: 0; font-size: 0.95rem; color: var(--color-dark);">Placed Hotspots</h4>
+                <div class="hotspot-sidebar">
+                    <div id="hotspot-form-wrapper" class="hotspot-form hidden">
+                        <h4><span id="hs-form-heading">New Hotspot</span></h4>
+                        <div class="hotspot-field">
+                            <label for="hs-type">Type</label>
+                            <select id="hs-type">
+                                <option value="info">Information pin</option>
+                                <option value="nav">Walk to another view</option>
+                            </select>
+                        </div>
+                        <div class="hotspot-field">
+                            <label for="hs-title">Guest label</label>
+                            <input type="text" id="hs-title" maxlength="150" placeholder="e.g. Poolside entrance" autocomplete="off">
+                        </div>
+                        <div class="hotspot-field" id="hs-desc-wrapper">
+                            <label for="hs-description">Description</label>
+                            <textarea id="hs-description" rows="3" maxlength="5000" placeholder="Shown when a guest opens this pin"></textarea>
+                        </div>
+                        <div class="hotspot-field hidden" id="hs-target-wrapper">
+                            <label for="hs-target-index">Destination</label>
+                            <select id="hs-target-index"></select>
+                        </div>
+                        <fieldset class="hotspot-field hotspot-rotation hidden" id="hs-arrow-rotation-wrapper">
+                            <legend>Arrow direction</legend>
+                            <label for="hs-arrow-rotation-range">Rotate the walk marker</label>
+                            <input type="range" id="hs-arrow-rotation-range" min="0" max="359" step="1" value="0" aria-label="Rotate walk marker from 0 to 359 degrees">
+                            <div class="hotspot-rotation-value">
+                                <label for="hs-arrow-rotation">Degrees</label>
+                                <input type="number" id="hs-arrow-rotation" min="0" max="359" step="1" value="0" inputmode="numeric">
+                                <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-reset-arrow-rotation">Reset</button>
+                            </div>
+                        </fieldset>
+                        <div class="hotspot-form-actions">
+                            <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-cancel-hotspot">Cancel</button>
+                            <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-hotspot"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i><span id="hs-save-label" data-hotspot-button-label>Save Pin</span></button>
+                        </div>
                     </div>
-                    <div id="hotspot-list" style="display:flex; flex-direction:column; gap:8px;">
-                        <p style="font-size:0.82rem; color:#aaa; text-align: center; padding: 20px 0;">No hotspots placed yet.</p>
-                    </div>
+                    <section class="hotspot-list-section" aria-labelledby="hotspot-list-title">
+                        <h4 id="hotspot-list-title">Placed Hotspots</h4>
+                        <div id="hotspot-list" aria-live="polite" aria-busy="false">
+                            <p class="hotspot-empty-state">No hotspots placed yet.</p>
+                        </div>
+                    </section>
                 </div>
-
             </div>
         </div>
     </div>
+</div>
+
+<div id="hotspot-tour-toast" class="hotspot-tour-toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="hotspot-tour-toast-icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+    <span class="hotspot-tour-toast-copy">
+        <strong data-tour-toast-message></strong>
+        <span data-tour-toast-detail hidden></span>
+    </span>
 </div>

@@ -1,9 +1,11 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
+require_once __DIR__ . '/../../includes/showroom_tour.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+if (!showroom_tour_is_admin(isset($_SESSION['role']) && is_string($_SESSION['role']) ? $_SESSION['role'] : null)) {
+    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit;
 }
@@ -28,8 +30,17 @@ $y = filter_var($data['y'] ?? null, FILTER_VALIDATE_FLOAT);
 $z = filter_var($data['z'] ?? null, FILTER_VALIDATE_FLOAT);
 $target_media_id = filter_var($data['target_media_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $target_index = filter_var($data['target_pano_index'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+$arrow_rotation = $data['arrow_rotation'] ?? 0;
+try {
+    $arrow_rotation = showroom_tour_validate_arrow_rotation($arrow_rotation);
+} catch (InvalidArgumentException $e) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    exit;
+}
 
-if (!$media_id || !in_array($type, ['nav', 'info'], true) || $title === '' || strlen($title) > 150 || strlen($description) > 5000 || $x === false || $y === false || $z === false || !is_finite((float)$x) || !is_finite((float)$y) || !is_finite((float)$z) || max(abs((float)$x), abs((float)$y), abs((float)$z)) > 100000) {
+if (!$media_id || !in_array($type, ['nav', 'info'], true) || $title === '' || strlen($title) > 150 || strlen($description) > 5000 || $x === false || $y === false || $z === false || !is_finite((float)$x) || !is_finite((float)$y) || !is_finite((float)$z) || max(abs((float)$x), abs((float)$y), abs((float)$z)) > 100000 || !is_int($arrow_rotation) || $arrow_rotation < 0 || $arrow_rotation > 359) {
+    http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Invalid hotspot fields.']);
     exit;
 }
@@ -62,28 +73,28 @@ try {
     } else { $target_media_id = null; $target_index = null; }
     if ($hotspot_id) {
         if ($type === 'nav' && $target_media_id && $target_index !== null) {
-            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, target_pano_index = ?, target_media_id = ? WHERE id = ?");
-            $stmt->bind_param("isssdddiii", $media_id, $type, $title, $description, $x, $y, $z, $target_index, $target_media_id, $hotspot_id);
+            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, arrow_rotation = ?, target_pano_index = ?, target_media_id = ? WHERE id = ?");
+            $stmt->bind_param("isssdddiiii", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation, $target_index, $target_media_id, $hotspot_id);
         } elseif ($type === 'nav' && $target_media_id) {
-            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, target_pano_index = NULL, target_media_id = ? WHERE id = ?");
-            $stmt->bind_param("isssdddii", $media_id, $type, $title, $description, $x, $y, $z, $target_media_id, $hotspot_id);
+            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, arrow_rotation = ?, target_pano_index = NULL, target_media_id = ? WHERE id = ?");
+            $stmt->bind_param("isssdddiii", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation, $target_media_id, $hotspot_id);
         } else {
-            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, target_pano_index = NULL, target_media_id = NULL WHERE id = ?");
-            $stmt->bind_param("isssdddi", $media_id, $type, $title, $description, $x, $y, $z, $hotspot_id);
+            $stmt = $conn->prepare("UPDATE showroom_hotspots SET media_id = ?, type = ?, title = ?, description = ?, position_x = ?, position_y = ?, position_z = ?, arrow_rotation = ?, target_pano_index = NULL, target_media_id = NULL WHERE id = ?");
+            $stmt->bind_param("isssdddii", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation, $hotspot_id);
         }
         if (!$stmt->execute() || $stmt->affected_rows < 0) throw new RuntimeException('Unable to update hotspot.');
         if (!$conn->commit()) throw new RuntimeException('Unable to commit hotspot update.');
         echo json_encode(['success' => true, 'id' => (int)$hotspot_id]);
     } else {
         if ($type === 'nav' && $target_media_id && $target_index !== null) {
-            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("isssdddii", $media_id, $type, $title, $description, $x, $y, $z, $target_index, $target_media_id);
+            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, arrow_rotation, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("isssdddiii", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation, $target_index, $target_media_id);
         } elseif ($type === 'nav' && $target_media_id) {
-            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)");
-            $stmt->bind_param("isssdddi", $media_id, $type, $title, $description, $x, $y, $z, $target_media_id);
+            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, arrow_rotation, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)");
+            $stmt->bind_param("isssdddii", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation, $target_media_id);
         } else {
-            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)");
-            $stmt->bind_param("isssddd", $media_id, $type, $title, $description, $x, $y, $z);
+            $stmt = $conn->prepare("INSERT INTO showroom_hotspots (media_id, type, title, description, position_x, position_y, position_z, arrow_rotation, target_pano_index, target_media_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)");
+            $stmt->bind_param("isssdddi", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation);
         }
         if (!$stmt->execute()) throw new RuntimeException('Unable to save hotspot.');
         if (!$conn->commit()) throw new RuntimeException('Unable to commit hotspot.');
@@ -101,5 +112,6 @@ try {
         'Invalid navigation target.',
         'Navigation target is required.'
     ];
+    http_response_code(in_array($message, $known, true) ? ($message === 'Hotspot not found.' ? 404 : 422) : 500);
     echo json_encode(['success' => false, 'message' => in_array($message, $known, true) ? $message : 'Unable to save the hotspot.']);
 }
