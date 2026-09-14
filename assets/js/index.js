@@ -221,10 +221,12 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   const bookingUrl = (venue, dates) => {
     const params = new URLSearchParams({ tab: tabFor(venue.category), category: venue.category, venue_name: venue.venue_name });
-    if (venue.venue_id) params.set('venue_id', venue.venue_id);
+    if (venue.room_group_id) {
+      params.set('room_group_id', String(venue.room_group_id));
+    } else if (venue.venue_id) params.set('venue_id', venue.venue_id);
     if (venue.room_type) params.set('room_type', venue.room_type);
-    if (dates && dates.startDate) params.set('start_date', dates.startDate);
-    if (dates && dates.endDate) params.set('end_date', dates.endDate);
+    if (dates && dates.startDate) params.set(venue.room_group_id ? 'check_in' : 'start_date', dates.startDate);
+    if (dates && dates.endDate) params.set(venue.room_group_id ? 'check_out' : 'end_date', dates.endDate);
     return 'booking.php?' + params.toString();
   };
   const makeCard = venue => {
@@ -232,11 +234,11 @@ document.addEventListener("DOMContentLoaded", function () {
     article.className = 'idx-catalog-card';
     const image = document.createElement('img');
     image.src = (venue.images && venue.images[0]) || 'assets/img/placeholder.jpg';
-    image.alt = venue.venue_name || venue.room_type || 'Sevilla360 venue';
+    image.alt = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Sevilla360 venue';
     image.loading = 'lazy';
     article.appendChild(image);
     const body = document.createElement('div'); body.className = 'idx-catalog-card-body';
-    const title = document.createElement('h4'); title.textContent = venue.venue_name || venue.room_type || 'Venue';
+    const title = document.createElement('h4'); title.textContent = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Venue';
     const kind = document.createElement('p'); kind.className = 'idx-catalog-card-category';
     kind.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     const rate = document.createElement('p'); rate.className = 'idx-catalog-card-rate'; rate.textContent = rateText(venue);
@@ -477,7 +479,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const images = activeVenue.images && activeVenue.images.length ? activeVenue.images : ['assets/img/placeholder.jpg'];
     activeImageIndex = (index + images.length) % images.length;
     const image = document.getElementById('idx-modal-image');
-    if (image) { image.src = images[activeImageIndex]; image.alt = (activeVenue.venue_name || 'Venue') + ' image ' + (activeImageIndex + 1); }
+    if (image) { image.src = images[activeImageIndex]; image.alt = (activeVenue.display_name || activeVenue.title || activeVenue.venue_name || 'Venue') + ' image ' + (activeImageIndex + 1); }
     modal?.querySelectorAll('.idx-modal-thumbnail').forEach((thumb, i) => thumb.classList.toggle('is-active', i === activeImageIndex));
     modal?.querySelector('.idx-modal-thumbnail.is-active')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   };
@@ -493,7 +495,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const amenities = modal.querySelector('.idx-modal-amenities');
     const checkoutBoundaryLegend = modal.querySelector('[data-calendar-legend="checkout-boundary"]');
     
-    if (title) title.textContent = venue.venue_name || venue.room_type || 'Venue details';
+    if (title) title.textContent = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     if (rate) rate.textContent = rateText(venue, false);
     if (rating) rating.textContent = ratingText(venue);
@@ -553,7 +555,7 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.fixedDurationNights = venue.category === 'Resort Villa' ? 0 : null;
       modalCalendar.fixedDurationGuard = venue.category === 'Resort Villa';
       modalCalendar.requireHotelRules = venue.category === 'Hotel Room';
-      modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null);
+      modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null, venue.category === 'Hotel Room', venue.room_group_id || null);
     }
     setModalImage(0); updateContinue();
     modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); lockPageScroll();

@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/hotel_rooms.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/manual_payment.php';
@@ -73,6 +74,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $posted_venue_id = filter_var($_POST['venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $posted_group_raw = trim((string)($_POST['room_group_id'] ?? ''));
+        $posted_room_group_id = $posted_group_raw === '' ? null : filter_var($posted_group_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($posted_room_group_id === false) throw new Exception('Invalid hotel room selection.');
         $is_event_request = (($room_type ?? '') === 'Event Hall');
         if ($is_event_request) {
             if (!$posted_venue_id) throw new Exception('Please select an Event Hall before submitting the inquiry.');
@@ -102,6 +106,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
 
+        if ($venue_category === 'Hotel Room' && $posted_room_group_id !== null) {
+            if (!hotel_group_schema_ready($conn)) throw new Exception('Hotel room selection is temporarily unavailable.');
+            $stmt_group = $conn->prepare("SELECT h.room_group_id, h.max_capacity FROM hotel_rooms h
+                INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+                INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                WHERE h.venue_id = ? FOR UPDATE");
+            $stmt_group->bind_param('i', $venue_id);
+            $stmt_group->execute();
+            $selected_unit = $stmt_group->get_result()->fetch_assoc();
+            if (!$selected_unit || (int)$selected_unit['room_group_id'] !== (int)$posted_room_group_id) {
+                throw new Exception('The selected room group changed. Please select the room again.');
+            }
+            if ($guests > (int)$selected_unit['max_capacity']) {
+                throw new Exception('Guest count exceeds this room group\'s maximum capacity of ' . (int)$selected_unit['max_capacity'] . '.');
+            }
+        }
+
         // The final request must match an active lock created by this session
         // for overnight inventory. Event Hall inquiries are non-exclusive and
         // intentionally neither require nor honor booking_locks; use the
@@ -113,6 +134,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_own_lock->execute();
             if ($stmt_own_lock->get_result()->num_rows === 0) {
                 throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
+            }
+        }
+
+        if ($venue_category === 'Hotel Room' && $posted_room_group_id !== null) {
+            $available_group_units = hotel_available_group_units($conn, $sDate, $eDate, $sid, [(int)$posted_room_group_id], true);
+            $locked_group_unit_ids = array_map(static fn(array $unit): int => (int)$unit['venue_id'], $available_group_units[(int)$posted_room_group_id] ?? []);
+            if (!in_array($venue_id, $locked_group_unit_ids, true)) {
+                throw new Exception('This room is no longer available for the selected dates. Please choose another room.');
             }
         }
 
@@ -128,7 +157,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             SELECT id FROM bookings
             WHERE venue_id = ?
             AND booking_status $booking_status_filter
-            AND source <> 'Maintenance'
+            AND COALESCE(source, '') <> 'Maintenance'
             AND $overlap_condition
         ");
         $stmt_overlap->bind_param("iss", $venue_id, $eDate, $sDate);
@@ -140,7 +169,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Check maintenance blocks
         $stmt_maint = $conn->prepare("
             SELECT id FROM maintenance
-            WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled'
+            WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
             AND " . maintenance_overlap_sql() . "
         ");
         $stmt_maint->bind_param("iss", $venue_id, $eDate, $sDate);
@@ -269,23 +298,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $seen_group_keys = [];
             $requested_room_total = 0;
             foreach ($room_groups as $group) {
-                if (!is_array($group) || count($group) !== 3 || array_diff(['building_name', 'room_type', 'quantity'], array_keys($group)) !== []) {
+                if (!is_array($group) || array_diff(['building_name', 'room_type', 'quantity'], array_keys($group)) !== []) {
                     throw new Exception('Invalid hotel room selection.');
                 }
+                $group_id_raw = $group['room_group_id'] ?? null;
+                $group_id = ($group_id_raw === null || $group_id_raw === '') ? null : filter_var($group_id_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($group_id === false || ($group_id !== null && !hotel_group_schema_ready($conn))) throw new Exception('Invalid hotel room selection.');
                 $building = trim((string)$group['building_name']);
                 $type = trim((string)$group['room_type']);
                 $qty = $group['quantity'];
                 if ($building === '' || $type === '' || strlen($building) > 120 || strlen($type) > 120 || preg_match('/[\x00-\x1F\x7F]/', $building . $type) || !is_int($qty) || $qty < 1 || $qty > 50) {
                     throw new Exception('Invalid hotel room selection.');
                 }
-                $group_key = strtolower($building) . "\0" . strtolower($type);
+                $group_key = $group_id !== null ? 'group:' . $group_id : strtolower($building) . "\0" . strtolower($type);
                 if (isset($seen_group_keys[$group_key])) {
                     throw new Exception('Duplicate hotel room groups are not allowed.');
                 }
                 $seen_group_keys[$group_key] = true;
                 $requested_room_total += $qty;
                 if ($requested_room_total > 50) throw new Exception('Too many hotel rooms requested.');
-                $normalized_room_groups[] = ['building_name' => $building, 'room_type' => $type, 'quantity' => $qty];
+                if ($group_id !== null) {
+                    $validate_group = $conn->prepare("SELECT g.building_name, t.display_name AS room_type
+                        FROM hotel_room_groups g INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                        WHERE g.id = ? LIMIT 1");
+                    $validate_group->bind_param('i', $group_id);
+                    $validate_group->execute();
+                    $known_group = $validate_group->get_result()->fetch_assoc();
+                    if (!$known_group || $known_group['building_name'] !== $building || $known_group['room_type'] !== $type) throw new Exception('The selected hotel room group changed. Please refresh and try again.');
+                }
+                $normalized_room_groups[] = ['room_group_id' => $group_id, 'building_name' => $building, 'room_type' => $type, 'quantity' => $qty];
             }
             $room_groups = $normalized_room_groups;
 
@@ -297,6 +338,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     throw new Exception('Please select a valid hotel stay of at least 1 night.');
                 }
                 $nights = $start_dt->diff($end_dt)->days;
+
+                $requested_group_ids = array_values(array_unique(array_map(static fn(array $group): int => (int)($group['room_group_id'] ?? 0), $room_groups)));
+                $requested_group_ids = array_values(array_filter($requested_group_ids, static fn(int $id): bool => $id > 0));
+                $group_allocation_units = $requested_group_ids
+                    ? hotel_available_group_units($conn, $room_start, $room_end, session_id(), $requested_group_ids, true)
+                    : [];
 
                 $stmt_alloc = $conn->prepare("
                     SELECT v.id, h.nightly_rate
@@ -335,7 +382,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ");
                 if (!$stmt_alloc) throw new Exception('Unable to prepare room availability check.');
 
-                $stmt_insert = $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $hotel_groups_ready = hotel_group_schema_ready($conn);
+                $stmt_insert = $hotel_groups_ready
+                    ? $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, room_group_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                    : $conn->prepare("INSERT INTO booking_rooms (booking_id, venue_id, nightly_rate, start_date, end_date, nights, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 if (!$stmt_insert) throw new Exception('Unable to prepare room allocation.');
                 $used_room_ids = [];
 
@@ -343,26 +393,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $building = $group['building_name'];
                     $type = $group['room_type'];
                     $qty = $group['quantity'];
+                    $room_group_id = $group['room_group_id'];
 
                     if ($qty > 0) {
-                        $allocation_limit = min(50, $qty + count($used_room_ids));
-                        if (!$stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $allocation_limit) || !$stmt_alloc->execute()) {
-                            throw new Exception('Unable to check hotel room availability.');
+                        if ($room_group_id !== null) {
+                            $alloc_rows = $group_allocation_units[(int)$room_group_id] ?? [];
+                        } else {
+                            $allocation_limit = min(50, $qty + count($used_room_ids));
+                            if (!$stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $allocation_limit) || !$stmt_alloc->execute()) {
+                                throw new Exception('Unable to check hotel room availability.');
+                            }
+                            $alloc_res = $stmt_alloc->get_result();
+                            if (!$alloc_res) throw new Exception('Unable to read hotel room availability.');
+                            $alloc_rows = $alloc_res->fetch_all(MYSQLI_ASSOC);
                         }
-                        $alloc_res = $stmt_alloc->get_result();
-                        if (!$alloc_res) throw new Exception('Unable to read hotel room availability.');
                         $allocated_count = 0;
-                        while ($room = $alloc_res->fetch_assoc()) {
-                            $r_venue_id = (int)$room['id'];
+                        foreach ($alloc_rows as $room) {
+                            $r_venue_id = (int)($room['venue_id'] ?? $room['id'] ?? 0);
                             if (isset($used_room_ids[$r_venue_id])) continue;
-                            $used_room_ids[$r_venue_id] = true;
-                            $allocated_count++;
+                            if ($r_venue_id < 1) continue;
                             $r_rate = floatval($room['nightly_rate']);
                             $r_line_total = $r_rate * $nights;
 
-                            if (!$stmt_insert->bind_param("iidssid", $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total) || !$stmt_insert->execute()) {
+                            if ($hotel_groups_ready) {
+                                $insert_group_id = $room_group_id === null ? null : (int)$room_group_id;
+                                $insert_ok = $stmt_insert->bind_param('iiidssid', $booking_id, $r_venue_id, $insert_group_id, $r_rate, $room_start, $room_end, $nights, $r_line_total) && $stmt_insert->execute();
+                            } else {
+                                $insert_ok = $stmt_insert->bind_param('iidssid', $booking_id, $r_venue_id, $r_rate, $room_start, $room_end, $nights, $r_line_total) && $stmt_insert->execute();
+                            }
+                            if (!$insert_ok) {
                                 throw new Exception('Unable to save hotel room allocation.');
                             }
+                            $used_room_ids[$r_venue_id] = true;
+                            $allocated_count++;
 
                             // Ensure calculated room add-on totals are saved in booking_line_items
                             $li_name = "Room Add-on: $building - $type";

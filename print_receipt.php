@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth_guard.php';
 require_once __DIR__ . '/config/db_connect.php';
 require_once __DIR__ . '/includes/receipt_itemization.php';
+require_once __DIR__ . '/includes/manual_payment.php';
 
 function receipt_escape(mixed $value): string
 {
@@ -96,15 +97,17 @@ try {
     $room_allocations = $stmt_ra->get_result()->fetch_all(MYSQLI_ASSOC);
 
     $stmt_pay = $conn->prepare(
-        "SELECT transaction_id, payment_method, amount, payment_date
-         FROM payments
-         WHERE booking_id = ? AND status = 'Success'
-         ORDER BY payment_date ASC, id ASC"
+        "SELECT p.transaction_id, p.payment_method, p.amount, p.payment_date,
+                mps.transaction_reference AS manual_reference
+         FROM payments p
+         LEFT JOIN manual_payment_submissions mps ON mps.payment_id = p.id
+         WHERE p.booking_id = ? AND p.status = 'Success'
+         ORDER BY p.payment_date ASC, p.id ASC"
     );
     if (!$stmt_pay) throw new RuntimeException('Unable to load receipt.');
     $stmt_pay->bind_param('i', $booking_id);
     if (!$stmt_pay->execute()) throw new RuntimeException('Unable to load receipt.');
-    $payments = $stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC);
+    $payments = manual_payment_format_history($stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC));
 
     $ref_no = (string)$booking['reference_no'];
     $customer_name = trim((string)$booking['first_name'] . ' ' . (string)$booking['last_name']);
@@ -138,7 +141,10 @@ try {
     $payment_rows = '';
     foreach ($payments as $payment) {
         $payment_date = date('M j, Y', strtotime((string)$payment['payment_date']));
-        $payment_rows .= '<tr><td>Payment on ' . receipt_escape($payment_date) . ' (' . receipt_escape($payment['payment_method']) . ')<br><small>Transaction ID: ' . receipt_escape($payment['transaction_id']) . '</small></td><td class="amount paid">- ' . receipt_money($payment['amount']) . '</td></tr>';
+        $reference = $payment['transaction_reference'] !== null && $payment['transaction_reference'] !== ''
+            ? (string)$payment['transaction_reference']
+            : 'N/A';
+        $payment_rows .= '<tr><td>Payment method: ' . receipt_escape($payment['payment_method']) . '<br><small>Transaction/reference ID: ' . receipt_escape($reference) . '<br>Date: ' . receipt_escape($payment_date) . '</small></td><td class="amount paid">- ' . receipt_money($payment['amount']) . '</td></tr>';
     }
     if ($payment_rows === '') $payment_rows = '<tr><td>Successful payments recorded</td><td class="amount paid">- ' . receipt_money(0) . '</td></tr>';
 

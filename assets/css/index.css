@@ -845,23 +845,6 @@
   border-color: var(--idx-gold);
 }
 
-.idx-location-directions {
-  margin-top: 2rem;
-  border-color: rgba(255, 255, 255, 0.4) !important;
-  color: var(--idx-paper) !important;
-  background: transparent !important;
-  min-width: auto;
-  padding: 0.85rem 1.8rem;
-  font-size: 0.72rem;
-  gap: 0.5rem;
-}
-
-.idx-location-directions:hover {
-  background: var(--idx-gold) !important;
-  border-color: var(--idx-gold) !important;
-  color: var(--idx-ink) !important;
-}
-
 .idx-location-map {
   position: relative;
   width: 100%;
@@ -1068,5 +1051,4 @@
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
 

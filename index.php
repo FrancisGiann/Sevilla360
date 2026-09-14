@@ -5,6 +5,9 @@ $active_page = 'home';
 
 require_once 'includes/session_init.php';
 require_once 'config/db_connect.php';
+require_once 'includes/google_maps.php';
+require_once 'includes/hotel_rooms.php';
+require_once 'includes/media_helper.php';
 
 // Public venue discovery is sourced from the same active venue/detail/media
 // records used by booking.php. Keep this payload deliberately limited to
@@ -17,10 +20,7 @@ if ($public_media_query) {
         $public_media[$media['slot_assignment']][] = (string)$media['file_path'];
     }
 }
-$public_slot_key = static function (string $name): string {
-    $safe = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $name));
-    return 'venue_' . trim($safe, '_');
-};
+$public_slot_key = static fn(string $name): string => media_cms_venue_slot_key($name);
 $public_images = static function (string $displayName) use (&$public_media, $public_slot_key): array {
     $images = $public_media[$public_slot_key($displayName)] ?? [];
     $images = array_values(array_filter(array_map(static fn($path) => trim((string)$path), $images)));
@@ -42,21 +42,68 @@ if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
         'images' => $public_images((string)$venue['name'])
     ];
 }
-$hotel_review_fields = $venue_reviews_available
-    ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)) AS rating_count"
-    : ', 0 AS rating_average, 0 AS rating_count';
-$public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, MIN(h.nightly_rate) AS nightly_rate, MAX(h.nightly_rate) AS max_nightly_rate, MIN(h.base_capacity) AS base_capacity, MAX(h.max_capacity) AS max_capacity, MIN(h.bed_count) AS min_bed_count, MAX(h.bed_count) AS max_bed_count, MIN(h.extra_pax_rate) AS extra_pax_rate, MIN(h.check_in_time) AS check_in_time, MAX(h.check_out_time) AS check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count {$hotel_review_fields} FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type ORDER BY v.name, h.room_type");
-if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
-    $displayName = $venue['building_name'] . ' - ' . $venue['room_type'];
-    $minBeds = (int)$venue['min_bed_count']; $maxBeds = (int)$venue['max_bed_count'];
-    $formatBeds = static fn(int $min, int $max): string => $min === $max ? $min . ' ' . ($min === 1 ? 'bed' : 'beds') : $min . '–' . $max . ' beds';
-    $public_venues['Hotel Room'][] = [
-        'key' => 'hotel-' . md5($displayName), 'stable_key' => 'hotel-' . md5($displayName), 'review_key' => 'hotel-' . md5($displayName), 'category' => 'Hotel Room', 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
-        'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
-        'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
-        'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-        'images' => $public_images($displayName)
-    ];
+$hotel_group_schema_ready = hotel_group_schema_ready($conn);
+if ($hotel_group_schema_ready) {
+    $hotel_group_review_fields = $venue_reviews_available
+        ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND vr.venue_id IN (SELECT rh.venue_id FROM hotel_rooms rh INNER JOIN venues rv ON rv.id = rh.venue_id AND rv.category = 'Hotel Room' AND rv.status = 'Available' WHERE rh.room_group_id = g.id)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND vr.venue_id IN (SELECT rh.venue_id FROM hotel_rooms rh INNER JOIN venues rv ON rv.id = rh.venue_id AND rv.category = 'Hotel Room' AND rv.status = 'Available' WHERE rh.room_group_id = g.id)) AS rating_count"
+        : ', 0 AS rating_average, 0 AS rating_count';
+    $public_hotel_query = $conn->query("SELECT g.id AS room_group_id, g.media_slot_key, g.legacy_room_type,
+            (SELECT CASE WHEN COUNT(DISTINCT media_h.room_type) = 1 THEN MIN(media_h.room_type) ELSE NULL END
+             FROM hotel_rooms media_h
+             INNER JOIN venues media_v ON media_v.id = media_h.venue_id
+                AND media_v.category = 'Hotel Room' AND media_v.status = 'Available'
+             WHERE media_h.room_group_id = g.id) AS legacy_media_room_type,
+            COALESCE(NULLIF(g.display_name, ''), CONCAT(g.building_name, ' — ', COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room'))) AS display_name,
+            g.building_name, COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room') AS room_type,
+            g.room_type_code, g.nightly_rate, g.nightly_rate AS max_nightly_rate,
+            g.base_capacity, g.max_capacity, g.bed_count AS min_bed_count, g.bed_count AS max_bed_count,
+            g.extra_pax_rate, g.check_in_time, g.check_out_time,
+            MAX(g.description) AS description, MAX(g.amenities) AS amenities,
+            COUNT(DISTINCT v.id) AS inventory_count {$hotel_group_review_fields}
+        FROM hotel_room_groups g
+        INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+        INNER JOIN hotel_rooms h ON h.room_group_id = g.id
+        INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+        GROUP BY g.id, g.media_slot_key, g.display_name, g.building_name, g.room_type_code, t.display_name,
+            g.legacy_room_type, g.nightly_rate, g.base_capacity, g.max_capacity, g.bed_count, g.extra_pax_rate,
+            g.check_in_time, g.check_out_time, g.sort_order, t.sort_order, t.comfort_rank
+        ORDER BY t.sort_order, t.comfort_rank, g.building_name, g.sort_order, g.id");
+    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
+        $groupId = (int)$venue['room_group_id'];
+        $mediaSlot = hotel_room_group_media_slot_key($venue) ?? '';
+        $images = hotel_room_group_public_images($venue, $public_media);
+        $displayName = (string)$venue['display_name'];
+        $bedCount = (int)$venue['min_bed_count'];
+        $public_venues['Hotel Room'][] = [
+            'key' => 'hotel-group-' . $groupId, 'stable_key' => 'hotel-group-' . $groupId, 'review_key' => 'hotel-group-' . $groupId,
+            'room_group_id' => $groupId, 'media_slot_key' => $mediaSlot !== '' ? $mediaSlot : null,
+            'category' => 'Hotel Room', 'title' => $displayName, 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
+            'room_type' => (string)$venue['room_type'], 'room_type_code' => (string)($venue['room_type_code'] ?? ''),
+            'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null,
+            'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null,
+            'rate_is_starting' => false, 'overnight_rate' => null,
+            'facts' => ['Beds' => $bedCount . ' bed' . ($bedCount === 1 ? '' : 's'), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
+            'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
+            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images
+        ];
+    }
+} else {
+    $hotel_review_fields = $venue_reviews_available
+        ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)) AS rating_count"
+        : ', 0 AS rating_average, 0 AS rating_count';
+    $public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, MIN(h.nightly_rate) AS nightly_rate, MAX(h.nightly_rate) AS max_nightly_rate, MIN(h.base_capacity) AS base_capacity, MAX(h.max_capacity) AS max_capacity, MIN(h.bed_count) AS min_bed_count, MAX(h.bed_count) AS max_bed_count, MIN(h.extra_pax_rate) AS extra_pax_rate, MIN(h.check_in_time) AS check_in_time, MAX(h.check_out_time) AS check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count {$hotel_review_fields} FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type ORDER BY v.name, h.room_type");
+    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
+        $displayName = $venue['building_name'] . ' - ' . $venue['room_type'];
+        $minBeds = (int)$venue['min_bed_count']; $maxBeds = (int)$venue['max_bed_count'];
+        $formatBeds = static fn(int $min, int $max): string => $min === $max ? $min . ' ' . ($min === 1 ? 'bed' : 'beds') : $min . '–' . $max . ' beds';
+        $public_venues['Hotel Room'][] = [
+            'key' => 'hotel-' . md5($displayName), 'stable_key' => 'hotel-' . md5($displayName), 'review_key' => 'hotel-' . md5($displayName), 'category' => 'Hotel Room', 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
+            'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
+            'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
+            'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
+            'images' => $public_images($displayName)
+        ];
+    }
 }
 $public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time {$event_review_fields} FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
 if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
@@ -89,6 +136,7 @@ if ($biz_query) {
         $biz_info[$biz_row['setting_key']] = $biz_row['setting_value'];
     }
 }
+$normalized_map_embed = google_maps_normalize_embed($biz_info['biz_map_embed'] ?? '');
 
 include 'includes/header.php';
 ?>
@@ -304,18 +352,15 @@ include 'includes/header.php';
                     <i class="fa-solid fa-envelope" aria-hidden="true"></i>
                     <a href="mailto:<?php echo htmlspecialchars($biz_info['biz_email'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($biz_info['biz_email'], ENT_QUOTES, 'UTF-8'); ?></a>
                 </p>
-                <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($biz_info['biz_address']); ?>" target="_blank" rel="noopener noreferrer" class="idx-btn idx-btn-outline-dark idx-location-directions">
-                    <i class="fa-solid fa-diamond-turn-right" aria-hidden="true"></i> Get Directions
-                </a>
             </div>
             <div class="idx-location-map reveal">
                 <?php
-                    $map_src = !empty(trim($biz_info['biz_map_embed']))
-                        ? htmlspecialchars(trim($biz_info['biz_map_embed']), ENT_QUOTES, 'UTF-8')
+                    $map_src = $normalized_map_embed !== null && $normalized_map_embed !== ''
+                        ? $normalized_map_embed
                         : 'https://maps.google.com/maps?q=' . urlencode('M.I. Sevilla Resort ' . $biz_info['biz_address']) . '&t=&z=15&ie=UTF8&iwloc=&output=embed';
                 ?>
                 <iframe
-                    src="<?php echo $map_src; ?>"
+                    src="<?php echo htmlspecialchars($map_src, ENT_QUOTES, 'UTF-8'); ?>"
                     width="100%"
                     height="100%"
                     style="border:0;"

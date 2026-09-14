@@ -14,14 +14,25 @@
       this.options = options;
       this.modal = document.getElementById('modal-manual-payment');
       this.form = document.getElementById('manual-payment-form');
+      this.title = document.getElementById('manual-payment-title');
+      this.intro = document.getElementById('manual-payment-intro');
       this.summary = this.modal?.querySelector('.manual-payment-summary');
       this.booking = document.getElementById('manual-payment-booking');
       this.amount = document.getElementById('manual-payment-amount');
       this.deadline = document.getElementById('manual-payment-deadline');
       this.bookingIdInput = document.getElementById('manual-payment-booking-id');
       this.methodSelect = document.getElementById('manual-payment-method');
+      this.referenceInput = document.getElementById('manual-payment-reference');
       this.account = document.getElementById('manual-payment-account');
       this.qr = document.getElementById('manual-payment-qr');
+      this.qrPanel = document.getElementById('manual-payment-qr-panel');
+      this.qrView = document.getElementById('manual-payment-qr-view');
+      this.qrSave = document.getElementById('manual-payment-qr-save');
+      this.qrGuidance = document.getElementById('manual-payment-qr-guidance');
+      this.qrLightbox = document.getElementById('manual-payment-qr-lightbox');
+      this.qrLightboxStage = document.getElementById('manual-payment-qr-stage');
+      this.qrLightboxClose = document.getElementById('manual-payment-qr-close');
+      this.qrActions = this.qrView?.parentElement || null;
       this.status = document.getElementById('manual-payment-status');
       this.statusMessage = document.getElementById('manual-payment-status-message');
       this.contact = document.getElementById('manual-payment-contact');
@@ -35,6 +46,9 @@
       this.detailsReady = false;
       this.activeInvoker = null;
       this.previousBodyOverflow = '';
+      this.qrZoomInvoker = null;
+      this.submissionMode = 'submit';
+      this.submitButtonLabel = 'Submit for verification';
 
       if (!this.modal || !this.form || !this.methodSelect || !this.submitButton) return;
       this.bind();
@@ -48,16 +62,33 @@
         if (this.currentBookingId) this.loadDetails(this.currentBookingId);
       });
       this.methodSelect.addEventListener('change', () => this.renderInstructions());
+      this.qrView?.addEventListener('click', () => this.openQrZoom());
+      this.qrLightboxClose?.addEventListener('click', () => this.closeQrZoom());
+      this.qrLightbox?.addEventListener('click', (event) => {
+        const clickedOutsideQr = event.target === this.qrLightbox
+          || (this.qrLightboxStage?.contains(event.target) && !this.qr.contains(event.target));
+        if (clickedOutsideQr) this.closeQrZoom();
+      });
       this.form.addEventListener('submit', (event) => this.submitProof(event));
+
+      this.modal.addEventListener('click', (event) => {
+        if (event.target !== this.modal) return;
+        this.clearQr();
+        if (typeof this.options.openModal !== 'function') this.closeStandalone();
+      });
+      if (typeof MutationObserver === 'function') {
+        this.modalObserver = new MutationObserver(() => {
+          if (!this.modal.classList.contains('active')) this.clearQr();
+        });
+        this.modalObserver.observe(this.modal, { attributes: true, attributeFilter: ['class'] });
+      }
+
+      document.addEventListener('keydown', (event) => this.handleKeydown(event), true);
 
       if (typeof this.options.openModal !== 'function') {
         this.modal.querySelectorAll('.close-modal').forEach((button) => {
           button.addEventListener('click', () => this.closeStandalone());
         });
-        this.modal.addEventListener('click', (event) => {
-          if (event.target === this.modal) this.closeStandalone();
-        });
-        document.addEventListener('keydown', (event) => this.handleKeydown(event));
       }
     }
 
@@ -94,13 +125,16 @@
       this.isSubmitting = false;
       this.setSummaryBusy(false);
       this.methods = [];
+      this.submissionMode = 'submit';
+      this.submitButtonLabel = 'Submit for verification';
       this.form.reset();
+      if (this.title) this.title.textContent = 'Submit payment proof';
+      if (this.intro) this.intro.textContent = 'Your booking is saved and reserved while awaiting payment proof. Review the amount and deadline, pay using a listed option, then submit the transfer reference and receipt image.';
       this.bookingIdInput.value = this.currentBookingId || '';
       this.methodSelect.replaceChildren();
       this.methodSelect.disabled = true;
       this.account.replaceChildren();
-      this.qr.hidden = true;
-      this.qr.removeAttribute('src');
+      this.clearQr();
       this.submitButton.disabled = true;
       this.submitButton.textContent = 'Submit for verification';
       this.showStatus('', { error: false });
@@ -183,6 +217,32 @@
           this.methodSelect.appendChild(option);
         });
 
+        const latestSubmission = data.latest_submission && typeof data.latest_submission === 'object'
+          ? data.latest_submission
+          : null;
+        this.submissionMode = ['replace_pending', 'resubmit_rejected'].includes(data.submission_mode)
+          ? data.submission_mode
+          : 'submit';
+        if (this.submissionMode === 'replace_pending') {
+          if (this.title) this.title.textContent = 'Replace payment proof';
+          if (this.intro) this.intro.textContent = 'Your current proof is awaiting review. Submit a new receipt and reference to replace it; the updated proof will return to the review queue.';
+          this.submitButtonLabel = 'Replace proof';
+        } else if (this.submissionMode === 'resubmit_rejected') {
+          if (this.title) this.title.textContent = 'Submit corrected payment proof';
+          if (this.intro) this.intro.textContent = 'Your previous proof was rejected. Correct the details if needed and select a new receipt image to submit it again.';
+          this.submitButtonLabel = 'Submit corrected proof';
+        }
+        this.submitButton.textContent = this.submitButtonLabel;
+        if (latestSubmission && ['replace_pending', 'resubmit_rejected'].includes(this.submissionMode)) {
+          const existingMethod = String(latestSubmission.payment_method || '');
+          if (this.methods.some((method) => method.label === existingMethod)) {
+            this.methodSelect.value = this.methods.find((method) => method.label === existingMethod).key;
+          }
+          if (this.referenceInput && typeof latestSubmission.transaction_reference === 'string') {
+            this.referenceInput.value = latestSubmission.transaction_reference;
+          }
+        }
+
         if (!this.methods.length) {
           this.showStatus('The resort has not configured payment methods yet. Your booking is reserved; contact the resort for payment instructions or return later.', { contact: true });
           return;
@@ -212,8 +272,7 @@
 
     renderInstructions() {
       this.account.replaceChildren();
-      this.qr.hidden = true;
-      this.qr.removeAttribute('src');
+      this.clearQr();
       const method = this.methods.find((item) => item.key === this.methodSelect.value);
       if (!method) return;
       const addLine = (label, value) => {
@@ -227,11 +286,73 @@
       addLine('Account name', method.account_name);
       addLine('Account number', method.account_number);
       addLine('Instructions', method.details);
-      if (typeof method.qr_path === 'string' && method.qr_path.trim()) {
-        this.qr.src = method.qr_path;
-        this.qr.alt = `${method.label} payment QR code`;
-        this.qr.hidden = false;
+      const qrPath = typeof method.qr_path === 'string' ? method.qr_path.trim() : '';
+      const qrMatch = qrPath.match(/^assets\/uploads\/payment-qrs\/[a-f0-9]{48}\.(jpg|png|webp)$/i);
+      const methodFiles = {
+        gcash: { name: 'gcash-payment-qr', label: 'GCash' },
+        maya: { name: 'maya-payment-qr', label: 'Maya' },
+        bank_transfer: { name: 'bank-transfer-payment-qr', label: 'Bank Transfer' }
+      };
+      const safeMethod = Object.hasOwn(methodFiles, method.key) ? methodFiles[method.key] : null;
+      if (!qrMatch || !safeMethod) return;
+
+      this.qr.src = qrPath;
+      this.qr.alt = `${safeMethod.label} payment QR code`;
+      this.qr.hidden = false;
+      this.qrView.setAttribute('aria-label', `Enlarge ${safeMethod.label} payment QR`);
+      this.qrView.setAttribute('aria-expanded', 'false');
+      this.qrView.hidden = false;
+      this.qrSave.href = qrPath;
+      this.qrSave.download = `${safeMethod.name}.${qrMatch[1].toLowerCase()}`;
+      this.qrSave.setAttribute('aria-label', `Save ${safeMethod.label} payment QR image`);
+      this.qrSave.hidden = false;
+      this.qrGuidance.textContent = method.key === 'gcash'
+        ? 'On this phone, save the QR and upload it in GCash’s QR scanner. Enlarge it here to scan from another device.'
+        : 'On this phone, save the QR and upload it in your payment app’s QR scanner. Enlarge it here to scan from another device.';
+      this.qrPanel.hidden = false;
+    }
+
+    openQrZoom() {
+      if (!this.qrLightbox || !this.qrLightboxStage || !this.qr || this.qr.hidden || !this.qr.getAttribute('src')) return;
+      this.qrZoomInvoker = this.qrView;
+      this.qrLightbox.hidden = false;
+      this.qrLightbox.setAttribute('aria-hidden', 'false');
+      this.qrView?.setAttribute('aria-expanded', 'true');
+      this.qr.classList.add('is-zoomed');
+      this.qrLightboxStage.appendChild(this.qr);
+      window.requestAnimationFrame(() => this.qrLightboxClose?.focus({ preventScroll: true }));
+    }
+
+    closeQrZoom(options = {}) {
+      if (!this.qrLightbox || this.qrLightbox.hidden) return;
+      this.qr.classList.remove('is-zoomed');
+      if (this.qrPanel && this.qr.parentElement !== this.qrPanel) {
+        this.qrPanel.insertBefore(this.qr, this.qrActions);
       }
+      this.qrLightbox.hidden = true;
+      this.qrLightbox.setAttribute('aria-hidden', 'true');
+      this.qrView?.setAttribute('aria-expanded', 'false');
+      const invoker = this.qrZoomInvoker;
+      this.qrZoomInvoker = null;
+      if (options.restoreFocus !== false && invoker?.isConnected && !invoker.hidden) {
+        window.requestAnimationFrame(() => invoker.focus({ preventScroll: true }));
+      }
+    }
+
+    clearQr() {
+      this.closeQrZoom({ restoreFocus: false });
+      this.qrPanel.hidden = true;
+      this.qr.hidden = true;
+      this.qr.removeAttribute('src');
+      this.qr.alt = '';
+      this.qrView.hidden = true;
+      this.qrView.removeAttribute('aria-label');
+      this.qrView.setAttribute('aria-expanded', 'false');
+      this.qrSave.hidden = true;
+      this.qrSave.removeAttribute('href');
+      this.qrSave.removeAttribute('download');
+      this.qrSave.removeAttribute('aria-label');
+      this.qrGuidance.textContent = '';
     }
 
     async submitProof(event) {
@@ -273,7 +394,7 @@
       } finally {
         this.isSubmitting = false;
         this.form.removeAttribute('aria-busy');
-        this.submitButton.textContent = 'Submit for verification';
+        this.submitButton.textContent = this.submitButtonLabel;
         this.submitButton.disabled = !this.detailsReady;
       }
     }
@@ -291,6 +412,7 @@
     }
 
     closeModal() {
+      this.clearQr();
       if (typeof this.options.closeModal === 'function') {
         this.options.closeModal();
         return;
@@ -313,6 +435,23 @@
 
     handleKeydown(event) {
       if (!this.modal.classList.contains('active')) return;
+      if (this.qrLightbox && !this.qrLightbox.hidden) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          this.closeQrZoom();
+          return;
+        }
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          this.qrLightboxClose?.focus({ preventScroll: true });
+        }
+        return;
+      }
+      if (typeof this.options.openModal === 'function') return;
       if (event.key === 'Escape') {
         event.preventDefault();
         this.closeStandalone();

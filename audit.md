@@ -391,7 +391,7 @@ Existing tests are minimal: `scripts/test_receipt_itemization.php`, `scripts/tes
 2. Fix F-02, F-03, F-04, F-10.
 3. Commit canonical DB schema + guarded migrations (F-07); apply recommended indexes.
 4. Enforce HTTPS everywhere + HSTS; set `TRUSTED_PROXIES` correctly behind reverse proxy (`request_context.php` already supports it).
-5. Schedule cron: `scripts/daily_backup.php` + expired-lock cleanup; offsite backup copy; log rotation for `error_log`.
+5. Schedule expired-lock cleanup; retain offsite database protection through the deployment platform; rotate `error_log`.
 6. Verify `.env` secrets exist only in production (confirmed not committed to git); rotate any secret ever shared during development.
 7. nginx note: replicate `assets/uploads/.htaccess` protections (PHP off, image-only serving) in server config.
 8. Health checks: endpoint probing DB + Redis; monitor outbox backlog (unpublished `notification_outbox` count).
@@ -407,7 +407,7 @@ Existing tests are minimal: `scripts/test_receipt_itemization.php`, `scripts/tes
 ### Optional post-capstone improvements
 
 - Local replacements for Unsplash imagery (F-16); incremental CSP rollout.
-- Persistent DB connections or pooling; remove orphaned `admin_backups` include or finish the module.
+- Persistent DB connections or pooling.
 - PHPUnit harness covering Section 5.
 
 ---
@@ -446,7 +446,6 @@ Genuinely implemented and verified in code:
 - **SQL:** uniformly prepared statements; the only dynamic SQL fragments are whitelisted constants (overlap predicates from `booking_rules.php`) — no injection path found.
 - **Payments:** current flow validates customer-owned manual proof, fingerprints normalized method/reference values, and uses locked/idempotent staff approval with overpayment and terminal-state guards; receipt email follows commit. Historical audit-date PayMongo HMAC, checkout-binding, and reconciliation controls are not current code paths.
 - **Booking integrity:** venue-row `FOR UPDATE` serialization; session-scoped date holds with hold-proof re-verification; category-correct overlap semantics (event halls inclusive; overnight checkout-exclusive); maintenance blocks always inclusive; server-authoritative pricing and guest capacities; deterministic lock ordering documented at call sites; outbox events written inside business transactions.
-- **Backups:** HMAC-signed dumps failing closed without strong `APP_KEY`; preflight restore into isolated schema; protected filenames; pre-restore safety snapshot.
 - **Uploads/media:** content-sniffed MIME → forced safe extension; byte/pixel bomb limits; randomized filenames; realpath containment on delete; hotspot-reference deletion guards; Apache hardening in the uploads directory.
 - **Exports:** spreadsheet-formula neutralization including control-character/Unicode-separator prefixes (`csv_safe_value`).
 - **Realtime:** origin allowlist; authentication timeout; expiring socket timers; per-channel authorization derived entirely server-side; event-ID dedupe ring; bounded payloads; graceful degradation to polling everywhere.

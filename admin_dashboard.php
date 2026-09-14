@@ -11,6 +11,7 @@ $realtime_client_config = realtime_client_config();
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
 $allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'sales', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms'];
 if (!in_array($page, $allowed_pages, true)) $page = 'overview';
+$is_admin_user = (($_SESSION['role'] ?? '') === 'admin');
 
 $account_user_id = (int)($_SESSION['user_id'] ?? 0);
 $account_name = 'Admin User';
@@ -47,7 +48,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     </script>
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
-    <title>SEVILLA360 - Admin Dashboard</title>
+    <title>SEVILLA360 - <?= $is_admin_user ? 'Admin Dashboard' : 'Staff Dashboard' ?></title>
 
     <!-- Fonts & Icons -->
     <link
@@ -108,67 +109,72 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                 <ul class="nav-list">
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=overview"
-                            class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-chart-pie"></i> Overview</a>
+                            class="nav-link <?php echo $page === 'overview' ? 'active' : ''; ?>" <?= $page === 'overview' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-chart-pie" aria-hidden="true"></i><span class="nav-link-label">Overview</span></a>
                     </li>
-                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-                    <li class="nav-item">
-                        <a href="admin_dashboard.php?page=sales"
-                            class="nav-link <?php echo $page === 'sales' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-chart-line"></i> Sales</a>
-                    </li>
-                    <?php endif; ?>
+                    <li class="nav-group-label"><span>Operations</span></li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=calendar"
-                            class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-calendar-days"></i> Master Calendar</a>
+                            class="nav-link <?php echo $page === 'calendar' ? 'active' : ''; ?>" <?= $page === 'calendar' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-calendar-days" aria-hidden="true"></i><span class="nav-link-label">Master Calendar</span></a>
                     </li>
-                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-                    <li class="nav-item">
-                        <a href="admin_dashboard.php?page=reviews"
-                            class="nav-link <?php echo $page === 'reviews' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-star"></i> Venue Reviews</a>
-                    </li>
-                    <?php endif; ?>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=bookings"
-                            class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-calendar-check"></i> Bookings</a>
+                            class="nav-link <?php echo $page === 'bookings' ? 'active' : ''; ?>" <?= $page === 'bookings' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-calendar-check" aria-hidden="true"></i><span class="nav-link-label">Bookings</span></a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=walkin"
-                            class="nav-link <?php echo $page === 'walkin' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-person-walking-arrow-right"></i> Walk-in Entry</a>
+                            class="nav-link <?php echo $page === 'walkin' ? 'active' : ''; ?>" <?= $page === 'walkin' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-person-walking-arrow-right" aria-hidden="true"></i><span class="nav-link-label">Walk-in Entry</span></a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=maintenance"
-                            class="nav-link <?php echo $page === 'maintenance' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-screwdriver-wrench"></i> Maintenance</a>
+                            class="nav-link <?php echo $page === 'maintenance' ? 'active' : ''; ?>" <?= $page === 'maintenance' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i><span class="nav-link-label">Maintenance</span></a>
                     </li>
 
-                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+                    <?php if ($is_admin_user): ?>
+                    <li class="nav-group-label"><span>Business</span></li>
                     <li class="nav-item">
-                        <a href="admin_dashboard.php?page=usermanagement"
-                            class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-users-gear"></i> User Management</a>
+                        <a href="admin_dashboard.php?page=sales"
+                            class="nav-link <?php echo $page === 'sales' ? 'active' : ''; ?>" <?= $page === 'sales' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-chart-line" aria-hidden="true"></i><span class="nav-link-label">Sales</span></a>
                     </li>
                     <li class="nav-item">
+                        <a href="admin_dashboard.php?page=reviews"
+                            class="nav-link <?php echo $page === 'reviews' ? 'active' : ''; ?>" <?= $page === 'reviews' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-star" aria-hidden="true"></i><span class="nav-link-label">Venue Reviews</span></a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=usermanagement"
+                            class="nav-link <?php echo $page === 'usermanagement' ? 'active' : ''; ?>" <?= $page === 'usermanagement' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-users-gear" aria-hidden="true"></i><span class="nav-link-label">User Management</span></a>
+                    </li>
+                    <li class="nav-group-label"><span>System</span></li>
+                    <li class="nav-item">
                         <a href="admin_dashboard.php?page=auditlog"
-                            class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-clipboard-list"></i> Audit Log</a>
+                            class="nav-link <?php echo $page === 'auditlog' ? 'active' : ''; ?>" <?= $page === 'auditlog' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span class="nav-link-label">Audit Log</span></a>
                     </li>
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=cms"
-                            class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-images"></i> Media CMS</a>
+                            class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>" <?= $page === 'cms' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-images" aria-hidden="true"></i><span class="nav-link-label">Media CMS</span></a>
                     </li>
-                    <?php endif; ?>
-
                     <li class="nav-item">
                         <a href="admin_dashboard.php?page=settings"
-                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>"><i
-                                class="fa-solid fa-gear"></i> Settings</a>
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
                     </li>
+                    <?php else: ?>
+                    <li class="nav-group-label"><span>Account</span></li>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=settings"
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
+                    </li>
+                    <?php endif; ?>
                 </ul>
             </nav>
 
@@ -189,14 +195,14 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                     </button>
                     <h2 class="page-title">
                     <?php 
-                        if ($page === 'overview') echo 'Dashboard Overview';
+                        if ($page === 'overview') echo 'Operations Overview';
                         elseif ($page === 'calendar') echo 'Master Calendar';
                         elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
                         elseif ($page === 'sales') echo 'Sales';
                         elseif ($page === 'reviews') echo 'Venue Reviews';
-                        elseif ($page === 'settings') echo 'System Settings'; 
+                        elseif ($page === 'settings') echo $is_admin_user ? 'System Settings' : 'Account &amp; Security';
                         elseif ($page === 'auditlog') echo 'System Audit Log';
                         elseif ($page === 'usermanagement') echo 'User Management';
                         elseif ($page === 'cms') echo 'Media CMS';

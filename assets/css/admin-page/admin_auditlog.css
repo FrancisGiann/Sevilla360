@@ -106,6 +106,20 @@
   border: none;
 }
 
+.audit-actor-cell span {
+  display: block;
+  font-weight: 500;
+  color: var(--color-dark);
+}
+
+.audit-actor-cell small {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--color-dark-light);
+  margin-top: 3px;
+  text-transform: capitalize;
+}
+
 /* Alternating Row Colors */
 .audit-table tbody tr {
   transition: var(--transition-smooth);
@@ -121,6 +135,152 @@
 
 .audit-table tbody tr:hover {
   background-color: rgba(214, 168, 112, 0.08); /* Soft gold tint on hover */
+}
+
+.audit-table tbody tr[data-audit-id] {
+  cursor: pointer;
+}
+
+.audit-table tbody tr[data-audit-id]:focus-visible,
+.audit-detail-dialog button:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.audit-row-open {
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
+  display: inline-block;
+  color: var(--color-gold-hover);
+  background: transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: var(--transition-snappy);
+}
+.audit-row-open:hover {
+  text-decoration: underline;
+  color: var(--color-dark);
+}
+
+.audit-detail-dialog {
+  margin: auto;
+  width: min(42rem, calc(100% - 2rem));
+  max-height: min(85vh, 48rem);
+  overflow: auto;
+  padding: 2rem;
+  border: 1px solid rgba(214, 168, 112, 0.2); /* soft gold border */
+  border-radius: 12px;
+  color: var(--color-dark);
+  background: var(--color-white);
+  box-shadow: var(--shadow-hover); /* use system shadow */
+}
+
+.audit-detail-dialog::backdrop {
+  background: rgba(20, 18, 16, 0.4);
+  backdrop-filter: blur(4px); /* Add blur for a more premium look */
+}
+
+/* Modal Open Animation */
+.audit-detail-dialog[open] {
+  animation: dialog-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dialog-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.audit-detail-header,
+.audit-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.audit-detail-header h2 {
+  margin: 0;
+  font-family: var(--font-heading);
+}
+
+.audit-detail-close {
+  border: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-dark-light);
+  background: rgba(42, 37, 34, 0.05);
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: var(--transition-snappy);
+}
+
+.audit-detail-close:hover {
+  background: rgba(214, 168, 112, 0.15); /* Soft gold background on hover */
+  color: var(--color-dark);
+}
+
+.audit-detail-status {
+  min-height: 1.5rem;
+  color: var(--color-dark-light);
+  margin-top: 1rem;
+}
+
+.audit-detail-fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(0, 2.5fr);
+  gap: 0.75rem 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.audit-detail-fields dt {
+  font-weight: 500;
+  color: var(--color-dark-light);
+  font-size: 0.9rem;
+}
+
+.audit-detail-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 0.95rem;
+  color: var(--color-dark);
+  font-weight: 500;
+}
+
+.audit-detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+@media (max-width: 480px) {
+  .audit-detail-dialog {
+    padding: 1rem;
+  }
+
+  .audit-detail-fields {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .audit-detail-fields dd {
+    margin-bottom: 0.5rem;
+  }
 }
 
 /* Action Status Colors */
@@ -327,7 +487,7 @@
 
 /* Keep action descriptions aligned with the value column at every width. */
 .audit-table td.action-text {
-  text-align: right;
+  text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
 }
@@ -335,6 +495,6 @@
 .audit-table td.action-text .action-main,
 .audit-table td.action-text .action-module {
   display: block;
-  text-align: right;
+  text-align: left;
   overflow-wrap: anywhere;
 }

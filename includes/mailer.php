@@ -2,6 +2,7 @@
 // includes/mailer.php
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config/env.php'; // Load env variables
+require_once __DIR__ . '/manual_payment.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -120,20 +121,20 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         }
     }
 
-    // Fetch Payment Records & Transaction IDs
-    $stmt_pay = $conn->prepare("SELECT transaction_id, payment_method, amount, payment_date FROM payments WHERE booking_id = ? AND status = 'Success' ORDER BY payment_date ASC");
+    // Fetch display-safe, ordered payment-history entries.
+    $stmt_pay = $conn->prepare("SELECT p.transaction_id, p.payment_method, p.amount, p.payment_date, mps.transaction_reference AS manual_reference FROM payments p LEFT JOIN manual_payment_submissions mps ON mps.payment_id = p.id WHERE p.booking_id = ? AND p.status = 'Success' ORDER BY p.payment_date ASC, p.id ASC");
     $stmt_pay->bind_param("i", $booking['id']);
     $stmt_pay->execute();
-    $payments_arr = $stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC);
+    $payments_arr = manual_payment_format_history($stmt_pay->get_result()->fetch_all(MYSQLI_ASSOC));
 
     $pay_details_html = "";
     if (!empty($payments_arr)) {
         foreach ($payments_arr as $p) {
             $pay_date = date('M j, Y', strtotime($p['payment_date']));
-            $tx_id = htmlspecialchars($p['transaction_id']);
-            $p_method = htmlspecialchars($p['payment_method']);
+            $tx_id = htmlspecialchars((string)($p['transaction_reference'] ?? 'N/A'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $p_method = htmlspecialchars($p['payment_method'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $p_amt = number_format($p['amount'], 2);
-            $pay_details_html .= "<tr><td style='padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px;'>Payment ($p_method)<br><span style='font-size: 11px; color: #888;'>TXN: $tx_id ($pay_date)</span></td><td style='padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>- ₱$p_amt</td></tr>";
+            $pay_details_html .= "<tr><td style='padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px;'>Payment method: $p_method<br><span style='font-size: 11px; color: #888;'>Transaction/reference ID: $tx_id<br>Date: $pay_date<br>Amount: - ₱$p_amt</span></td><td style='padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>- ₱$p_amt</td></tr>";
         }
     } else {
         $pay_details_html = "<tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Amount Paid:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>₱" . number_format($total_paid, 2) . "</td></tr>";
@@ -291,7 +292,7 @@ function send_booking_cancellation_email($customer_email, $customer_name, $booki
             : 'No payment has been recorded, so no refund is currently due.');
         $title = 'REFUND REQUEST RECEIVED'; $message = 'Your refund request is pending resort review. It does not cancel the booking yet.'; $status = 'Pending refund review'; $color = '#b5884e'; $subject = "{$biz['biz_name']}: Refund Request Received [{$booking['reference_no']}]";
     } elseif ($type === 'refund') {
-        $note = 'A refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been processed to your original payment method. Please allow 5–10 business days for it to appear.';
+        $note = 'A refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been sent to the destination you provided. Please check with your wallet provider or bank if it does not appear.';
         $title = 'REFUND PROCESSED'; $message = 'Your cancellation request was approved and the booking has been cancelled.'; $status = 'Refunded & Cancelled'; $color = '#2f7d5d'; $subject = "{$biz['biz_name']}: Refund Processed [{$booking['reference_no']}]";
     } elseif ($type === 'customer_cancelled') {
         $note = 'No payment has been recorded, so no refund is due.';

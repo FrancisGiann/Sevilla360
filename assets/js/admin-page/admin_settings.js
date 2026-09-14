@@ -399,13 +399,15 @@ document.addEventListener("DOMContentLoaded", () => {
       } else if (venueData.category === "Hotel Room") {
         document.getElementById("vm-base-cap").value = venueData.hr_base;
         document.getElementById("vm-max-cap").value = venueData.hr_max;
-        document.getElementById("vm-hr-type").value = venueData.room_type;
+        document.getElementById("vm-hr-type").value = venueData.room_type_code || "";
         document.getElementById("vm-hr-rate").value = venueData.nightly_rate;
         document.getElementById("vm-hr-room-number").value = venueData.room_number || "";
         document.getElementById("vm-hr-bed-count").value = venueData.bed_count || 1;
         document.getElementById("vm-hr-check-in").value = (venueData.check_in_time || "14:00:00").slice(0, 5);
         document.getElementById("vm-hr-check-out").value = (venueData.check_out_time || "12:00:00").slice(0, 5);
         document.getElementById("vm-extra-pax").value = venueData.hr_extra;
+        const mediaSlotField = document.getElementById("vm-hr-media-slot");
+        if (mediaSlotField) mediaSlotField.value = venueData.media_slot_key || "";
       } else if (venueData.category === "Resort Villa") {
         document.getElementById("vm-base-cap").value = venueData.vi_base;
         document.getElementById("vm-max-cap").value = venueData.vi_max;

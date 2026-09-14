@@ -14,7 +14,14 @@
             <select name="method" id="manual-payment-method" required disabled></select>
             <section class="manual-payment-instructions" aria-live="polite" aria-label="Selected payment instructions">
                 <div id="manual-payment-account"></div>
-                <img id="manual-payment-qr" class="manual-payment-qr" src="assets/img/Logo.png" alt="" hidden>
+                <div id="manual-payment-qr-panel" class="manual-payment-qr-panel" hidden>
+                    <img id="manual-payment-qr" class="manual-payment-qr" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="" hidden>
+                    <div class="manual-payment-qr-actions">
+                        <button type="button" id="manual-payment-qr-view" class="manual-payment-qr-action" aria-controls="manual-payment-qr-lightbox" aria-expanded="false" hidden>Enlarge QR</button>
+                        <a id="manual-payment-qr-save" class="manual-payment-qr-action" hidden>Save QR image</a>
+                    </div>
+                    <p id="manual-payment-qr-guidance" class="manual-payment-qr-guidance"></p>
+                </div>
             </section>
             <label for="manual-payment-reference">Transaction or reference number</label>
             <input type="text" name="transaction_reference" id="manual-payment-reference" minlength="4" maxlength="64" autocomplete="off" required aria-describedby="manual-payment-reference-help">
@@ -31,5 +38,9 @@
                 <button type="submit" class="btn-modal btn-confirm" id="manual-payment-submit" disabled>Submit for verification</button>
             </div>
         </form>
+    </div>
+    <div id="manual-payment-qr-lightbox" class="manual-payment-qr-lightbox" role="region" aria-label="Enlarged payment QR code" aria-hidden="true" hidden>
+        <button type="button" id="manual-payment-qr-close" class="manual-payment-qr-lightbox-close" aria-label="Close enlarged QR code"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        <div id="manual-payment-qr-stage" class="manual-payment-qr-stage"></div>
     </div>
 </div>

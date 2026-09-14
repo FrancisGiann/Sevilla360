@@ -33,15 +33,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 2. MASTER FETCH: Grabs all data and shares it
-    function fetchGlobalData() {
-        fetch('actions/admin/get_dashboard_stats.php', {
-            headers: { 'X-Sevilla-Background': '1', 'Accept': 'application/json' }
-        })
-        .then(res => res.json())
-        .then(data => {
+    async function fetchGlobalData() {
+        try {
+            const response = await fetch('actions/admin/get_dashboard_stats.php', {
+                headers: { 'X-Sevilla-Background': '1', 'Accept': 'application/json' }
+            });
+            const data = await response.json();
+            if (!response.ok || !data || typeof data !== 'object' || data.error || data.success === false) {
+                throw new Error('Dashboard data unavailable');
+            }
             
             // A. Update Notifications UI
-            if (data.notifications) {
+            if (Array.isArray(data.notifications)) {
                 let unreadCount = 0;
                 let htmlList = '';
 
@@ -98,8 +101,11 @@ document.addEventListener("DOMContentLoaded", () => {
             // This allows admin_overview.js to receive the exact same payload without making a second fetch!
             const event = new CustomEvent('SevillaDashboardData', { detail: data });
             window.dispatchEvent(event);
-
-        }).catch(() => {});
+        } catch (error) {
+            window.dispatchEvent(new CustomEvent('SevillaDashboardError', {
+                detail: { message: 'Dashboard data could not be loaded. Please retry.' }
+            }));
+        }
     }
 
     // WebSocket events only invalidate the view; the existing authorized
@@ -107,6 +113,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener('SevillaRealtimeEvent', event => {
         if (event.detail?.channel === 'admin') fetchGlobalData();
     });
+    window.addEventListener('SevillaDashboardRefreshRequested', fetchGlobalData);
 
     // Run instantly on page load, then poll while visible with visibility-aware
     // backoff. The bell/list is the notification surface; no automatic popup.

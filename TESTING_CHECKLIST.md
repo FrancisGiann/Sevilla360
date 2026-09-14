@@ -104,7 +104,7 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 ## 6. Staff and admin booking operations
 
 - [ ] As staff, open Overview, Bookings, Walk-in, Calendar, Maintenance, and Settings. All permitted pages/actions load and save correctly.
-- [ ] As admin, also test Users, Audit Log, CMS, and authorized backup endpoints/scripts.
+- [ ] As admin, also test Users, Audit Log, and CMS.
 - [ ] Confirm a staff account cannot access admin-only pages or call admin-only action URLs directly.
 - [ ] Search, filter, paginate, and open booking details; results must be correct and no records should be skipped or duplicated.
 - [ ] Change booking status through each permitted transition; verify customer dashboard, calendar, counts, audit log, and notifications update consistently.
@@ -121,7 +121,6 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Add non-blocking maintenance; verify intended visibility and booking behavior.
 - [ ] Complete and delete/cancel maintenance; verify calendar, venue availability, related maintenance booking (if used), audit log, and availability update correctly.
 - [ ] Edit venue status, capacity, rates, and other settings; verify changes appear in booking calculation and public display where intended.
-- [ ] Enable and disable site maintenance mode; public behavior and staff/admin access match the intended policy.
 
 ## 8. User, CMS, media, and hotspot management
 
@@ -135,20 +134,11 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Create, edit, and delete showroom hotspots; verify position, target/description, ordering, and appearance in the public showroom.
 - [ ] Enter special characters and HTML/JavaScript-like text in venue names, notes, hotspot labels, profile fields, and CMS content; it must display as text and never execute.
 
-## 9. Backup and recovery (staging only)
-
-- [ ] Create a backup; it appears in the list, has a plausible non-zero size, is downloadable, and is recorded in audit logs.
-- [ ] Download a backup; it has the expected file type/content and an unauthorized user cannot download it.
-- [ ] Import a known-good backup; it is accepted, listed, and can be restored.
-- [ ] Attempt import of corrupt, tampered, wrong-format, oversized, and duplicate files; each fails safely without replacing data.
-- [ ] Before restoring, create a uniquely identifiable test record; restore a selected backup and verify the data returns exactly to that snapshot (including expected loss of the later test record).
-- [ ] Delete a backup; confirm only the selected backup is removed from the list/storage and the action is audited.
-
-## 10. Security and resilience checks
+## 9. Security and resilience checks
 
 - [ ] Open every protected page and action URL while logged out, as customer, as staff, and as admin; authorization is enforced server-side, not just by hidden buttons.
 - [ ] For every state-changing form/request, omit or alter the CSRF token; request must be rejected without changing data.
-- [ ] Test URL/query/body IDs with another user's booking, venue, backup, media, maintenance, and staff IDs; cross-account access/modification must be denied.
+- [ ] Test URL/query/body IDs with another user's booking, venue, media, maintenance, and staff IDs; cross-account access/modification must be denied.
 - [ ] Test SQL-injection-like input (`' OR 1=1 --`) in login, search, booking, and settings fields; no data is exposed or altered.
 - [ ] Test stored and reflected XSS-like input (`<script>alert(1)</script>`) in all user-entered fields; script must never execute.
 - [ ] Check sensitive responses, redirects, HTML, browser storage, logs, and error messages for passwords, database credentials, service tokens, private receipt contents, or full payment data.
@@ -157,14 +147,14 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 - [ ] Run `node --test realtime/test/*.test.mjs` and `php scripts/test_google_oauth.php`; record live Redis/WebSocket and Google credential checks separately because they require deployment infrastructure/configuration.
 - [ ] Verify rate limiting for login, registration/verification resend, password reset, and payment-related actions behaves as intended without locking legitimate users permanently.
 
-## 11. Compatibility, accessibility, and final release pass
+## 10. Compatibility, accessibility, and final release pass
 
 - [ ] Repeat the critical path (home → register/login → booking → payment → receipt → dashboard) in current Chrome, Firefox, Edge, and Safari; also test Android Chrome and iPhone Safari if supported.
 - [ ] Test at 320px mobile width, common tablet width, and desktop width. Check touch targets, date picker, modal scrolling, forms, and virtual showroom controls.
 - [ ] Test with slow 3G/network interruption. Loading states are clear, retries do not duplicate records, and errors are understandable.
 - [ ] Check page titles, language/spelling, currency/date format, required-field labels, error messages, contrast, image alt text, and form error announcement.
 - [ ] Run a final end-to-end booking as a clean customer account and reconcile it in the admin dashboard, calendar, payments, email inbox, notifications, and audit log.
-- [ ] Review unresolved failures. Release only when all critical items (authentication, availability, booking duplication, manual-payment proof review/expiry, authorization, backups) pass or have an accepted documented mitigation.
+- [ ] Review unresolved failures. Release only when all critical items (authentication, availability, booking duplication, manual-payment proof review/expiry, and authorization) pass or have an accepted documented mitigation.
 
 ## Suggested test evidence table
 

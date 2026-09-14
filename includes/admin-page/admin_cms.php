@@ -1,5 +1,6 @@
 <?php
 require_once 'config/db_connect.php';
+require_once 'includes/media_helper.php';
 
 // 1. Fetch DISTINCT venues by grouping by BOTH Building Name AND Room Type
 $venues_query = $conn->query("
@@ -42,20 +43,19 @@ if ($venues_query) {
         
         $clean_name = htmlspecialchars($display_name);
         
-        $safe_id = strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name));
-        $safe_id = trim($safe_id, '_');
+        $slot_key = media_cms_venue_slot_key($display_name);
         
-        $venue_categories['venue_' . $safe_id] = $clean_name; 
+        $venue_categories[$slot_key] = $clean_name;
         
         // Place into dedicated venue_standard_slots array
-        $venue_standard_slots['venue_' . $safe_id] = [
+        $venue_standard_slots[$slot_key] = [
             'title' => $clean_name . ' (Standard Photo)',
             'badge' => $v['category'],
             'type' => 'standard'
         ];
         
         // Slot for 360 panorama
-        $venue_360_slots['venue_' . $safe_id . '_360'] = [
+        $venue_360_slots[$slot_key . '_360'] = [
             'title' => $clean_name . ' (360 View)',
             'badge' => '360 Panorama',
             'type' => '360',

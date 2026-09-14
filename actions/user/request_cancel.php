@@ -83,6 +83,10 @@ try {
     if (booking_is_completed($locked_booking)) throw new Exception('This booking is complete and can no longer be cancelled or refunded.');
     if (!in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
     $amount_paid = (float)$locked_booking['amount_paid'];
+    $destination = null;
+    if ($amount_paid > 0) {
+        $destination = normalize_refund_destination(is_array($data['refund_destination'] ?? null) ? $data['refund_destination'] : []);
+    }
     $refund = calculate_refund_breakdown($conn, $amount_paid);
     $fee = $refund['fee'];
     $refund_amount = $refund['refund'];
@@ -100,14 +104,14 @@ try {
         // prior state remains in cancellation_history.
         if ($existing) {
             if ($existing['status'] !== 'Rejected') throw new Exception('This booking is not eligible for another refund request.');
-            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
-            $stmt_cx->bind_param("sdddi", $reason, $refund_amount, $fee, $fee_percent, $existing['id']);
+            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_destination_method = ?, refund_destination_account_name = ?, refund_destination_account_identifier = ?, refund_destination_bank_name = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
+            $stmt_cx->bind_param("sdddssssi", $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
             if (!$stmt_cx->execute() || $stmt_cx->affected_rows !== 1) throw new Exception('The prior refund request changed before it could be reopened.');
             $cancellation_id = (int)$existing['id'];
             $history_action = 'reopened';
         } else {
-            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, status) VALUES (?, ?, ?, ?, ?, 'Pending')");
-            $stmt_cx->bind_param("isddd", $booking_id, $reason, $refund_amount, $fee, $fee_percent);
+            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
+            $stmt_cx->bind_param("isdddssss", $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
             if (!$stmt_cx->execute()) throw new Exception('Unable to submit the refund request.');
             $cancellation_id = (int)$conn->insert_id;
             $history_action = 'requested';
@@ -192,7 +196,9 @@ try {
 } catch (Exception $e) {
     $conn->rollback();
     $errorMessage = strtolower((string)$e->getMessage());
-    if (str_contains($errorMessage, 'complete')) {
+    if ($e instanceof InvalidArgumentException) {
+        $safeMessage = $e->getMessage();
+    } elseif (str_contains($errorMessage, 'complete')) {
         $safeMessage = 'This booking is complete and can no longer be cancelled or refunded.';
     } elseif ($conn->errno == 1062) {
         $safeMessage = 'A cancellation request is already pending for this booking.';

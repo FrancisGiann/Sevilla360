@@ -1,6 +1,8 @@
 <?php
 require_once 'config/db_connect.php';
 require_once __DIR__ . '/../manual_payment.php';
+require_once __DIR__ . '/../google_maps.php';
+require_once __DIR__ . '/../hotel_rooms.php';
 
 // 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -11,8 +13,7 @@ if ($settings_query) {
     }
 }
 
-$maintenance_checked = (isset($current_settings['maintenance_mode']) && $current_settings['maintenance_mode'] === 'true') ? 'checked' : '';
-$walkins_checked = (isset($current_settings['allow_walkins']) && $current_settings['allow_walkins'] === 'true') ? 'checked' : '';
+$biz_map_embed_for_form = google_maps_normalize_embed($current_settings['biz_map_embed'] ?? '') ?? '';
 $refund_fee_raw = trim((string)($current_settings['refund_fee_percent'] ?? '3.00'));
 $refund_fee_percent = preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refund_fee_raw) && is_finite((float)$refund_fee_raw) && (float)$refund_fee_raw >= 0 && (float)$refund_fee_raw <= 100
     ? number_format((float)$refund_fee_raw, 2, '.', '')
@@ -57,17 +58,24 @@ $paymentTerms = 'Online Hotel Room and Resort Villa bookings have a 24-hour paym
 if (!str_contains((string)$support_content['support_terms'], 'payment window pauses')) $support_content['support_terms'] .= "\n" . $paymentTerms;
 
 // 2. Fetch all Venues and their specific child-table data
+$hotel_group_ready = hotel_group_schema_ready($conn);
+$hotel_group_select = $hotel_group_ready
+    ? 'hr.room_type_code, hr.room_group_id, hg.media_slot_key'
+    : 'NULL AS room_type_code, NULL AS room_group_id, NULL AS media_slot_key';
+$hotel_group_join = $hotel_group_ready ? ' LEFT JOIN hotel_room_groups hg ON hg.id = hr.room_group_id' : '';
 $venues_query = $conn->query("
     SELECT 
         v.*, 
         hr.room_type, hr.room_number, hr.bed_count, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
         hr.check_in_time, hr.check_out_time,
+        {$hotel_group_select},
         eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate, eh.capacity_theater, eh.capacity_classroom, eh.capacity_banquet,
         vi.base_capacity as vi_base, vi.max_capacity as vi_max, vi.day_rate, vi.overnight_rate, vi.extra_pax_rate as vi_extra,
         vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time,
         vi.day_stay_inclusions, vi.overnight_stay_inclusions
     FROM venues v
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    {$hotel_group_join}
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
     ORDER BY v.category, v.name
@@ -306,33 +314,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                 <h2 class="panel-heading">System Preferences</h2>
 
                 <form id="form-prefs" class="settings-form" onsubmit="return false;">
-                    <div class="preference-item">
-                        <div class="preference-info">
-                            <h4>Maintenance Mode</h4>
-                            <p>Disable user access to the booking frontend while updating systems.</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" name="maintenance_mode" id="maintenance_mode"
-                                <?php echo $maintenance_checked; ?>>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <hr class="panel-divider">
-
-                    <div class="preference-item">
-                        <div class="preference-info">
-                            <h4>Allow Walk-ins</h4>
-                            <p>Enable reception to accept walk-in bookings through the dashboard.</p>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" name="allow_walkins" id="allow_walkins"
-                                <?php echo $walkins_checked; ?>>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-
-                    <hr class="panel-divider">
 
                     <div class="preference-item settings-section-card">
                         <div class="preference-info">
@@ -384,11 +365,10 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                                     placeholder="Full street address, city, province">
                             </div>
                             <div class="form-group settings-field-wide">
-                                <label>Google Maps Embed URL <span style="font-weight:normal;color:#9a8e82;font-size:.82em;">(Shown on homepage location section)</span></label>
-                                <input type="url" name="biz_map_embed" class="form-control"
-                                    value="<?php echo htmlspecialchars($current_settings['biz_map_embed'] ?? ''); ?>"
-                                    placeholder="Paste the iframe src URL from Google Maps → Share → Embed a map">
-                                <small style="color:#9a8e82;margin-top:.35rem;display:block;">Go to <a href="https://maps.google.com" target="_blank" rel="noopener" style="color:var(--gold);">Google Maps</a>, find your location, click <strong>Share → Embed a map</strong>, copy the <code>src="..."</code> URL from the iframe code.</small>
+                                <label for="biz-map-embed">Google Maps Embed <span style="font-weight:normal;color:#9a8e82;font-size:.82em;">(Shown on homepage location section)</span></label>
+                                <textarea id="biz-map-embed" name="biz_map_embed" class="form-control" rows="4" maxlength="8192" style="resize: vertical;"
+                                    placeholder="Paste a complete Google Maps &lt;iframe ...&gt; or its HTTPS src URL"><?php echo htmlspecialchars($biz_map_embed_for_form, ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                <small style="color:#9a8e82;margin-top:.35rem;display:block;">Accepts the complete iframe code or its <code>src</code> URL. Go to <a href="https://maps.google.com" target="_blank" rel="noopener" style="color:var(--gold);">Google Maps</a>, find your location, then choose <strong>Share → Embed a map</strong>. Only the validated Google Maps URL is stored; the embedded map provides its own directions control.</small>
                             </div>
                             <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
@@ -638,8 +618,14 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     <!-- Hotel Room Specific -->
                     <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
                         <label>Room Type</label>
-                        <input type="text" id="vm-hr-type" name="room_type" class="form-control"
-                            placeholder="e.g. Deluxe Room">
+                        <select id="vm-hr-type" name="room_type_code" class="form-control" required>
+                            <option value="">Choose a room type</option>
+                            <option value="standard_room">Standard Room</option>
+                            <option value="dormitory_room">Dormitory Room</option>
+                            <option value="family_room_superior">Family Room / Superior</option>
+                            <option value="deluxe">Deluxe</option>
+                            <option value="vip_suite">VIP Suite</option>
+                        </select>
                     </div>
                     <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
                         <label>Nightly Rate (₱)</label>
@@ -662,6 +648,11 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <label>Check-out</label>
                         <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00">
                     </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label>Optional media slot key</label>
+                        <input type="text" id="vm-hr-media-slot" name="media_slot_key" class="form-control" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" title="Use letters, numbers, underscores, or hyphens.">
+                    </div>
+                    <p class="form-hint vm-dynamic vm-hotel" style="display:none;">A media slot is optional. The same explicit slot may intentionally be shared by room groups.</p>
 
                     <!-- BULK HOTEL ROOM CREATION (Only shown on add) -->
                     <div class="form-group vm-dynamic vm-hotel vm-bulk-section venue-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc;">

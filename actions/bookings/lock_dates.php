@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/hotel_rooms.php';
 
 function lock_dates_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -55,6 +56,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         $explicit_venue_id = (int)$validated_venue_id;
     }
+    $room_group_raw = trim((string)($_POST['room_group_id'] ?? ''));
+    $room_group_id = $room_group_raw === '' ? null : filter_var($room_group_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($room_group_id === false) {
+        http_response_code(422);
+        echo 'Error|Invalid room selection.';
+        exit;
+    }
+    if ($room_group_id !== null && !hotel_group_schema_ready($conn)) {
+        http_response_code(503);
+        echo 'Error|Hotel room selection is temporarily unavailable.';
+        exit;
+    }
+    $requested_guests = filter_var($_POST['guests'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 1000]]);
     // Validate exact calendar dates before any transaction or lock insert.
     // DateTime normalizes values such as 2026-02-31, so compare the formatted
     // value back to the submitted value as well as checking the date range.
@@ -95,20 +109,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // an input to this authoritative lookup. Never allow an Event Hall,
     // villa, unavailable unit, or mismatched room type/name to be locked.
     if (!$is_staff_booking && $explicit_venue_id !== null) {
-        $customer_venue = $conn->prepare(
-            "SELECT v.id
-             FROM venues v
-             INNER JOIN hotel_rooms h ON h.venue_id = v.id
-             WHERE v.id = ?
-               AND v.category = 'Hotel Room'
-               AND v.status = 'Available'
-               AND v.name = ?
-               AND h.room_type = ?
-             LIMIT 1"
-        );
-        $customer_venue->bind_param('iss', $explicit_venue_id, $room_name, $room_type);
+        if ($room_group_id !== null) {
+            if ($requested_guests === false) {
+                http_response_code(422);
+                echo 'Error|Enter a valid guest count for this room.';
+                exit;
+            }
+            $customer_venue = $conn->prepare("SELECT v.id, h.max_capacity FROM venues v
+                INNER JOIN hotel_rooms h ON h.venue_id = v.id
+                INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+                INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1 WHERE v.id = ?
+                AND v.category = 'Hotel Room' AND v.status = 'Available' AND h.room_group_id = ? LIMIT 1");
+            $customer_venue->bind_param('ii', $explicit_venue_id, $room_group_id);
+        } else {
+            $customer_venue = $conn->prepare("SELECT v.id, h.max_capacity FROM venues v
+                INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.id = ?
+                AND v.category = 'Hotel Room' AND v.status = 'Available' AND v.name = ? AND h.room_type = ? LIMIT 1");
+            $customer_venue->bind_param('iss', $explicit_venue_id, $room_name, $room_type);
+        }
         $customer_venue->execute();
-        if ($customer_venue->get_result()->num_rows === 0) {
+        $customer_venue_row = $customer_venue->get_result()->fetch_assoc();
+        if (!$customer_venue_row || ($room_group_id !== null && (int)$requested_guests > (int)$customer_venue_row['max_capacity'])) {
             http_response_code(422);
             echo "Error|The selected hotel room is invalid or unavailable.";
             exit;
@@ -154,7 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $venue_id = $result->fetch_assoc()['id'];
 
             // 1. Check Maintenance
-            $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL) AND " . maintenance_overlap_sql());
             $chk_maint->bind_param("iss", $venue_id, $end_date, $start_date);
             $chk_maint->execute();
             if ($chk_maint->get_result()->num_rows > 0) throw new Exception("These dates are currently under maintenance.");
@@ -176,7 +197,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             // HOTEL ROOM: Find any available unit in the group
             // For Walk-in, venue_id might be explicitly provided
-            if ($explicit_venue_id !== null) {
+            if ($explicit_venue_id !== null && $room_group_id !== null) {
+                if ($requested_guests === false) throw new Exception('Enter a valid guest count for this room.');
+                $explicit_vid = $explicit_venue_id;
+                $stmt_inv = $conn->prepare("SELECT v.id, h.max_capacity FROM venues v
+                    INNER JOIN hotel_rooms h ON h.venue_id = v.id
+                    INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+                    INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                    WHERE v.id = ? AND v.category = 'Hotel Room' AND v.status = 'Available'
+                      AND h.room_group_id = ? AND h.max_capacity >= ? LIMIT 1 FOR UPDATE");
+                $stmt_inv->bind_param('iii', $explicit_vid, $room_group_id, $requested_guests);
+            } elseif ($explicit_venue_id !== null) {
                 $explicit_vid = $explicit_venue_id;
                 if ($is_staff_booking) {
                     $stmt_inv = $conn->prepare("SELECT id FROM venues WHERE id = ? AND status = 'Available' FOR UPDATE");
@@ -199,6 +230,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     );
                     $stmt_inv->bind_param("iss", $explicit_vid, $room_name, $room_type);
                 }
+            } elseif ($room_group_id !== null) {
+                if ($requested_guests === false) throw new Exception('Enter a valid guest count for this room.');
+                $stmt_inv = $conn->prepare("SELECT v.id, h.max_capacity FROM venues v
+                    INNER JOIN hotel_rooms h ON h.venue_id = v.id
+                    INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+                    INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                    WHERE h.room_group_id = ? AND h.max_capacity >= ?
+                      AND v.category = 'Hotel Room' AND v.status = 'Available'
+                    ORDER BY v.id FOR UPDATE");
+                $stmt_inv->bind_param('ii', $room_group_id, $requested_guests);
             } else {
                 $stmt_inv = $conn->prepare("
                     SELECT v.id 
@@ -218,15 +259,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $assigned_venue_id = null;
             while ($row = $res_inv->fetch_assoc()) {
                 $vid = $row['id'];
+                if ($room_group_id !== null && $requested_guests !== false && (int)$row['max_capacity'] < (int)$requested_guests) continue;
                 
                 // Check Maintenance (maintenance ALWAYS blocks inclusively)
-                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql());
+                $maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL) AND " . maintenance_overlap_sql());
                 $maint->bind_param("iss", $vid, $end_date, $start_date);
                 $maint->execute();
                 if ($maint->get_result()->num_rows > 0) continue;
                 
                 // Check Direct Bookings
-                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed') AND source <> 'Maintenance' AND $overlap_cond");
+                $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed') AND COALESCE(source, '') <> 'Maintenance' AND $overlap_cond");
                 $bk->bind_param("iss", $vid, $end_date, $start_date);
                 $bk->execute();
                 if ($bk->get_result()->num_rows > 0) continue;
@@ -239,7 +281,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     JOIN venues parent_v ON parent_v.id = b.venue_id
                     WHERE br.venue_id = ? AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')
                     AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
-                    AND b.source <> 'Maintenance'
+                    AND COALESCE(b.source, '') <> 'Maintenance'
                     AND $addons_overlap
                 ");
                 $addons->bind_param("iss", $vid, $end_date, $start_date);

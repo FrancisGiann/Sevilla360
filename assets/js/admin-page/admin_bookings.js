@@ -101,6 +101,160 @@ document.addEventListener("DOMContentLoaded", () => {
     const manualProofModal = document.getElementById('manualPaymentReviewModal');
     const manualProofStatus = document.getElementById('manual-proof-status');
     let proofReviewInvoker = null;
+
+    function renderAdminPaymentHistory(payments, prefix) {
+        const section = document.getElementById(`${prefix}-payment-history-section`);
+        const list = document.getElementById(`${prefix}-payment-history`);
+        if (!section || !list) return;
+        list.replaceChildren();
+        const entries = Array.isArray(payments) ? payments : [];
+        section.hidden = entries.length === 0;
+        entries.forEach((payment) => {
+            const entry = document.createElement('article');
+            entry.className = 'admin-payment-history-entry';
+            const amount = Number(payment?.amount);
+            const fields = [
+                ['Payment method', payment?.payment_method || 'N/A'],
+                ['Transaction/reference ID', payment?.transaction_reference || 'N/A'],
+                ['Amount', Number.isFinite(amount) ? `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'],
+                ['Date', payment?.payment_date || 'N/A']
+            ];
+            fields.forEach(([label, value]) => {
+                const row = document.createElement('p');
+                const labelEl = document.createElement('span');
+                const valueEl = document.createElement('strong');
+                labelEl.textContent = label;
+                valueEl.textContent = String(value);
+                row.append(labelEl, valueEl);
+                entry.appendChild(row);
+            });
+            list.appendChild(entry);
+        });
+    }
+
+    function renderAdminProofHistory(proofs, prefix) {
+        const details = document.getElementById(`${prefix}-proof-history`);
+        const list = document.getElementById(`${prefix}-proof-history-list`);
+        const count = document.getElementById(`${prefix}-proof-history-count`);
+        if (!details || !list) return;
+        list.replaceChildren();
+        const entries = Array.isArray(proofs) ? proofs : [];
+        details.hidden = entries.length === 0;
+        details.open = false;
+        if (count) count.textContent = entries.length ? `(${entries.length})` : '';
+        const statusLabels = { pending: 'Pending review', approved: 'Approved', rejected: 'Rejected' };
+
+        entries.forEach((proof) => {
+            const item = document.createElement('article');
+            item.className = 'admin-proof-history-entry';
+            const fields = [
+                ['Status', statusLabels[String(proof?.status || '').toLowerCase()] || 'Unavailable'],
+                ['Payment method', proof?.payment_method || 'N/A'],
+                ['Submitted reference', proof?.transaction_reference || 'N/A'],
+                ['Amount', Number.isFinite(Number(proof?.expected_amount)) ? `₱${Number(proof.expected_amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'],
+                ['Submitted', proof?.submitted_at || 'N/A'],
+                ['Reviewed', proof?.reviewed_at || 'Not reviewed']
+            ];
+            fields.forEach(([label, value]) => {
+                const row = document.createElement('p');
+                const labelEl = document.createElement('span');
+                const valueEl = document.createElement('strong');
+                labelEl.textContent = label;
+                valueEl.textContent = String(value);
+                row.append(labelEl, valueEl);
+                item.appendChild(row);
+            });
+            if (String(proof?.status).toLowerCase() === 'rejected' && proof?.rejection_reason) {
+                const rejection = document.createElement('p');
+                rejection.className = 'admin-proof-rejection-reason';
+                const label = document.createElement('strong');
+                label.textContent = 'Rejection reason: ';
+                rejection.append(label, document.createTextNode(String(proof.rejection_reason)));
+                item.appendChild(rejection);
+            }
+
+            const submissionId = Number(proof?.id);
+            const viewButton = document.createElement('button');
+            viewButton.type = 'button';
+            viewButton.className = 'admin-proof-view-button';
+            const proofAvailable = proof?.proof_available === true || Number(proof?.proof_available) === 1;
+            viewButton.textContent = proofAvailable ? 'View proof' : 'Proof no longer available';
+            viewButton.disabled = !proofAvailable || !Number.isSafeInteger(submissionId) || submissionId < 1;
+            const preview = document.createElement('figure');
+            preview.className = 'admin-proof-history-preview';
+            preview.hidden = true;
+            const image = document.createElement('img');
+            image.alt = `Submitted payment proof for ${String(proof?.payment_method || 'payment')}`;
+            image.decoding = 'async';
+            image.loading = 'lazy';
+            const feedback = document.createElement('p');
+            feedback.className = 'admin-proof-history-feedback';
+            feedback.setAttribute('role', 'status');
+            feedback.hidden = true;
+            preview.append(image, feedback);
+            viewButton.addEventListener('click', () => {
+                if (!preview.hidden) {
+                    image.removeAttribute('src');
+                    preview.hidden = true;
+                    feedback.hidden = true;
+                    viewButton.textContent = 'View proof';
+                    return;
+                }
+                feedback.textContent = 'Loading protected proof…';
+                feedback.hidden = false;
+                preview.hidden = false;
+                viewButton.textContent = 'Hide proof';
+                image.onload = () => { feedback.hidden = true; feedback.textContent = ''; };
+                image.onerror = () => {
+                    image.removeAttribute('src');
+                    feedback.textContent = 'This proof could not be loaded. It may have expired or the file may be missing.';
+                    viewButton.textContent = 'Hide proof';
+                };
+                image.src = `actions/user/payment_proof.php?id=${encodeURIComponent(String(submissionId))}`;
+            });
+            item.append(viewButton, preview);
+            list.appendChild(item);
+        });
+    }
+
+    function renderAdminRefundDetails(cancellation, prefix) {
+        const section = document.getElementById(`${prefix}-refund-section`);
+        if (!section) return;
+        const setText = (suffix, value) => {
+            const element = document.getElementById(`${prefix}-refund-${suffix}`);
+            if (element) element.textContent = String(value || 'Not provided');
+        };
+        const details = cancellation && typeof cancellation === 'object' ? cancellation : null;
+        section.hidden = !details;
+        if (!details) return;
+
+        setText('status', details.status);
+        setText('reason', details.reason);
+        setText('reply', details.admin_reply);
+        const amount = Number(details.refund_amount);
+        setText('amount', Number.isFinite(amount) ? `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Not available');
+        setText('method', details.refund_destination_method);
+        setText('account-name', details.refund_destination_account_name);
+        setText('account-identifier', details.refund_destination_account_identifier);
+
+        const bankLabel = document.getElementById(`${prefix}-refund-bank-label`);
+        const bankValue = document.getElementById(`${prefix}-refund-bank`);
+        const showBank = details.refund_destination_method === 'Bank Transfer' && Boolean(details.refund_destination_bank_name);
+        if (bankLabel) bankLabel.hidden = !showBank;
+        if (bankValue) {
+            bankValue.hidden = !showBank;
+            bankValue.textContent = showBank ? String(details.refund_destination_bank_name) : '';
+        }
+
+        const transactionLabel = document.getElementById(`${prefix}-refund-tx-label`);
+        const transactionValue = document.getElementById(`${prefix}-refund-tx-value`);
+        const transactionId = String(details.refund_transaction_id || '');
+        if (transactionLabel) transactionLabel.hidden = transactionId === '';
+        if (transactionValue) {
+            transactionValue.hidden = transactionId === '';
+            transactionValue.textContent = transactionId;
+        }
+    }
   
     let currentPage = 1;
     const rowsPerPage = 15;
@@ -109,6 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let bookingsLoadQueued = false;
     let queuedLoadSuppressUrlSearchAction = false;
     let bookingsRequestSequence = 0;
+    let refundDestinationRequestSequence = 0;
     let realtimeRefreshTimeout = null;
 
     function getBookingViewState() {
@@ -155,7 +310,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 limit: rowsPerPage,
                 search: requestState.search,
                 venue: requestState.venue,
-                status: requestState.activeTab
+                status: requestState.activeTab,
+                ...(urlBookingId !== null ? { booking_id: urlBookingId } : {})
             })
         })
         .then(res => res.json())
@@ -172,16 +328,31 @@ document.addEventListener("DOMContentLoaded", () => {
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
             // Auto-scroll, highlight, and pop open View Details modal if redirected from Master Calendar / Command Center
-            if (!suppressUrlSearchAction && urlSearch && res.data && res.data.length > 0) {
-                const match = res.data.find(b => b.reference_no.toLowerCase() === urlSearch.toLowerCase() || b.reference_no.toLowerCase().includes(urlSearch.toLowerCase()) || b.id.toString() === urlSearch);
+            if (!suppressUrlSearchAction && urlBookingId !== null) {
+                const exactBookingId = urlBookingId;
+                const exactMatch = Array.isArray(res.data)
+                    ? res.data.find(booking => String(booking.id) === exactBookingId)
+                    : null;
+                if (exactMatch) {
+                    highlightRow(exactMatch.reference_no);
+                    setTimeout(() => {
+                        const exactViewButton = Array.from(document.querySelectorAll('.btn-view'))
+                            .find(button => String(button.getAttribute('data-id')) === exactBookingId);
+                        if (exactViewButton) exactViewButton.click();
+                    }, 300);
+                }
+                urlBookingId = null;
+            } else if (!suppressUrlSearchAction && urlSearch && res.data && res.data.length > 0) {
+                const match = res.data.find(b => String(b.reference_no || '').toLowerCase() === urlSearch.toLowerCase() || String(b.reference_no || '').toLowerCase().includes(urlSearch.toLowerCase()) || String(b.id) === urlSearch);
                 const targetRef = match ? match.reference_no : urlSearch;
 
                 highlightRow(targetRef);
                 setTimeout(() => {
-                    const firstViewBtn = document.querySelector('.btn-view');
-                    if (firstViewBtn) {
-                        firstViewBtn.click();
-                    }
+                    const matchedViewBtn = match
+                        ? Array.from(document.querySelectorAll('.btn-view')).find(button => String(button.getAttribute('data-id')) === String(match.id))
+                        : null;
+                    const viewButton = matchedViewBtn || document.querySelector('.btn-view');
+                    if (viewButton) viewButton.click();
                 }, 300);
             }
         })
@@ -224,6 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
   
         let html = '';
+        const attr = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
         bookings.forEach(b => {
             // Date Formatting
             const sDate = new Date(b.start_date);
@@ -283,7 +455,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } 
             else if (!isCompleted && displayStatus === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    actionBtns += `<button class="btn-action btn-refund open-refund" data-id="${b.id}" data-ref="${b.reference_no}" data-customer="${customerName}" data-venue="${b.venue_name}" data-date="${dateStr}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent || window.refundFeePercent || 3}" data-fee="${b.cancel_fee || ''}" data-refund="${b.cancel_refund || ''}" data-reason="${b.cancel_reason || ''}">Refund Req</button>
+                    actionBtns += `<button type="button" class="btn-action btn-refund open-refund" data-id="${Number(b.id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${Number(b.cancel_fee_percent) || Number(window.refundFeePercent) || 3}" data-fee="${Number(b.cancel_fee) || ''}" data-refund="${Number(b.cancel_refund) || ''}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>
                                    `;
                 } else if (b.resched_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
@@ -296,7 +468,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
             if (hasPendingProof) {
-                const attr = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
                 actionBtns += `<button type="button" class="btn-action btn-confirm open-manual-proof" data-id="${Number(b.id)}" data-submission-id="${Number(b.pending_payment_submission_id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}">Review Proof</button>`;
             }
 
@@ -389,6 +560,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
     const urlFilter = urlParams.get('filter');
     const urlSearch = urlParams.get('search');
+    let urlBookingId = urlParams.get('booking_id');
 
     if (urlFilter) {
         const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
@@ -589,11 +761,12 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       
         // REFUND MODAL
-            const refundModal = document.getElementById("refundModal");
+        const refundModal = document.getElementById("refundModal");
         document.querySelectorAll('.open-refund').forEach(btn => {
           btn.addEventListener('click', function() {
             const bookingId = this.getAttribute('data-id');
             const referenceId = this.getAttribute('data-ref') || bookingId;
+            const requestSequence = ++refundDestinationRequestSequence;
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
             const feePercent = Number(this.getAttribute('data-fee-percent') || window.refundFeePercent || 3);
             const feeAttr = this.getAttribute('data-fee');
@@ -602,51 +775,78 @@ document.addEventListener("DOMContentLoaded", () => {
             const refundAmt = refundAttr !== null && refundAttr !== '' ? Number(refundAttr) : Math.max(0, Math.round((totalPaid - fee) * 100) / 100);
       
             const titleEl = document.querySelector('#refundModal .modal-main-title');
-            if(titleEl) titleEl.innerText = `Process Refund - Booking #${referenceId}`;
+            if(titleEl) titleEl.textContent = `Mark refund sent — Booking ${referenceId}`;
 
             const transactionInput = document.getElementById('refund-transaction-id');
             const rejectionInput = document.getElementById('refund-rejection-reason');
-            if (transactionInput) { transactionInput.value = ''; transactionInput.required = false; }
-            if (rejectionInput) rejectionInput.value = '';
+            if (transactionInput) { transactionInput.value = ''; transactionInput.required = true; }
+            if (rejectionInput) { rejectionInput.value = ''; rejectionInput.required = false; }
       
             const spans = document.querySelectorAll('#refundModal .summary-grid .value');
             if (spans.length >= 5) {
-                spans[0].innerText = this.getAttribute('data-customer') || "Unknown";
-                spans[1].innerText = this.getAttribute('data-venue') || "Unknown";
-                spans[2].innerText = this.getAttribute('data-date') || "--";
-                spans[3].innerText = `₱${totalPaid.toLocaleString()}`;
-                spans[4].innerText = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}% )`;
+                spans[0].textContent = this.getAttribute('data-customer') || "Unknown";
+                spans[1].textContent = this.getAttribute('data-venue') || "Unknown";
+                spans[2].textContent = this.getAttribute('data-date') || "--";
+                spans[3].textContent = `₱${totalPaid.toLocaleString()}`;
+                spans[4].textContent = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)`;
             }
             
             const reasonEl = document.getElementById('modal-ref-reason');
-            if (reasonEl) reasonEl.innerText = this.getAttribute('data-reason') || "No reason provided by customer.";
+            if (reasonEl) reasonEl.textContent = this.getAttribute('data-reason') || "No reason provided by customer.";
       
             const refundTotalEl = document.querySelector('#refundModal .refund-total .amount');
-            if (refundTotalEl) refundTotalEl.innerText = `₱${refundAmt.toLocaleString()}`;
+            if (refundTotalEl) refundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
+
+            const destinationSection = document.getElementById('refund-destination-section');
+            const destinationStatus = document.getElementById('refund-destination-status');
+            const destinationMethod = document.getElementById('refund-destination-method');
+            const destinationName = document.getElementById('refund-destination-account-name');
+            const destinationIdentifier = document.getElementById('refund-destination-account-identifier');
+            const destinationBankLabel = document.getElementById('refund-destination-bank-label');
+            const destinationBank = document.getElementById('refund-destination-bank');
+            if (destinationSection) destinationSection.hidden = true;
+            if (destinationStatus) {
+              destinationStatus.hidden = false;
+              destinationStatus.dataset.error = 'false';
+              destinationStatus.textContent = 'Loading the saved refund destination…';
+            }
+            [destinationMethod, destinationName, destinationIdentifier, destinationBank].forEach(element => {
+              if (element) element.textContent = '—';
+            });
+            if (destinationBankLabel) destinationBankLabel.hidden = true;
+            if (destinationBank) destinationBank.hidden = true;
       
             const executeBtn = document.querySelector('#refundModal .btn-modal-refund');
             const newBtn = executeBtn.cloneNode(true);
             executeBtn.parentNode.replaceChild(newBtn, executeBtn);
-            
+            newBtn.disabled = true;
             newBtn.setAttribute('data-id', bookingId);
             newBtn.addEventListener('click', function() {
-              if (transactionInput) transactionInput.required = true;
+              if (this.disabled) return;
+              if (transactionInput) { transactionInput.required = true; transactionInput.reportValidity(); }
               if (rejectionInput) rejectionInput.required = false;
               const refundTxId = document.getElementById('refund-transaction-id').value.trim();
               if (!refundTxId) {
                   showAlert("Missing Data", "Please enter the Refund Transaction / Reference ID.", "error");
                   return;
               }
-              showConfirmModal("Are you sure you want to process this refund? This cannot be undone.", () => {
+              if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/.test(refundTxId)) {
+                  showAlert("Invalid reference", "Use up to 160 letters, numbers, periods, underscores, colons, slashes, or hyphens.", "error", 'refundModal');
+                  transactionInput?.focus();
+                  return;
+              }
+              showConfirmModal("Have you already sent this refund to the customer’s saved destination? Mark it sent only after the transfer is complete.", () => {
                   processBookingAction(this.getAttribute('data-id'), 'refund', this, { refund_transaction_id: refundTxId });
               }, 'refundModal');
             });
 
+            let newRejectBtn = null;
             const rejectBtn = document.getElementById('btn-reject-refund-inline');
             if (rejectBtn) {
-              const newRejectBtn = rejectBtn.cloneNode(true);
+              newRejectBtn = rejectBtn.cloneNode(true);
               rejectBtn.parentNode.replaceChild(newRejectBtn, rejectBtn);
               newRejectBtn.setAttribute('data-id', bookingId);
+              newRejectBtn.disabled = true;
               newRejectBtn.addEventListener('click', function() {
                 if (transactionInput) transactionInput.required = false;
                 if (rejectionInput) rejectionInput.required = true;
@@ -667,6 +867,55 @@ document.addEventListener("DOMContentLoaded", () => {
       
             modalOverlay.classList.add('active');
             refundModal.classList.add('active');
+            transactionInput?.focus({ preventScroll: true });
+
+            fetch(`actions/admin/get_booking_details.php?id=${encodeURIComponent(bookingId)}`, { headers: { Accept: 'application/json' } })
+              .then(response => response.ok ? response.json() : Promise.reject(new Error('Unable to load booking details.')))
+              .then(result => {
+                if (requestSequence !== refundDestinationRequestSequence || !refundModal.classList.contains('active')) return;
+                const cancellation = result?.success ? result.data?.cancellation : null;
+                const destination = cancellation ? {
+                  method: String(cancellation.refund_destination_method || ''),
+                  accountName: String(cancellation.refund_destination_account_name || ''),
+                  accountIdentifier: String(cancellation.refund_destination_account_identifier || ''),
+                  bankName: String(cancellation.refund_destination_bank_name || '')
+                } : null;
+                const methodAllowed = ['GCash', 'Maya', 'Bank Transfer'].includes(destination?.method);
+                const hasRequiredDetails = methodAllowed && destination.accountName.trim().length >= 2
+                  && destination.accountIdentifier.trim().length >= 4
+                  && (destination.method !== 'Bank Transfer' || destination.bankName.trim().length >= 2);
+                const requestIsPending = cancellation?.status === 'Pending';
+                if (destinationSection) destinationSection.hidden = !cancellation;
+                if (destinationMethod) destinationMethod.textContent = destination?.method || 'Not provided';
+                if (destinationName) destinationName.textContent = destination?.accountName || 'Not provided';
+                if (destinationIdentifier) destinationIdentifier.textContent = destination?.accountIdentifier || 'Not provided';
+                const showBank = destination?.method === 'Bank Transfer' && Boolean(destination.bankName);
+                if (destinationBankLabel) destinationBankLabel.hidden = !showBank;
+                if (destinationBank) {
+                  destinationBank.hidden = !showBank;
+                  destinationBank.textContent = showBank ? destination.bankName : '';
+                }
+                if (destinationStatus) {
+                  destinationStatus.hidden = requestIsPending && hasRequiredDetails;
+                  destinationStatus.dataset.error = String(!requestIsPending || !hasRequiredDetails);
+                  destinationStatus.textContent = !cancellation
+                    ? 'No cancellation request was found. Refresh the bookings list before continuing.'
+                    : !requestIsPending
+                      ? 'This refund request is no longer pending. Refresh the bookings list before continuing.'
+                      : 'This refund request has incomplete destination details. Contact the customer before sending funds.';
+                }
+                newBtn.disabled = !requestIsPending || !hasRequiredDetails;
+                if (newRejectBtn) newRejectBtn.disabled = !requestIsPending;
+              })
+              .catch(() => {
+                if (requestSequence !== refundDestinationRequestSequence || !refundModal.classList.contains('active')) return;
+                if (destinationStatus) {
+                  destinationStatus.hidden = false;
+                  destinationStatus.dataset.error = 'true';
+                  destinationStatus.textContent = 'The saved destination could not be verified. Close and reopen the refund request to try again.';
+                }
+                newBtn.disabled = true;
+              });
           });
         });
       
@@ -927,27 +1176,10 @@ document.addEventListener("DOMContentLoaded", () => {
                       specValue.style.display = 'none';
                   }
 
-                  const txLabel = document.getElementById('vd-transaction-label');
-                  const txValue = document.getElementById('vd-transaction-value');
-                  if (res.data.transaction_id) {
-                      txLabel.style.display = 'block';
-                      txValue.style.display = 'block';
-                      txValue.innerText = res.data.transaction_id;
-                  } else {
-                      txLabel.style.display = 'none';
-                      txValue.style.display = 'none';
-                  }
+                renderAdminPaymentHistory(res.data.payments, 'vd');
+                renderAdminProofHistory(res.data.proof_history, 'vd');
 
-                  const refTxLabel = document.getElementById('vd-refund-tx-label');
-                  const refTxValue = document.getElementById('vd-refund-tx-value');
-                  if (res.data.cancellation && res.data.cancellation.refund_transaction_id) {
-                      refTxLabel.style.display = 'block';
-                      refTxValue.style.display = 'block';
-                      refTxValue.innerText = res.data.cancellation.refund_transaction_id;
-                  } else {
-                      refTxLabel.style.display = 'none';
-                      refTxValue.style.display = 'none';
-                  }
+                  renderAdminRefundDetails(res.data.cancellation, 'vd');
       
                   const addonsContainer = document.getElementById('vd-addons-container');
                   const addonsList = document.getElementById('vd-addons-list');

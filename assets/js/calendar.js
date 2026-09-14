@@ -100,8 +100,8 @@ class SevillaCalendar {
     }
   }
 
-  async fetchBookedDates(room_type, room_name, venue_id = null, requireHotelRules = false) {
-    if (!room_type && !room_name && !venue_id) return;
+  async fetchBookedDates(room_type, room_name, venue_id = null, requireHotelRules = false, room_group_id = null) {
+    if (!room_type && !room_name && !venue_id && !room_group_id) return;
     const requestGeneration = ++this.availabilityRequestGeneration;
     this.isMaintenanceMode = false;
     
@@ -119,6 +119,7 @@ class SevillaCalendar {
       if (room_type) formData.append('room_type', room_type);
       if (room_name) formData.append('room_name', room_name);
       if (venue_id) formData.append('venue_id', venue_id);
+      if (room_group_id) formData.append('room_group_id', room_group_id);
 
       const response = await fetch('actions/bookings/fetch_dates.php', {
           method: 'POST',

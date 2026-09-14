@@ -1,7 +1,6 @@
 <div class="sales-container">
     <header class="sales-page-header">
         <div>
-            <h2>Sales</h2>
             <p>Recorded successful payments, excluding cancelled bookings. This is not accounting or net revenue.</p>
         </div>
         <div class="sales-presets" role="group" aria-label="Sales report range">

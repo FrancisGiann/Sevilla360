@@ -676,19 +676,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 7. Main Room Loading Logic ---
   function getBookingUrl(room) {
-    if (!room || room.venue_id === undefined || room.venue_id === null) return "booking.php";
-    const params = new URLSearchParams({
-      venue_id: String(room.venue_id),
-      category: String(room.category || ""),
-      room_type: String(room.room_type || ""),
-      venue_name: String(room.venue_name || "")
-    });
+    if (!room) return "booking.php";
+    const params = new URLSearchParams({ category: String(room.category || "") });
+    if (room.room_group_id) {
+      params.set("room_group_id", String(room.room_group_id));
+      params.set("room_type", String(room.room_type || ""));
+      params.set("venue_name", String(room.building_name || room.venue_name || ""));
+    } else if (room.venue_id !== undefined && room.venue_id !== null) {
+      params.set("venue_id", String(room.venue_id));
+      params.set("room_type", String(room.room_type || ""));
+      params.set("venue_name", String(room.venue_name || ""));
+    } else {
+      return "booking.php";
+    }
     const startDate = arguments[1] || null;
     const endDate = arguments[2] || null;
     if (startDate && endDate) {
-      params.set("start_date", String(startDate));
-      params.set("end_date", String(endDate));
+      params.set(room.room_group_id ? "check_in" : "start_date", String(startDate));
+      params.set(room.room_group_id ? "check_out" : "end_date", String(endDate));
     }
+    if (room.room_group_id && arguments[3]) params.set("guest_range", String(arguments[3]));
     return `booking.php?${params.toString()}`;
   }
 
@@ -1122,18 +1129,24 @@ document.addEventListener("DOMContentLoaded", () => {
       returnStep: "greeting",
       shortlist: [],
       allVenues: [],
+      hotelResults: [],
+      hotelRecommendationState: "idle",
+      hotelRecommendationReasonCode: "",
+      hotelRecommendationMessage: "",
       allPage: 0,
       selectionOrigin: "shortlist",
       selectedAllPage: 0,
       includedAmenities: [],
       includedPage: 0,
       availabilityStatus: "idle",
+      availabilityChecked: false,
       availabilityConfirmedIds: [],
       availabilityRequestToken: 0,
       dateDraft: null,
       dateMonth: null,
       dateFocus: null,
       dateQuestionCategory: null,
+      dateQuestionStep: null,
       sharpImage: null,
       sharpImageFallbacks: [],
       entranceDuration: 0,
@@ -1190,9 +1203,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return localDateString(date);
     };
     const dateStepFor = category => category === "Hotel Room" ? "checkInDate" : category === "Event Hall" ? "eventDate" : "visitDate";
-    const dateQuestionTitle = category => category === "Hotel Room" ? "When would you check in?" : category === "Event Hall" ? "When is your event?" : "When would you visit?";
-    const dateQuestionMessage = category => category === "Hotel Room" ? "I’ll check a one-night stay from check-in through the next calendar day." : "I’ll check the selected calendar date. Availability is advisory and no hold is created.";
-    const dateAvailabilityLabel = category => category === "Hotel Room" ? "Check-in date" : category === "Event Hall" ? "Event date" : "Visit date";
+    const dateQuestionTitle = (category, step = "") => category === "Hotel Room"
+      ? (step === "checkOutDate" ? "When would you check out?" : "When would you check in?")
+      : category === "Event Hall" ? "When is your event?" : "When would you visit?";
+    const dateQuestionMessage = category => category === "Hotel Room" ? "Choose both dates for your stay. I’ll check this complete range once." : "I’ll check the selected calendar date. Availability is advisory and no hold is created.";
+    const dateAvailabilityLabel = (category, step = "") => category === "Hotel Room"
+      ? (step === "checkOutDate" ? "Checkout date" : "Check-in date")
+      : category === "Event Hall" ? "Event date" : "Visit date";
     const formatLocalDate = value => {
       if (!isCanonicalDate(value)) return "the selected date";
       const [year, month, day] = value.split("-").map(Number);
@@ -1230,6 +1247,13 @@ document.addEventListener("DOMContentLoaded", () => {
       Object.entries(attributes).forEach(([name, value]) => button.setAttribute(name, String(value)));
       return button;
     };
+    const createReceptionContactLink = () => {
+      const link = document.createElement("a");
+      link.className = "receptionist-choice receptionist-choice-secondary receptionist-choice-link";
+      link.href = "support.php#contact";
+      link.textContent = "Contact reception";
+      return link;
+    };
     const createPhotoArrow = (label, dataAttribute, iconName) => {
       const button = createChoice("", "receptionist-photo-control receptionist-photo-arrow", { [dataAttribute]: "true", "aria-label": label });
       const icon = document.createElement("i");
@@ -1238,17 +1262,17 @@ document.addEventListener("DOMContentLoaded", () => {
       button.appendChild(icon);
       return button;
     };
-    const createDateQuestion = category => {
+    const createDateQuestion = (category, step = "") => {
       const wrap = document.createElement("section");
       wrap.className = "receptionist-date-question";
       wrap.setAttribute("aria-labelledby", "receptionist-date-label");
       const label = document.createElement("label");
       label.className = "receptionist-date-label";
       label.id = "receptionist-date-label";
-      label.textContent = dateAvailabilityLabel(category);
+      label.textContent = dateAvailabilityLabel(category, step);
       const calendar = document.createElement("div");
       calendar.className = "receptionist-calendar";
-      calendar.setAttribute("aria-label", `${dateAvailabilityLabel(category)} calendar`);
+      calendar.setAttribute("aria-label", `${dateAvailabilityLabel(category, step)} calendar`);
       const navigation = document.createElement("div");
       navigation.className = "receptionist-calendar-navigation";
       const previousMonth = document.createElement("button");
@@ -1290,17 +1314,25 @@ document.addEventListener("DOMContentLoaded", () => {
       calendar.append(navigation, weekdayRow, grid, selectedText, input, check);
       wrap.append(label, calendar);
 
-      const selectedDate = guideContext.startDate || guideState.dateDraft;
+      const selectedDate = category === "Hotel Room" && step === "checkOutDate"
+        ? guideContext.endDate || guideState.dateDraft
+        : guideContext.startDate || guideState.dateDraft;
       const selectedLocal = localDateFromCanonical(selectedDate);
       const currentMonth = monthStart(new Date());
-      if (!guideState.dateMonth || guideState.dateQuestionCategory !== category) {
+      if (!guideState.dateMonth || guideState.dateQuestionCategory !== category || guideState.dateQuestionStep !== step) {
         guideState.dateMonth = monthStart(selectedLocal || new Date());
         guideState.dateQuestionCategory = category;
+        guideState.dateQuestionStep = step;
       }
       if (guideState.dateMonth < currentMonth) guideState.dateMonth = currentMonth;
+      if (category === "Hotel Room" && step === "checkOutDate" && guideContext.startDate) {
+        const checkInMonth = monthStart(localDateFromCanonical(guideContext.startDate));
+        if (guideState.dateMonth < checkInMonth) guideState.dateMonth = checkInMonth;
+      }
       guideState.dateDraft = selectedDate || null;
 
-      const isSelectable = value => isCanonicalDate(value);
+      const isSelectable = value => isCanonicalDate(value)
+        && !(category === "Hotel Room" && step === "checkOutDate" && guideContext.startDate && value <= guideContext.startDate);
       const firstSelectableInMonth = () => {
         const total = monthDays(guideState.dateMonth);
         for (let day = 1; day <= total; day += 1) {
@@ -1320,7 +1352,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const renderCalendar = (focusValue = null) => {
         const month = guideState.dateMonth;
         monthYear.textContent = calendarMonthLabel(month);
-        previousMonth.disabled = month.getFullYear() === currentMonth.getFullYear() && month.getMonth() === currentMonth.getMonth();
+        const minimumMonth = category === "Hotel Room" && step === "checkOutDate" && guideContext.startDate
+          ? monthStart(localDateFromCanonical(guideContext.startDate))
+          : currentMonth;
+        previousMonth.disabled = month.getFullYear() === minimumMonth.getFullYear() && month.getMonth() === minimumMonth.getMonth();
         grid.replaceChildren();
         const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
         for (let index = 0; index < firstDay; index += 1) {
@@ -1341,9 +1376,9 @@ document.addEventListener("DOMContentLoaded", () => {
           dayButton.setAttribute("data-calendar-date", value);
           dayButton.setAttribute("aria-label", formatCalendarDate(value));
           dayButton.textContent = String(day);
-          const past = value < today;
-          dayButton.disabled = past;
-          dayButton.tabIndex = value === targetFocus && !past ? 0 : -1;
+          const unavailable = !isSelectable(value);
+          dayButton.disabled = unavailable;
+          dayButton.tabIndex = value === targetFocus && !unavailable ? 0 : -1;
           if (value === today) {
             dayButton.classList.add("is-today");
             dayButton.setAttribute("aria-current", "date");
@@ -1354,7 +1389,7 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             dayButton.setAttribute("aria-selected", "false");
           }
-          if (!past) {
+          if (!unavailable) {
             dayButton.addEventListener("click", () => {
               guideState.dateDraft = value;
               guideState.dateFocus = value;
@@ -1379,7 +1414,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 event.preventDefault();
                 const monthDelta = event.key === "PageUp" ? -1 : 1;
                 guideState.dateMonth = new Date(current.getFullYear(), current.getMonth() + monthDelta, 1);
-                if (guideState.dateMonth < currentMonth) guideState.dateMonth = currentMonth;
+                if (guideState.dateMonth < minimumMonth) guideState.dateMonth = minimumMonth;
                 const targetDay = Math.min(current.getDate(), monthDays(guideState.dateMonth));
                 const pageValue = canonicalFromLocalDate(new Date(guideState.dateMonth.getFullYear(), guideState.dateMonth.getMonth(), targetDay));
                 const safePageValue = isSelectable(pageValue) ? pageValue : firstSelectableInMonth();
@@ -1647,7 +1682,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     receptionistChoices.addEventListener("pointerout", event => {
       const choice = event.target instanceof Element ? event.target.closest(".receptionist-choice") : null;
-      if (choice === lastHoverChoice) {
+      if (choice && choice === lastHoverChoice) {
         const related = event.relatedTarget;
         if (related instanceof Element && choice.contains(related)) return;
         lastHoverChoice = null;
@@ -1776,7 +1811,11 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const setBackdrop = (room, photoIndex = 0) => {
       if (!receptionistBackdropImage) return;
-      const images = venueImages(room);
+      // Hotel group panoramas are tour media, not standard room photos.
+      // Preserve the legacy gallery behavior for Event and Villa venues.
+      const images = room.room_group_id
+        ? (hasGallery(room) ? room.gallery.filter(Boolean) : [])
+        : venueImages(room);
       const galleryIndex = images.length ? Math.min(Math.max(Number(photoIndex) || 0, 0), images.length - 1) : 0;
       const source = room && images.length ? images[galleryIndex] : "assets/img/placeholder.jpg";
       receptionistBackdropImage.alt = room ? `${room.title || room.venue_name || "Venue"} preview` : "";
@@ -1825,6 +1864,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderGreeting = ({ announce = true, requireContinue = false, entrance = false } = {}) => {
       resetContext();
+      receptionistRoot.classList.remove("is-hotel-results");
       receptionistGreeting = resolveReceptionistGreeting();
       receptionistState.activeCategory = null;
       receptionistState.activeRoomId = null;
@@ -1841,6 +1881,7 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     };
     const renderQuestion = (category, key) => {
+      receptionistRoot.classList.remove("is-hotel-results");
       receptionistState.activeCategory = category;
       receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const label = categoryLabels[category] || "venue";
@@ -1853,12 +1894,12 @@ document.addEventListener("DOMContentLoaded", () => {
         options = [["Wedding", "wedding"], ["Celebration", "celebration"], ["Corporate", "corporate"], ["Other", "other"]];
       } else if (category === "Hotel Room" && key === "groupSize") {
         title = "How many guests?";
-        message = "A guest count helps me keep the room suggestions practical.";
-        options = [["1–2 guests", 2], ["3–4 guests", 4], ["5–6 guests", 6], ["7+ guests", 7]];
+        message = "Choose a guest range for your room search.";
+        options = [["1–2 guests", "1-2"], ["3–4 guests", "3-4"], ["5–6 guests", "5-6"], ["7–8 guests", "7-8"], ["9–12 guests", "9-12"], ["13–16 guests", "13-16"]];
       } else if (category === "Hotel Room" && key === "preference") {
         title = "What matters most?";
-        message = "Choose the trade-off you want me to prioritize.";
-        options = [["Best value", "value"], ["Extra space", "space"], ["Premium / VIP", "premium"]];
+        message = "Choose the room recommendation approach that matters most to you.";
+        options = [["Lowest price", "save"], ["Best fit for my group", "best_fit"], ["Higher room category", "comfort"]];
       } else if (category === "Resort Villa" && key === "purpose") {
         title = "What brings you here?";
         message = "I’ll match the villa suggestions to the kind of stay you have in mind.";
@@ -1868,13 +1909,14 @@ document.addEventListener("DOMContentLoaded", () => {
         message = `That lets me prioritize a ${label} that can welcome your group.`;
         options = [["1–10 guests", 10], ["11–30 guests", 30], ["31–60 guests", 60], ["61+ guests", 61]];
       }
-      if (key === "eventDate" || key === "checkInDate" || key === "visitDate") {
+      if (key === "eventDate" || key === "checkInDate" || key === "checkOutDate" || key === "visitDate") {
         receptionistRoot.classList.add("is-date-state");
         receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
-        setDialogue(dateQuestionTitle(category), dateQuestionMessage(category));
+        guideState.dateQuestionStep = key;
+        setDialogue(dateQuestionTitle(category, key), dateQuestionMessage(category));
         receptionistChoices.replaceChildren(
-          createDateQuestion(category),
-          createChoice("Choose date later", "receptionist-choice-secondary", { "data-receptionist-date-later": "true" }),
+          createDateQuestion(category, key),
+          createChoice(category === "Hotel Room" ? "Choose dates later" : "Choose date later", "receptionist-choice-secondary", { "data-receptionist-date-later": "true" }),
           createBackChoice()
         );
         return;
@@ -1898,18 +1940,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const beds = numericFact(room.beds_value);
         const exactFit = requested === null || (capacity !== null && capacity >= requested);
         const distance = requested === null || capacity === null ? Number.MAX_SAFE_INTEGER : Math.abs(capacity - requested);
-        const vip = /vip|premium/i.test(`${room.room_type || ""} ${room.title || ""}`);
+        const vip = room.room_type_code === "vip_suite";
         return { room, index, capacity, rate, beds, exactFit, distance, vip };
       });
-      const hasExplicitPremium = category === "Hotel Room" && venues.some(item => item.vip);
       venues.sort((left, right) => {
         if (left.exactFit !== right.exactFit) return left.exactFit ? -1 : 1;
-        if (category === "Hotel Room" && preference === "value" && left.rate !== right.rate) return (left.rate ?? Number.MAX_SAFE_INTEGER) - (right.rate ?? Number.MAX_SAFE_INTEGER);
-        if (category === "Hotel Room" && preference === "space") {
-          if (left.capacity !== right.capacity) return (right.capacity ?? -1) - (left.capacity ?? -1);
+        if (category === "Hotel Room" && preference === "save" && left.rate !== right.rate) return (left.rate ?? Number.MAX_SAFE_INTEGER) - (right.rate ?? Number.MAX_SAFE_INTEGER);
+        if (category === "Hotel Room" && preference === "best_fit") {
+          if (left.distance !== right.distance) return left.distance - right.distance;
           if (left.beds !== right.beds) return (right.beds ?? -1) - (left.beds ?? -1);
+          if (left.rate !== right.rate) return (left.rate ?? Number.MAX_SAFE_INTEGER) - (right.rate ?? Number.MAX_SAFE_INTEGER);
         }
-        if (category === "Hotel Room" && preference === "premium" && hasExplicitPremium && left.vip !== right.vip) return left.vip ? -1 : 1;
+        if (category === "Hotel Room" && preference === "comfort") {
+          const comfortRank = item => ({ standard_room: 1, dormitory_room: 2, family_room_superior: 3, deluxe: 4, vip_suite: 5 }[item.room.room_type_code] || 0);
+          const rankDifference = comfortRank(right) - comfortRank(left);
+          if (rankDifference) return rankDifference;
+        }
         if (left.distance !== right.distance) return left.distance - right.distance;
         const leftTitle = String(left.room.title || left.room.venue_name || "").trim().toLowerCase();
         const rightTitle = String(right.room.title || right.room.venue_name || "").trim().toLowerCase();
@@ -1929,15 +1975,11 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const selectVenues = (category, requestedCapacity, preference) => {
       const ranked = rankVenues(category, requestedCapacity, preference);
-      const matches = ranked.filter(item => item.exactFit && (preference !== "premium" || item.vip)).slice(0, 3);
+      const matches = ranked.filter(item => item.exactFit).slice(0, 3);
       return { matches, hasExactFit: matches.length > 0 };
     };
     const explicitTierFor = room => {
-      const source = `${room.room_type || ""} ${room.title || ""}`;
-      const tiers = [];
-      if (/\bpremium\b/i.test(source)) tiers.push("Premium");
-      if (/\bvip\b/i.test(source)) tiers.push("VIP");
-      return tiers.join(" / ");
+      return room?.room_type_code === "vip_suite" ? "VIP Suite" : "";
     };
     const listedRateFor = (room, category) => {
       const listedRate = guideFact(room.rate, null);
@@ -1977,14 +2019,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const context = occasionOrPurpose ? `For your ${occasionOrPurpose} plans; ` : "";
         return `${context}${requested !== null ? "Capacity fit is the ranking basis; closest fit is shown first." : "Capacity data is shown; no guest count was requested."}`;
       }
-      if (category === "Hotel Room" && preference === "value") {
-        const matching = Array.isArray(exactFitRooms) ? exactFitRooms : rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit);
-        return `Best value · ${ratePositionFor(room, matching)}`;
+      if (category === "Hotel Room" && preference === "save") {
+        const matching = Array.isArray(exactFitRooms) ? exactFitRooms : rankVenues("Hotel Room", requested, "save").filter(item => item.exactFit);
+        return `Lowest price · ${ratePositionFor(room, matching)}`;
       }
-      if (category === "Hotel Room" && preference === "space") return "Extra space · shortlist ordered by listed capacity, then beds";
-      if (category === "Hotel Room" && preference === "premium") {
-        const tier = explicitTierFor(room);
-        return tier ? `Explicit ${tier} designation listed` : "Premium/VIP designation is not listed";
+      if (category === "Hotel Room" && preference === "best_fit") {
+        return `Best fit for my group · capacity fit, then listed bed count and price`;
+      }
+      if (category === "Hotel Room" && preference === "comfort") {
+        return `Higher room category · ${room.room_type || explicitTierFor(room) || "canonical room type"}`;
       }
       return requested !== null ? "Capacity fit for your guest request" : "Capacity details are shown for comparison";
     };
@@ -2003,10 +2046,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const dateSummary = availabilityDateSummary(category);
       const context = guideContext.occasion || guideContext.purpose;
       const shortlistOrder = category === "Hotel Room"
-        ? `These ${label}s are ordered around your group and ${preferenceLabel(guideContext.preference).toLowerCase()} preference.`
+        ? `These room options are ranked for ${preferenceLabel(guideContext.preference).toLowerCase()}.`
         : `These ${label}s are ordered by capacity fit;${context ? ` your ${context} ${category === "Event Hall" ? "occasion" : "purpose"} is shown for context.` : " closest fit is shown first."}`;
-      const exactFitRooms = category === "Hotel Room" && guideContext.preference === "value"
-        ? rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit)
+      const exactFitRooms = category === "Hotel Room" && guideContext.preference === "save"
+        ? rankVenues("Hotel Room", requested, "save").filter(item => item.exactFit)
         : null;
       setDialogue("Recommended for you", `${shortlistOrder}${dateSummary ? ` ${dateSummary}` : ""}`, announce);
       playSuccessChime();
@@ -2098,7 +2141,23 @@ document.addEventListener("DOMContentLoaded", () => {
         createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
       );
     };
+    const showRecommendationThinking = (title, message) => {
+      window.clearTimeout(guideState.thinkingTimer);
+      receptionistRoot.classList.add("is-thinking");
+      setChoicesGated(true);
+      receptionistChoices.replaceChildren();
+      setDialogue(title, message, false);
+      const dots = document.createElement("span");
+      dots.className = "receptionist-thinking-dots";
+      dots.setAttribute("aria-hidden", "true");
+      dots.append(document.createElement("span"), document.createElement("span"), document.createElement("span"));
+      receptionistMessage.appendChild(dots);
+    };
     const renderRecommendations = () => {
+      if (receptionistState.activeCategory === "Hotel Room") {
+        requestHotelRecommendations();
+        return;
+      }
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
       const selection = selectVenues(category, guideContext.groupSize, guideContext.preference);
@@ -2108,19 +2167,7 @@ document.addEventListener("DOMContentLoaded", () => {
       guideState.selectionOrigin = "shortlist";
       guideState.selectedAllPage = 0;
 
-      window.clearTimeout(guideState.thinkingTimer);
-      receptionistRoot.classList.add("is-thinking");
-      setChoicesGated(true);
-      receptionistChoices.replaceChildren();
-      setDialogue("Checking availability...", "Checking availability...", false);
-      const dots = document.createElement("span");
-      dots.className = "receptionist-thinking-dots";
-      dots.setAttribute("aria-hidden", "true");
-      const dot1 = document.createElement("span");
-      const dot2 = document.createElement("span");
-      const dot3 = document.createElement("span");
-      dots.append(dot1, dot2, dot3);
-      receptionistMessage.appendChild(dots);
+      showRecommendationThinking("Checking availability...", "Checking availability...");
 
       guideState.thinkingTimer = window.setTimeout(() => {
         receptionistRoot.classList.remove("is-thinking");
@@ -2131,15 +2178,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const label = categoryLabels[category] || "venue";
         const requestedText = numericFact(guideContext.groupSize) === null ? "your group" : `${formatNumber(numericFact(guideContext.groupSize))} guests`;
-        const premiumGap = category === "Hotel Room" && guideContext.preference === "premium";
         const changeIntentLabel = category === "Event Hall" ? "Change occasion" : category === "Resort Villa" ? "Change purpose" : null;
-        setDialogue(premiumGap ? "No Premium / VIP match" : "No exact capacity match", premiumGap
-          ? `I couldn’t find a media-ready room that both fits ${requestedText} and is explicitly labeled Premium or VIP. You can change preference, adjust the guest count, or view every media-ready option.`
-          : `I couldn’t find a media-ready ${label} with known capacity for ${requestedText}. You can adjust the group size or view every media-ready option.`, true);
+        setDialogue("No exact capacity match", `I couldn’t find a media-ready ${label} with known capacity for ${requestedText}. You can adjust the group size or view every media-ready option.`, true);
         receptionistChoices.replaceChildren(
           createChoice("Change guest count", "receptionist-choice-primary", { "data-receptionist-change-group": "true" }),
           ...(changeIntentLabel ? [createChoice(changeIntentLabel, "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
-          ...(premiumGap ? [createChoice("Change preference", "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
           createChoice("View all anyway", "receptionist-choice-secondary", { "data-receptionist-view-all": "true" }),
           createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" }),
           createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
@@ -2182,10 +2225,159 @@ document.addEventListener("DOMContentLoaded", () => {
       const booked = new Set([...(Array.isArray(data.booked_dates) ? data.booked_dates : []), ...(Array.isArray(data.hard_blocked_dates) ? data.hard_blocked_dates : [])].map(String));
       return !booked.has(startDate);
     };
+    const renderHotelRecommendationList = (announce = true) => {
+      receptionistRoot.classList.add("is-hotel-results");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
+      receptionistRoot.classList.remove("is-hotel-explanation-open");
+      guideState.responseMode = "recommendations";
+      const results = (guideState.hotelResults || []).slice(0, 3);
+      const state = guideState.hotelRecommendationState;
+      const availabilityChecked = guideState.availabilityChecked === true;
+      const recommendationMessage = state === "no_match" && typeof guideState.hotelRecommendationMessage === "string"
+        ? guideState.hotelRecommendationMessage.trim() : "";
+      const heading = state === "no_match" ? "No room matches found" : state === "partial" ? "A few rooms fit" : "Recommended rooms";
+      const lead = state === "no_match"
+        ? recommendationMessage || (availabilityChecked
+          ? "No room group with an active room is available for this guest range and stay. Change your dates or search details, or contact reception."
+          : "No active room group matches this guest range and recommendation. Try a different guest range or priority, or contact reception.")
+        : availabilityChecked
+          ? `${results.length} available room option${results.length === 1 ? "" : "s"} for ${guideContext.groupSize} guests, checked ${formatCalendarDate(guideContext.startDate)} to ${formatCalendarDate(guideContext.endDate)}.`
+          : `${results.length} room option${results.length === 1 ? "" : "s"} fit your ${guideContext.groupSize}-guest range. Availability is not checked; add dates to check.`;
+      setDialogue(heading, lead, announce);
+      const resultsGrid = document.createElement("div");
+      resultsGrid.className = "receptionist-hotel-results-grid";
+      resultsGrid.setAttribute("role", "group");
+      resultsGrid.setAttribute("aria-label", "Recommended hotel rooms");
+      resultsGrid.classList.toggle("is-empty", results.length === 0);
+
+      const actionsGroup = document.createElement("div");
+      actionsGroup.className = "receptionist-hotel-actions";
+      actionsGroup.setAttribute("role", "group");
+      actionsGroup.setAttribute("aria-label", "Hotel recommendation actions");
+      results.forEach((room, index) => {
+        dataMap[room.id] = room;
+        const card = document.createElement("article");
+        card.className = "receptionist-hotel-result";
+        const choice = createChoice(room.title, "receptionist-choice-venue receptionist-shortlist-choice", {
+          "data-receptionist-room": room.id,
+          "data-receptionist-list-origin": "shortlist",
+          "data-receptionist-shortlist-rank": String(index + 1)
+        });
+        const note = document.createElement("span");
+        note.className = "receptionist-choice-note receptionist-shortlist-reason";
+        const reasonText = room.reasons?.[0] ? `${room.reasons[0].label}: ${room.reasons[0].value}` : "Fits your selected guest range.";
+        const availabilityText = room.availability_checked === true ? "Available for your stay." : "Dates are needed to check availability.";
+        note.textContent = `${reasonText} · ${availabilityText}`;
+        choice.appendChild(note);
+        const details = document.createElement("details");
+        details.className = "receptionist-shortlist-details receptionist-hotel-explanation";
+        const summary = document.createElement("summary");
+        summary.className = "receptionist-shortlist-summary";
+        summary.textContent = "View details";
+        const list = document.createElement("ul");
+        list.className = "receptionist-shortlist-facts";
+        (Array.isArray(room.reasons) ? room.reasons : []).forEach(reason => {
+          const item = document.createElement("li");
+          item.textContent = `${reason.label}: ${reason.value}`;
+          list.appendChild(item);
+        });
+        details.append(summary, list);
+        details.addEventListener("toggle", () => {
+          if (details.open) {
+            resultsGrid.querySelectorAll(".receptionist-hotel-explanation[open]").forEach(openDetails => {
+              if (openDetails !== details) openDetails.open = false;
+            });
+          }
+          const explanationOpen = receptionistChoices.querySelector(".receptionist-hotel-explanation[open]") !== null;
+          receptionistRoot.classList.toggle("is-hotel-explanation-open", explanationOpen);
+        });
+        card.append(choice, details);
+        resultsGrid.appendChild(card);
+      });
+      if (state === "no_match" && !recommendationMessage) {
+        const empty = document.createElement("p");
+        empty.className = "receptionist-empty";
+        empty.textContent = availabilityChecked
+          ? "Reception can help review other arrangements."
+          : "Reception can help review other room options.";
+        resultsGrid.appendChild(empty);
+      }
+      actionsGroup.append(
+        createChoice(guideContext.startDate && guideContext.endDate ? "Change dates" : "Choose dates", "receptionist-choice-primary", { "data-receptionist-change-date": "true" }),
+        createChoice("Change guests or priority", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
+        createChoice("Browse the showroom", "receptionist-choice-secondary", { "data-receptionist-close": "true" }),
+        ...(state === "no_match" ? [createReceptionContactLink()] : [])
+      );
+      receptionistChoices.replaceChildren(resultsGrid, actionsGroup);
+    };
+    const requestHotelRecommendations = async () => {
+      const token = ++guideState.availabilityRequestToken;
+      const thinkingStartedAt = Date.now();
+      const finishThinkingDelay = () => new Promise(resolve => {
+        window.setTimeout(resolve, Math.max(0, 800 - (Date.now() - thinkingStartedAt)));
+      });
+      const formData = new FormData();
+      formData.append("guest_range", String(guideContext.groupSize || ""));
+      formData.append("priority", String(guideContext.preference || ""));
+      formData.append("check_in", String(guideContext.startDate || ""));
+      formData.append("check_out", String(guideContext.endDate || ""));
+      guideState.availabilityStatus = "loading";
+      guideState.availabilityChecked = false;
+      guideState.hotelRecommendationState = "loading";
+      guideState.hotelRecommendationReasonCode = "";
+      guideState.hotelRecommendationMessage = "";
+      showRecommendationThinking("Checking room options…", guideContext.startDate && guideContext.endDate
+        ? "I’m checking available rooms for your complete stay. This does not hold a room."
+        : "I’m comparing room capacity and recorded details without checking availability. Dates are needed to check whether a room is available.");
+      try {
+        const response = await fetch("actions/bookings/recommend_hotel_rooms.php", { method: "POST", body: formData });
+        const data = await response.json().catch(() => null);
+        await finishThinkingDelay();
+        if (token !== guideState.availabilityRequestToken) return;
+        receptionistRoot.classList.remove("is-thinking");
+        if (!response.ok || !data?.success) throw new Error(data?.message || "Room recommendations are unavailable.");
+        guideState.hotelResults = Array.isArray(data.results) ? data.results : [];
+        guideState.hotelRecommendationState = data.state || (guideState.hotelResults.length ? "matched" : "no_match");
+        guideState.hotelRecommendationReasonCode = typeof data.reason_code === "string" ? data.reason_code : "";
+        guideState.hotelRecommendationMessage = typeof data.message === "string" ? data.message : "";
+        guideState.availabilityChecked = data.availability_checked === true;
+        guideState.availabilityStatus = guideState.availabilityChecked
+          ? (guideState.hotelResults.length ? "confirmed" : "none")
+          : "not_checked";
+        guideState.hotelResults.forEach(room => { dataMap[room.id] = room; });
+        if (guideState.hotelResults.length) playSuccessChime();
+        renderHotelRecommendationList();
+        focusFirstChoice();
+      } catch (error) {
+        await finishThinkingDelay();
+        if (token !== guideState.availabilityRequestToken) return;
+        receptionistRoot.classList.remove("is-thinking");
+        guideState.availabilityStatus = "error";
+        guideState.hotelRecommendationState = "error";
+        setDialogue("Recommendations unavailable", guideContext.startDate && guideContext.endDate
+          ? "I couldn’t refresh room recommendations or confirm availability just now. Your answers are saved; retry or change your search."
+          : "I couldn’t load room recommendations just now. Your answers are saved; retry or add dates to check availability.");
+        receptionistChoices.replaceChildren(
+          createChoice("Try again", "receptionist-choice-primary", { "data-receptionist-hotel-retry": "true" }),
+          createChoice(guideContext.startDate && guideContext.endDate ? "Change dates" : "Choose dates", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" }),
+          createChoice("Change guests or priority", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
+          createChoice("Browse the showroom", "receptionist-choice-secondary", { "data-receptionist-close": "true" })
+        );
+        focusFirstChoice();
+      }
+    };
     const checkGuideAvailability = async () => {
       const startDate = guideContext.startDate;
+      if (receptionistState.activeCategory === "Hotel Room") {
+        if (!isCanonicalDate(startDate) || !isCanonicalDate(guideContext.endDate) || guideContext.endDate <= startDate) {
+          renderQuestion("Hotel Room", !isCanonicalDate(startDate) ? "checkInDate" : "checkOutDate");
+          return;
+        }
+        await requestHotelRecommendations();
+        return;
+      }
       if (!isCanonicalDate(startDate)) { renderQuestion(receptionistState.activeCategory, dateStepFor(receptionistState.activeCategory)); return; }
-      guideContext.endDate = receptionistState.activeCategory === "Hotel Room" ? addLocalDays(startDate, 1) : startDate;
+      guideContext.endDate = startDate;
       const token = ++guideState.availabilityRequestToken;
       guideState.availabilityStatus = "loading";
       setDialogue("Checking the current calendar", "I’m checking the selected date across the media-ready options. This creates no hold.");
@@ -2223,13 +2415,10 @@ document.addEventListener("DOMContentLoaded", () => {
       heading.setAttribute("tabindex", "-1");
       try { heading.focus({ preventScroll: true }); } catch (error) { heading.focus(); }
     };
-    const matchingHotelRoomsByRate = () => {
-      const requested = numericFact(guideContext.groupSize);
-      return rankVenues("Hotel Room", requested, "value").filter(item => item.exactFit);
-    };
-    const preferenceLabel = preference => ({ value: "Best value", space: "Extra space", premium: "Premium / VIP" }[preference] || "your selected");
+    const preferenceLabel = preference => ({ save: "Lowest price", best_fit: "Best fit for my group", comfort: "Higher room category" }[preference] || "your selected");
     const groupLabel = requested => requested === null ? "your selected group" : `${formatNumber(requested)}-person group`;
     const renderVenueOverview = room => {
+      receptionistRoot.classList.toggle("is-hotel-results", Boolean(room.room_group_id));
       receptionistRoot.classList.add("is-venue-state");
       receptionistRoot.classList.remove("is-date-state", "is-venue-dialogue");
       receptionistRoot.classList.add("is-venue-overview");
@@ -2239,7 +2428,9 @@ document.addEventListener("DOMContentLoaded", () => {
       guideState.includedPage = 0;
       receptionistState.activeRoomId = room.id;
       const category = receptionistState.activeCategory || room.category;
-      activeRationale = rationaleFor(room, category, guideContext.groupSize, guideContext.preference, guideContext.occasion || guideContext.purpose);
+      activeRationale = room.room_group_id && room.reasons?.[0]
+        ? `${room.reasons[0].label}: ${room.reasons[0].value}`
+        : rationaleFor(room, category, guideContext.groupSize, guideContext.preference, guideContext.occasion || guideContext.purpose);
       const dateSummary = availabilityDateSummary(category);
       setDialogue(room.title || room.venue_name || "Venue details", dateSummary);
       receptionistChoices.replaceChildren();
@@ -2260,7 +2451,30 @@ document.addEventListener("DOMContentLoaded", () => {
       appendFact(facts, "Capacity", guideFact(room.capacity, "Not listed"));
       appendFact(facts, "Starting rate", guideFact(room.rate, "Not listed"));
       if (room.category === "Hotel Room") appendFact(facts, "Beds", guideFact(room.beds, "Not listed"));
+      if (room.room_group_id) {
+        if (room.pricing_basis === "estimated_nightly") {
+          appendFact(facts, "Estimated nightly amount", `₱${Number(room.estimated_nightly_amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /night, including extra-pax charges`);
+        } else {
+          appendFact(facts, "Estimated stay total", `₱${Number(room.estimated_total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        }
+        if (room.availability_checked !== true) appendFact(facts, "Availability", "Dates needed to check availability");
+        appendFact(facts, "Check-in / checkout", `${room.check_in_time} / ${room.check_out_time}`);
+      }
       overview.appendChild(facts);
+      if (room.room_group_id && Array.isArray(room.reasons) && room.reasons.length) {
+        const explanation = document.createElement("details");
+        explanation.className = "receptionist-hotel-explanation receptionist-overview-explanation";
+        const summary = document.createElement("summary");
+        summary.textContent = "Why this room was recommended";
+        const list = document.createElement("ul");
+        room.reasons.forEach(reason => {
+          const item = document.createElement("li");
+          item.textContent = `${reason.label}: ${reason.value}`;
+          list.appendChild(item);
+        });
+        explanation.append(summary, list);
+        overview.appendChild(explanation);
+      }
       const amenities = document.createElement("ul");
       amenities.className = "receptionist-amenities";
       (Array.isArray(room.amenities) ? room.amenities : []).map(item => String(item).trim()).filter(Boolean).slice(0, 4).forEach(item => {
@@ -2275,7 +2489,11 @@ document.addEventListener("DOMContentLoaded", () => {
       overview.appendChild(rating);
       showcase.appendChild(overview);
 
-      const images = venueImages(room);
+      // Hotel group panoramas are tour media, not standard room photos.
+      // Keep the detail gallery truthful while leaving the panorama action intact.
+      const images = room.room_group_id
+        ? (hasGallery(room) ? room.gallery.filter(Boolean) : [])
+        : venueImages(room);
       const photoCount = images.length;
       const sharp = document.createElement("figure");
       sharp.className = "receptionist-sharp-image";
@@ -2306,8 +2524,19 @@ document.addEventListener("DOMContentLoaded", () => {
         sharp.appendChild(photoControls);
       } else {
         sharp.classList.add("is-empty");
+        const placeholder = document.createElement("img");
+        placeholder.src = "assets/img/placeholder.jpg";
+        const panoramaAvailable = Boolean(room.room_group_id && hasPanorama(room));
+        const roomLabel = room.title || room.venue_name || "this room";
+        placeholder.alt = panoramaAvailable
+          ? `Standard room photo unavailable for ${roomLabel}`
+          : `No room photo provided for ${roomLabel}`;
+        placeholder.loading = "lazy";
+        sharp.appendChild(placeholder);
         const emptyPhoto = document.createElement("span");
-        emptyPhoto.textContent = "No gallery photos are listed for this venue.";
+        emptyPhoto.textContent = panoramaAvailable
+          ? "A standard room photo is unavailable. A 360° room tour is available."
+          : "No room photos are provided. The recommendation is based on the listed room facts.";
         sharp.appendChild(emptyPhoto);
         receptionistPhotoCounter = null;
         guideState.sharpImage = null;
@@ -2325,11 +2554,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const tourAction = createChoice(hasPanorama(room) ? "Start 360° tour" : "Explore photos", "receptionist-choice-primary", { "data-receptionist-tour": "true" });
       const bookLink = document.createElement("a");
       bookLink.className = "receptionist-choice receptionist-choice-primary receptionist-choice-link";
-      bookLink.href = getBookingUrl(room, guideContext.startDate, guideContext.endDate);
-      bookLink.textContent = guideContext.startDate ? "Check dates and book" : "Book this venue";
+      bookLink.href = getBookingUrl(room, guideContext.startDate, guideContext.endDate, guideContext.groupSize);
+      bookLink.textContent = room.room_group_id ? "Book this room" : guideContext.startDate ? "Check dates and book" : "Book this venue";
       bookLink.setAttribute("data-receptionist-book", "true");
-      const askAction = createChoice("More details", "receptionist-choice-secondary", { "data-receptionist-menu": "true" });
-      primaryActions.append(tourAction, bookLink, askAction);
+      if (room.room_group_id) {
+        if (hasPanorama(room) || hasGallery(room)) primaryActions.appendChild(tourAction);
+        primaryActions.appendChild(bookLink);
+        primaryActions.appendChild(createChoice("Back to recommendations", "receptionist-choice-secondary", { "data-receptionist-hotel-back": "true" }));
+      } else {
+        const askAction = createChoice("More details", "receptionist-choice-secondary", { "data-receptionist-menu": "true" });
+        primaryActions.append(tourAction, bookLink, askAction);
+      }
       receptionistChoices.appendChild(primaryActions);
     };
     const renderVenue = room => {
@@ -2377,17 +2612,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const requested = numericFact(guideContext.groupSize);
         const capacity = numericFact(room.capacity_value);
         const evidence = [];
-        if (room.category === "Hotel Room") {
-          const group = groupLabel(requested);
-          const preference = preferenceLabel(guideContext.preference);
-          if (requested !== null && capacity !== null && capacity >= requested) {
-            const surplus = capacity - requested;
-            evidence.push(`For your ${group} and ${preference} preference, this room accommodates everyone${surplus ? ` with ${formatNumber(surplus)} extra guest place${surplus === 1 ? "" : "s"}` : " exactly"}.`);
-          } else if (capacity === null) {
-            evidence.push(`For your ${group} and ${preference} preference, capacity is not listed; confirm the group fit during booking.`);
-          } else {
-            evidence.push(`For your ${group} and ${preference} preference, listed capacity is up to ${formatNumber(capacity)}; it does not meet the requested group.`);
-          }
+        if (room.category === "Hotel Room" && Array.isArray(room.reasons) && room.reasons.length) {
+          room.reasons.forEach(reason => evidence.push(`${reason.label}: ${reason.value}`));
+        } else if (room.category === "Hotel Room") {
+          evidence.push(capacity === null ? "Capacity is not listed; confirm the group fit during booking." : `Capacity fit: up to ${formatNumber(capacity)} guests.`);
+          const beds = numericFact(room.beds_value);
+          evidence.push(beds === null ? "Bed count is not listed; confirm the room setup during booking." : `Bed count: ${formatNumber(beds)} listed.`);
         } else if (requested !== null && capacity !== null && capacity >= requested) {
           const context = guideContext.occasion || guideContext.purpose;
           const contextPhrase = context ? ` and ${context} plans` : "";
@@ -2395,22 +2625,7 @@ document.addEventListener("DOMContentLoaded", () => {
           evidence.push(`For your ${groupLabel(requested)}${contextPhrase}, this venue accommodates everyone${surplus ? ` with ${formatNumber(surplus)} extra guest place${surplus === 1 ? "" : "s"}` : " exactly"}.`);
         } else if (capacity === null) evidence.push(`For your ${groupLabel(requested)}, capacity is not listed; confirm the group fit during booking.`);
         else evidence.push(`For your ${groupLabel(requested)}, listed capacity is up to ${formatNumber(capacity)}; it does not meet the requested group.`);
-        if (room.category === "Hotel Room") {
-          const beds = numericFact(room.beds_value);
-          if (guideContext.preference === "value") {
-            const matching = matchingHotelRoomsByRate();
-            const rank = matching.findIndex(item => item.room.id === room.id);
-            if (numericFact(room.rate_value) !== null && rank >= 0) evidence.push(`Its listed rate ranks ${rank + 1} among the ${matching.length} exact-fit room${matching.length === 1 ? "" : "s"} when ordered by rate.`);
-            else evidence.push("A comparable rate is not listed; confirm the total during booking.");
-          } else if (guideContext.preference === "space") {
-            evidence.push(capacity === null ? "Capacity is not listed; confirm the room size during booking." : `Listed capacity is up to ${formatNumber(capacity)} guests.`);
-            evidence.push(beds === null ? "Bed count is not listed; confirm the room setup during booking." : `${formatNumber(beds)} bed${beds === 1 ? "" : "s"} listed.`);
-          } else {
-            evidence.push(/vip|premium/i.test(`${room.room_type || ""} ${room.title || ""}`) ? "The room name or type explicitly identifies Premium/VIP." : "No explicit Premium/VIP designation is listed.");
-            evidence.push(capacity === null ? "Capacity is not listed; confirm it during booking." : `Listed capacity is up to ${formatNumber(capacity)} guests.`);
-            evidence.push(beds === null ? "Bed count is not listed; confirm the room setup during booking." : `${formatNumber(beds)} bed${beds === 1 ? "" : "s"} listed.`);
-          }
-        } else {
+        if (room.category !== "Hotel Room") {
           evidence.push(guideContext.occasion || guideContext.purpose ? `Shown for your ${guideContext.occasion || guideContext.purpose} plans.` : "Selected from the matching media-ready venues.");
         }
         evidence.forEach(item => { const li = document.createElement("li"); li.textContent = item; list.appendChild(li); });
@@ -2612,7 +2827,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : focusable;
     };
     receptionistRoot.addEventListener("click", event => {
-      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-room], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
       if (!target) return;
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
       if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) { closeGuide(); return; }
@@ -2624,6 +2839,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (target.hasAttribute("data-receptionist-back")) { renderGreeting({ announce: true, reset: true }); focusFirstChoice(); return; }
       if (target.hasAttribute("data-receptionist-overview")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueOverview(room); focusFirstChoice(); } return; }
+      if (target.hasAttribute("data-receptionist-hotel-back")) { renderHotelRecommendationList(); focusFirstChoice(); return; }
+      if (target.hasAttribute("data-receptionist-hotel-retry")) { requestHotelRecommendations(); return; }
       if (target.hasAttribute("data-receptionist-menu")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueMenu(room); focusFirstChoice(); } return; }
       if (target.hasAttribute("data-receptionist-date-later")) {
         guideContext.startDate = null;
@@ -2633,32 +2850,60 @@ document.addEventListener("DOMContentLoaded", () => {
         guideState.dateMonth = null;
         guideState.dateQuestionCategory = null;
         guideState.availabilityStatus = "idle";
+        guideState.availabilityChecked = false;
         guideState.availabilityConfirmedIds = [];
         guideState.availabilityRequestToken += 1;
-        renderRecommendations(); focusFirstChoice(); return;
+        if (receptionistState.activeCategory === "Hotel Room") requestHotelRecommendations();
+        else { renderRecommendations(); focusFirstChoice(); }
+        return;
       }
       if (target.hasAttribute("data-receptionist-change-date")) {
         guideState.availabilityRequestToken += 1;
         guideState.availabilityStatus = "idle";
+        guideState.availabilityChecked = false;
         guideState.availabilityConfirmedIds = [];
+        if (receptionistState.activeCategory === "Hotel Room") {
+          guideContext.startDate = null;
+          guideContext.endDate = null;
+          guideState.dateDraft = null;
+          guideState.dateMonth = null;
+          guideState.dateQuestionStep = null;
+        }
         renderQuestion(receptionistState.activeCategory, dateStepFor(receptionistState.activeCategory)); focusFirstChoice(); return;
       }
       if (target.hasAttribute("data-receptionist-change-search")) {
         const category = receptionistState.activeCategory;
         guideContext.occasion = null; guideContext.purpose = null; guideContext.groupSize = null; guideContext.preference = null; guideContext.startDate = null; guideContext.endDate = null;
         guideState.dateDraft = null; guideState.dateFocus = null; guideState.dateMonth = null; guideState.dateQuestionCategory = null;
-        guideState.availabilityStatus = "idle"; guideState.availabilityConfirmedIds = []; guideState.availabilityRequestToken += 1;
+        guideState.availabilityStatus = "idle"; guideState.availabilityChecked = false; guideState.availabilityConfirmedIds = []; guideState.availabilityRequestToken += 1;
         renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize"); focusFirstChoice(); return;
       }
       if (target.hasAttribute("data-receptionist-date-submit")) {
         const input = receptionistRoot.querySelector("[data-receptionist-date-input]");
-        const value = guideState.dateDraft || input?.value || guideContext.startDate;
+        const value = guideState.dateDraft || input?.value || (guideState.dateQuestionStep === "checkOutDate" ? guideContext.endDate : guideContext.startDate);
         if (!isCanonicalDate(value)) {
-          setDialogue(dateQuestionTitle(receptionistState.activeCategory), `Choose a valid ${dateAvailabilityLabel(receptionistState.activeCategory).toLowerCase()} from today onward.`);
+          setDialogue(dateQuestionTitle(receptionistState.activeCategory, guideState.dateQuestionStep), `Choose a valid ${dateAvailabilityLabel(receptionistState.activeCategory, guideState.dateQuestionStep).toLowerCase()} from today onward.`);
           focusFirstChoice();
           return;
         }
-        guideContext.startDate = value;
+        if (receptionistState.activeCategory === "Hotel Room" && guideState.dateQuestionStep === "checkInDate") {
+          guideContext.startDate = value;
+          guideContext.endDate = null;
+          guideState.dateDraft = null;
+          renderQuestion("Hotel Room", "checkOutDate");
+          focusFirstChoice();
+          return;
+        }
+        if (receptionistState.activeCategory === "Hotel Room" && guideState.dateQuestionStep === "checkOutDate") {
+          if (!isCanonicalDate(guideContext.startDate) || value <= guideContext.startDate) {
+            setDialogue("Choose a later checkout", "Checkout must be after check-in so the stay includes at least one night.");
+            focusFirstChoice();
+            return;
+          }
+          guideContext.endDate = value;
+        } else {
+          guideContext.startDate = value;
+        }
         checkGuideAvailability(); return;
       }
       if (target.hasAttribute("data-receptionist-change") || target.hasAttribute("data-receptionist-change-primary") || target.hasAttribute("data-receptionist-change-group")) {
@@ -2682,10 +2927,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (target.hasAttribute("data-receptionist-intent")) {
         const category = target.getAttribute("data-receptionist-intent"); resetContext(); receptionistState.activeCategory = category; guideContext.intent = category;
-        if (category === "Hotel Room" && numericFact(guideContext.groupSize) !== null) {
-          if (guideContext.preference === null) renderQuestion(category, "preference");
-          else if (!guideContext.startDate) renderQuestion(category, "checkInDate");
-          else renderRecommendations();
+        if (category === "Hotel Room") {
+          if (!new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]).has(guideContext.groupSize)) guideContext.groupSize = null;
+          if (!new Set(["save", "best_fit", "comfort"]).has(guideContext.preference)) guideContext.preference = null;
+          if (guideContext.groupSize === null) renderQuestion(category, "groupSize");
+          else if (guideContext.preference === null) renderQuestion(category, "preference");
+          else renderQuestion(category, "checkInDate");
         } else {
           renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize");
         }
@@ -2693,7 +2940,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (target.hasAttribute("data-receptionist-answer")) {
         const key = target.getAttribute("data-answer-key"); const value = target.getAttribute("data-receptionist-answer");
-        guideContext[key] = key === "groupSize" ? Number(value) : value;
+        guideContext[key] = key === "groupSize" && receptionistState.activeCategory !== "Hotel Room" ? Number(value) : value;
         saveGuideContext();
         const category = receptionistState.activeCategory;
         if (category === "Event Hall" && key === "occasion") {
@@ -2703,10 +2950,10 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!guideContext.startDate) renderQuestion(category, "eventDate"); else renderRecommendations();
         }
         else if (category === "Hotel Room" && key === "groupSize") {
-          if (guideContext.preference === null) renderQuestion(category, "preference"); else renderRecommendations();
+          if (guideContext.preference === null) renderQuestion(category, "preference"); else renderQuestion(category, "checkInDate");
         }
         else if (category === "Hotel Room" && key === "preference") {
-          if (!guideContext.startDate) renderQuestion(category, "checkInDate"); else renderRecommendations();
+          if (!guideContext.startDate || !guideContext.endDate) renderQuestion(category, "checkInDate"); else requestHotelRecommendations();
         }
         else if (category === "Resort Villa" && key === "purpose") {
           if (numericFact(guideContext.groupSize) === null) renderQuestion(category, "groupSize"); else renderRecommendations();
@@ -2721,7 +2968,8 @@ document.addEventListener("DOMContentLoaded", () => {
           const origin = target.getAttribute("data-receptionist-list-origin");
           guideState.selectionOrigin = origin === "all" ? "all" : "shortlist";
           guideState.selectedAllPage = guideState.allPage;
-          activateVenue(room.id); renderVenue(room); focusFirstChoice();
+          activateVenue(room.id);
+          renderVenue(room); focusFirstChoice();
         }
         return;
       }

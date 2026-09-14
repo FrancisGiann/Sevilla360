@@ -163,20 +163,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             $_SESSION['first_name'] = $display_name;
 
-            // Successful staff/admin logins were previously absent from the
-            // audit log. Keep this non-blocking: a logging failure must not
-            // prevent a valid login.
-            try {
-                $login_action = 'Successful ' . $user['role'] . ' login: ' . $email;
-                $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Authentication', ?, ?)");
-                if ($audit) {
-                    $ip_address = request_client_ip();
-                    $audit->bind_param("iss", $user['id'], $login_action, $ip_address);
-                    $audit->execute();
-                    $audit->close();
+            // Successful admin and staff logins are security events. Customer
+            // logins are intentionally excluded; no credentials are recorded.
+            if (in_array($user['role'], ['admin', 'staff'], true)) {
+                try {
+                    $login_action = 'Successful ' . $user['role'] . ' login';
+                    $event_type = 'authentication.login_success';
+                    $entity_type = 'user';
+                    $entity_id = (int)$user['id'];
+                    $details_json = json_encode(['role' => $user['role']], JSON_THROW_ON_ERROR);
+                    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address, event_type, entity_type, entity_id, details_json) VALUES (?, 'Authentication', ?, ?, ?, ?, ?, ?)");
+                    if ($audit) {
+                        $ip_address = request_client_ip();
+                        $audit->bind_param('issssis', $user['id'], $login_action, $ip_address, $event_type, $entity_type, $entity_id, $details_json);
+                        $audit->execute();
+                        $audit->close();
+                    }
+                } catch (Throwable $e) {
+                    // Authentication remains available if audit logging is unavailable.
                 }
-            } catch (Throwable $e) {
-                // Authentication remains available if audit logging is unavailable.
             }
 
 

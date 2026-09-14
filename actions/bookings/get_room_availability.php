@@ -1,92 +1,105 @@
 <?php
-/**
- * SEVILLA360 - Get Hotel Room Availability
- * Returns available unit count for a given building+room_type group for a date range.
- */
+/** Read-only availability count for a hotel commercial group. */
 require_once __DIR__ . '/../../includes/session_init.php';
-header('Content-Type: application/json');
-require '../../config/db_connect.php';
+require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/hotel_rooms.php';
+
+header('Content-Type: application/json; charset=UTF-8');
 
 try {
-    $conn->query("DELETE FROM booking_locks WHERE expires_at <= NOW()");
-    $current_session = session_id();
-    $building_name = trim($_GET['building_name'] ?? '');
-    $room_type     = trim($_GET['room_type'] ?? '');
-    $start_date    = trim($_GET['start_date'] ?? '');
-    $end_date      = trim($_GET['end_date'] ?? '');
-
-    if (empty($building_name) || empty($room_type) || empty($start_date) || empty($end_date)) {
-        echo json_encode(['success' => false, 'message' => 'Missing parameters.']);
+    $checkIn = $_GET['check_in'] ?? $_GET['start_date'] ?? null;
+    $checkOut = $_GET['check_out'] ?? $_GET['end_date'] ?? null;
+    [$start, $end] = hotel_validate_recommendation_dates($checkIn, $checkOut);
+    $groupIdRaw = $_GET['room_group_id'] ?? '';
+    $groupId = $groupIdRaw === '' ? null : filter_var($groupIdRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($groupIdRaw !== '' && $groupId === false) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Invalid room selection.']);
         exit;
     }
 
-    // Validate date formats
-    $start_dt = DateTime::createFromFormat('Y-m-d', $start_date);
-    $end_dt   = DateTime::createFromFormat('Y-m-d', $end_date);
-    if (!$start_dt || !$end_dt || $end_dt <= $start_dt) {
-        echo json_encode(['success' => false, 'message' => 'Invalid date range.']);
+    if (hotel_group_schema_ready($conn)) {
+        if ($groupId === null) {
+            $building = trim((string)($_GET['building_name'] ?? ''));
+            $roomType = trim((string)($_GET['room_type'] ?? ''));
+            if ($building === '' || $roomType === '') {
+                http_response_code(422);
+                echo json_encode(['success' => false, 'message' => 'Room selection is required.']);
+                exit;
+            }
+            $stmt = $conn->prepare('SELECT g.id FROM hotel_room_groups g
+                INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                WHERE g.building_name = ? AND (g.room_type_code = ? OR g.legacy_room_type = ?) ORDER BY t.sort_order, g.sort_order, g.id');
+            $stmt->bind_param('sss', $building, $roomType, $roomType);
+            $stmt->execute();
+            $groupIds = array_map(static fn(array $row): int => (int)$row['id'], $stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+            $stmt->close();
+        } else {
+            $groupIds = [(int)$groupId];
+        }
+        $available = hotel_available_group_units($conn, $start->format('Y-m-d'), $end->format('Y-m-d'), session_id(), $groupIds);
+        $count = 0;
+        foreach ($available as $units) $count += count($units);
+        $rate = 0.0;
+        $baseCapacity = 0;
+        if ($groupIds) {
+            $stmt = $conn->prepare('SELECT g.nightly_rate, g.base_capacity FROM hotel_room_groups g
+                INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1 WHERE g.id = ? LIMIT 1');
+            $firstId = (int)$groupIds[0];
+            $stmt->bind_param('i', $firstId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row) {
+                $rate = (float)$row['nightly_rate'];
+                $baseCapacity = (int)$row['base_capacity'];
+            }
+        }
+        echo json_encode(['success' => true, 'available' => $count, 'nightly_rate' => $rate, 'base_capacity' => $baseCapacity]);
         exit;
     }
 
-    // Count rooms in this group NOT booked for these dates
-    $stmt = $conn->prepare("
-        SELECT COUNT(v.id) AS available
-        FROM venues v
-        JOIN hotel_rooms h ON v.id = h.venue_id
-        WHERE v.name = ?
-          AND h.room_type = ?
-          AND v.status = 'Available'
-          AND v.id NOT IN (
-              SELECT venue_id FROM bookings
-              WHERE booking_status IN ('Pending', 'Confirmed', 'Completed')
-                AND source <> 'Maintenance'
-                AND (start_date < ? AND end_date > ?)
-          )
-          AND v.id NOT IN (
-              SELECT br.venue_id FROM booking_rooms br
-              JOIN bookings b2 ON br.booking_id = b2.id
-              JOIN venues parent_v ON parent_v.id = b2.venue_id
-              WHERE b2.booking_status IN ('Pending', 'Confirmed', 'Completed')
-                AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
-                AND b2.source <> 'Maintenance'
-                AND (br.start_date < ? AND br.end_date > ?)
-          )
-          AND v.id NOT IN (
-              SELECT venue_id FROM maintenance
-              WHERE is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)
-                AND (start_date <= ? AND end_date >= ?)
-          )
-          AND v.id NOT IN (
-              SELECT venue_id FROM booking_locks
-              WHERE session_id != ? AND expires_at > NOW()
-                AND (start_date < ? AND end_date > ?)
-          )
-    ");
-    $stmt->bind_param('sssssssssss', $building_name, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date, $current_session, $end_date, $start_date);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $available = (int)($row['available'] ?? 0);
-
-    // Also fetch nightly_rate and base_capacity for the group
-    $stmt_rate = $conn->prepare("
-        SELECT h.nightly_rate, h.base_capacity
-        FROM hotel_rooms h
-        JOIN venues v ON v.id = h.venue_id
+    // Compatibility for installations that have not applied migration 023.
+    $building = trim((string)($_GET['building_name'] ?? ''));
+    $roomType = trim((string)($_GET['room_type'] ?? ''));
+    if ($building === '' || $roomType === '') {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'message' => 'Room recommendations are temporarily unavailable.']);
+        exit;
+    }
+    $overlap = booking_overlap_sql('Hotel Room', 'b.start_date', 'b.end_date');
+    $addonOverlap = booking_overlap_sql('Hotel Room', 'br.start_date', 'br.end_date');
+    $maintOverlap = maintenance_overlap_sql('m.start_date', 'm.end_date');
+    $lockOverlap = booking_overlap_sql('Hotel Room', 'bl.start_date', 'bl.end_date');
+    $sql = "SELECT COUNT(*) AS available, MAX(h.nightly_rate) AS nightly_rate, MAX(h.base_capacity) AS base_capacity
+        FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id
         WHERE v.name = ? AND h.room_type = ? AND v.status = 'Available'
-        LIMIT 1
-    ");
-    $stmt_rate->bind_param('ss', $building_name, $room_type);
-    $stmt_rate->execute();
-    $rate_row = $stmt_rate->get_result()->fetch_assoc();
-
-    echo json_encode([
-        'success'       => true,
-        'available'     => $available,
-        'nightly_rate'  => $rate_row ? floatval($rate_row['nightly_rate']) : 0,
-        'base_capacity' => $rate_row ? (int)$rate_row['base_capacity'] : 0
-    ]);
-
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+          AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.venue_id = v.id
+            AND b.booking_status IN ('Pending','Confirmed','Completed') AND COALESCE(b.source,'') <> 'Maintenance' AND {$overlap})
+          AND NOT EXISTS (SELECT 1 FROM booking_rooms br JOIN bookings b2 ON b2.id = br.booking_id
+            JOIN venues parent_v ON parent_v.id = b2.venue_id WHERE br.venue_id = v.id
+            AND b2.booking_status IN ('Pending','Confirmed','Completed')
+            AND NOT (b2.booking_status = 'Pending' AND parent_v.category = 'Event Hall')
+            AND COALESCE(b2.source,'') <> 'Maintenance' AND {$addonOverlap})
+          AND NOT EXISTS (SELECT 1 FROM maintenance m WHERE m.venue_id = v.id AND m.is_blocking = 1
+            AND (m.status = 'Scheduled' OR m.status IS NULL) AND {$maintOverlap})
+          AND NOT EXISTS (SELECT 1 FROM booking_locks bl WHERE bl.venue_id = v.id
+            AND bl.session_id <> ? AND bl.expires_at > NOW() AND {$lockOverlap})";
+    $stmt = $conn->prepare($sql);
+    $checkOut = $end->format('Y-m-d');
+    $checkIn = $start->format('Y-m-d');
+    $session = session_id();
+    $stmt->bind_param('sssssssssss', $building, $roomType, $checkOut, $checkIn, $checkOut, $checkIn,
+        $checkOut, $checkIn, $session, $checkOut, $checkIn);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc() ?: [];
+    echo json_encode(['success' => true, 'available' => (int)($row['available'] ?? 0),
+        'nightly_rate' => (float)($row['nightly_rate'] ?? 0), 'base_capacity' => (int)($row['base_capacity'] ?? 0)]);
+} catch (InvalidArgumentException $error) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => $error->getMessage()]);
+} catch (Throwable $error) {
+    error_log('Hotel availability lookup failed: ' . get_class($error));
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Availability could not be loaded. Please try again.']);
 }
-?>

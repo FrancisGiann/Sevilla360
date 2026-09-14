@@ -141,6 +141,7 @@ class BookingController {
         return JSON.stringify({
             activeTabId: String(this.state.activeTabId || ''),
             venueId: String(context.venueId || ''),
+            roomGroupId: String(context.roomGroupId || ''),
             roomName: String(context.roomName || ''),
             roomType: String(context.roomType || ''),
             startDate,
@@ -183,6 +184,7 @@ class BookingController {
             activeTabId: this.state.activeTabId,
             category,
             venueId: context.venueId || '',
+            roomGroupId: context.roomGroupId || '',
             venueName: context.roomName || '',
             roomType: context.roomType && !['Event Hall', 'Resort Villa'].includes(context.roomType) ? context.roomType : '',
             buildingName: context.roomType && !['Event Hall', 'Resort Villa'].includes(context.roomType) ? context.roomName || '' : '',
@@ -203,6 +205,7 @@ class BookingController {
                 av: this.getEl('check-av')?.checked === true,
                 rooms: this.getEl('check-rooms')?.checked === true,
                 roomGroups: Array.from(document.querySelectorAll('.selected-room-row')).map(row => ({
+                    roomGroupId: row.dataset.roomGroupId || '',
                     buildingName: row.dataset.building || '',
                     roomType: row.dataset.roomType || '',
                     quantity: Number.parseInt(row.querySelector('.sel-room-qty')?.value, 10) || 1
@@ -255,7 +258,8 @@ class BookingController {
             const buildingName = String(group?.buildingName || '');
             const roomType = String(group?.roomType || '');
             const quantity = Number.parseInt(group?.quantity, 10);
-            const card = cards.find(item => item.dataset.building === buildingName && item.dataset.roomType === roomType);
+            const roomGroupId = String(group?.roomGroupId || '');
+            const card = cards.find(item => roomGroupId ? item.dataset.roomGroupId === roomGroupId : item.dataset.building === buildingName && item.dataset.roomType === roomType);
             const available = Number.parseInt(card?.dataset.available, 10);
             if (card && Number.isInteger(quantity) && quantity > 0 && quantity <= available) {
                 validGroups.push({ card, quantity });
@@ -315,7 +319,7 @@ class BookingController {
         } else if (draft.roomType) {
             applyChange('hotel-room-type', draft.roomType);
             const roomSelect = this.getEl('hotel-room-name');
-            const option = Array.from(roomSelect?.options || []).find(item => String(item.dataset.name || '') === String(draft.buildingName || draft.venueName));
+            const option = Array.from(roomSelect?.options || []).find(item => (draft.roomGroupId && String(item.dataset.roomGroupId || '') === String(draft.roomGroupId)) || (!draft.roomGroupId && String(item.dataset.name || '') === String(draft.buildingName || draft.venueName)));
             if (option && roomSelect) { roomSelect.value = option.value; roomSelect.dispatchEvent(new Event('change', { bubbles: true })); }
         }
 
@@ -367,7 +371,7 @@ class BookingController {
         this.state.activeCalendar = calendar;
         calendar.setSelection(draft.startDate, endDate);
         const context = this.getTabContextData();
-        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId);
+        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
         const invalidStart = calendar.isDateUnavailable(calendar.startDate);
         const invalidInterior = calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate);
         const invalidEnd = this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate);
@@ -434,6 +438,7 @@ class BookingController {
         if (tabBtn) this.handleTabSwitch(tabBtn);
 
         const venueId = urlParams.get('venue_id');
+        const roomGroupId = urlParams.get('room_group_id');
         const roomType = urlParams.get('room_type');
         const venueName = urlParams.get('venue_name');
 
@@ -461,44 +466,39 @@ class BookingController {
             }
         } else if (category === 'Hotel Room') {
             const typeSelect = this.getEl('hotel-room-type');
-            if (typeSelect && roomType) {
+            const groupRoom = roomGroupId ? Object.values(window.hotelRoomData || {}).flat().find(item => String(item.room_group_id || '') === String(roomGroupId)) : null;
+            const desiredType = roomType || groupRoom?.room_type || '';
+            if (typeSelect && desiredType) {
                 for (let i = 0; i < typeSelect.options.length; i++) {
-                    if (typeSelect.options[i].value === roomType) {
+                    if (typeSelect.options[i].value === desiredType) {
                         typeSelect.selectedIndex = i;
                         typeSelect.dispatchEvent(new Event('change'));
                         break;
                     }
                 }
-                
-                // Now specific room/building dropdown should be populated
-                setTimeout(() => {
-                    const nameSelect = this.getEl('hotel-room-name');
-                    if (nameSelect && venueName) {
-                        for (let i = 0; i < nameSelect.options.length; i++) {
-                            if (nameSelect.options[i].dataset.name === venueName) {
-                                nameSelect.selectedIndex = i;
-                                nameSelect.dispatchEvent(new Event('change'));
-                                break;
-                            }
-                        }
-                    }
-                }, 100); // small delay to allow population
+                const nameSelect = this.getEl('hotel-room-name');
+                const option = Array.from(nameSelect?.options || []).find(item => roomGroupId
+                    ? String(item.dataset.roomGroupId || '') === String(roomGroupId)
+                    : item.dataset.name === venueName);
+                if (nameSelect && option) {
+                    nameSelect.selectedIndex = option.index;
+                    nameSelect.dispatchEvent(new Event('change'));
+                }
             }
         }
     }
 
     async preselectDatesFromURL() {
         const params = new URLSearchParams(window.location.search);
-        const start = params.get('start_date');
-        const end = params.get('end_date') || start;
+        const start = params.get('check_in') || params.get('start_date');
+        const end = params.get('check_out') || params.get('end_date') || start;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) return;
-        await new Promise(resolve => setTimeout(resolve, this.state.activeTabId === 'hotel-rooms' ? 140 : 40));
         const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
         const context = this.getTabContextData();
         if (!calendar || (!context.roomName && !context.venueId)) return;
         this.state.activeCalendar = calendar;
         calendar.setSelection(start, end);
-        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId);
+        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
         if (calendar.isDateUnavailable(calendar.startDate) || (calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate)) || (this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate))) {
             calendar.clearSelectedRange();
             this.state.activeCalendar = null;
@@ -566,7 +566,7 @@ class BookingController {
                 }
                 // Fetch booked dates using group info
                 if (opt.dataset.type && opt.dataset.name && this.state.calendars.hotel) {
-                    this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
+                    this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name, null, false, opt.dataset.roomGroupId || null);
                 }
                 this.calculateSummary();
             });
@@ -818,6 +818,7 @@ class BookingController {
 
         const building  = card.dataset.building;
         const roomType  = card.dataset.roomType;
+        const roomGroupId = card.dataset.roomGroupId || '';
         const rate      = parseFloat(card.dataset.rate);
         const inventory = Number.parseInt(card.dataset.available, 10);
         if (!Number.isInteger(inventory) || inventory < 1) {
@@ -830,6 +831,7 @@ class BookingController {
         row.setAttribute('data-sel-key', groupKey);
         row.setAttribute('data-building', building);
         row.setAttribute('data-room-type', roomType);
+        row.setAttribute('data-room-group-id', roomGroupId);
         row.setAttribute('data-rate', rate);
         row.style.cssText = 'display:flex; gap:10px; margin-bottom:10px; align-items:center;';
         const roomDetails = document.createElement('div');
@@ -975,6 +977,8 @@ class BookingController {
         rooms.forEach((room) => {
             const opt = document.createElement("option");
             opt.value = room.nightly_rate;
+            opt.dataset.roomGroupId = room.room_group_id || '';
+            opt.dataset.roomTypeCode = room.room_type_code || '';
             opt.dataset.type     = room.room_type;
             opt.dataset.name     = room.building_name;
             opt.dataset.inventory = room.total_inventory;
@@ -1337,6 +1341,8 @@ class BookingController {
         if (lockData.venueId) formData.append('venue_id', lockData.venueId);
         formData.append('room_type', lockData.roomType || '');
         formData.append('room_name', lockData.roomName || '');
+        if (lockData.roomGroupId) formData.append('room_group_id', lockData.roomGroupId);
+        if (lockData.roomType !== 'Event Hall' && lockData.guests) formData.append('guests', lockData.guests);
         if (lockData.roomType === 'Resort Villa') {
             formData.append('stay_type', document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
         }
@@ -1409,7 +1415,7 @@ class BookingController {
             } else {
                 showAlert('Hold unavailable', `Error: ${err.message}`, 'error');
                 const refreshData = this.getTabContextData();
-                calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId);
+                calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId, false, refreshData.roomGroupId);
             }
             this.calculateSummary();
             this.saveDraft();
@@ -1610,7 +1616,8 @@ class BookingController {
             if (!label) return false;
 
             try {
-                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
+                const groupParam = card.dataset.roomGroupId ? `&room_group_id=${encodeURIComponent(card.dataset.roomGroupId)}` : '';
+                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}${groupParam}`;
                 const res  = await fetch(url);
                 const data = await res.json();
                 const confirmed = this.getAddonStayRange();
@@ -1970,12 +1977,13 @@ class BookingController {
     }
 
     getTabContextData() {
-        const context = { roomType: '', roomName: '', venueId: null, baseAmt: 0, guests: 0, activeRadioGroup: 'payment-scheme' };
+        const context = { roomType: '', roomName: '', venueId: null, roomGroupId: null, baseAmt: 0, guests: 0, activeRadioGroup: 'payment-scheme' };
 
         if (this.state.activeTabId === 'hotel-rooms') {
             const nameSelect = this.getEl('hotel-room-name');
             const opt = nameSelect?.options[nameSelect?.selectedIndex];
             context.venueId  = opt?.dataset.venueId || null;
+            context.roomGroupId = opt?.dataset.roomGroupId || null;
             context.roomType = opt?.dataset.type;
             context.roomName = opt?.dataset.name;
             context.baseAmt  = opt?.value;
@@ -2065,6 +2073,7 @@ class BookingController {
         const formData = new FormData();
         formData.append("room_type", context.roomType);
         formData.append("room_name", context.roomName || '');
+        if (context.roomGroupId) formData.append('room_group_id', context.roomGroupId);
 
         // Hotel rooms: pass venue_id directly; others: use room_type + room_name via session lock
         if (context.venueId) formData.append("venue_id", context.venueId);
@@ -2132,9 +2141,10 @@ class BookingController {
         if (context.roomType === 'Event Hall' && roomsEnabled) document.querySelectorAll('.selected-room-row').forEach(row => {
             const building  = row.dataset.building;
             const roomType  = row.dataset.roomType;
+            const roomGroupId = Number.parseInt(row.dataset.roomGroupId, 10) || null;
             const qty       = parseInt(row.querySelector('.sel-room-qty')?.value) || 0;
             if (building && roomType && qty > 0) {
-                roomGroups.push({ building_name: building, room_type: roomType, quantity: qty });
+                roomGroups.push({ room_group_id: roomGroupId, building_name: building, room_type: roomType, quantity: qty });
             }
         });
         if (roomGroups.length > 0) {

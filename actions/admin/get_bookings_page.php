@@ -20,7 +20,8 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     exit;
 }
 
-$data = json_decode(file_get_contents('php://input'), true);
+$decoded_data = json_decode(file_get_contents('php://input'), true);
+$data = is_array($decoded_data) ? $decoded_data : [];
 
 $page = max(1, isset($data['page']) ? intval($data['page']) : 1);
 $limit = min(100, max(1, isset($data['limit']) ? intval($data['limit']) : 10));
@@ -33,13 +34,25 @@ $statusFilter = isset($data['status']) ? $data['status'] : 'all';
 
 // Base Query (Exclude internal System Maintenance locks from Customer Bookings table)
 $where_clauses = [
-    "(b.reference_no LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR v.name LIKE ?)",
+    "(b.reference_no LIKE ? OR CAST(b.id AS CHAR) LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR v.name LIKE ?)",
     "b.reference_no NOT LIKE 'MAINT-%'",
     "b.source != 'Maintenance'",
     "c.last_name != 'MAINTENANCE'"
 ];
-$params = [$search, $search, $search, $search, $search];
-$types = "sssss";
+$params = [$search, $search, $search, $search, $search, $search];
+$types = "ssssss";
+
+if (array_key_exists('booking_id', $data)) {
+    $booking_id_filter = filter_var($data['booking_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($booking_id_filter === false) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'A valid booking ID is required.']);
+        exit;
+    }
+    $where_clauses[] = 'b.id = ?';
+    $params[] = $booking_id_filter;
+    $types .= 'i';
+}
 
 if ($venueFilter !== 'All') {
     $where_clauses[] = "v.category = ?";

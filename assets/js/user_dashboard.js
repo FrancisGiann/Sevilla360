@@ -14,9 +14,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Mobile Sidebar Drawer Toggle ---
   const mobileToggle = document.getElementById('btn-mobile-sidebar-toggle');
   const sidebarClose = document.getElementById('btn-close-sidebar');
-  const sidebar = document.querySelector('.dashboard-sidebar');
+  const sidebar = document.getElementById('customer-sidebar');
   const sidebarOverlay = document.getElementById('sidebar-overlay');
   let toggleDrawer = () => {};
+  let drawerOpen = false;
+  let drawerInvoker = null;
+  let bodyOverflowBeforeDrawer = null;
 
   // --- Desktop Sidebar Icon Rail ---
   const sidebarCollapseToggle = document.getElementById('btn-sidebar-collapse');
@@ -67,18 +70,88 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (sidebar) {
-      toggleDrawer = (open) => {
+      const drawerFocusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      const setDrawerState = (open) => {
+          drawerOpen = open;
           sidebar.classList.toggle('mobile-open', open);
-          if (sidebarOverlay) sidebarOverlay.classList.toggle('active', open);
-          document.body.style.overflow = open ? 'hidden' : '';
+          sidebar.inert = !open && !desktopSidebarQuery.matches;
+          if (sidebarOverlay) {
+              sidebarOverlay.classList.toggle('active', open);
+              sidebarOverlay.setAttribute('aria-hidden', String(!open));
+          }
+          mobileToggle?.setAttribute('aria-expanded', String(open));
       };
 
+      toggleDrawer = (open, restoreFocus = true) => {
+          if (open && desktopSidebarQuery.matches) return;
+          if (open) {
+              if (drawerOpen) return;
+              drawerInvoker = document.activeElement instanceof HTMLElement ? document.activeElement : mobileToggle;
+              bodyOverflowBeforeDrawer = document.body.style.overflow;
+              document.body.style.overflow = 'hidden';
+              setDrawerState(true);
+              window.requestAnimationFrame(() => {
+                  if (!drawerOpen || desktopSidebarQuery.matches) return;
+                  const firstFocusable = sidebar.querySelector(drawerFocusableSelector);
+                  (firstFocusable || sidebar).focus({ preventScroll: true });
+              });
+              return;
+          }
+
+          const wasOpen = drawerOpen;
+          setDrawerState(false);
+          if (wasOpen && bodyOverflowBeforeDrawer !== null) {
+              document.body.style.overflow = bodyOverflowBeforeDrawer;
+              bodyOverflowBeforeDrawer = null;
+          }
+          if (wasOpen && restoreFocus) {
+              const invoker = drawerInvoker?.isConnected ? drawerInvoker : mobileToggle;
+              if (!desktopSidebarQuery.matches) invoker?.focus({ preventScroll: true });
+          }
+          if (wasOpen) drawerInvoker = null;
+      };
+
+      toggleDrawer(false, false);
       if (mobileToggle) mobileToggle.addEventListener('click', () => toggleDrawer(true));
       if (sidebarClose) sidebarClose.addEventListener('click', () => toggleDrawer(false));
       if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => toggleDrawer(false));
 
-      document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
+      sidebar.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
           link.addEventListener('click', () => toggleDrawer(false));
+      });
+
+      document.addEventListener('keydown', event => {
+          if (!drawerOpen || desktopSidebarQuery.matches) return;
+          if (event.key === 'Escape') {
+              event.preventDefault();
+              toggleDrawer(false);
+              return;
+          }
+          if (event.key !== 'Tab') return;
+
+          const focusable = Array.from(sidebar.querySelectorAll(drawerFocusableSelector))
+              .filter(element => !element.hidden && element.getClientRects().length > 0);
+          if (!focusable.length) {
+              event.preventDefault();
+              sidebar.focus({ preventScroll: true });
+              return;
+          }
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && (document.activeElement === first || !sidebar.contains(document.activeElement))) {
+              event.preventDefault();
+              last.focus();
+          } else if (!event.shiftKey && (document.activeElement === last || !sidebar.contains(document.activeElement))) {
+              event.preventDefault();
+              first.focus();
+          }
+      });
+
+      desktopSidebarQuery.addEventListener?.('change', event => {
+          toggleDrawer(false, false);
+          sidebar.inert = !event.matches;
+          mobileToggle?.setAttribute('aria-expanded', 'false');
+          if (sidebarOverlay) sidebarOverlay.setAttribute('aria-hidden', 'true');
       });
   }
 
@@ -97,38 +170,112 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnNotifs = document.getElementById('btn-notifications');
   const notifDropdown = document.getElementById('notif-dropdown');
   const btnMarkRead = document.getElementById('btn-mark-read');
+  const notifFeedback = document.getElementById('notif-refresh-feedback');
+  const notifFeedbackMessage = document.getElementById('notif-refresh-message');
+  const notifRetry = document.getElementById('notif-retry');
+  const notifLiveStatus = document.getElementById('notif-live-status');
   let notifBadge = document.getElementById('notif-badge');
   const notifListBody = document.querySelector('.notif-list-body');
+  let notificationRefreshInFlight = false;
+  let notificationHasLoaded = false;
+
+  function announceNotificationChange(message) {
+      if (notifLiveStatus) notifLiveStatus.textContent = message;
+  }
+
+  function setNotificationFeedback(message = '', { isError = false, canRetry = false, announce = false } = {}) {
+      if (notifFeedback) {
+          notifFeedback.hidden = !message;
+          notifFeedback.classList.toggle('is-error', isError);
+      }
+      if (notifFeedbackMessage) notifFeedbackMessage.textContent = message;
+      if (notifRetry) notifRetry.hidden = !canRetry;
+      if (announce && message) announceNotificationChange(message);
+  }
+
+  function updateNotificationBadge(unreadCount) {
+      if (!notifBadge && unreadCount > 0 && btnNotifs) {
+          notifBadge = document.createElement('span');
+          notifBadge.id = 'notif-badge';
+          notifBadge.setAttribute('aria-hidden', 'true');
+          btnNotifs.appendChild(notifBadge);
+      }
+      if (notifBadge) {
+          notifBadge.textContent = String(unreadCount);
+          notifBadge.style.display = unreadCount > 0 ? '' : 'none';
+      }
+      if (btnNotifs) btnNotifs.setAttribute('aria-label', unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications');
+      if (btnMarkRead) btnMarkRead.hidden = unreadCount <= 0;
+  }
+
+  function setNotificationItemRead(item, isRead) {
+      item.classList.toggle('unread', !isRead);
+      item.dataset.read = isRead ? 'true' : 'false';
+      const title = item.dataset.title || '';
+      const message = item.dataset.message || '';
+      item.setAttribute('aria-label', `${isRead ? 'Read' : 'Unread'} notification: ${title}. ${message}`);
+      const readState = item.querySelector('.notif-item-read-state');
+      if (readState) readState.textContent = isRead ? 'Read' : 'Unread';
+  }
 
   function refreshNotifications() {
-      if (!notifListBody) return;
-      fetch('actions/user/get_notifications.php', {
+      if (!notifListBody || notificationRefreshInFlight) return Promise.resolve();
+      notificationRefreshInFlight = true;
+      notifListBody.setAttribute('aria-busy', 'true');
+      if (!notificationHasLoaded) setNotificationFeedback('Checking for new notifications…');
+      if (notifRetry) {
+          notifRetry.disabled = true;
+          notifRetry.textContent = 'Retrying…';
+      }
+      return fetch('actions/user/get_notifications.php', {
           headers: { 'Accept': 'application/json', 'X-Sevilla-Background': '1' }
       })
-          .then(res => res.ok ? res.json() : null)
+          .then(res => {
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              return res.json();
+          })
           .then(data => {
-              if (!data?.success) return;
-              const unreadCount = Number(data.unread_count) || 0;
-              if (!notifBadge && unreadCount > 0 && btnNotifs) {
-                  notifBadge = document.createElement('span');
-                  notifBadge.id = 'notif-badge';
-                  btnNotifs.appendChild(notifBadge);
-              }
-              if (notifBadge) {
-                  notifBadge.textContent = unreadCount;
-                  notifBadge.style.display = unreadCount > 0 ? '' : 'none';
-              }
+              if (!data?.success || !Array.isArray(data.notifications)) throw new Error('Invalid notifications response');
+              const unreadCount = Math.max(0, Number(data.unread_count) || 0);
+              const focusedItemId = notifDropdown?.contains(document.activeElement) && document.activeElement.matches('.notif-item')
+                  ? document.activeElement.dataset.id
+                  : null;
+              updateNotificationBadge(unreadCount);
               if (!data.notifications.length) {
                   notifListBody.innerHTML = '<div class="notif-empty-state">No notifications yet.</div>';
-                  return;
+              } else {
+                  notifListBody.innerHTML = data.notifications.map(item => {
+                      const itemId = escapeHtml(item.id);
+                      const title = escapeHtml(item.title);
+                      const message = escapeHtml(item.message);
+                      const createdAt = escapeHtml(item.created_at);
+                      const isRead = Number(item.is_read) !== 0;
+                      const readLabel = isRead ? 'Read' : 'Unread';
+                      const accessibleLabel = escapeHtml(`${readLabel} notification: ${String(item.title ?? '')}. ${String(item.message ?? '')}`);
+                      return '<button type="button" class="notif-item ' + (isRead ? '' : 'unread') + '" data-id="' + itemId + '" data-title="' + title + '" data-message="' + message + '" data-read="' + (isRead ? 'true' : 'false') + '" aria-label="' + accessibleLabel + '">' +
+                          '<span class="notif-item-icon" aria-hidden="true"><i class="fa-solid fa-bell"></i></span>' +
+                          '<span class="notif-item-content"><span class="notif-item-title">' + title + '</span><span class="notif-item-msg">' + message + '</span><span class="notif-item-read-state">' + readLabel + '</span><span class="notif-item-time">' + createdAt + '</span></span></button>';
+                  }).join('');
               }
-              notifListBody.innerHTML = data.notifications.map(item =>
-                  '<div class="notif-item ' + (Number(item.is_read) ? '' : 'unread') + '" data-id="' + String(item.id) + '" data-title="' + escapeHtml(item.title) + '" data-message="' + escapeHtml(item.message) + '">' +
-                  '<div><h5 class="notif-item-title">' + escapeHtml(item.title) + '</h5><p class="notif-item-msg">' + escapeHtml(item.message) + '</p><span class="notif-item-time">' + escapeHtml(item.created_at) + '</span></div></div>'
-              ).join('');
-              bindNotificationItems();
+              if (focusedItemId && !notifDropdown?.hidden) {
+                  const refreshedFocusTarget = Array.from(notifListBody.querySelectorAll('.notif-item'))
+                      .find(item => item.dataset.id === focusedItemId);
+                  (refreshedFocusTarget || notifDropdown).focus({ preventScroll: true });
+              }
+              notificationHasLoaded = true;
+              setNotificationFeedback('');
           })
-          .catch(() => {});
+          .catch(() => {
+              setNotificationFeedback('Could not refresh notifications. Previously loaded notifications are still available.', { isError: true, canRetry: true, announce: true });
+          })
+          .finally(() => {
+              notificationRefreshInFlight = false;
+              notifListBody.removeAttribute('aria-busy');
+              if (notifRetry) {
+                  notifRetry.disabled = false;
+                  notifRetry.textContent = 'Retry';
+              }
+          });
   }
 
   // Realtime delivery refreshes the same authorized notification endpoint;
@@ -141,89 +288,92 @@ document.addEventListener("DOMContentLoaded", () => {
       return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   }
 
-  if (btnNotifs && notifDropdown) {
-      // Toggle dropdown
-      btnNotifs.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const isVisible = notifDropdown.style.display === 'block';
-          notifDropdown.style.display = isVisible ? 'none' : 'block';
-      });
+  const setNotificationDropdownOpen = (open, restoreFocus = false) => {
+      if (!btnNotifs || !notifDropdown) return;
+      notifDropdown.hidden = !open;
+      btnNotifs.setAttribute('aria-expanded', String(open));
+          if (open) {
+              window.requestAnimationFrame(() => {
+                  if (notifDropdown.hidden) return;
+                  const firstControl = notifDropdown.querySelector('button:not([hidden]):not([disabled])');
+              (firstControl || notifDropdown).focus({ preventScroll: true });
+          });
+      } else if (restoreFocus) {
+          btnNotifs.focus({ preventScroll: true });
+      }
+  };
 
-      // Close when clicking outside
-      document.addEventListener('click', (e) => {
-          if (!btnNotifs.contains(e.target) && !notifDropdown.contains(e.target)) {
-              notifDropdown.style.display = 'none';
+  if (btnNotifs && notifDropdown) {
+      btnNotifs.addEventListener('click', event => {
+          event.stopPropagation();
+          setNotificationDropdownOpen(notifDropdown.hidden);
+      });
+      document.addEventListener('click', event => {
+          if (!btnNotifs.contains(event.target) && !notifDropdown.contains(event.target)) setNotificationDropdownOpen(false);
+      });
+      notifDropdown.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+              event.preventDefault();
+              setNotificationDropdownOpen(false, true);
           }
       });
   }
+  notifRetry?.addEventListener('click', () => refreshNotifications());
   document.getElementById('overview-open-notifications')?.addEventListener('click', () => {
       if (btnNotifs) btnNotifs.click();
   });
 
   if (btnMarkRead) {
-      btnMarkRead.addEventListener('click', () => {
-          fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken } })
-          .then(res => res.json())
-          .then(data => {
-              if(data.success) {
-                  // Hide badge
-                  if(notifBadge) notifBadge.style.display = 'none';
-                  // Remove unread styling
-                  document.querySelectorAll('.notif-item.unread').forEach(item => {
-                      item.classList.remove('unread');
-                      item.style.background = 'none';
-                      item.style.opacity = '0.7';
-                  });
-                  // Remove button
-                  btnMarkRead.remove();
-              }
-          })
-          .catch(err => console.error(err));
-      });
-  }
-
-  // --- Individual Notification Clicks ---
-  function bindNotificationItems() {
-  document.querySelectorAll('.notif-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const id = item.getAttribute('data-id');
-          const title = item.getAttribute('data-title');
-          const message = item.getAttribute('data-message');
-          
-          // Show details in modal
-          showAlert(title, message, "info");
-          
-          // Hide dropdown
-          if (notifDropdown) notifDropdown.style.display = 'none';
-
-          // Mark as read if unread
-          if (item.classList.contains('unread')) {
-              fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' }, body: `id=${encodeURIComponent(id)}` })
-              .then(res => res.json())
-              .then(data => {
-                  if (data.success) {
-                      item.classList.remove('unread');
-                      item.style.background = 'transparent';
-                      item.style.opacity = '0.7';
-                      
-                      // Update badge count
-                      if (notifBadge) {
-                          let count = parseInt(notifBadge.innerText);
-                          if (count > 1) {
-                              notifBadge.innerText = count - 1;
-                          } else {
-                              notifBadge.style.display = 'none';
-                              if(btnMarkRead) btnMarkRead.remove();
-                          }
-                      }
-                  }
-              }).catch(err => console.error(err));
+      btnMarkRead.addEventListener('click', async () => {
+          btnMarkRead.disabled = true;
+          try {
+              const response = await fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrfToken } });
+              const data = await response.json();
+              if (!response.ok || !data.success) throw new Error(data.message || 'The request could not be completed.');
+              notifListBody?.querySelectorAll('.notif-item.unread').forEach(item => setNotificationItemRead(item, true));
+              updateNotificationBadge(0);
+              announceNotificationChange('All notifications marked as read.');
+              setNotificationFeedback('');
+          } catch (error) {
+              setNotificationFeedback('Could not mark all notifications as read. Your request was not submitted. Check your connection and try again.', { isError: true, canRetry: false, announce: true });
+          } finally {
+              btnMarkRead.disabled = false;
           }
       });
-  });
   }
-  bindNotificationItems();
+
+  // Individual notification controls stay semantic after each refresh.
+  notifListBody?.addEventListener('click', async event => {
+      const item = event.target.closest('.notif-item');
+      if (!item || !notifListBody.contains(item)) return;
+      event.stopPropagation();
+      const id = item.dataset.id || '';
+      const title = item.dataset.title || 'Notification';
+      const message = item.dataset.message || '';
+      showAlert(title, message, 'info');
+      setNotificationDropdownOpen(false);
+      if (!item.classList.contains('unread')) return;
+
+      item.disabled = true;
+      try {
+          const response = await fetch('actions/user/mark_notifications_read.php', {
+              method: 'POST',
+              headers: { 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: `id=${encodeURIComponent(id)}`
+          });
+          const data = await response.json();
+          if (!response.ok || !data.success) throw new Error(data.message || 'The request could not be completed.');
+          setNotificationItemRead(item, true);
+          const currentCount = Number.parseInt(notifBadge?.textContent || '0', 10) || 0;
+          updateNotificationBadge(Math.max(0, currentCount - 1));
+          announceNotificationChange(`${title} marked as read.`);
+          setNotificationFeedback('');
+      } catch (error) {
+          setNotificationFeedback('Could not mark this notification as read. Your request was not submitted. Check your connection and try again.', { isError: true, canRetry: false, announce: true });
+      } finally {
+          item.disabled = false;
+      }
+  });
 
   let notificationPollTimer = null;
   const scheduleNotificationPoll = () => {
@@ -311,7 +461,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 2. Table Filtering ---
   const statusFilter = document.getElementById("statusFilter");
-  const filterPills = document.querySelectorAll("#statusFiltersDesktop .filter-pill");
   const tableRows = document.querySelectorAll("#bookingsTable tbody tr[data-status]");
 
   const applyBookingFilter = (filterValue) => {
@@ -324,19 +473,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (statusFilter) {
     statusFilter.addEventListener("change", (e) => {
       const filterValue = e.target.value;
-      filterPills.forEach((pill) => pill.classList.toggle("active", pill.dataset.filter === filterValue));
       applyBookingFilter(filterValue);
     });
   }
-
-  filterPills.forEach((pill) => {
-    pill.addEventListener("click", () => {
-      const filterValue = pill.dataset.filter;
-      filterPills.forEach((item) => item.classList.toggle("active", item === pill));
-      if (statusFilter) statusFilter.value = filterValue;
-      applyBookingFilter(filterValue);
-    });
-  });
 
   // --- 3. Modal Logic ---
   const modals = {
@@ -424,6 +563,17 @@ document.addEventListener("DOMContentLoaded", () => {
         if (input.type === "checkbox" || input.type === "radio") input.checked = false;
         else input.value = "";
     });
+    document.querySelectorAll(".modal-box select").forEach((select) => { select.selectedIndex = 0; });
+    const destinationFields = document.getElementById('cancel-refund-destination');
+    const destinationError = document.getElementById('cancel-refund-destination-error');
+    if (destinationFields) destinationFields.hidden = true;
+    if (destinationError) { destinationError.hidden = true; destinationError.textContent = ''; }
+    ['cancel-refund-method', 'cancel-refund-account-name', 'cancel-refund-account-identifier', 'cancel-refund-bank-name'].forEach((id) => {
+      const field = document.getElementById(id);
+      if (field) { field.required = false; field.setCustomValidity(''); }
+    });
+    const bankField = document.getElementById('cancel-refund-bank-field');
+    if (bankField) bankField.hidden = true;
     if (wasReviewModal) {
       reviewBookingId = null;
       reviewRating = 0;
@@ -543,6 +693,111 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(row);
   };
 
+  const bookingActionPanelOrigins = new WeakMap();
+
+  const restoreBookingActionPanel = (panel) => {
+    const origin = bookingActionPanelOrigins.get(panel);
+    if (origin?.parent?.isConnected) {
+      if (origin.nextSibling?.parentNode === origin.parent) {
+        origin.parent.insertBefore(panel, origin.nextSibling);
+      } else {
+        origin.parent.appendChild(panel);
+      }
+    }
+    bookingActionPanelOrigins.delete(panel);
+  };
+
+  const closeBookingActionDisclosure = (restoreFocus = false) => {
+    document.querySelectorAll('.booking-more-toggle[aria-expanded="true"]').forEach((toggle) => {
+      const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+      toggle.setAttribute('aria-expanded', 'false');
+      if (panel) {
+        panel.hidden = true;
+        panel.removeAttribute('style');
+        restoreBookingActionPanel(panel);
+      }
+      if (restoreFocus && toggle.isConnected) toggle.focus();
+    });
+  };
+
+  const positionBookingActionDisclosure = (toggle, panel) => {
+    if (!bookingActionPanelOrigins.has(panel)) {
+      bookingActionPanelOrigins.set(panel, {
+        parent: panel.parentNode,
+        nextSibling: panel.nextSibling,
+      });
+    }
+    // Move the fixed panel outside the animated tab-pane so its viewport
+    // coordinates are not offset by the tab's transform-containing block.
+    document.body.appendChild(panel);
+    panel.hidden = false;
+    panel.style.position = 'fixed';
+    panel.style.left = '0px';
+    panel.style.top = '0px';
+    panel.style.visibility = 'hidden';
+    const viewportWidth = Math.max(0, window.visualViewport?.width || document.documentElement.clientWidth || window.innerWidth);
+    const viewportGutter = Math.min(12, viewportWidth / 2);
+    const maxWidth = Math.max(0, Math.min(228, viewportWidth - (viewportGutter * 2)));
+    panel.style.width = `${maxWidth}px`;
+    panel.style.maxWidth = `${maxWidth}px`;
+    const buttonRect = toggle.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const maxLeft = Math.max(viewportGutter, viewportWidth - panelRect.width - viewportGutter);
+    const left = Math.min(Math.max(viewportGutter, buttonRect.right - panelRect.width), maxLeft);
+    const viewportHeight = Math.max(0, window.visualViewport?.height || window.innerHeight);
+    const verticalGutter = Math.min(12, viewportHeight / 2);
+    const maxTop = Math.max(verticalGutter, viewportHeight - panelRect.height - verticalGutter);
+    const preferredTop = viewportHeight - buttonRect.bottom >= panelRect.height + 8
+      ? buttonRect.bottom + 6
+      : buttonRect.top - panelRect.height - 6;
+    const top = Math.min(Math.max(verticalGutter, preferredTop), maxTop);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.visibility = '';
+  };
+
+  document.addEventListener('click', (event) => {
+    const toggle = event.target.closest('.booking-more-toggle');
+    if (toggle) {
+      const wasExpanded = toggle.getAttribute('aria-expanded') === 'true';
+      closeBookingActionDisclosure(false);
+      if (!wasExpanded) {
+        const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+        if (panel) {
+          toggle.setAttribute('aria-expanded', 'true');
+          positionBookingActionDisclosure(toggle, panel);
+          panel.querySelector('.action-menu-item')?.focus({ preventScroll: true });
+        }
+      }
+      return;
+    }
+    if (event.target.closest('.booking-action-menu-panel .action-menu-item')) {
+      closeBookingActionDisclosure(false);
+      return;
+    }
+    if (!event.target.closest('.booking-row-more')) closeBookingActionDisclosure(false);
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    const panel = event.target.closest?.('.booking-action-menu-panel');
+    if (panel && event.key === 'Tab') {
+      const items = Array.from(panel.querySelectorAll('.action-menu-item'));
+      const isTabEdge = event.shiftKey
+        ? event.target === items[0]
+        : event.target === items[items.length - 1];
+      if (isTabEdge) closeBookingActionDisclosure(false);
+    }
+    if (event.key === 'Escape' && document.querySelector('.booking-more-toggle[aria-expanded="true"]')) {
+      event.preventDefault();
+      closeBookingActionDisclosure(true);
+    }
+  }, true);
+  window.addEventListener('resize', () => closeBookingActionDisclosure(false));
+  window.addEventListener('scroll', (event) => {
+    if (event.target instanceof Element && event.target.closest('.booking-action-menu-panel')) return;
+    closeBookingActionDisclosure(false);
+  }, true);
+
   // --- 4. ACTION BUTTONS ---
 
   // A. Cancel Button
@@ -563,11 +818,24 @@ document.addEventListener("DOMContentLoaded", () => {
       const refundInfoBottom = document.getElementById("cancel-refund-bottom");
       const unpaidInfo = document.getElementById("cancel-unpaid-info");
       const confirmBtn = document.querySelector("#modal-cancel .btn-confirm-red");
+      const destinationFields = document.getElementById('cancel-refund-destination');
+      const destinationMethod = document.getElementById('cancel-refund-method');
+      const destinationName = document.getElementById('cancel-refund-account-name');
+      const destinationIdentifier = document.getElementById('cancel-refund-account-identifier');
+      const destinationBankField = document.getElementById('cancel-refund-bank-field');
+      const destinationBank = document.getElementById('cancel-refund-bank-name');
+      const destinationError = document.getElementById('cancel-refund-destination-error');
+      const cancelTitle = document.getElementById('cancel-modal-title');
 
       if (amountPaid === 0) {
           if (refundInfoTop) refundInfoTop.style.display = "none";
           if (refundInfoBottom) refundInfoBottom.style.display = "none";
           if (unpaidInfo) unpaidInfo.style.display = "block";
+          if (destinationFields) destinationFields.hidden = true;
+          [destinationMethod, destinationName, destinationIdentifier, destinationBank].forEach((field) => { if (field) field.required = false; });
+          if (destinationBankField) destinationBankField.hidden = true;
+          if (cancelTitle) cancelTitle.textContent = 'Cancel Reservation?';
+          if (confirmBtn) confirmBtn.textContent = 'Confirm Cancellation';
       } else {
           const feePercent = Number(window.refundFeePercent ?? 3);
           const fee = Math.round(amountPaid * feePercent) / 100;
@@ -583,12 +851,38 @@ document.addEventListener("DOMContentLoaded", () => {
           if (refundInfoTop) refundInfoTop.style.display = "block";
           if (refundInfoBottom) refundInfoBottom.style.display = "block";
           if (unpaidInfo) unpaidInfo.style.display = "none";
+          if (destinationFields) destinationFields.hidden = false;
+          [destinationMethod, destinationName, destinationIdentifier].forEach((field) => { if (field) field.required = true; });
+          if (destinationMethod) destinationMethod.value = '';
+          if (destinationName) destinationName.value = '';
+          if (destinationIdentifier) destinationIdentifier.value = '';
+          if (destinationBank) { destinationBank.value = ''; destinationBank.required = false; }
+          if (destinationBankField) destinationBankField.hidden = true;
+          if (destinationError) { destinationError.hidden = true; destinationError.textContent = ''; }
+          if (cancelTitle) cancelTitle.textContent = 'Request Cancellation & Refund';
+          if (confirmBtn) confirmBtn.textContent = 'Submit Refund Request';
       }
 
       if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
       openModal("cancel");
     });
   });
+
+  const refundDestinationMethod = document.getElementById('cancel-refund-method');
+  if (refundDestinationMethod) {
+    refundDestinationMethod.addEventListener('change', () => {
+      const bankField = document.getElementById('cancel-refund-bank-field');
+      const bankName = document.getElementById('cancel-refund-bank-name');
+      const isBankTransfer = refundDestinationMethod.value === 'Bank Transfer';
+      if (bankField) bankField.hidden = !isBankTransfer;
+      if (bankName) {
+        bankName.required = isBankTransfer;
+        if (!isBankTransfer) bankName.value = '';
+      }
+      const error = document.getElementById('cancel-refund-destination-error');
+      if (error) { error.hidden = true; error.textContent = ''; }
+    });
+  }
 
   const btnConfirmCancel = document.querySelector("#modal-cancel .btn-confirm-red");
   if (btnConfirmCancel) {
@@ -597,14 +891,32 @@ document.addEventListener("DOMContentLoaded", () => {
       const reasonInput = document.querySelector("#modal-cancel textarea");
       const reason = reasonInput ? reasonInput.value.trim() : "";
       
-      const refundBottom = document.getElementById("cancel-refund-bottom");
-      const isRefundable = refundBottom ? (refundBottom.style.display === "block") : false;
-      
       const confirmFee = document.getElementById("confirm-fee");
       const isChecked = confirmFee ? confirmFee.checked : false;
+      const destinationFields = document.getElementById('cancel-refund-destination');
+      const destinationError = document.getElementById('cancel-refund-destination-error');
+      const isRefundable = Boolean(destinationFields && !destinationFields.hidden);
 
       if (reason === "") return showAlert("Missing Info", "Please provide a reason for the cancellation.", "error");
       if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the payment-processing fee and refund amount shown above.", "error");
+
+      const destinationMethod = document.getElementById('cancel-refund-method');
+      const destinationName = document.getElementById('cancel-refund-account-name');
+      const destinationIdentifier = document.getElementById('cancel-refund-account-identifier');
+      const destinationBank = document.getElementById('cancel-refund-bank-name');
+      if (isRefundable) {
+        const requiredDestinationFields = [destinationMethod, destinationName, destinationIdentifier, ...(destinationBank?.required ? [destinationBank] : [])].filter(Boolean);
+        const invalidDestinationField = requiredDestinationFields.find((field) => !field.checkValidity());
+        if (invalidDestinationField) {
+          if (destinationError) {
+            destinationError.textContent = invalidDestinationField.validationMessage || 'Complete the refund destination details.';
+            destinationError.hidden = false;
+          }
+          invalidDestinationField.focus();
+          invalidDestinationField.reportValidity();
+          return;
+        }
+      }
 
       const originalText = this.innerText;
       this.innerText = "Processing...";
@@ -613,19 +925,41 @@ document.addEventListener("DOMContentLoaded", () => {
       fetch('actions/user/request_cancel.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-          body: JSON.stringify({ booking_id: bookingId, reason: reason }) 
+          body: JSON.stringify({
+            booking_id: bookingId,
+            reason: reason,
+            ...(isRefundable ? {
+              refund_destination: {
+                method: destinationMethod.value,
+                account_name: destinationName.value.trim(),
+                account_identifier: destinationIdentifier.value.trim(),
+                bank_name: destinationBank?.required ? destinationBank.value.trim() : ''
+              }
+            } : {})
+          })
       })
       .then((response) => response.json())
       .then((data) => {
         if (data.success) showAlert("Success", data.message, "success", true);
         else {
+          const serverMessage = String(data.message || 'Unable to submit the refund request.');
+          if (isRefundable && destinationError && /destination|mobile number|account holder|bank name|wallet|account number/i.test(serverMessage)) {
+            destinationError.textContent = serverMessage;
+            destinationError.hidden = false;
+            const lowerMessage = serverMessage.toLowerCase();
+            const invalidField = lowerMessage.includes('bank') ? destinationBank
+              : lowerMessage.includes('account holder') ? destinationName
+                : lowerMessage.includes('number') || lowerMessage.includes('mobile') || lowerMessage.includes('wallet') ? destinationIdentifier
+                  : destinationMethod;
+            invalidField?.focus();
+          }
           showAlert("Error", data.message, "error");
           this.innerText = originalText;
           this.disabled = false;
         }
       })
       .catch((error) => {
-        showAlert("Network Error", "Network error occurred.", "error");
+        showAlert("Connection issue", "Your cancellation request was not submitted because of a connection issue. Check your connection and try again.", "error");
         this.innerText = originalText;
         this.disabled = false;
       });
@@ -716,7 +1050,7 @@ document.addEventListener("DOMContentLoaded", () => {
               }
           })
           .catch(err => {
-              showAlert("Network Error", "Network error occurred.", "error");
+              showAlert("Connection issue", "Your reschedule request was not submitted because of a connection issue. Check your connection and try again.", "error");
               this.innerText = originalText;
               this.disabled = false;
           });
@@ -760,25 +1094,10 @@ document.addEventListener("DOMContentLoaded", () => {
             if(titleEl) titleEl.innerText = `Booking ${displayId}`;
             
             const displayStatus = data.display_booking_status || data.booking_status;
-            let badgeClass = 'badge-pending';
-            let badgeText = displayStatus;
-
-            if (displayStatus === 'Completed') {
-                badgeClass = 'badge-completed'; badgeText = 'Completed';
-            } else if (displayStatus === 'Confirmed') {
-                if (data.payment_status === 'Paid') { badgeClass = 'badge-paid'; badgeText = 'Fully Paid'; }
-                else if (data.payment_status === 'Partial') { badgeClass = 'badge-partial'; badgeText = 'Partially Paid'; }
-                else { badgeClass = 'badge-pending'; badgeText = 'Unpaid'; }
-            } else if (displayStatus === 'Cancelled') {
-                badgeClass = 'badge-cancelled'; badgeText = 'Cancelled';
-            } else if (displayStatus === 'Pending') {
-                badgeText = 'Pending';
-            }
-
             const badge = document.getElementById('ud-status-badge');
             if(badge) {
-                badge.innerText = badgeText;
-                badge.className = 'badge ' + badgeClass; 
+                badge.textContent = data.customer_status_label || displayStatus;
+                badge.className = 'badge ' + (data.customer_status_class || 'badge-pending');
             }
 
             const nameEl = document.getElementById('ud-customer-name');
@@ -828,6 +1147,34 @@ document.addEventListener("DOMContentLoaded", () => {
                 cancelRow.style.display = 'flex';
             } else if(cancelRow) {
                 cancelRow.style.display = 'none';
+            }
+
+            const refundSection = document.getElementById('ud-refund-request-section');
+            const showRefundRequest = Number(data.amount_paid) > 0 && cancellation && ['Pending', 'Rejected', 'Processed'].includes(cancellation.status);
+            if (refundSection) {
+                refundSection.hidden = !showRefundRequest;
+                if (showRefundRequest) {
+                    const destination = cancellation.refund_destination || {};
+                    const setRefundText = (id, value, fallback = 'Not provided') => {
+                        const element = document.getElementById(id);
+                        if (element) element.textContent = String(value || fallback);
+                    };
+                    setRefundText('ud-refund-request-status', cancellation.status);
+                    setRefundText('ud-refund-request-reason', cancellation.reason);
+                    setRefundText('ud-refund-request-reply', cancellation.admin_reply);
+                    setRefundText('ud-refund-request-amount', `₱${Number(cancellation.refund_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    setRefundText('ud-refund-request-method', destination.method);
+                    setRefundText('ud-refund-request-account-name', destination.account_name);
+                    setRefundText('ud-refund-request-identifier', destination.masked_identifier);
+                    const bankLabel = document.getElementById('ud-refund-request-bank-label');
+                    const bankValue = document.getElementById('ud-refund-request-bank');
+                    const hasBankName = destination.method === 'Bank Transfer' && Boolean(destination.bank_name);
+                    if (bankLabel) bankLabel.hidden = !hasBankName;
+                    if (bankValue) {
+                        bankValue.hidden = !hasBankName;
+                        bankValue.textContent = hasBankName ? String(destination.bank_name) : '';
+                    }
+                }
             }
 
             const lineItems = res.data.line_items;
@@ -902,7 +1249,68 @@ document.addEventListener("DOMContentLoaded", () => {
             
             if(document.getElementById('ud-paid-amt')) document.getElementById('ud-paid-amt').innerText = formatCash(paidAmt);
             if(document.getElementById('ud-balance-amt')) document.getElementById('ud-balance-amt').innerText = isPendingEvent ? "TBA" : formatCash(balance);
-            if(document.getElementById('ud-tid')) document.getElementById('ud-tid').innerText = res.data.transaction_id || "--";
+
+            const paymentHistoryList = document.getElementById('ud-payment-history-list');
+            if (paymentHistoryList) {
+                paymentHistoryList.replaceChildren();
+                const payments = Array.isArray(res.data.payments) ? res.data.payments : [];
+                if (!payments.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'payment-history-empty';
+                    empty.textContent = 'No successful payments recorded.';
+                    paymentHistoryList.appendChild(empty);
+                } else {
+                    payments.forEach((payment) => {
+                        const entry = document.createElement('article');
+                        entry.className = 'payment-history-entry';
+                        const fields = [
+                            ['Payment method', payment?.payment_method || 'N/A'],
+                            ['Transaction/reference ID', payment?.transaction_reference || 'N/A'],
+                            ['Amount', formatCash(payment?.amount)],
+                            ['Date', payment?.payment_date || 'N/A']
+                        ];
+                        fields.forEach(([label, value]) => {
+                            const row = document.createElement('p');
+                            const labelEl = document.createElement('span');
+                            const valueEl = document.createElement('strong');
+                            labelEl.textContent = label;
+                            valueEl.textContent = String(value);
+                            row.append(labelEl, valueEl);
+                            entry.appendChild(row);
+                        });
+                        paymentHistoryList.appendChild(entry);
+                    });
+                }
+            }
+
+            const manualSubmissionContainer = document.getElementById('ud-manual-submission-container');
+            const manualSubmissionStatus = String(data.manual_submission_status || '').toLowerCase();
+            if (manualSubmissionContainer && ['pending', 'rejected'].includes(manualSubmissionStatus)) {
+                const proofStatusLabels = {
+                    pending: 'Awaiting payment verification',
+                    rejected: 'Proof rejected'
+                };
+                const referenceEl = document.getElementById('ud-submitted-payment-reference');
+                const proofStatusEl = document.getElementById('ud-proof-review-status');
+                const submittedAtEl = document.getElementById('ud-proof-submitted-at');
+                const reviewNoteRow = document.getElementById('ud-proof-review-note-row');
+                const reviewNoteEl = document.getElementById('ud-proof-review-note');
+                const submittedAt = String(data.manual_submission_submitted_at || '').trim();
+
+                manualSubmissionContainer.style.display = 'block';
+                if (referenceEl) referenceEl.textContent = String(data.manual_submission_reference || '');
+                if (proofStatusEl) proofStatusEl.textContent = proofStatusLabels[manualSubmissionStatus] || 'Submitted';
+                if (submittedAtEl) submittedAtEl.textContent = submittedAt;
+                if (reviewNoteRow && reviewNoteEl) {
+                    const rejectionReason = manualSubmissionStatus === 'rejected'
+                        ? String(data.manual_rejection_reason || '').trim()
+                        : '';
+                    reviewNoteRow.style.display = rejectionReason ? 'block' : 'none';
+                    reviewNoteEl.textContent = rejectionReason;
+                }
+            } else if (manualSubmissionContainer) {
+                manualSubmissionContainer.style.display = 'none';
+            }
 
             const btnPrint = document.getElementById('btn-print-receipt');
             if (btnPrint) {
@@ -913,7 +1321,7 @@ document.addEventListener("DOMContentLoaded", () => {
             openModal("details", detailsTrigger);
         })
         .catch(err => {
-            showAlert("Error", "Network error fetching details.", "error");
+            showAlert("Connection issue", "Booking details could not be loaded. No booking changes were submitted. Check your connection and try again.", "error");
             this.innerHTML = originalHTML; 
             this.disabled = false;
         });
@@ -947,7 +1355,8 @@ document.addEventListener("DOMContentLoaded", () => {
           buttonElement.disabled = false;
       })
       .catch(err => {
-          showAlert("Network Error", "Network error occurred.", "error");
+          const changeStatus = payload.action === 'update_profile' ? 'Your profile changes were not submitted' : payload.action === 'update_prefs' ? 'Your preference changes were not submitted' : 'Your password change was not submitted';
+          showAlert("Connection issue", `${changeStatus} because of a connection issue. Check your connection and try again.`, "error");
           buttonElement.innerText = originalText;
           buttonElement.disabled = false;
       });
@@ -1024,7 +1433,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch('actions/user/save_venue_review.php', { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken}, body: JSON.stringify({booking_id: reviewBookingId, rating: reviewRating, review_text: document.getElementById('review-text').value}) });
       const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.message || 'Review could not be saved.');
       closeModal(); showAlert('Review submitted', data.message, 'success', true);
-    } catch (error) { setReviewStatus(error.message); } finally { submit.disabled = false; submit.classList.remove('is-submitting'); submit.removeAttribute('aria-busy'); }
+    } catch (error) {
+      const networkFailure = error instanceof TypeError || error.message === 'Failed to fetch';
+      setReviewStatus(networkFailure
+        ? 'Your review was not submitted because of a connection issue. Check your connection and try again.'
+        : `Your review could not be submitted. ${error.message} Please review it and try again.`);
+    } finally { submit.disabled = false; submit.classList.remove('is-submitting'); submit.removeAttribute('aria-busy'); }
   });
 
   let paymentProofSubmitted = false;

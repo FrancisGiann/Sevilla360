@@ -1,5 +1,5 @@
 <?php
-// Ensure this is only accessible by superadmins
+// Audit logs are restricted to administrator accounts.
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo '<div class="unauthorized-access"><h3>Unauthorized Access</h3></div>';
     exit;
@@ -66,3 +66,16 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
         </div>
     </div>
 </div>
+
+<dialog id="audit-detail-dialog" class="audit-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="audit-detail-title">
+    <div class="audit-detail-header">
+        <h2 id="audit-detail-title">Audit entry details</h2>
+        <button type="button" id="audit-detail-close" class="audit-detail-close" aria-label="Close audit details">&times;</button>
+    </div>
+    <p id="audit-detail-status" class="audit-detail-status" role="status" aria-live="polite"></p>
+    <dl id="audit-detail-fields" class="audit-detail-fields"></dl>
+    <div class="audit-detail-actions">
+        <button type="button" id="audit-view-booking" class="btn btn-outline" hidden>View Booking</button>
+        <button type="button" id="audit-detail-done" class="btn btn-primary">Close</button>
+    </div>
+</dialog>

@@ -183,6 +183,89 @@ function manual_payment_reference_fingerprint(string $method, string $reference)
     return hash('sha256', strtoupper($method) . '|' . manual_payment_validate_reference($reference));
 }
 
+/** Return a customer-safe reference without exposing the internal idempotency key. */
+function manual_payment_display_reference(?string $transactionId, ?string $submittedReference): ?string
+{
+    $submittedReference = trim((string)$submittedReference);
+    if ($submittedReference !== '') return $submittedReference;
+
+    $transactionId = trim((string)$transactionId);
+    if ($transactionId === '' || strncasecmp($transactionId, 'MANUAL-', 7) === 0) return null;
+    return $transactionId;
+}
+
+/** Map ordered payment rows to the stable, customer-facing payment-history contract. */
+function manual_payment_format_history(array $rows): array
+{
+    $payments = [];
+    foreach ($rows as $row) {
+        $reference = manual_payment_display_reference(
+            isset($row['transaction_id']) ? (string)$row['transaction_id'] : null,
+            isset($row['manual_reference']) ? (string)$row['manual_reference'] : null
+        );
+        $payments[] = [
+            'payment_method' => (string)($row['payment_method'] ?? ''),
+            'transaction_reference' => $reference,
+            // Keep the legacy field, but make it display-safe for existing consumers.
+            'transaction_id' => $reference,
+            'amount' => number_format((float)($row['amount'] ?? 0), 2, '.', ''),
+            'payment_date' => (string)($row['payment_date'] ?? ''),
+        ];
+    }
+    return $payments;
+}
+
+/** Pending proofs are retained indefinitely; terminal proofs expire strictly after one year. */
+function manual_payment_proof_retention_expired(?string $status, ?string $reviewedAt, ?DateTimeImmutable $now = null): bool
+{
+    if ($status === 'pending') return false;
+    if (!in_array($status, ['approved', 'rejected'], true) || trim((string)$reviewedAt) === '') return true;
+
+    try {
+        $now ??= new DateTimeImmutable('now');
+        $reviewed = new DateTimeImmutable((string)$reviewedAt, $now->getTimezone());
+        $cutoffYear = (int)$now->format('Y') - 1;
+        $cutoffMonth = (int)$now->format('n');
+        $cutoffMonthStart = $now->setDate($cutoffYear, $cutoffMonth, 1);
+        $cutoffDay = min((int)$now->format('j'), (int)$cutoffMonthStart->format('t'));
+        $cutoff = $now->setDate($cutoffYear, $cutoffMonth, $cutoffDay);
+        return $reviewed < $cutoff;
+    } catch (Throwable) {
+        // An invalid terminal timestamp must fail closed rather than preserve a proof forever.
+        return true;
+    }
+}
+
+/** Delete only eligible proof files. The caller retains all database audit metadata. */
+function manual_payment_cleanup_proof_files(array $proofRows, ?DateTimeImmutable $now = null): array
+{
+    $stats = ['deleted' => 0, 'missing' => 0, 'skipped' => 0, 'failed' => 0];
+    foreach ($proofRows as $row) {
+        if (!is_array($row) || !manual_payment_proof_retention_expired(
+            isset($row['status']) ? (string)$row['status'] : null,
+            isset($row['reviewed_at']) ? (string)$row['reviewed_at'] : null,
+            $now
+        )) {
+            $stats['skipped']++;
+            continue;
+        }
+
+        try {
+            $path = manual_payment_proof_file_path((string)($row['proof_filename'] ?? ''), false);
+            if (!file_exists($path)) {
+                $stats['missing']++;
+            } elseif (!is_file($path) || !@unlink($path)) {
+                $stats['failed']++;
+            } else {
+                $stats['deleted']++;
+            }
+        } catch (Throwable) {
+            $stats['failed']++;
+        }
+    }
+    return $stats;
+}
+
 function manual_payment_submission_retry_decision(?array $existing, int $bookingId): string
 {
     if ($existing === null) return 'insert';
@@ -193,6 +276,19 @@ function manual_payment_submission_retry_decision(?array $existing, int $booking
         'approved' => throw new RuntimeException('That transaction reference has already been approved.'),
         default => throw new RuntimeException('That transaction reference cannot be reused.'),
     };
+}
+
+/** Keep a live pending row stable while protecting globally unique reference fingerprints. */
+function manual_payment_submission_decision(?array $pending, ?array $matchingReference, int $bookingId): string
+{
+    if ($pending === null) return manual_payment_submission_retry_decision($matchingReference, $bookingId);
+    if ((int)($pending['booking_id'] ?? 0) !== $bookingId || (string)($pending['status'] ?? '') !== 'pending') {
+        throw new RuntimeException('The pending payment proof changed. Refresh and try again.');
+    }
+    if ($matchingReference !== null && (int)($matchingReference['id'] ?? 0) !== (int)($pending['id'] ?? 0)) {
+        throw new RuntimeException('That transaction reference has already been submitted. Choose a new reference for replacement.');
+    }
+    return 'replace_pending';
 }
 
 function manual_payment_expected_amount(array $booking): float
@@ -256,10 +352,208 @@ function manual_payment_store_verified_image(string $temporaryPath, string $dire
     return ['filename' => $name, 'mime' => $mime, 'size' => (int)$storedSize, 'sha256' => $sha256, 'path' => $destination];
 }
 
-/** Store a customer receipt only in the configured private directory. */
+/** Read only a valid JPEG EXIF orientation; missing or malformed metadata means encoded pixels stay unchanged. */
+function manual_payment_jpeg_orientation(string $path): int
+{
+    if (!function_exists('exif_read_data')) return 1;
+    try {
+        $metadata = @exif_read_data($path, 'IFD0', true, false);
+        if (!is_array($metadata)) return 1;
+        $value = $metadata['IFD0']['Orientation'] ?? $metadata['Orientation'] ?? null;
+        if (!is_int($value) && !(is_string($value) && ctype_digit($value))) return 1;
+        $orientation = (int)$value;
+        return $orientation >= 1 && $orientation <= 8 ? $orientation : 1;
+    } catch (Throwable) {
+        return 1;
+    }
+}
+
+/** Apply the EXIF transform to decoded JPEG pixels, including mirrored orientations. */
+function manual_payment_apply_jpeg_orientation(GdImage $image, int $orientation): GdImage
+{
+    if ($orientation === 1) return $image;
+    if ($orientation < 2 || $orientation > 8) throw new RuntimeException('The receipt image orientation is invalid.');
+
+    $rotation = match ($orientation) {
+        3 => 180,
+        5, 6, 7 => 270,
+        8 => 90,
+        default => 0,
+    };
+    $createdRotatedImage = false;
+    if ($rotation !== 0) {
+        $rotated = @imagerotate($image, $rotation, 0);
+        if (!$rotated instanceof GdImage) throw new RuntimeException('The receipt image orientation could not be applied.');
+        $image = $rotated;
+        $createdRotatedImage = true;
+    }
+
+    $flip = match ($orientation) {
+        2, 5 => IMG_FLIP_HORIZONTAL,
+        4 => IMG_FLIP_VERTICAL,
+        7 => IMG_FLIP_VERTICAL,
+        default => null,
+    };
+    if ($flip !== null && (!function_exists('imageflip') || !@imageflip($image, $flip))) {
+        if ($createdRotatedImage) imagedestroy($image);
+        throw new RuntimeException('The receipt image orientation could not be applied.');
+    }
+    return $image;
+}
+
+/** Resize only oversized receipts, preserving alpha for WebP and never enlarging smaller images. */
+function manual_payment_resize_proof_image(GdImage $image, int $maximumEdge = 1920): GdImage
+{
+    $width = imagesx($image);
+    $height = imagesy($image);
+    $longestEdge = max($width, $height);
+    if ($longestEdge <= $maximumEdge) return $image;
+
+    $scale = $maximumEdge / $longestEdge;
+    $targetWidth = max(1, (int)round($width * $scale));
+    $targetHeight = max(1, (int)round($height * $scale));
+    $resized = imagecreatetruecolor($targetWidth, $targetHeight);
+    if (!$resized instanceof GdImage) throw new RuntimeException('The receipt image could not be resized.');
+    imagealphablending($resized, false);
+    imagesavealpha($resized, true);
+    $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+    imagefilledrectangle($resized, 0, 0, $targetWidth, $targetHeight, $transparent);
+    if (!@imagecopyresampled($resized, $image, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height)) {
+        imagedestroy($resized);
+        throw new RuntimeException('The receipt image could not be resized.');
+    }
+    return $resized;
+}
+
+/** Flatten alpha onto white for JPEG fallback; WebP remains the preferred transparent format. */
+function manual_payment_flatten_proof_image(GdImage $image): GdImage
+{
+    $flattened = imagecreatetruecolor(imagesx($image), imagesy($image));
+    if (!$flattened instanceof GdImage) throw new RuntimeException('The receipt image could not be prepared for storage.');
+    $white = imagecolorallocate($flattened, 255, 255, 255);
+    imagefilledrectangle($flattened, 0, 0, imagesx($flattened), imagesy($flattened), $white);
+    imagealphablending($flattened, true);
+    if (!@imagecopy($flattened, $image, 0, 0, 0, 0, imagesx($image), imagesy($image))) {
+        imagedestroy($flattened);
+        throw new RuntimeException('The receipt image could not be prepared for storage.');
+    }
+    return $flattened;
+}
+
+function manual_payment_validated_proof_output(string $path, string $expectedMime, int $width, int $height, finfo $finfo): ?array
+{
+    clearstatcache(true, $path);
+    $size = filesize($path);
+    $mime = $finfo->file($path);
+    $info = @getimagesize($path);
+    $sha256 = hash_file('sha256', $path);
+    if ($size === false || $size < 1 || $size > MANUAL_PAYMENT_MAX_PROOF_BYTES
+        || $mime !== $expectedMime || !$info || ($info['mime'] ?? '') !== $expectedMime
+        || (int)$info[0] !== $width || (int)$info[1] !== $height || !is_string($sha256)) {
+        return null;
+    }
+    return ['size' => (int)$size, 'mime' => $mime, 'sha256' => $sha256];
+}
+
+/** Store a re-encoded customer receipt privately, preferring WebP without changing QR upload behavior. */
 function manual_payment_store_proof(string $temporaryPath): array
 {
-    return manual_payment_store_verified_image($temporaryPath, manual_payment_proof_directory(), 0600);
+    if (!is_file($temporaryPath) || !is_readable($temporaryPath)) throw new RuntimeException('Choose a JPEG, PNG, or WebP receipt image.');
+    $sourceSize = filesize($temporaryPath);
+    if ($sourceSize === false || $sourceSize < 1 || $sourceSize > MANUAL_PAYMENT_MAX_PROOF_BYTES) throw new RuntimeException('Receipt images must be 5 MiB or smaller.');
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $sourceMime = $finfo->file($temporaryPath);
+    $allowed = ['image/jpeg' => IMAGETYPE_JPEG, 'image/png' => IMAGETYPE_PNG, 'image/webp' => IMAGETYPE_WEBP];
+    if (!isset($allowed[$sourceMime])) throw new RuntimeException('Only real JPEG, PNG, and WebP receipt images are accepted.');
+    $sourceInfo = @getimagesize($temporaryPath);
+    if (!$sourceInfo || ($sourceInfo['mime'] ?? '') !== $sourceMime || (int)($sourceInfo[2] ?? 0) !== $allowed[$sourceMime]) {
+        throw new RuntimeException('The uploaded file is not a valid supported image.');
+    }
+    $sourceWidth = (int)$sourceInfo[0];
+    $sourceHeight = (int)$sourceInfo[1];
+    if ($sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 4096 || $sourceHeight > 4096 || $sourceWidth * $sourceHeight > 12000000) {
+        throw new RuntimeException('Receipt image dimensions are too large. Maximum size is 4096 × 4096 pixels.');
+    }
+    if (!function_exists('imagecreatefromstring')) throw new RuntimeException('Image verification is unavailable on this server.');
+    $contents = file_get_contents($temporaryPath);
+    if ($contents === false) throw new RuntimeException('Unable to read the uploaded image.');
+    $image = @imagecreatefromstring($contents);
+    unset($contents);
+    if (!$image instanceof GdImage) throw new RuntimeException('The uploaded image could not be decoded.');
+
+    $directory = null;
+    $stagingPath = null;
+    $destination = null;
+    $flattened = null;
+    $completed = false;
+    try {
+        $directory = manual_payment_proof_directory();
+        if (imagesx($image) !== $sourceWidth || imagesy($image) !== $sourceHeight) throw new RuntimeException('The decoded receipt dimensions do not match the upload.');
+        if ($sourceMime === 'image/jpeg') {
+            $oriented = manual_payment_apply_jpeg_orientation($image, manual_payment_jpeg_orientation($temporaryPath));
+            if ($oriented !== $image) {
+                imagedestroy($image);
+                $image = $oriented;
+            }
+        }
+        if (!imageistruecolor($image) && function_exists('imagepalettetotruecolor') && !@imagepalettetotruecolor($image)) {
+            throw new RuntimeException('The receipt image could not be normalized safely.');
+        }
+        $resized = manual_payment_resize_proof_image($image);
+        if ($resized !== $image) {
+            imagedestroy($image);
+            $image = $resized;
+        }
+        $width = imagesx($image);
+        $height = imagesy($image);
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+
+        $realDirectory = realpath($directory);
+        if ($realDirectory === false || !is_dir($realDirectory) || !is_writable($realDirectory)) throw new RuntimeException('Image storage is unavailable.');
+        $stagingPath = tempnam($realDirectory, '.proof-');
+        if ($stagingPath === false || dirname((string)realpath($stagingPath)) !== $realDirectory) throw new RuntimeException('Image storage is unavailable.');
+        $stagingPath = realpath($stagingPath);
+        if ($stagingPath === false || !@chmod($stagingPath, 0600)) throw new RuntimeException('Image storage is unavailable.');
+
+        $output = null;
+        if (function_exists('imagewebp')) {
+            $webpSaved = @imagewebp($image, $stagingPath, 82);
+            if ($webpSaved) $output = manual_payment_validated_proof_output($stagingPath, 'image/webp', $width, $height, $finfo);
+        }
+        if ($output === null) {
+            @unlink($stagingPath);
+            $stagingPath = tempnam($realDirectory, '.proof-');
+            if ($stagingPath === false || dirname((string)realpath($stagingPath)) !== $realDirectory) throw new RuntimeException('Image storage is unavailable.');
+            $stagingPath = realpath($stagingPath);
+            if ($stagingPath === false || !@chmod($stagingPath, 0600)) throw new RuntimeException('Image storage is unavailable.');
+            $flattened = manual_payment_flatten_proof_image($image);
+            $jpegSaved = @imagejpeg($flattened, $stagingPath, 82);
+            if (!$jpegSaved) throw new RuntimeException('Unable to store the verified receipt image.');
+            $output = manual_payment_validated_proof_output($stagingPath, 'image/jpeg', $width, $height, $finfo);
+            if ($output === null) throw new RuntimeException('The verified image could not be stored safely.');
+        }
+
+        $extension = $output['mime'] === 'image/webp' ? 'webp' : 'jpg';
+        $filename = bin2hex(random_bytes(24)) . '.' . $extension;
+        $destination = $realDirectory . DIRECTORY_SEPARATOR . $filename;
+        if (file_exists($destination) || !@rename($stagingPath, $destination)) throw new RuntimeException('Unable to finalize the verified receipt image.');
+        $stagingPath = null;
+        if (!@chmod($destination, 0600)) throw new RuntimeException('Unable to secure the verified receipt image.');
+        $final = manual_payment_validated_proof_output($destination, $output['mime'], $width, $height, $finfo);
+        if ($final === null || $final['size'] !== $output['size'] || !hash_equals($output['sha256'], $final['sha256'])) {
+            throw new RuntimeException('The verified image could not be stored safely.');
+        }
+
+        $completed = true;
+        return ['filename' => $filename, 'mime' => $final['mime'], 'size' => $final['size'], 'sha256' => $final['sha256'], 'path' => $destination];
+    } finally {
+        if ($flattened instanceof GdImage) imagedestroy($flattened);
+        if ($image instanceof GdImage) imagedestroy($image);
+        if (is_string($stagingPath) && is_file($stagingPath)) @unlink($stagingPath);
+        if (!$completed && is_string($destination) && is_file($destination)) @unlink($destination);
+    }
 }
 
 /** QR codes are intentionally public instructions, not customer proof. */

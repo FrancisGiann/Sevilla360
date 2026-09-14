@@ -63,14 +63,26 @@ function showroom_tour_validate_arrow_rotation(mixed $rotation): int
 function showroom_tour_group_hotel_venues(array $venues): array
 {
     $grouped = [];
+    $labels = [
+        'standard_room' => 'Standard Room',
+        'dormitory_room' => 'Dormitory Room',
+        'family_room_superior' => 'Family Room / Superior',
+        'deluxe' => 'Deluxe',
+        'vip_suite' => 'VIP Suite',
+    ];
+    $rank = ['standard_room' => 1, 'dormitory_room' => 2, 'family_room_superior' => 3, 'deluxe' => 4, 'vip_suite' => 5];
+    $group_ranks = [];
     foreach ($venues as $venue_id => $venue) {
         if (!is_array($venue)) continue;
-        $room_type = trim((string)($venue['room_type'] ?? ''));
-        $group_label = $room_type !== '' ? $room_type : 'Other room types';
+        $type_code = trim((string)($venue['room_type_code'] ?? ''));
+        $legacy_type = trim((string)($venue['room_type'] ?? ''));
+        $group_label = $labels[$type_code] ?? ($legacy_type !== '' ? $legacy_type : 'Other room types');
         $grouped[$group_label][$venue_id] = $venue;
+        $group_ranks[$group_label] = $rank[$type_code] ?? 99;
     }
 
-    uksort($grouped, static fn($left, $right): int => strnatcasecmp((string)$left, (string)$right));
+    uksort($grouped, static fn($left, $right): int => ($group_ranks[$left] <=> $group_ranks[$right])
+        ?: strnatcasecmp((string)$left, (string)$right));
     foreach ($grouped as &$room_venues) {
         uasort($room_venues, static fn(array $left, array $right): int => strnatcasecmp(
             (string)($left['venue_name'] ?? ''),

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
+require_once __DIR__ . '/../../includes/google_maps.php';
 require '../../config/db_connect.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -13,10 +14,14 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    $map_embed_input = $_POST['biz_map_embed'] ?? '';
+    $map_embed_url = google_maps_normalize_embed($map_embed_input);
+    if ($map_embed_url === null) {
+        echo "Error|Paste a complete Google Maps iframe or a valid HTTPS Google Maps embed URL.";
+        exit;
+    }
     
-    // Checkboxes
-    $maintenance_mode = isset($_POST['maintenance_mode']) ? 'true' : 'false';
-    $allow_walkins = isset($_POST['allow_walkins']) ? 'true' : 'false';
 
     $refund_fee_raw = $_POST['refund_fee_percent'] ?? null;
     if (!is_string($refund_fee_raw)) {
@@ -34,8 +39,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // Build our settings array
     $settings = [
-        'maintenance_mode' => $maintenance_mode,
-        'allow_walkins' => $allow_walkins,
         'refund_fee_percent' => $refund_fee_percent,
 
         'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
@@ -51,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'biz_email' => trim($_POST['biz_email'] ?? 'reservations@sevilla360.com'),
         'biz_phone' => trim($_POST['biz_phone'] ?? '+63 912 345 6789'),
         'biz_address' => trim($_POST['biz_address'] ?? '123 Resort Drive, Paradise City'),
-        'biz_map_embed' => trim($_POST['biz_map_embed'] ?? ''),
+        'biz_map_embed' => $map_embed_url,
         'biz_policies' => trim($_POST['biz_policies'] ?? ''),
     ];
 

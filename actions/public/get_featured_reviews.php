@@ -27,7 +27,7 @@ if (!$tableResult instanceof mysqli_result || $tableResult->num_rows === 0) {
 $reviewStmt = $conn->prepare("SELECT vr.id, vr.rating, vr.review_text, vr.created_at,
         c.first_name, c.last_name,
         v.id AS venue_id, v.name AS venue_name, v.category,
-        h.room_type
+        h.room_type, h.room_group_id
     FROM venue_reviews vr
     INNER JOIN bookings b ON b.id = vr.booking_id
     INNER JOIN venues v ON v.id = vr.venue_id AND v.status = 'Available'
@@ -80,7 +80,11 @@ while ($row = $result->fetch_assoc()) {
 
     if ($category === 'Hotel Room') {
         if ($roomType === '') continue;
-        $reviewKey = 'hotel-' . md5($venueNameRaw . ' - ' . $roomTypeRaw);
+        if (!empty($row['room_group_id'])) {
+            $reviewKey = 'hotel-group-' . (int)$row['room_group_id'];
+        } else {
+            $reviewKey = 'hotel-' . md5($venueNameRaw . ' - ' . $roomTypeRaw);
+        }
     } elseif ($category === 'Event Hall') {
         $reviewKey = 'event-' . (int)$row['venue_id'];
     } else {

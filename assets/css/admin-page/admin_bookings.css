@@ -159,6 +159,104 @@
   width: 100%;
 }
 
+/* Shared payment and protected-proof history in booking detail surfaces. */
+.admin-payment-history-section[hidden],
+.admin-proof-history[hidden],
+.admin-proof-history-preview[hidden] { display: none !important; }
+.admin-payment-history-list,
+.admin-proof-history-list { display: grid; gap: 8px; min-width: 0; }
+.admin-payment-history-entry,
+.admin-proof-history-entry {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(42, 37, 34, .14);
+  background: #fffdfa;
+}
+.admin-payment-history-entry p,
+.admin-proof-history-entry > p:not(.admin-proof-rejection-reason) {
+  display: grid;
+  grid-template-columns: minmax(120px, .8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  margin: 0;
+  padding: 3px 0;
+  font-size: .84rem;
+  line-height: 1.4;
+}
+.admin-payment-history-entry p > span,
+.admin-proof-history-entry > p > span { color: #62584f; }
+.admin-payment-history-entry strong,
+.admin-proof-history-entry > p > strong { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.admin-proof-history {
+  margin: 12px 0 18px;
+  border: 1px solid rgba(166, 124, 69, .35);
+  background: #fffdfa;
+}
+.admin-proof-history > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  color: #2a2522;
+  font-size: .88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.admin-proof-history > summary:focus-visible,
+.admin-proof-view-button:focus-visible {
+  outline: 2px solid #9a6a2f;
+  outline-offset: 2px;
+}
+.admin-proof-history-list { padding: 0 10px 10px; }
+.admin-proof-view-button {
+  min-width: 44px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(166, 124, 69, .65);
+  background: #fff;
+  color: #2a2522;
+  font: 600 .82rem var(--font-body, sans-serif);
+  cursor: pointer;
+}
+.admin-proof-view-button:hover:not(:disabled) { background: #f8f2e8; }
+.admin-proof-view-button:disabled { color: #62584f; cursor: not-allowed; opacity: .72; }
+.admin-proof-history-preview { margin: 12px 0 0; }
+.admin-proof-history-preview img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: min(60vh, 620px);
+  margin: 0 auto;
+  object-fit: contain;
+}
+.admin-proof-history-feedback {
+  margin: 8px 0 0;
+  color: #62584f;
+  font-size: .82rem;
+  line-height: 1.45;
+}
+.admin-proof-rejection-reason {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(42, 37, 34, .1);
+  color: #802a24;
+  overflow-wrap: anywhere;
+  font-size: .84rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .admin-payment-history-entry p,
+  .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1px;
+  }
+  .admin-payment-history-entry strong,
+  .admin-proof-history-entry > p > strong { text-align: left; }
+}
+
 /* --- Table Structure --- */
 .table-responsive {
   width: 100%;
@@ -1421,4 +1519,193 @@
   .manual-proof-summary { grid-template-columns: 1fr; gap: 4px; }
   .manual-proof-summary .value { margin-bottom: 8px; }
   .manual-proof-preview-wrap img { max-height: 40vh; }
+}
+
+/* Shared hierarchy for booking details and manual refund processing. */
+#viewDetailsModal,
+#overviewBookingModal { width: min(94vw, 640px); max-width: 640px; max-height: 92dvh; overflow-y: auto; padding: 28px 30px; }
+.booking-detail-header-content { display: grid; justify-items: start; gap: 8px; min-width: 0; }
+.booking-detail-header-content .vd-title,
+.overview-booking-main-title { margin: 0; text-align: left; font-size: 1.55rem; line-height: 1.2; }
+#viewDetailsModal .vd-header,
+#overviewBookingModal .overview-booking-header { align-items: flex-start; margin-bottom: 16px; padding-bottom: 14px; }
+#overviewBookingModal .overview-booking-header-left { display: grid; align-items: start; justify-items: start; gap: 8px; }
+#overviewBookingModal .overview-booking-header > .btn-icon-close { width: 44px; height: 44px; border: 1px solid rgba(42, 37, 34, .2); }
+#viewDetailsModal .vd-header > .booking-detail-close { flex: 0 0 44px; }
+.booking-detail-close {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(42, 37, 34, .2);
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+.booking-detail-close:hover,
+.booking-detail-close:focus-visible { background: #f5efe5; border-color: var(--color-gold); }
+.booking-detail-section { margin: 16px 0; padding-top: 14px; border-top: 1px solid rgba(42, 37, 34, .13); }
+.booking-detail-section[hidden] { display: none !important; }
+.booking-detail-section > .modal-subtitle { margin: 0 0 10px; text-align: left; font-size: 1.02rem; }
+.booking-detail-grid { display: grid; grid-template-columns: minmax(135px, .65fr) minmax(0, 1.35fr); gap: 8px 14px; font-size: .88rem; line-height: 1.4; }
+.booking-detail-grid > span { color: #62584f; }
+.booking-detail-grid > strong { min-width: 0; color: var(--color-dark); font-weight: 500; overflow-wrap: anywhere; }
+#viewDetailsModal .vd-section-title,
+#overviewBookingModal .overview-subtitle { margin: 16px 0 10px; padding: 0; border: 0; text-align: left; font-size: 1.02rem; }
+#viewDetailsModal .summary-grid,
+#overviewBookingModal .summary-grid { margin-bottom: 12px; }
+#viewDetailsModal .refund-total,
+#overviewBookingModal .refund-total { margin: 10px 0 0; padding-top: 12px; border-top: 1px solid rgba(42, 37, 34, .13); background: transparent; }
+#viewDetailsModal .vd-modal-actions,
+#overviewBookingModal .maint-modal-footer,
+#refundModal .modal-actions { justify-content: flex-end; gap: 10px; }
+#viewDetailsModal .vd-modal-actions .btn-modal,
+#overviewBookingModal .maint-modal-footer .btn-modal,
+#refundModal .modal-actions .btn-modal { min-height: 44px; flex: 0 1 auto; width: auto; }
+#viewDetailsModal .vd-modal-actions .btn-modal-cancel,
+#overviewBookingModal .maint-modal-footer .btn-modal-cancel,
+#refundModal .modal-actions .btn-modal-cancel { background: transparent; color: var(--color-dark); border: 1px solid rgba(42, 37, 34, .25); }
+#refundModal {
+  width: min(94vw, 640px);
+  max-width: 640px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  padding: 28px 30px;
+}
+.booking-detail-modal-header { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid rgba(42, 37, 34, .13); }
+#refundModal .modal-main-title { margin: 0; text-align: left; font-size: 1.55rem; }
+#refundModal .summary-grid { grid-template-columns: minmax(150px, .65fr) minmax(0, 1.35fr); gap: 8px 14px; margin-bottom: 8px; }
+#refundModal .summary-grid > * { min-width: 0; overflow-wrap: anywhere; }
+.refund-manual-instructions { margin: 16px 0; color: #554b41; font-size: .88rem; line-height: 1.45; }
+.refund-reference-field { margin-top: 14px; }
+.required-mark { color: #963c36; }
+#refund-transaction-id { min-height: 44px; width: 100%; box-sizing: border-box; }
+.refund-destination-status { margin: 12px 0 0; color: #8f3939; font-size: .86rem; line-height: 1.4; }
+.refund-destination-status[hidden] { display: none !important; }
+.refund-destination-status[data-error="false"] { color: #62584f; }
+#refundModal .btn-modal-refund:disabled { cursor: not-allowed; opacity: .58; transform: none; }
+
+/* Proof and payment history read as sections, not cards inside the modal. */
+.admin-payment-history-entry,
+.admin-proof-history-entry { padding: 0 0 10px; border: 0; border-bottom: 1px solid rgba(42, 37, 34, .1); background: transparent; }
+.admin-proof-history { margin: 12px 0 16px; border: 0; border-top: 1px solid rgba(42, 37, 34, .13); background: transparent; }
+.admin-proof-history > summary {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-line, rgba(43, 39, 35, .14));
+  border-radius: var(--ui-radius-sm, 6px);
+  background: var(--ui-paper, #f7f4ee);
+  color: var(--color-dark, #2b2723);
+  font-size: .86rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.admin-proof-history > summary::-webkit-details-marker { display: none; }
+.admin-proof-history > summary::marker { content: ''; }
+.admin-proof-history > summary:hover { border-color: var(--color-gold, #8c602d); background: var(--ui-muted, #eee9e1); }
+.admin-proof-history > summary:focus-visible { outline: 2px solid var(--color-gold, #8c602d); outline-offset: 2px; }
+.admin-proof-history-summary-title { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.admin-proof-history-count { color: var(--color-dark-light, #665d54); font-size: .78rem; font-weight: 500; }
+.admin-proof-history-summary-action { display: inline-flex; align-items: center; gap: 8px; color: var(--color-gold, #8c602d); font-size: .76rem; font-weight: 700; white-space: nowrap; }
+.admin-proof-history-action-close { display: none; }
+.admin-proof-history[open] .admin-proof-history-action-open { display: none; }
+.admin-proof-history[open] .admin-proof-history-action-close { display: inline; }
+.admin-proof-history-summary-action > i { transition: transform 180ms ease; }
+.admin-proof-history[open] .admin-proof-history-summary-action > i { transform: rotate(180deg); }
+.admin-proof-history-list { padding: 0; }
+
+/* Modal sections are content groups, not public-page landing sections. */
+#viewDetailsModal section,
+#overviewBookingModal section,
+#refundModal section {
+  box-sizing: border-box;
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--ui-line, rgba(43, 39, 35, .14));
+}
+#viewDetailsModal section[hidden],
+#overviewBookingModal section[hidden],
+#refundModal section[hidden] { display: none !important; }
+#viewDetailsModal section > .vd-section-title,
+#overviewBookingModal section > .overview-subtitle,
+#refundModal section > .modal-subtitle { margin: 0 0 8px; padding: 0; border: 0; text-align: left; font-size: 1.02rem; }
+
+/* Keep every booking-detail pair on the same label/value rails. */
+#viewDetailsModal .summary-grid,
+#overviewBookingModal .summary-grid,
+#viewDetailsModal .booking-detail-grid,
+#overviewBookingModal .booking-detail-grid,
+#viewDetailsModal .admin-payment-history-entry > p,
+#overviewBookingModal .admin-payment-history-entry > p,
+#viewDetailsModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason),
+#overviewBookingModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 14px;
+}
+#viewDetailsModal .summary-grid > .value,
+#overviewBookingModal .summary-grid > .value,
+#viewDetailsModal .booking-detail-grid > strong,
+#overviewBookingModal .booking-detail-grid > strong,
+#viewDetailsModal .admin-payment-history-entry > p > strong,
+#overviewBookingModal .admin-payment-history-entry > p > strong,
+#viewDetailsModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) > strong,
+#overviewBookingModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) > strong {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+#viewDetailsModal .vd-total-row .value,
+#overviewBookingModal .overview-total-value { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+#overviewBookingModal .overview-total-box { padding-inline: 0; }
+
+@media (max-width: 640px) {
+  #viewDetailsModal,
+  #overviewBookingModal,
+  #refundModal { width: calc(100vw - 20px); max-width: calc(100vw - 20px); max-height: 94dvh; padding: 22px 16px; }
+  #viewDetailsModal .summary-grid,
+  #overviewBookingModal .summary-grid,
+  #viewDetailsModal .booking-detail-grid,
+  #overviewBookingModal .booking-detail-grid,
+  #viewDetailsModal .admin-payment-history-entry > p,
+  #overviewBookingModal .admin-payment-history-entry > p,
+  #viewDetailsModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason),
+  #overviewBookingModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason),
+  #refundModal .summary-grid { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  #viewDetailsModal .summary-grid > .value,
+  #overviewBookingModal .summary-grid > .value,
+  #viewDetailsModal .booking-detail-grid > strong,
+  #overviewBookingModal .booking-detail-grid > strong,
+  #viewDetailsModal .admin-payment-history-entry > p > strong,
+  #overviewBookingModal .admin-payment-history-entry > p > strong,
+  #viewDetailsModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) > strong,
+  #overviewBookingModal .admin-proof-history-entry > p:not(.admin-proof-rejection-reason) > strong {
+    margin-bottom: 8px;
+    text-align: left;
+  }
+  .booking-detail-grid > strong,
+  #refundModal .summary-grid .value { margin-bottom: 8px; text-align: left; }
+  #viewDetailsModal .vd-total-row,
+  #overviewBookingModal .overview-total-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding-inline: 0; }
+  #viewDetailsModal .vd-total-row .value,
+  #overviewBookingModal .overview-total-value { text-align: left; }
+  #viewDetailsModal .vd-modal-actions,
+  #overviewBookingModal .maint-modal-footer,
+  #refundModal .modal-actions { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  #viewDetailsModal .vd-modal-actions .btn-modal,
+  #overviewBookingModal .maint-modal-footer .btn-modal,
+  #refundModal .modal-actions .btn-modal { width: 100%; }
+  .booking-detail-header-content .vd-title,
+  .overview-booking-main-title,
+  #refundModal .modal-main-title { font-size: 1.35rem; }
 }

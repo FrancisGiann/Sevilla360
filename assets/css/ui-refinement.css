@@ -290,7 +290,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .admin-layout .page-title { letter-spacing: -.02em; }
 .admin-layout .notification-bell, .admin-profile-trigger { min-width: 44px; min-height: 44px; border-radius: var(--ui-radius-sm); }
 .admin-profile-menu, .notif-dropdown { border-radius: var(--ui-radius-md) !important; box-shadow: var(--ui-shadow-md) !important; border-color: var(--ui-line-soft) !important; }
-.admin-layout :is(.dashboard-container, .admin-bookings-container, .admin-booking-container, .admin-maintenance-container, .calendar-page-container, .admin-settings-container, .audit-log-container, .um-container, .cms-container, .backups-container) { padding-top: clamp(24px, 4vw, 40px); }
+.admin-layout :is(.dashboard-container, .admin-bookings-container, .admin-booking-container, .admin-maintenance-container, .calendar-page-container, .admin-settings-container, .audit-log-container, .um-container, .cms-container) { padding-top: clamp(24px, 4vw, 40px); }
 .admin-layout :is(.stat-card, .chart-card, .widget-card, .table-card, .overview-module, .booking-card, .calendar-header-card, .calendar-wrapper-card, .settings-panel, .audit-table-card, .um-card, .cms-card) { border: 1px solid var(--ui-line-soft); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow-sm); background: var(--ui-surface); }
 .admin-layout :is(.card-title, .panel-heading, .subtitle) { color: var(--color-dark); border-bottom-color: var(--ui-line-soft); }
 .admin-layout :is(.table-responsive, .audit-table-card, .um-card) { border-color: var(--ui-line-soft); }
@@ -330,7 +330,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
   .dashboard-content { padding: 20px 14px; }
   .dashboard-summary-grid, .quick-actions-grid { grid-template-columns: 1fr !important; }
   .overview-card { padding: 17px; }
-  .admin-layout :is(.dashboard-container, .admin-bookings-container, .admin-booking-container, .admin-maintenance-container, .calendar-page-container, .admin-settings-container, .audit-log-container, .um-container, .cms-container, .backups-container) { padding-left: 14px; padding-right: 14px; }
+  .admin-layout :is(.dashboard-container, .admin-bookings-container, .admin-booking-container, .admin-maintenance-container, .calendar-page-container, .admin-settings-container, .audit-log-container, .um-container, .cms-container) { padding-left: 14px; padding-right: 14px; }
   .admin-layout .admin-header { padding-left: 14px; padding-right: 14px; }
   .admin-layout :is(.table-card, .booking-card, .settings-panel, .calendar-wrapper-card) { padding: 18px; }
 }
@@ -563,7 +563,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
     align-items: stretch;
   }
 
-  #tab-bookings .action-cell .btn-action,
+  #tab-bookings .action-cell .btn-action:not(.booking-more-toggle),
   #tab-bookings .action-cell .btn-details:not(:only-child) {
     width: 100% !important;
     min-width: 0;
@@ -575,6 +575,17 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 
   #tab-bookings .action-cell .btn-details .vd-text {
     display: inline !important;
+  }
+
+  #tab-bookings .action-cell .booking-more-toggle {
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    min-height: 44px !important;
+    flex: 0 0 44px !important;
+    padding: 0 !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
   }
 }
 
@@ -850,19 +861,22 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .admin-layout .settings-panel,
 .admin-layout .um-table,
 .admin-layout .cms-container,
-.admin-layout .audit-log-container,
-.admin-layout .backups-container {
-  animation: none;
-}
+.admin-layout .audit-log-container { animation: none; }
 .dashboard-layout .tab-pane.active,
 .booking-section .tab-content.active,
 .admin-layout .tab-content.active,
 .admin-layout .settings-panel.active,
 .admin-layout .um-table.active,
 .admin-layout .cms-container,
-.admin-layout .audit-log-container,
-.admin-layout .backups-container {
-  animation: ui-panel-enter 220ms var(--ui-ease) both;
+.admin-layout .audit-log-container { animation: ui-panel-enter 220ms var(--ui-ease) both; }
+
+/* Keep active customer tabs painted even if an entrance animation is paused
+   during backgrounding or rapid navigation. The existing short transform
+   settle remains intact, while visibility cannot depend on its opacity frame. */
+.dashboard-layout .tab-pane.active {
+  display: block;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /* Overlay opacity establishes depth; the child motion establishes the
@@ -977,8 +991,7 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
   .admin-layout .settings-panel.active,
   .admin-layout .um-table.active,
   .admin-layout .cms-container,
-  .admin-layout .audit-log-container,
-  .admin-layout .backups-container {
+  .admin-layout .audit-log-container {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

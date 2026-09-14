@@ -96,9 +96,11 @@
     <div class="modal-overlay" id="modalOverlay">
 
         <!-- Refund Modal -->
-        <div class="admin-modal" id="refundModal">
-            <h3 class="modal-main-title" id="modal-refund-title">Process Refund</h3>
-            <h4 class="modal-subtitle">Transaction Summary</h4>
+        <div class="admin-modal booking-detail-modal" id="refundModal" role="dialog" aria-modal="true" aria-labelledby="modal-refund-title" tabindex="-1">
+            <header class="booking-detail-modal-header">
+                <h3 class="modal-main-title" id="modal-refund-title">Mark refund sent</h3>
+            </header>
+            <h4 class="modal-subtitle">Refund summary</h4>
             <div class="summary-grid">
                 <span class="label">Customer Name:</span> <span class="value">--</span>
                 <span class="label">Venue Type:</span> <span class="value">--</span>
@@ -109,12 +111,24 @@
                 <span class="value text-sub-muted" id="modal-ref-reason">--</span>
             </div>
             
-            <div class="form-group" style="margin-top: 15px;">
-                <label class="form-label-med">Refund Transaction / Reference ID <span style="color:red;">*</span></label>
-                <input type="text" id="refund-transaction-id" class="form-input-padded" placeholder="Enter bank/wallet ref number" required>
+            <section class="booking-detail-section refund-destination-display" id="refund-destination-section" aria-labelledby="refund-destination-title" hidden>
+                <h4 class="modal-subtitle" id="refund-destination-title">Customer’s refund destination</h4>
+                <div class="booking-detail-grid">
+                    <span>Method</span><strong id="refund-destination-method">—</strong>
+                    <span>Account holder</span><strong id="refund-destination-account-name">—</strong>
+                    <span>Wallet / account number</span><strong id="refund-destination-account-identifier">—</strong>
+                    <span id="refund-destination-bank-label" hidden>Bank</span><strong id="refund-destination-bank" hidden>—</strong>
+                </div>
+            </section>
+            <p class="refund-destination-status" id="refund-destination-status" role="status" aria-live="polite" hidden></p>
+
+            <p class="refund-manual-instructions">Send the refund to this destination outside the system. Mark it sent only after the transfer is complete.</p>
+            <div class="form-group refund-reference-field">
+                <label class="form-label-med" for="refund-transaction-id">Outbound refund transaction / reference ID <span class="required-mark">*</span></label>
+                <input type="text" id="refund-transaction-id" class="form-input-padded" maxlength="160" autocomplete="off" placeholder="Enter the transfer reference" required>
             </div>
 
-            <div class="refund-total" style="margin-top: 15px;">
+            <div class="refund-total">
                 <span class="label">Refund Amount:</span>
                 <span class="value amount">₱0.00</span>
             </div>
@@ -123,9 +137,9 @@
                 <textarea id="refund-rejection-reason" class="form-input-padded" rows="3" maxlength="500" placeholder="Explain why this request cannot be approved"></textarea>
             </div>
             <div class="modal-actions">
-                <button class="btn-modal btn-modal-cancel close-modal">Cancel</button>
-                <button class="btn-modal btn-modal-danger btn-modal-reject-refund" id="btn-reject-refund-inline">Reject Refund</button>
-                <button class="btn-modal btn-modal-primary btn-modal-refund">Execute Refund</button>
+                <button type="button" class="btn-modal btn-modal-cancel close-modal">Cancel</button>
+                <button type="button" class="btn-modal btn-modal-danger btn-modal-reject-refund" id="btn-reject-refund-inline">Reject request</button>
+                <button type="button" class="btn-modal btn-modal-primary btn-modal-refund" disabled>Mark refund sent</button>
             </div>
         </div>
 
@@ -156,10 +170,13 @@
         </div>
 
         <!-- View Details Modal -->
-        <div class="admin-modal modal-view-details" id="viewDetailsModal">
+        <div class="admin-modal modal-view-details" id="viewDetailsModal" role="dialog" aria-modal="true" aria-labelledby="vd-title" tabindex="-1">
             <div class="vd-header">
-                <h3 class="modal-main-title vd-title" id="vd-title">Booking Details</h3>
-                <span class="status-badge" id="vd-status-badge">--</span>
+                <div class="booking-detail-header-content">
+                    <h3 class="modal-main-title vd-title" id="vd-title">Booking Details</h3>
+                    <span class="status-badge" id="vd-status-badge">--</span>
+                </div>
+                <button type="button" class="booking-detail-close close-modal" aria-label="Close booking details">&times;</button>
             </div>
 
             <!-- Customer Information -->
@@ -178,11 +195,38 @@
                 <span class="label">Guests:</span> <span class="value" id="vd-guests">--</span>
                 <span class="label hidden-element" id="vd-specific-label">Specifics:</span>
                 <span class="value hidden-element" id="vd-specific-value">--</span>
-                <span class="label" id="vd-transaction-label" style="display:none;">Transaction ID:</span> 
-                <span class="value" id="vd-transaction-value" style="display:none;">--</span>
-                <span class="label" id="vd-refund-tx-label" style="display:none;">Refund Tx ID:</span> 
-                <span class="value text-red-danger" id="vd-refund-tx-value" style="display:none;">--</span>
             </div>
+
+            <section id="vd-refund-section" class="booking-detail-section" aria-labelledby="vd-refund-title" hidden>
+                <h4 class="modal-subtitle vd-section-title" id="vd-refund-title">Refund request</h4>
+                <div class="booking-detail-grid">
+                    <span>Status</span><strong id="vd-refund-status">—</strong>
+                    <span>Request reason</span><strong id="vd-refund-reason">—</strong>
+                    <span>Resort reply</span><strong id="vd-refund-reply">—</strong>
+                    <span>Refund amount</span><strong id="vd-refund-amount">—</strong>
+                    <span>Destination method</span><strong id="vd-refund-method">—</strong>
+                    <span>Account holder</span><strong id="vd-refund-account-name">—</strong>
+                    <span>Wallet / account number</span><strong id="vd-refund-account-identifier">—</strong>
+                    <span id="vd-refund-bank-label" hidden>Bank</span><strong id="vd-refund-bank" hidden>—</strong>
+                    <span id="vd-refund-tx-label" hidden>Outbound transaction ID</span><strong id="vd-refund-tx-value" hidden>—</strong>
+                </div>
+            </section>
+
+            <section id="vd-payment-history-section" class="admin-payment-history-section" hidden>
+                <h4 class="modal-subtitle vd-section-title">Payment history</h4>
+                <div id="vd-payment-history" class="admin-payment-history-list"></div>
+            </section>
+            <details id="vd-proof-history" class="admin-proof-history" hidden>
+                <summary>
+                    <span class="admin-proof-history-summary-title">Submitted proof history <span class="admin-proof-history-count" id="vd-proof-history-count"></span></span>
+                    <span class="admin-proof-history-summary-action">
+                        <span class="admin-proof-history-action-open">View proofs</span>
+                        <span class="admin-proof-history-action-close">Hide proofs</span>
+                        <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    </span>
+                </summary>
+                <div id="vd-proof-history-list" class="admin-proof-history-list"></div>
+            </details>
 
             <!-- Add-ons & Line Items Container -->
             <div id="vd-addons-container" class="hidden-element">

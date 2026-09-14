@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/hotel_rooms.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -12,13 +13,26 @@ function venue_reviews_public_error(int $status, string $message): never
 }
 
 $venueKey = $_GET['venue_key'] ?? '';
-if (!is_string($venueKey) || !preg_match('/\A(?:event|villa)-[1-9][0-9]*\z|\Ahotel-[a-f0-9]{32}\z/', $venueKey)) {
+if (!is_string($venueKey) || !preg_match('/\A(?:event|villa)-[1-9][0-9]*\z|\Ahotel-[a-f0-9]{32}\z|\Ahotel-group-[1-9][0-9]*\z/', $venueKey)) {
     venue_reviews_public_error(422, 'A valid venue key is required.');
 }
 
 $venueIds = [];
-$keyType = str_starts_with($venueKey, 'hotel-') ? 'hotel' : (str_starts_with($venueKey, 'event-') ? 'event' : 'villa');
-if ($keyType === 'hotel') {
+$keyType = str_starts_with($venueKey, 'hotel-group-') ? 'hotel_group' : (str_starts_with($venueKey, 'hotel-') ? 'hotel' : (str_starts_with($venueKey, 'event-') ? 'event' : 'villa'));
+if ($keyType === 'hotel_group') {
+    if (!hotel_group_schema_ready($conn)) venue_reviews_public_error(503, 'Reviews are temporarily unavailable.');
+    $groupId = (int)substr($venueKey, strlen('hotel-group-'));
+    $stmt = $conn->prepare("SELECT h.venue_id FROM hotel_rooms h
+        INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+        INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+        INNER JOIN venues v ON v.id = h.venue_id
+        WHERE h.room_group_id = ? AND v.category = 'Hotel Room' AND v.status = 'Available'");
+    $stmt->bind_param('i', $groupId);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    $venueIds = array_map(static fn($row) => (int)$row['venue_id'], $rows);
+} elseif ($keyType === 'hotel') {
     $digest = substr($venueKey, 6);
     $stmt = $conn->prepare("SELECT DISTINCT h.venue_id
         FROM hotel_rooms h INNER JOIN venues v ON v.id = h.venue_id

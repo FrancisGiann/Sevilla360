@@ -39,6 +39,9 @@ if (!isset($data['booking_id']) || !isset($data['action'])) {
 $booking_id = intval($data['booking_id']);
 $action = $data['action'];
 $postCommitActions = [];
+$auditEventType = 'booking.management_action';
+$auditModule = 'Booking Management';
+$auditDetails = [];
 
 try {
     $conn->begin_transaction();
@@ -550,11 +553,14 @@ try {
         ];
     }
     elseif ($action === 'refund') {
-        $stmt_refund = $conn->prepare("SELECT id, reason, refund_amount, fee_deducted, fee_percent, status FROM cancellations WHERE booking_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE");
+        $stmt_refund = $conn->prepare("SELECT id, reason, refund_amount, fee_deducted, fee_percent, status, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name FROM cancellations WHERE booking_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE");
         $stmt_refund->bind_param("i", $booking_id);
         $stmt_refund->execute();
         $refund_row = $stmt_refund->get_result()->fetch_assoc();
         if (!$refund_row) throw new Exception('No pending refund request exists for this booking.');
+        if (!refund_destination_is_valid($refund_row)) {
+            throw new Exception('This pending refund has no valid destination details. Contact the customer before sending funds.');
+        }
         $refund_amount = $refund_row ? floatval($refund_row['refund_amount']) : null;
 
         $refund_tx_id = trim((string)($data['refund_transaction_id'] ?? ''));
@@ -591,6 +597,18 @@ try {
             'user_id' => $c_user_id,
             'venue_name' => $v_name
         ];
+        $refundReferenceSuffix = strlen($refund_tx_id) > 4 ? substr($refund_tx_id, -4) : '';
+        $maskedRefundReference = str_repeat('*', min(12, max(4, strlen($refund_tx_id) - 4))) . $refundReferenceSuffix;
+        $auditEventType = 'booking.refund_processed';
+        $auditModule = 'Refunds';
+        $auditDetails = [
+            'booking_reference' => (string)$ref_no,
+            'booking_id' => (int)$booking_id,
+            'cancellation_id' => (int)$refund_row['id'],
+            'refund_amount' => (float)$refund_amount,
+            'decision' => 'processed',
+            'refund_transaction_reference_masked' => $maskedRefundReference,
+        ];
     }
     elseif ($action === 'reject_refund') {
         if ($_SESSION['role'] !== 'admin') throw new Exception('Only administrators may reject refund requests.');
@@ -620,24 +638,37 @@ try {
             'reason' => $admin_reply,
             'user_id' => $c_user_id
         ];
+        $auditEventType = 'booking.refund_rejected';
+        $auditModule = 'Refunds';
+        $auditDetails = [
+            'booking_reference' => (string)$ref_no,
+            'booking_id' => (int)$booking_id,
+            'cancellation_id' => (int)$refund_row['id'],
+            'refund_amount' => (float)($snapshot['refund_amount'] ?? 0),
+            'decision' => 'rejected',
+            'reason' => $admin_reply,
+        ];
     }
     else {
         throw new Exception('Invalid action provided.');
     }
 
-    // ==========================================
-    // YOUR ORIGINAL AUDIT LOG
-    // ==========================================
-    if (isset($_SESSION['user_id'])) {
-        $log_user = $_SESSION['user_id'];
-        $log_module = 'Booking Management';
-        $log_action = $message;
-        $log_ip = request_client_ip();
-
-        $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
-        $audit_stmt->bind_param("isss", $log_user, $log_module, $log_action, $log_ip);
-        $audit_stmt->execute();
+    // Record exactly one audit entry for this committed booking transition.
+    // The actor is always the authenticated staff/admin session user.
+    $log_user = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($log_user === false) throw new Exception('Authenticated actor is unavailable for audit logging.');
+    if ($auditDetails === []) {
+        $auditDetails = ['booking_reference' => (string)$ref_no, 'decision' => (string)$action];
     }
+    $audit_details_json = json_encode($auditDetails, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+    $log_action = (string)$message;
+    $log_ip = request_client_ip();
+    $audit_entity_type = 'booking';
+    $audit_stmt = $conn->prepare('INSERT INTO audit_logs (user_id, module, action, ip_address, event_type, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    if (!$audit_stmt) throw new Exception('Unable to prepare the booking audit entry.');
+    $audit_stmt->bind_param('isssssis', $log_user, $auditModule, $log_action, $log_ip, $auditEventType, $audit_entity_type, $booking_id, $audit_details_json);
+    if (!$audit_stmt->execute()) throw new Exception('Unable to record the booking audit entry.');
+    $audit_stmt->close();
 
     $realtime_payload = [
         'booking_id' => $booking_id,

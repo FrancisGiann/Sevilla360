@@ -9,20 +9,31 @@ $active_page = 'showroom';
 
 require_once 'config/db_connect.php';
 require_once 'includes/showroom_tour.php';
+require_once 'includes/hotel_rooms.php';
+require_once 'includes/media_helper.php';
+
+$hotel_group_schema_ready = hotel_group_schema_ready($conn);
+$hotel_type_code_select = $hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';
+$hotel_type_code_group = $hotel_group_schema_ready ? ', hrg.room_type_code' : '';
+$hotel_type_catalog_join = $hotel_group_schema_ready
+    ? ' LEFT JOIN hotel_room_groups hrg ON hrg.id = hr.room_group_id LEFT JOIN hotel_room_types hrt ON hrt.type_code = hrg.room_type_code'
+    : '';
+$hotel_type_active_filter = $hotel_group_schema_ready ? " AND (v.category <> 'Hotel Room' OR hrt.active = 1)" : '';
 
 // 1. Fetch all venues
 $venues_query = $conn->query("
     SELECT 
         v.id, v.category, v.name AS venue_name, v.status, v.description, v.amenities,
-        hr.room_type, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
+        hr.room_type, {$hotel_type_code_select} AS room_type_code, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
         eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
         vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
     FROM venues v
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
+    {$hotel_type_catalog_join}
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
-    WHERE v.status = 'Available'
-    GROUP BY v.id, v.category, v.name, hr.room_type
+    WHERE v.status = 'Available'{$hotel_type_active_filter}
+    GROUP BY v.id, v.category, v.name, hr.room_type {$hotel_type_code_group}
     ORDER BY v.id ASC, hr.room_type ASC
 ");
 
@@ -31,7 +42,7 @@ $showroom_data = [];
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
         $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
-        $safe_id = trim(strtolower(preg_replace('/[^a-zA-Z0-9]+/', '_', $display_name)), '_');
+        $safe_id = substr(media_cms_venue_slot_key($display_name), strlen('venue_'));
         
         $cap = 'N/A'; $rate = 'N/A';
         $capacity_value = null; $rate_value = null; $beds_value = null;
@@ -77,6 +88,7 @@ if ($venues_query) {
             'title' => strtoupper($display_name),
             'category' => $v['category'],
             'room_type' => $v['room_type'] ?? '',
+            'room_type_code' => $v['room_type_code'] ?? null,
             'venue_name' => $v['venue_name'],
             'capacity' => $cap,
             'capacity_value' => $capacity_value,

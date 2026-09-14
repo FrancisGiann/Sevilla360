@@ -3,9 +3,10 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+require_once __DIR__ . '/../../includes/manual_payment.php';
 $booking_completion_sql = booking_completion_sql('b');
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
+if (!isset($_SESSION['user_id']) || !in_array(($_SESSION['role'] ?? ''), ['staff', 'admin'], true)) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
 }
 
@@ -87,15 +88,33 @@ try {
     $st_ra->execute();
     $room_allocations = $st_ra->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Fetch Transaction Reference (latest)
-    $st_tx = $conn->prepare("SELECT transaction_id FROM payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+    // Keep each successful payment distinct and substitute the submitted reference
+    // for the internal manual-payment idempotency key.
+    $st_tx = $conn->prepare("SELECT p.transaction_id, p.payment_method, p.amount, p.payment_date, mps.transaction_reference AS manual_reference FROM payments p LEFT JOIN manual_payment_submissions mps ON mps.payment_id = p.id WHERE p.booking_id = ? AND p.status = 'Success' ORDER BY p.payment_date ASC, p.id ASC");
     $st_tx->bind_param("i", $booking_id);
     $st_tx->execute();
-    $tx_res = $st_tx->get_result()->fetch_assoc();
-    $transaction_id = $tx_res ? $tx_res['transaction_id'] : null;
+    $payments = manual_payment_format_history($st_tx->get_result()->fetch_all(MYSQLI_ASSOC));
+    $displayReferences = array_values(array_filter(array_column($payments, 'transaction_reference'), static fn($value) => is_string($value) && $value !== ''));
+    $transaction_id = $displayReferences ? end($displayReferences) : null;
+
+    // Proof history is metadata-only. Image bytes remain behind payment_proof.php.
+    $st_proofs = $conn->prepare("SELECT id, status, payment_method, transaction_reference, expected_amount, submitted_at, reviewed_at, rejection_reason, NOW() AS retention_checked_at FROM manual_payment_submissions WHERE booking_id = ? ORDER BY submitted_at ASC, id ASC");
+    $st_proofs->bind_param('i', $booking_id);
+    if (!$st_proofs->execute()) throw new RuntimeException('Unable to load payment proof history.');
+    $proofHistory = array_map(static function (array $proof): array {
+        $proof['id'] = (int)$proof['id'];
+        $checkedAt = new DateTimeImmutable((string)$proof['retention_checked_at']);
+        $proof['proof_available'] = !manual_payment_proof_retention_expired(
+            (string)$proof['status'],
+            isset($proof['reviewed_at']) ? (string)$proof['reviewed_at'] : null,
+            $checkedAt
+        );
+        unset($proof['retention_checked_at']);
+        return $proof;
+    }, $st_proofs->get_result()->fetch_all(MYSQLI_ASSOC));
 
     // Fetch Cancellation Data
-    $st_cx = $conn->prepare("SELECT refund_amount, refund_transaction_id, fee_deducted, fee_percent, status, admin_reply FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+    $st_cx = $conn->prepare("SELECT reason, refund_amount, refund_transaction_id, fee_deducted, fee_percent, status, admin_reply, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
     $st_cx->bind_param("i", $booking_id);
     $st_cx->execute();
     $cx_res = $st_cx->get_result()->fetch_assoc();
@@ -108,6 +127,8 @@ try {
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,
         'transaction_id' => $transaction_id,
+        'payments' => $payments,
+        'proof_history' => $proofHistory,
         'cancellation' => $cx_res
     ]]);
 } catch (Exception $e) {

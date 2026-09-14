@@ -114,12 +114,13 @@ $addon_room_groups = $hotel_room_groups ?? [];
             <!-- Room group catalog: rendered from real DB data -->
             <div class="room-groups-catalog" id="room-groups-catalog">
                 <?php foreach($addon_room_groups as $grp): 
-                    $group_key = $grp['building_name'] . '|' . $grp['room_type'];
+                    $group_key = !empty($grp['room_group_id']) ? 'group-' . (int)$grp['room_group_id'] : $grp['building_name'] . '|' . $grp['room_type'];
                     $safe_key  = htmlspecialchars($group_key);
                 ?>
                 <div class="room-group-card"
                     data-building="<?php echo htmlspecialchars($grp['building_name']); ?>"
                     data-room-type="<?php echo htmlspecialchars($grp['room_type']); ?>"
+                    data-room-group-id="<?php echo (int)($grp['room_group_id'] ?? 0); ?>"
                     data-rate="<?php echo $grp['nightly_rate']; ?>"
                     data-capacity="<?php echo $grp['base_capacity']; ?>"
                     data-inventory="<?php echo $grp['total_inventory']; ?>"

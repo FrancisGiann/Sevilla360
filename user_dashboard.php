@@ -6,6 +6,7 @@ require_once 'includes/refund_helper.php';
 require_once 'includes/realtime.php';
 require_once 'includes/booking_lifecycle.php';
 require_once 'includes/manual_payment.php';
+require_once 'includes/customer_booking_status.php';
 $refund_fee_percent = get_refund_fee_percent($conn);
 $realtime_client_config = realtime_client_config();
 $booking_completion_sql = booking_completion_sql('b');
@@ -41,8 +42,8 @@ $stmt_upcoming = $conn->prepare("
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
-        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_rejection_reason,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_rejection_reason,
         b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
@@ -84,9 +85,8 @@ $stmt_bookings = $conn->prepare("
         rr.status AS resched_status,
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
-        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_rejection_reason,
-        (SELECT p2.transaction_id FROM payments p2 WHERE p2.booking_id = b.id ORDER BY p2.id DESC LIMIT 1) AS transaction_id
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_rejection_reason
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
@@ -152,7 +152,7 @@ $stmt_overview_recent = $conn->prepare("
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
         b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
@@ -172,7 +172,7 @@ $stmt_attention = $conn->prepare("
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.id DESC LIMIT 1) AS manual_submission_status,
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
         b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
@@ -202,24 +202,18 @@ $format_dashboard_date = static function ($start, $end = null): string {
     if (empty($end) || $start === $end) return $start_date->format('M j, Y');
     return $start_date->format('M j') . ' – ' . (new DateTime($end))->format('M j, Y');
 };
-$dashboard_status = static function (array $booking): array {
-    if (booking_is_completed($booking)) return ['Completed', 'badge-completed'];
-    if (!empty($booking['cancel_pending'])) return ['Pending refund', 'badge-cancelled'];
-    if (!empty($booking['resched_pending'])) return ['Reschedule requested', 'badge-reschedule'];
-    if ($booking['booking_status'] === 'Cancelled') return ['Cancelled', 'badge-cancelled'];
-    if (!empty($booking['manual_payment_pending'])) return ['Awaiting verification', 'badge-pending'];
-    if (($booking['manual_submission_status'] ?? '') === 'rejected') return ['Proof rejected', 'badge-cancelled'];
-    if ($booking['booking_status'] === 'Pending') return ['Pending review', 'badge-pending'];
-    if ($booking['payment_status'] === 'Paid') return ['Fully paid', 'badge-paid'];
-    if ($booking['payment_status'] === 'Partial') return ['Partially paid', 'badge-partial'];
-    if (!empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return ['Payment window expired', 'badge-cancelled'];
-    return ['Payment due', 'badge-pending'];
-};
+$dashboard_status = 'customer_dashboard_status';
 $can_submit_manual_payment = static function (array $booking): bool {
-    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true) || !empty($booking['manual_payment_pending'])) return false;
+    $hasPendingProof = !empty($booking['manual_payment_pending']);
+    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
+    if (!empty($booking['cancel_pending']) || ($booking['cancel_status'] ?? '') === 'Pending' || !empty($booking['resched_pending']) || ($booking['resched_status'] ?? '') === 'Pending') return false;
     if (($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') return false;
-    if ($booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return false;
+    if (!$hasPendingProof && $booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return false;
     return true;
+};
+$manual_payment_action_label = static function (array $booking): string {
+    if (!empty($booking['manual_payment_pending'])) return 'Replace proof';
+    return ($booking['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment';
 };
 ?>
 <!DOCTYPE html>
@@ -260,17 +254,17 @@ $can_submit_manual_payment = static function (array $booking): bool {
     <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="dashboard-layout">
         <!-- Sidebar Backdrop Overlay for Mobile -->
-        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+        <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
 
         <!-- LEFT SIDEBAR -->
-        <aside class="dashboard-sidebar">
+        <aside id="customer-sidebar" class="dashboard-sidebar" inert>
             <div class="sidebar-header">
                 <a href="index.php" class="brand-logo">SEVILLA360</a>
                 <button type="button" id="btn-sidebar-collapse" class="sidebar-collapse-toggle"
                     aria-label="Minimize sidebar" aria-pressed="false" title="Minimize sidebar">
                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                 </button>
-                <button id="btn-close-sidebar" class="sidebar-close-btn" aria-label="Close sidebar">
+                <button type="button" id="btn-close-sidebar" class="sidebar-close-btn" aria-label="Close sidebar">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -286,7 +280,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
                 </div>
             </div>
 
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" aria-label="Customer dashboard">
                 <p class="nav-heading">MENU</p>
                 <ul class="nav-list">
                     <li class="nav-item <?php echo $initial_section === 'overview' ? 'active' : ''; ?>" data-tab="overview">
@@ -302,18 +296,26 @@ $can_submit_manual_payment = static function (array $booking): bool {
             </nav>
 
             <div class="sidebar-footer">
+                <a href="support.php" class="nav-link support-link">
+                    <i class="fa-regular fa-circle-question" aria-hidden="true"></i><span>Help &amp; Support</span>
+                </a>
                 <a href="actions/auth/logout.php" class="nav-link sign-out">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i><span>Sign out</span>
                 </a>
             </div>
         </aside>
+        <script>
+            if (window.matchMedia('(min-width: 993px)').matches) {
+                document.getElementById('customer-sidebar')?.removeAttribute('inert');
+            }
+        </script>
 
         <!-- MAIN CONTENT -->
         <main class="dashboard-main">
 
             <header class="dashboard-topbar">
                 <div class="topbar-left">
-                    <button id="btn-mobile-sidebar-toggle" class="mobile-menu-btn" aria-label="Open menu">
+                    <button type="button" id="btn-mobile-sidebar-toggle" class="mobile-menu-btn" aria-label="Open menu" aria-controls="customer-sidebar" aria-expanded="false">
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <a href="index.php" class="mobile-brand-logo">SEVILLA360</a>
@@ -322,22 +324,24 @@ $can_submit_manual_payment = static function (array $booking): bool {
                 <div class="topbar-right">
                     <!-- Notification Bell -->
                     <div class="notification-container">
-                        <button id="btn-notifications" aria-label="Notifications">
+                        <button type="button" id="btn-notifications" aria-label="Notifications" aria-controls="notif-dropdown" aria-expanded="false" aria-haspopup="dialog">
                             <i class="fa-regular fa-bell"></i>
                             <?php if($unread_count > 0): ?>
-                                <span id="notif-badge">
+                                <span id="notif-badge" aria-hidden="true">
                                     <?php echo $unread_count; ?>
                                 </span>
                             <?php endif; ?>
                         </button>
                         
                         <!-- Dropdown -->
-                        <div id="notif-dropdown">
+                        <div id="notif-dropdown" role="dialog" aria-labelledby="notif-dropdown-title" aria-modal="false" tabindex="-1" hidden>
                             <div class="notif-dropdown-header">
-                                <h4>Notifications</h4>
-                                <?php if($unread_count > 0): ?>
-                                    <button id="btn-mark-read">Mark all as read</button>
-                                <?php endif; ?>
+                                <h4 id="notif-dropdown-title">Notifications</h4>
+                                <button type="button" id="btn-mark-read" <?php echo $unread_count > 0 ? '' : 'hidden'; ?>>Mark all as read</button>
+                            </div>
+                            <div id="notif-refresh-feedback" class="notif-refresh-feedback" hidden>
+                                <p id="notif-refresh-message"></p>
+                                <button type="button" id="notif-retry" hidden>Retry</button>
                             </div>
                             <div class="notif-list-body">
                                 <?php if(empty($notifications)): ?>
@@ -352,20 +356,22 @@ $can_submit_manual_payment = static function (array $booking): bool {
                                         elseif (strpos($t, 'reschedule') !== false) { $icon = 'fa-calendar-day'; $color = '#17a2b8'; }
                                         elseif (strpos($t, 'booking') !== false || strpos($t, 'quotation') !== false) { $icon = 'fa-calendar-check'; $color = '#d6a870'; }
                                     ?>
-                                        <div class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>">
-                                            <div class="notif-item-icon" style="color: <?php echo $color; ?>;">
+                                        <button type="button" class="notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" data-id="<?php echo (int)$n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title'], ENT_QUOTES, 'UTF-8'); ?>" data-message="<?php echo htmlspecialchars($n['message'], ENT_QUOTES, 'UTF-8'); ?>" aria-label="<?php echo htmlspecialchars(($n['is_read'] ? 'Read notification: ' : 'Unread notification: ') . $n['title'] . '. ' . $n['message'], ENT_QUOTES, 'UTF-8'); ?>">
+                                            <span class="notif-item-icon" style="color: <?php echo $color; ?>;" aria-hidden="true">
                                                 <i class="fa-solid <?php echo $icon; ?>"></i>
-                                            </div>
-                                            <div>
-                                                <h5 class="notif-item-title"><?php echo htmlspecialchars($n['title']); ?></h5>
-                                                <p class="notif-item-msg"><?php echo htmlspecialchars($n['message']); ?></p>
+                                            </span>
+                                            <span class="notif-item-content">
+                                                <span class="notif-item-title"><?php echo htmlspecialchars($n['title']); ?></span>
+                                                <span class="notif-item-msg"><?php echo htmlspecialchars($n['message']); ?></span>
+                                                <span class="notif-item-read-state"><?php echo $n['is_read'] ? 'Read' : 'Unread'; ?></span>
                                                 <span class="notif-item-time"><?php echo date('M j, Y h:i A', strtotime($n['created_at'])); ?></span>
-                                            </div>
-                                        </div>
+                                            </span>
+                                        </button>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
                             </div>
                         </div>
+                        <span id="notif-live-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
                     </div>
 
                     <a href="index.php" class="btn-topbar"><i class="fa-solid fa-house"></i> <span>Back to Home</span></a>
@@ -394,6 +400,9 @@ $can_submit_manual_payment = static function (array $booking): bool {
                             <span class="summary-card-label">Outstanding balance</span>
                             <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
                             <small><?php echo $balance_due > 0 ? 'Payment action may be needed' : 'You are all caught up'; ?></small>
+                            <?php if ($balance_due > 0): ?>
+                            <a class="balance-review-link" href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">Review bookings</a>
+                            <?php endif; ?>
                         </div>
                     </section>
 
@@ -415,7 +424,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
                             <div class="overview-card-actions">
                                 <button type="button" class="btn-outline-dash btn-details" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><i class="fa-solid fa-file-invoice"></i> View details</button>
                                 <?php if ($can_submit_manual_payment($upcoming_booking)): ?>
-                                <button type="button" class="btn-primary-dash btn-submit-payment" data-id="<?php echo (int)$upcoming_booking['id']; ?>">Submit payment</button>
+                                <button type="button" class="btn-primary-dash btn-submit-payment" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><?php echo htmlspecialchars($manual_payment_action_label($upcoming_booking), ENT_QUOTES, 'UTF-8'); ?></button>
                                 <?php endif; ?>
                             </div>
                             <?php else: ?>
@@ -472,8 +481,8 @@ $can_submit_manual_payment = static function (array $booking): bool {
                         <div class="header-actions">
                             <button class="btn-outline-dash" onclick="window.location.reload();"><i
                                     class="fa-solid fa-rotate-right"></i> Refresh</button>
-                            <a href="booking.php" class="no-underline"><button class="btn-primary-dash"><i
-                                        class="fa-solid fa-plus"></i> New Booking</button></a>
+                            <a href="booking.php" class="btn-primary-dash booking-new-link"><i
+                                    class="fa-solid fa-plus" aria-hidden="true"></i> New Booking</a>
                         </div>
                     </div>
 
@@ -484,7 +493,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
                         </div>
                         <div class="stat-card">
                             <div class="stat-value"><?php echo $stat_pending; ?></div>
-                            <div class="stat-label">PENDING PAYMENT</div>
+                            <div class="stat-label">PENDING BOOKINGS</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value text-green"><?php echo $stat_confirmed; ?></div>
@@ -495,20 +504,11 @@ $can_submit_manual_payment = static function (array $booking): bool {
                     <div class="history-container">
                         <div class="history-header">
                             <h2>Booking History</h2>
-                            <div class="filter-pills" id="statusFiltersDesktop">
-                                <button class="filter-pill active" data-filter="All">All</button>
-                                <button class="filter-pill" data-filter="Pending">Pending</button>
-                                <button class="filter-pill" data-filter="Partially Paid">Partially Paid</button>
-                                <button class="filter-pill" data-filter="Paid">Paid</button>
-                                <button class="filter-pill" data-filter="Completed">Completed</button>
-                                <button class="filter-pill" data-filter="Cancelled">Cancelled</button>
-                            </div>
-
-                            <div class="status-filter status-filter-mobile" id="statusFiltersMobile">
-                                <label for="statusFilter">Status</label>
-                                <select id="statusFilter" class="status-filter-select" aria-label="Filter bookings by status">
-                                    <option value="All">All</option>
-                                    <option value="Pending">Pending</option>
+                            <div class="status-filter">
+                                <label for="statusFilter">Filter bookings</label>
+                                <select id="statusFilter" class="status-filter-select">
+                                    <option value="All">All bookings</option>
+                                    <option value="Pending">Needs Attention</option>
                                     <option value="Partially Paid">Partially Paid</option>
                                     <option value="Paid">Paid</option>
                                     <option value="Completed">Completed</option>
@@ -532,7 +532,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
                                 <tbody>
                                     <?php if (empty($bookings)): ?>
                                     <tr>
-                                        <td colspan="6" class="empty-table-cell">You have no bookings yet. Time to plan a vacation!</td>
+                                        <td colspan="6" class="empty-table-cell">You don’t have any bookings yet. Select “New Booking” above to explore venues and start a reservation.</td>
                                     </tr>
                                     <?php else: ?>
                                     <?php foreach ($bookings as $b): 
@@ -552,58 +552,28 @@ $can_submit_manual_payment = static function (array $booking): bool {
                                             $display_amount = '<span class="text-tba">To Be Arranged</span>';
                                         }
 
-                                        // Status badge logic
-                                        $badge_class = 'badge-pending'; 
-                                        $status_text = 'Pending Payment';
+                                        [$status_text, $badge_class] = $dashboard_status($b);
+                                        // Preserve the existing filter buckets based on lifecycle/payment state.
                                         $filter_data = 'Pending';
-
                                         if ($is_completed) {
-                                            $badge_class = 'badge-completed';
-                                            $status_text = 'Completed';
                                             $filter_data = 'Completed';
-                                        } elseif ($is_pending_inquiry) {
-                                            $status_text = 'Inquiry Sent';
-                                        } elseif ($display_status === 'Confirmed') {
-                                            if ($b['payment_status'] === 'Paid') {
-                                                $badge_class = 'badge-paid';
-                                                $status_text = 'Fully Paid';
-                                                $filter_data = 'Paid';
-                                            } elseif ($b['payment_status'] === 'Partial') {
-                                                $badge_class = 'badge-partial';
-                                                $status_text = 'Partially Paid';
-                                                $filter_data = 'Partially Paid';
-                                            } else {
-                                                $badge_class = 'badge-pending'; 
-                                                $status_text = 'Unpaid';
-                                                $filter_data = 'Pending';
-                                            }
                                         } elseif ($display_status === 'Cancelled') {
-                                            $badge_class = 'badge-cancelled';
-                                            $status_text = 'Cancelled';
                                             $filter_data = 'Cancelled';
+                                        } elseif ($display_status === 'Confirmed' && $b['payment_status'] === 'Paid') {
+                                            $filter_data = 'Paid';
+                                        } elseif ($display_status === 'Confirmed' && $b['payment_status'] === 'Partial') {
+                                            $filter_data = 'Partially Paid';
                                         }
 
-                                        if (!$is_completed && !empty($b['manual_payment_pending']) && $display_status !== 'Cancelled') {
-                                            $badge_class = 'badge-pending';
-                                            $status_text = 'Awaiting Verification';
-                                            $filter_data = 'Pending';
-                                        } elseif (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && $display_status !== 'Cancelled') {
-                                            $badge_class = 'badge-cancelled';
-                                            $status_text = 'Proof Rejected';
-                                            $filter_data = 'Pending';
-                                        }
-
-                                        // OVERRIDE TEXT IF A REQUEST IS PENDING
-                                        if (!$is_completed && $b['cancel_status'] === 'Pending') {
-                                            $status_text = 'Pending Refund';
-                                            $badge_class = 'badge-cancelled'; 
-                                        } elseif (!$is_completed && $b['resched_status'] === 'Pending') {
-                                            $status_text = 'Resched Requested';
-                                            $badge_class = 'badge-reschedule';  
-                                        }
-
-                                        $display_id = !empty($b['reference_no']) ? htmlspecialchars($b['reference_no']) : '#' . $b['id'];
+                                        $raw_booking_reference = !empty($b['reference_no']) ? (string)$b['reference_no'] : '#' . (int)$b['id'];
+                                        $display_id = htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8');
                                         $booking_review = $reviewsByBooking[(int)$b['id']] ?? null;
+                                        $payment_action = !$is_completed && $can_submit_manual_payment($b);
+                                        $can_cancel_booking = !$is_completed && $display_status !== 'Cancelled' && $b['cancel_status'] !== 'Pending';
+                                        $can_reschedule_booking = $can_cancel_booking && $display_status === 'Confirmed';
+                                        $can_review_booking = $is_completed && $b['booking_status'] !== 'Cancelled' && $b['payment_status'] !== 'Refunded';
+                                        $has_more_actions = $payment_action || $can_reschedule_booking || $can_cancel_booking || $can_review_booking;
+                                        $action_menu_id = 'booking-actions-' . (int)$b['id'];
                                     ?>
                                     <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo htmlspecialchars($filter_data, ENT_QUOTES, 'UTF-8'); ?>">
 
@@ -619,65 +589,76 @@ $can_submit_manual_payment = static function (array $booking): bool {
                                         </td>
                                         <td data-label="Status">
                                             <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo (!$is_completed && $b['cancel_status'] === 'Pending') ? 'Pending Refund' : $status_text; ?>
+                                                <?php echo $status_text; ?>
                                             </span>
                                             <?php if (!$is_completed && !empty($b['has_rescheduled']) && $display_status === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
                                             <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
                                             <?php endif; ?>
                                         </td>
                                         <td data-label="Actions">
-                                            <div class="action-cell">
-                                            <?php if (!$is_completed && $b['cancel_status'] !== 'Pending' && $can_submit_manual_payment($b)): ?>
-                                                <button class="btn-action btn-pay btn-submit-payment"
-                                                    data-id="<?php echo (int)$b['id']; ?>"><?php echo ($b['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment'; ?></button>
+                                            <div class="action-cell<?php echo $has_more_actions ? ' has-more-actions' : ''; ?>">
+                                            <?php if (!$is_completed && $can_submit_manual_payment($b)): ?>
+                                                <button type="button" class="btn-action btn-pay btn-submit-payment booking-row-primary"
+                                                    data-id="<?php echo (int)$b['id']; ?>"><?php echo htmlspecialchars($manual_payment_action_label($b), ENT_QUOTES, 'UTF-8'); ?></button>
                                                 <?php endif; ?>
-                                                <?php if (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && !empty($b['manual_rejection_reason'])): ?>
-                                                <p class="payment-rejection-note">Reason: <?php echo htmlspecialchars($b['manual_rejection_reason']); ?></p>
-                                                <?php endif; ?>
-
-                                                <?php if (!$is_completed && $display_status !== 'Cancelled' && $b['cancel_status'] !== 'Pending'): ?>
-                                                <?php if ($display_status === 'Confirmed'): ?>
-                                                <button class="btn-action btn-outline-action btn-reschedule"
-                                                    data-id="<?php echo $b['id']; ?>"
-                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                    data-type="<?php echo htmlspecialchars($actual_room_type); ?>"
-                                                    data-start="<?php echo $b['start_date']; ?>"
-                                                    data-end="<?php echo $b['end_date']; ?>"
-                                                    data-date="<?php echo $date_str; ?>">Reschedule</button>
-                                                <?php endif; ?>
-
-                                                <button class="btn-action btn-danger-outline btn-cancel"
-                                                    data-id="<?php echo $b['id']; ?>"
-                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                    data-date="<?php echo $date_str; ?>"
-                                                    data-paid="<?php echo $amount_paid; ?>">
-                                                    <?php echo ($amount_paid > 0) ? 'Refund' : 'Cancel'; ?>
-                                                </button>
-                                                <?php endif; ?>
-
-                                                <?php if ($is_completed && $b['booking_status'] !== 'Cancelled' && $b['payment_status'] !== 'Refunded'): ?>
-                                                <?php if (!$booking_review): ?>
-                                                <button type="button" class="btn-action btn-review btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>">Rate venue</button>
-                                                <?php elseif ($booking_review['moderation_status'] === 'Pending'): ?>
-                                                <button type="button" class="btn-action btn-outline-action btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">Review pending</button>
-                                                <?php else: ?>
-                                                <button type="button" class="btn-action btn-outline-action btn-review-open" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>">View/edit review</button>
-                                                <?php endif; ?>
-                                                <?php endif; ?>
-
-                                                <!-- Dynamic View Details Button -->
-                                                <button class="btn-action btn-outline-action btn-details"
+                                                <?php if (!$payment_action): ?>
+                                                <button type="button" class="btn-action btn-outline-action btn-details booking-row-primary"
                                                     data-id="<?php echo $b['id']; ?>"
                                                     data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
                                                     data-date="<?php echo $date_str; ?>"
                                                     data-paid="<?php echo $amount_paid; ?>"
                                                     data-status="<?php echo $status_text; ?>"
-                                                    data-tid="<?php echo !empty($b['transaction_id']) ? htmlspecialchars($b['transaction_id']) : 'N/A'; ?>"
                                                     title="View Booking Invoice">
                                                     <i class="fa-solid fa-file-invoice"></i>
                                                     <span class="vd-text">View Details</span>
                                                 </button>
+                                                <?php endif; ?>
+
+                                                <?php if ($has_more_actions): ?>
+                                                <div class="booking-row-more">
+                                                    <button type="button" class="btn-action booking-more-toggle"
+                                                        aria-label="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>"
+                                                        title="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>"
+                                                        aria-expanded="false" aria-controls="<?php echo htmlspecialchars($action_menu_id, ENT_QUOTES, 'UTF-8'); ?>">
+                                                        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                                                    </button>
+                                                    <div class="booking-action-menu-panel" id="<?php echo htmlspecialchars($action_menu_id, ENT_QUOTES, 'UTF-8'); ?>" role="group" aria-label="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>" hidden>
+                                                        <?php if ($payment_action): ?>
+                                                        <button type="button" class="btn-details action-menu-item" data-id="<?php echo (int)$b['id']; ?>"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i><span>View details</span></button>
+                                                        <?php endif; ?>
+                                                        <?php if ($can_reschedule_booking): ?>
+                                                        <button type="button" class="btn-reschedule action-menu-item"
+                                                            data-id="<?php echo (int)$b['id']; ?>"
+                                                            data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-type="<?php echo htmlspecialchars($actual_room_type, ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-start="<?php echo htmlspecialchars($b['start_date'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-end="<?php echo htmlspecialchars($b['end_date'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-date="<?php echo htmlspecialchars($date_str, ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Reschedule</span></button>
+                                                        <?php endif; ?>
+                                                        <?php if ($can_review_booking && !$booking_review): ?>
+                                                        <button type="button" class="btn-review btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-star" aria-hidden="true"></i><span>Rate venue</span></button>
+                                                        <?php elseif ($can_review_booking && $booking_review['moderation_status'] === 'Pending'): ?>
+                                                        <button type="button" class="btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Review pending</span></button>
+                                                        <?php elseif ($can_review_booking): ?>
+                                                        <button type="button" class="btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>View/edit review</span></button>
+                                                        <?php endif; ?>
+                                                        <?php if ($can_cancel_booking): ?>
+                                                        <button type="button" class="btn-cancel action-menu-item action-menu-item--destructive"
+                                                            data-id="<?php echo (int)$b['id']; ?>"
+                                                            data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-date="<?php echo htmlspecialchars($date_str, ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-paid="<?php echo htmlspecialchars((string)$amount_paid, ENT_QUOTES, 'UTF-8'); ?>">
+                                                            <i class="fa-solid <?php echo ($amount_paid > 0) ? 'fa-arrow-rotate-left' : 'fa-ban'; ?>" aria-hidden="true"></i>
+                                                            <span><?php echo ($amount_paid > 0) ? 'Request refund' : 'Cancel booking'; ?></span>
+                                                        </button>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                                <?php endif; ?>
                                             </div>
+                                            <?php if (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && !empty($b['manual_rejection_reason'])): ?>
+                                            <p class="payment-rejection-note">Reason: <?php echo htmlspecialchars($b['manual_rejection_reason'], ENT_QUOTES, 'UTF-8'); ?></p>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -723,25 +704,25 @@ $can_submit_manual_payment = static function (array $booking): bool {
                             <form class="settings-form">
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label>First Name</label>
+                                        <label for="set-fname">First Name</label>
                                         <input type="text" id="set-fname" class="form-control"
-                                            value="<?php echo htmlspecialchars($customer['first_name']); ?>">
+                                            autocomplete="given-name" value="<?php echo htmlspecialchars($customer['first_name']); ?>">
                                     </div>
                                     <div class="form-group">
-                                        <label>Last Name</label>
+                                        <label for="set-lname">Last Name</label>
                                         <input type="text" id="set-lname" class="form-control"
-                                            value="<?php echo htmlspecialchars($customer['last_name']); ?>">
+                                            autocomplete="family-name" value="<?php echo htmlspecialchars($customer['last_name']); ?>">
                                     </div>
                                     <div class="form-group">
-                                        <label>Email Address</label>
-                                        <input type="email" class="form-control"
+                                        <label for="set-email">Email Address</label>
+                                        <input type="email" id="set-email" class="form-control" autocomplete="email"
                                             value="<?php echo htmlspecialchars($customer['email']); ?>" readonly
                                             disabled>
                                     </div>
                                     <div class="form-group">
-                                        <label>Phone Number</label>
+                                        <label for="set-phone">Phone Number</label>
                                         <input type="tel" id="set-phone" class="form-control"
-                                            value="<?php echo htmlspecialchars($customer['phone']); ?>">
+                                            autocomplete="tel" value="<?php echo htmlspecialchars($customer['phone']); ?>">
                                     </div>
                                 </div>
                                 <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
@@ -753,7 +734,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
                             <h3 class="settings-title">Guest Preferences</h3>
                             <form class="settings-form">
                                 <div class="form-group full-width">
-                                    <label>Dietary Requirements / Special Requests</label>
+                                    <label for="set-prefs">Dietary Requirements / Special Requests</label>
                                     <textarea id="set-prefs" class="form-control"
                                         rows="3"><?php echo isset($customer['special_req']) ? htmlspecialchars($customer['special_req']) : ''; ?></textarea>
                                 </div>
@@ -767,17 +748,17 @@ $can_submit_manual_payment = static function (array $booking): bool {
                             <form class="settings-form">
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label>Current Password</label>
+                                        <label for="set-old-pass">Current Password</label>
                                         <input type="password" id="set-old-pass" class="form-control"
                                             placeholder="••••••••" autocomplete="current-password">
                                     </div>
                                     <div class="form-group">
-                                        <label>New Password</label>
+                                        <label for="set-new-pass">New Password</label>
                                         <input type="password" id="set-new-pass" class="form-control"
                                             placeholder="Enter new password" autocomplete="new-password" aria-describedby="set-password-help">
                                     </div>
                                     <div class="form-group">
-                                        <label>Confirm New Password</label>
+                                        <label for="set-confirm-pass">Confirm New Password</label>
                                         <input type="password" id="set-confirm-pass" class="form-control"
                                             placeholder="Re-enter new password" autocomplete="new-password">
                                     </div>
@@ -799,7 +780,9 @@ $can_submit_manual_payment = static function (array $booking): bool {
     <!-- Cancel Modal -->
     <div class="modal-overlay" id="modal-cancel" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
         <div class="modal-box cancel-modal-box">
-            <h2 class="cancel-modal-title" id="cancel-modal-title">Cancel Reservation?</h2>
+            <div class="cancel-modal-header">
+                <h2 class="cancel-modal-title" id="cancel-modal-title">Cancel Reservation?</h2>
+            </div>
 
             <h3 class="cancel-modal-subtitle">Booking Summary</h3>
 
@@ -858,15 +841,39 @@ $can_submit_manual_payment = static function (array $booking): bool {
                     <input type="checkbox" id="confirm-fee">
                     <label for="confirm-fee">
                         <span class="check-title">I understand the payment-processing fee and refund amount shown above.</span>
-                        <span class="check-desc">Note: Refunds may take 5-10 business days to reflect in your account
-                            depending on your provider.</span>
+                        <span class="check-desc">After staff approval, timing depends on processing and your recipient provider.</span>
                     </label>
                 </div>
             </div>
 
+            <div id="cancel-refund-destination" class="cancel-destination-section" hidden>
+                <h3 class="cancel-modal-subtitle">Refund destination</h3>
+                <p class="cancel-safety-copy">We’ll use these details only to send this refund. Never share your PIN or OTP.</p>
+                <div class="cancel-destination-fields">
+                    <label class="cancel-destination-field" for="cancel-refund-method">Destination method
+                        <select id="cancel-refund-method" autocomplete="off">
+                            <option value="">Choose a method</option>
+                            <option value="GCash">GCash</option>
+                            <option value="Maya">Maya</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                        </select>
+                    </label>
+                    <label class="cancel-destination-field" for="cancel-refund-account-name">Account holder name
+                        <input type="text" id="cancel-refund-account-name" minlength="2" maxlength="120" autocomplete="name">
+                    </label>
+                    <label class="cancel-destination-field" for="cancel-refund-account-identifier">Wallet / mobile / account number
+                        <input type="text" id="cancel-refund-account-identifier" minlength="4" maxlength="64" autocomplete="off" inputmode="tel">
+                    </label>
+                    <label class="cancel-destination-field" id="cancel-refund-bank-field" for="cancel-refund-bank-name" hidden>Bank name
+                        <input type="text" id="cancel-refund-bank-name" minlength="2" maxlength="100" autocomplete="organization">
+                    </label>
+                </div>
+                <p id="cancel-refund-destination-error" class="cancel-destination-error" role="alert" hidden></p>
+            </div>
+
             <div class="cancel-modal-actions">
-                <button class="btn-cancel-back close-modal">Go back</button>
-                <button class="btn-cancel-confirm btn-confirm-red">Confirm Cancellation</button>
+                <button type="button" class="btn-modal btn-secondary close-modal">Go back</button>
+                <button type="button" class="btn-modal btn-danger btn-cancel-confirm btn-confirm-red">Confirm Cancellation</button>
             </div>
         </div>
     </div>
@@ -916,8 +923,10 @@ $can_submit_manual_payment = static function (array $booking): bool {
     <!-- Booking Details Modal -->
     <div class="modal-overlay" id="modal-details" role="dialog" aria-modal="true" aria-labelledby="ud-title">
         <div class="modal-box modal-details-scroll">
-            <h2 class="modal-title" id="ud-title">Booking Details</h2>
-            <p class="details-status">Status: <span id="ud-status-badge" class="badge">--</span></p>
+            <header class="details-modal-header">
+                <h2 class="modal-title" id="ud-title">Booking Details</h2>
+                <span id="ud-status-badge" class="badge details-status-badge">--</span>
+            </header>
 
             <div class="modal-summary details-summary">
                 <p><span>Customer:</span> <span id="ud-customer-name">--</span></p>
@@ -934,6 +943,20 @@ $can_submit_manual_payment = static function (array $booking): bool {
                     <span class="cancel-reason-title">Cancellation Reason:</span>
                     <span id="ud-cancel-reason">--</span>
                 </div>
+
+                <section id="ud-refund-request-section" class="booking-detail-section" aria-labelledby="ud-refund-request-title" hidden>
+                    <h3 id="ud-refund-request-title" class="details-section-title">Refund request</h3>
+                    <div class="booking-detail-grid">
+                        <span>Status</span><strong id="ud-refund-request-status">--</strong>
+                        <span>Request reason</span><strong id="ud-refund-request-reason">--</strong>
+                        <span>Resort reply</span><strong id="ud-refund-request-reply">--</strong>
+                        <span>Estimated refund</span><strong id="ud-refund-request-amount">--</strong>
+                        <span>Destination</span><strong id="ud-refund-request-method">--</strong>
+                        <span>Account holder</span><strong id="ud-refund-request-account-name">--</strong>
+                        <span>Wallet / account</span><strong id="ud-refund-request-identifier">--</strong>
+                        <span id="ud-refund-request-bank-label" hidden>Bank</span><strong id="ud-refund-request-bank" hidden>--</strong>
+                    </div>
+                </section>
 
                 <!-- Itemized Cost Breakdown -->
                 <div class="details-breakdown-section">
@@ -969,13 +992,19 @@ $can_submit_manual_payment = static function (array $booking): bool {
                     <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
                     <p><span>Amount Paid:</span> <span id="ud-paid-amt" class="text-paid-green">₱0.00</span></p>
                     <p><span>Remaining Balance:</span> <span id="ud-balance-amt" class="text-balance-red">₱0.00</span></p>
-                    <p><span>Transaction ID(s):</span> <span id="ud-tid" class="text-mono-tid">--</span></p>
+                    <div id="ud-payment-history-list" class="payment-history-list" aria-live="polite"></div>
+                    <div id="ud-manual-submission-container" class="hidden-element">
+                        <p><span>Submitted payment reference:</span> <span id="ud-submitted-payment-reference" class="text-mono-tid">--</span></p>
+                        <p><span>Proof review status:</span> <span id="ud-proof-review-status">--</span></p>
+                        <p><span>Proof submitted at:</span> <span id="ud-proof-submitted-at">--</span></p>
+                        <p id="ud-proof-review-note-row" class="hidden-element"><span>Proof review note:</span> <span id="ud-proof-review-note">--</span></p>
+                    </div>
                 </div>
             </div>
 
             <div class="modal-actions center-actions details-modal-actions">
-                <button class="btn-modal btn-go-back close-modal btn-modal-150">Close</button>
-                <button class="btn-modal btn-confirm btn-modal-print-150" id="btn-print-receipt" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> Open PDF Receipt</button>
+                <button type="button" class="btn-modal btn-secondary close-modal">Close</button>
+                <button type="button" class="btn-modal btn-primary" id="btn-print-receipt" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Open PDF Receipt</button>
             </div>
         </div>
     </div>

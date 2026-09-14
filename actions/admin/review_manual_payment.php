@@ -19,14 +19,21 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cs
     exit;
 }
 $request = json_decode((string)file_get_contents('php://input'), true);
+if (!is_array($request)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Invalid JSON request.']);
+    exit;
+}
 $submissionId = filter_var($request['submission_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$decision = (string)($request['decision'] ?? '');
+$decisionInput = $request['decision'] ?? null;
+$decision = is_string($decisionInput) ? $decisionInput : '';
 if (!$submissionId || !in_array($decision, ['approve', 'reject'], true)) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Choose an approval decision for a valid submission.']);
     exit;
 }
-$reason = trim((string)($request['rejection_reason'] ?? ''));
+$reasonInput = $request['rejection_reason'] ?? '';
+$reason = is_string($reasonInput) ? trim($reasonInput) : '';
 if ($decision === 'reject' && ($reason === '' || strlen($reason) > 500 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $reason))) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Enter a rejection reason between 1 and 500 characters.']);
@@ -105,6 +112,14 @@ try {
         realtime_enqueue_event($conn, 'customer:' . $userId, 'payment.received', ['booking_id' => $bookingId, 'reference_no' => $referenceNo, 'payment_status' => $credit['payment_status'], 'amount_paid' => $credit['amount_paid']]);
         $mailAfterCommit = ['email' => (string)$booking['email'], 'name' => $customerName, 'reference' => $referenceNo, 'venue' => (string)$booking['venue_name'], 'paid' => $credit['amount_paid'], 'status' => $credit['payment_status'] === 'Paid' ? 'Fully Paid' : 'Partially Paid (Manual Payment)'];
         $auditAction = 'Approved ' . $submission['payment_method'] . ' proof for Booking ' . $referenceNo . ' (submission ' . $submissionId . ')';
+        $auditEventType = 'payment.manual_proof_approved';
+        $auditDetails = [
+            'booking_reference' => $referenceNo,
+            'payment_method' => (string)$submission['payment_method'],
+            'amount' => (float)$credit['amount'],
+            'submission_id' => (int)$submissionId,
+            'payment_id' => (int)$credit['payment_id'],
+        ];
     } else {
         $update = $conn->prepare("UPDATE manual_payment_submissions SET status = 'rejected', reviewer_user_id = ?, reviewed_at = NOW(), rejection_reason = ? WHERE id = ? AND status = 'pending'");
         if (!$update) throw new RuntimeException('Unable to reject payment proof.');
@@ -127,11 +142,21 @@ try {
         realtime_enqueue_event($conn, 'admin', 'payment.proof_rejected', ['booking_id' => $bookingId, 'submission_id' => (int)$submissionId, 'reference_no' => $referenceNo]);
         realtime_enqueue_event($conn, 'customer:' . $userId, 'payment.proof_rejected', ['booking_id' => $bookingId, 'submission_id' => (int)$submissionId, 'reference_no' => $referenceNo]);
         $auditAction = 'Rejected ' . $submission['payment_method'] . ' proof for Booking ' . $referenceNo . ' (submission ' . $submissionId . ')';
+        $auditEventType = 'payment.manual_proof_rejected';
+        $auditDetails = [
+            'booking_reference' => $referenceNo,
+            'payment_method' => (string)$submission['payment_method'],
+            'amount' => (float)$submission['expected_amount'],
+            'submission_id' => (int)$submissionId,
+            'reason' => $reason,
+        ];
     }
 
-    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Manual Payment', ?, ?)");
+    $auditEntityType = 'booking';
+    $auditDetailsJson = json_encode($auditDetails, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+    $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address, event_type, entity_type, entity_id, details_json) VALUES (?, 'Manual Payment', ?, ?, ?, ?, ?, ?)");
     if (!$audit) throw new RuntimeException('Unable to record payment review.');
-    $audit->bind_param('iss', $reviewerId, $auditAction, $ip);
+    $audit->bind_param('issssis', $reviewerId, $auditAction, $ip, $auditEventType, $auditEntityType, $bookingId, $auditDetailsJson);
     if (!$audit->execute()) throw new RuntimeException('Unable to record payment review.');
     if (!$conn->commit()) throw new RuntimeException('Unable to commit payment review.');
 

@@ -24,6 +24,7 @@ include 'includes/header.php';
 
 require_once 'config/db_connect.php';
 require_once 'includes/media_helper.php';
+require_once 'includes/hotel_rooms.php';
 $saved_contact_phone = '';
 if ($booking_is_customer) {
     $phone_stmt = $conn->prepare("SELECT phone FROM customers WHERE user_id = ? LIMIT 1");
@@ -43,7 +44,23 @@ unset($hall);
 
 // Fetch Hotel Rooms — individual physical rooms grouped by (room_type => [building_name + room details])
 // Each room carries its specific venue_id so the booking flow books the exact physical room.
-$rooms_query = $conn->query("
+$hotel_group_schema_ready = hotel_group_schema_ready($conn);
+if ($hotel_group_schema_ready) {
+    $rooms_query = $conn->query("SELECT g.id AS room_group_id, g.room_type_code,
+            COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room') AS room_type,
+            g.building_name, g.base_capacity, g.max_capacity, g.bed_count, g.nightly_rate,
+            g.extra_pax_rate, g.check_in_time, g.check_out_time,
+            g.description AS venue_description, g.amenities AS venue_amenities, COUNT(v.id) AS total_inventory
+        FROM hotel_room_groups g
+        INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+        INNER JOIN hotel_rooms h ON h.room_group_id = g.id
+        INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+        GROUP BY g.id, g.room_type_code, t.display_name, g.legacy_room_type, g.building_name,
+            g.base_capacity, g.max_capacity, g.bed_count, g.nightly_rate, g.extra_pax_rate,
+            g.check_in_time, g.check_out_time, g.description, g.amenities, t.sort_order, t.comfort_rank
+        ORDER BY t.sort_order, t.comfort_rank, g.building_name, g.sort_order, g.id");
+} else {
+    $rooms_query = $conn->query("
     SELECT 
         h.room_type, 
         v.name AS building_name,
@@ -63,23 +80,34 @@ $rooms_query = $conn->query("
     GROUP BY h.room_type, v.name, h.base_capacity, h.max_capacity, h.bed_count, h.nightly_rate, h.extra_pax_rate, h.check_in_time, h.check_out_time, v.description, v.amenities
     ORDER BY h.room_type, v.name
 ");
+}
 $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
 
 // Group by room_type for the first dropdown.
 $grouped_hotel_rooms = [];
 $room_img_cache = [];
 foreach ($hotel_rooms_flat as &$room) {
-    $img_key = $room['building_name'] . ' - ' . $room['room_type'];
-    if (!isset($room_img_cache[$img_key])) {
-        $room_img_cache[$img_key] = get_venue_image($conn, $img_key);
+    if ($hotel_group_schema_ready && !empty($room['room_group_id'])) {
+        $room['image'] = get_hotel_room_group_image($conn, (int)$room['room_group_id']);
+    } else {
+        $img_key = $room['building_name'] . ' - ' . $room['room_type'];
+        if (!isset($room_img_cache[$img_key])) $room_img_cache[$img_key] = get_venue_image($conn, $img_key);
+        $room['image'] = $room_img_cache[$img_key];
     }
-    $room['image'] = $room_img_cache[$img_key];
     $grouped_hotel_rooms[$room['room_type']][] = $room;
 }
 unset($room);
 
 // Fetch hotel room groups for add-on panel (distinct building+type combos with rate/capacity/count)
-$room_groups_query = $conn->query("
+$room_groups_query = $hotel_group_schema_ready ? $conn->query("SELECT g.id AS room_group_id,
+        g.building_name, COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room') AS room_type,
+        g.nightly_rate, g.base_capacity, COUNT(v.id) AS total_inventory
+    FROM hotel_room_groups g
+    INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+    INNER JOIN hotel_rooms h ON h.room_group_id = g.id
+    INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+    GROUP BY g.id, g.building_name, t.display_name, g.legacy_room_type, g.nightly_rate, g.base_capacity, t.sort_order, t.comfort_rank
+    ORDER BY t.sort_order, g.building_name, t.comfort_rank, g.sort_order, g.id") : $conn->query("
     SELECT 
         v.name AS building_name,
         h.room_type,
@@ -94,8 +122,9 @@ $room_groups_query = $conn->query("
 ");
 $hotel_room_groups = $room_groups_query->fetch_all(MYSQLI_ASSOC);
 foreach ($hotel_room_groups as &$grp) {
-    $img_key = $grp['building_name'] . ' - ' . $grp['room_type'];
-    $grp['image'] = $room_img_cache[$img_key] ?? get_venue_image($conn, $img_key);
+    $grp['image'] = $hotel_group_schema_ready && !empty($grp['room_group_id'])
+        ? get_hotel_room_group_image($conn, (int)$grp['room_group_id'])
+        : ($room_img_cache[$grp['building_name'] . ' - ' . $grp['room_type']] ?? get_venue_image($conn, $grp['building_name'] . ' - ' . $grp['room_type']));
 }
 unset($grp);
 

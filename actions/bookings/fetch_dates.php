@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
+require_once '../../includes/hotel_rooms.php';
 
 try {
     $bookedDates = [];
@@ -10,8 +11,15 @@ try {
     $current_session = session_id();
     $room_type = $_REQUEST['room_type'] ?? '';
     $room_name = $_REQUEST['room_name'] ?? ''; // This is venue name or building name
+    $room_group_raw = $_REQUEST['room_group_id'] ?? '';
+    $room_group_id = $room_group_raw === '' ? null : filter_var($room_group_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($room_group_id === false) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'booked_dates' => [], 'hard_blocked_dates' => [], 'message' => 'Invalid room selection.']);
+        exit;
+    }
 
-    if (empty($room_type) || empty($room_name)) {
+    if (empty($room_type) || (empty($room_name) && $room_group_id === null)) {
         echo json_encode(['success' => true, 'booked_dates' => [], 'hard_blocked_dates' => []]);
         exit;
     }
@@ -74,13 +82,17 @@ try {
     } else {
         // HOTEL ROOMS (Auto-assign logic)
         // room_type = "Stellar Room", room_name = "Building A"
-        $stmt_inv = $conn->prepare("
-            SELECT v.id
-            FROM venues v
-            JOIN hotel_rooms h ON v.id = h.venue_id
-            WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'
-        ");
-        $stmt_inv->bind_param("ss", $room_type, $room_name);
+        if ($room_group_id !== null && hotel_group_schema_ready($conn)) {
+            $stmt_inv = $conn->prepare("SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
+                INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
+                INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
+                WHERE h.room_group_id = ? AND v.category = 'Hotel Room' AND v.status = 'Available'");
+            $stmt_inv->bind_param('i', $room_group_id);
+        } else {
+            $stmt_inv = $conn->prepare("SELECT v.id FROM venues v JOIN hotel_rooms h ON v.id = h.venue_id
+                WHERE h.room_type = ? AND v.name = ? AND v.status = 'Available'");
+            $stmt_inv->bind_param("ss", $room_type, $room_name);
+        }
         $stmt_inv->execute();
         $res_inv = $stmt_inv->get_result();
 
@@ -142,7 +154,7 @@ try {
             while ($row = $stmt_maint->fetch_assoc()) {
                 $currentDate = new DateTime($row['start_date']);
                 $endDate = new DateTime($row['end_date']);
-                while ($currentDate < $endDate) {
+                while ($currentDate <= $endDate) {
                     $d = $currentDate->format('Y-m-d');
                     $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
                     $maintenance_counts[$d] = ($maintenance_counts[$d] ?? 0) + 1;

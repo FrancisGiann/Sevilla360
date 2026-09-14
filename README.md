@@ -38,8 +38,6 @@ The application provides a digital resort experience that allows visitors to exp
 4. Import the project database schema and seed data if available.
 5. Open `index.php` in your browser through the configured local server.
 
-For backups, set `BACKUP_DIR` to an absolute writable directory outside the actual web/document root (for example `/var/lib/sevilla360/backups`) and grant the PHP/cron account access. The application fails closed when this value is missing, too broad, or points inside the project/document root. Configure the daily job to run `php scripts/daily_backup.php` under the same account; backup files and logs must remain on private filesystem paths.
-
 Eligible customer/staff receipts are generated server-side as inline A4 PDFs by
 `print_receipt.php`. Dompdf runs with remote resources and PHP execution
 disabled. The PDF contains authoritative booking/payment values and a
@@ -81,15 +79,47 @@ Do not make proof storage world-readable or world-writable. Verify from the
 deployed host that requesting the configured filesystem path through the web
 server is impossible; no proof files are placed in the served project tree.
 
-On an Apache host using the `apache` account, provision the private backup directory outside the web root. For this project, `/var/lib/sevilla360/backups` is the recommended path:
+## Manual payment proof retention
 
-```sh
-sudo install -d -o francisgiann -g apache -m 2770 /var/lib/sevilla360/backups
-sudo semanage fcontext -a -t httpd_sys_rw_content_t '/var/lib/sevilla360/backups(/.*)?'
-sudo restorecon -Rv /var/lib/sevilla360/backups
+Pending proofs are retained. Approved and rejected proof images are no longer
+available through the authenticated proof endpoint once `reviewed_at` is older
+than one year; scheduled cleanup only removes the private image file and keeps
+submission metadata and audit history. The CLI cleanup is idempotent and
+processes at most 100 eligible files per run, so an old backlog drains over
+successive runs.
+
+On Hostinger hPanel, add a PHP cron job to run once daily at 03:15 UTC. Set the
+command to the full script path shown by File Manager (replace the account and
+domain segments with the deployed values):
+
+```text
+/home/ACCOUNT/domains/DOMAIN/public_html/scripts/cleanup_payment_proofs.php
 ```
 
-Set `BACKUP_DIR=/var/lib/sevilla360/backups` in `.env`. If the exact SELinux rule already exists, update it with `semanage fcontext -m` instead of `-a`. Run cron as the `francisgiann` owner (or another account with access to the directory). Keep the directory setgid and private; do not use world-writable permissions such as `0777` or enable broad home-directory access for Apache.
+Hostinger's PHP cron job type expects the PHP file path in the command field;
+do not add shell redirection there. For a standard crontab instead, use:
+
+```cron
+15 3 * * * cd /var/www/html/Sevilla360 && /usr/bin/php scripts/cleanup_payment_proofs.php
+```
+
+Do not use a URL-based cron job: the script intentionally runs only under the
+PHP CLI and the configured `PAYMENT_PROOF_DIR` must remain private.
+
+## Refund destination details
+
+Before deploying the customer refund-destination workflow, apply the additive
+MariaDB migration. The application does not mutate the database schema
+automatically:
+
+```sh
+mariadb -u USER -p DATABASE < migrations/022_refund_destination_details.sql
+```
+
+The separate rollback artifact is
+`migrations/rollback/022_refund_destination_details.sql`. Running it permanently
+deletes refund destination details collected after migration 022; export those
+details before rollback.
 
 ## Project Structure
 
