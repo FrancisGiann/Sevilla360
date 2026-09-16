@@ -225,6 +225,21 @@
         quickReplies.appendChild(button);
       });
     };
+    const showTypingIndicator = () => {
+      removeTypingIndicator();
+      const indicator = document.createElement("div");
+      indicator.className = "receptionist-typing-indicator";
+      indicator.id = "receptionist-typing";
+      indicator.setAttribute("role", "status");
+      indicator.setAttribute("aria-label", "Receptionist is typing");
+      indicator.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+      transcript.appendChild(indicator);
+      transcript.scrollTop = transcript.scrollHeight;
+    };
+    const removeTypingIndicator = () => {
+      const existing = document.getElementById("receptionist-typing");
+      if (existing) existing.remove();
+    };
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
     const guidedFallback = (data, message) => {
       appendMessage("assistant", message || "I’ll keep the chat open while you choose a venue path below.");
@@ -243,7 +258,8 @@
       form.dataset.busy = "true";
       form.setAttribute("aria-busy", "true");
       if (send) send.disabled = true;
-      setStatus("Checking the safest way to help…");
+      setStatus("");
+      showTypingIndicator();
       const context = safeContext();
       stored.context = context;
       save();
@@ -297,6 +313,7 @@
         guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, guidedCopy[locale?.value] || guidedCopy.en);
         setStatus("Guided choices are available.");
       } finally {
+        removeTypingIndicator();
         form.dataset.busy = "false";
         form.removeAttribute("aria-busy");
         if (send) send.disabled = false;
