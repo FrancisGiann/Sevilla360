@@ -3,6 +3,8 @@ $page_title = 'Virtual Showroom | SEVILLA360';
 $extra_css = 'assets/css/showroom.css?v=' . time();
 $extra_js = [
     'assets/js/panorama-view-compat.js?v=' . time(),
+    'assets/js/hotspot-material.js?v=' . time(),
+    'assets/js/guide_tours.js?v=' . time(),
     'assets/js/showroom.js?v=' . time(),
 ];
 $active_page = 'showroom';
@@ -289,6 +291,7 @@ window.process = {
                 <button type="button" id="btn-zoom-in" title="Zoom In" aria-label="Zoom in"><i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i></button>
                 <button type="button" id="btn-zoom-out" title="Zoom Out" aria-label="Zoom out"><i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i></button>
                 <button type="button" id="btn-fullscreen" title="Fullscreen" aria-label="Toggle fullscreen"><i class="fa-solid fa-expand" aria-hidden="true"></i></button>
+                <button type="button" id="btn-showroom-help" title="Show showroom guide" aria-label="Show showroom guide"><i class="fa-regular fa-circle-question" aria-hidden="true"></i><span class="sr-only">Help</span></button>
             </div>
 
             <div id="pano-container" class="ui-360" style="width:100%; height:100%;"></div>

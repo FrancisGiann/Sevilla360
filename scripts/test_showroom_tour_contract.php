@@ -339,26 +339,51 @@ $checks['auto-rotation is delayed, activity-paused and reduced-motion safe'] = s
     && str_contains($public_js, "addEventListener('wheel'")
     && !str_contains($public_js, 'hasAutoReloaded')
     && !str_contains($public_js, 'btn-reload-pano');
-$arrow_asset_path = $root . '/assets/img/hotspot-arrow.png';
-$arrow_asset_header = is_file($arrow_asset_path) ? file_get_contents($arrow_asset_path, false, null, 0, 26) : false;
-$arrow_asset_mode = is_file($arrow_asset_path) ? fileperms($arrow_asset_path) : false;
-$arrow_directory_mode = fileperms(dirname($arrow_asset_path));
-$checks['premium walk marker uses a readable transparent raster with the existing info marker preserved'] = is_file($arrow_asset_path)
-    && is_readable($arrow_asset_path)
-    && is_string($arrow_asset_header)
-    && strlen($arrow_asset_header) >= 26
-    && substr($arrow_asset_header, 0, 8) === "\x89PNG\r\n\x1a\n"
-    && ord($arrow_asset_header[25]) === 6
-    && $arrow_asset_mode !== false
-    && ($arrow_asset_mode & 0444) !== 0
-    && $arrow_directory_mode !== false
-    && ($arrow_directory_mode & 0111) !== 0
-    && str_contains($admin_hotspots, 'assets/img/hotspot-arrow.png')
-    && str_contains($public_js, 'assets/img/hotspot-arrow.png')
-    && str_contains($admin_hotspots, 'assets/img/hotspot-info.png')
-    && str_contains($public_js, 'assets/img/hotspot-info.png')
-    && !str_contains($admin_hotspots, 'assets/img/hotspot-arrow.svg')
-    && !str_contains($public_js, 'assets/img/hotspot-arrow.svg');
+$checks['Panolens never auto-hides info spots during showroom exploration or hotspot editing'] = substr_count($public_js, 'autoHideInfospot: false') === 1
+    && substr_count($admin_hotspots, 'autoHideInfospot: false') === 1;
+$hotspot_material = $read('assets/js/hotspot-material.js');
+$checks['hotspot drafts stay visible and saved edits reuse their live sprites'] = str_contains($hotspot_material, 'assignFallbackTexture(spot, type, storedDegrees(spot));')
+    && str_contains($hotspot_material, 'spot.visible = true')
+    && str_contains($hotspot_material, 'material.visible = true')
+    && str_contains($hotspot_material, 'hotspotDisposed')
+    && str_contains($admin_hotspots, 'function takeSavedHotspotSpot(id)')
+    && str_contains($admin_hotspots, 'pendingSpot = savedSpot || createHotspotSpot')
+    && str_contains($admin_hotspots, 'if (pendingSpot.parent !== currentPanoMesh) currentPanoMesh.add(pendingSpot)')
+    && !str_contains($admin_hotspots, 'removeSavedHotspotSpot(hotspot.id)');
+$checks['hotspot form mode removes list height competition and remains mobile-safe'] = str_contains($admin_hotspots, 'function setHotspotFormVisible(visible, editing = false)')
+    && str_contains($admin_hotspots, "hotspotSidebar.classList.toggle('is-form-active', visible)")
+    && str_contains($admin_hotspots, "hotspotListSection.setAttribute('aria-hidden', visible ? 'true' : 'false')")
+    && str_contains($read('assets/css/admin-page/admin_cms.css'), '.hotspot-sidebar.is-form-active .hotspot-list-section { display: none; }')
+    && str_contains($read('assets/css/admin-page/admin_cms.css'), '@media (max-width: 900px)');
+$hotspot_assets = ['assets/img/hotspot-info-v3.png', 'assets/img/hotspot-nav-v3.png'];
+$checks['premium info and walk markers use matching readable truecolor-alpha rasters and shared setup'] = true;
+foreach ($hotspot_assets as $hotspot_asset) {
+    $hotspot_path = $root . '/' . $hotspot_asset;
+    $hotspot_header = is_file($hotspot_path) ? file_get_contents($hotspot_path, false, null, 0, 26) : false;
+    $checks['hotspot asset ' . basename($hotspot_asset) . ' is a 512px RGBA PNG'] = is_file($hotspot_path)
+        && is_readable($hotspot_path)
+        && is_string($hotspot_header)
+        && strlen($hotspot_header) >= 26
+        && substr($hotspot_header, 0, 8) === "\x89PNG\r\n\x1a\n"
+        && unpack('Nwidth/Nheight', substr($hotspot_header, 16, 8)) === ['width' => 512, 'height' => 512]
+        && ord($hotspot_header[25]) === 6;
+}
+$checks['premium info and walk markers use matching readable truecolor-alpha rasters and shared setup'] = str_contains($hotspot_material, 'transparent = true')
+    && str_contains($hotspot_material, 'alphaTest')
+    && str_contains($hotspot_material, 'depthWrite = false')
+    && str_contains($hotspot_material, 'depthTest = false')
+    && !str_contains($hotspot_material, 'depthTest = true')
+    && str_contains($hotspot_material, 'size = 350')
+    && str_contains($hotspot_material, 'hotspot-info-v3.png')
+    && str_contains($hotspot_material, 'hotspot-nav-v3.png')
+    && !str_contains($hotspot_material, 'hotspot-info-v2.png')
+    && !str_contains($hotspot_material, 'hotspot-nav-v2.png')
+    && str_contains($admin_hotspots, 'SevillaHotspotMaterial')
+    && str_contains($public_js, 'SevillaHotspotMaterial')
+    && str_contains($admin_hotspots, 'depthTest = false')
+    && str_contains($public_js, 'depthTest = false')
+    && !str_contains($admin_hotspots, 'depthTest = true')
+    && !str_contains($public_js, 'depthTest = true');
 
 $failed = 0;
 foreach ($checks as $label => $passed) {

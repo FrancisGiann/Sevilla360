@@ -848,3 +848,301 @@
 @media (prefers-reduced-motion: reduce) {
   .hotspot-tour-toast { transition: none; transform: translate(-50%, 0); }
 }
+/* Connected workflow strip: proximity carries the sequence, separators keep
+   the three decisions distinct without turning each step into a card. */
+.hotspot-steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(210px, .8fr);
+  gap: 0;
+  min-width: 0;
+  margin: 0 0 1rem;
+  border: 1px solid rgba(120, 98, 70, .22);
+  border-radius: 10px;
+  background: #fff;
+  overflow: visible;
+}
+.hotspot-modal-body { overflow: visible; }
+
+.hotspot-step {
+  min-width: 0;
+  padding: 1rem 1.1rem;
+  background: transparent;
+}
+
+.hotspot-step + .hotspot-step { border-inline-start: 1px solid rgba(120, 98, 70, .18); }
+.hotspot-step h4 {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: .55rem;
+  margin: 0 0 .65rem;
+  color: var(--color-dark);
+  font-size: .92rem;
+  line-height: 1.25;
+}
+.hotspot-step h4 > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.hotspot-step-number {
+  display: inline-grid;
+  flex: 0 0 1.6rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  place-items: center;
+  border: 1px solid #b5884e;
+  border-radius: 50%;
+  color: #684a20;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.hotspot-step p { margin: .6rem 0 0; color: var(--color-dark-light); font-size: .82rem; line-height: 1.45; }
+.hotspot-step-support { min-width: 0; }
+.hotspot-view-selector { min-width: 0; }
+.hotspot-view-selector select { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hotspot-view-description { max-height: 3.5em; overflow: auto; overflow-wrap: anywhere; }
+
+.hotspot-modal-header-copy { min-width: 0; flex: 1 1 320px; }
+.hotspot-modal-header-copy p { overflow-wrap: anywhere; }
+.hotspot-modal-header-actions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+.hotspot-modal-header-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: .5rem .8rem;
+  white-space: nowrap;
+}
+
+.hotspot-tour-status,
+.hotspot-tour-actions { min-width: 0; }
+.hotspot-tour-actions { align-items: stretch; }
+.hotspot-tour-actions #btn-save-panorama-view { flex: 1 1 190px; }
+.hotspot-tour-actions #btn-make-starting-scene { flex: 0 1 auto; }
+.hotspot-more-menu { position: relative; flex: 0 0 auto; min-width: 0; }
+.hotspot-more-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: .55rem .7rem;
+  border: 1px solid rgba(42, 37, 34, .2);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-dark);
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+.hotspot-more-menu summary::-webkit-details-marker { display: none; }
+.hotspot-more-menu summary::after {
+  width: .48rem;
+  height: .48rem;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform .18s ease;
+}
+.hotspot-more-menu[open] summary::after { transform: translateY(2px) rotate(225deg); }
+.hotspot-more-menu summary:hover,
+.hotspot-more-menu summary:focus-visible { border-color: var(--color-dark); background: #f5f4f1; }
+.hotspot-more-menu summary:focus-visible { outline: 3px solid rgba(214, 168, 112, .38); outline-offset: 2px; }
+.hotspot-more-actions {
+  position: absolute;
+  inset-block-start: calc(100% + .4rem);
+  inset-inline-end: 0;
+  z-index: 5;
+  display: none;
+  min-width: 220px;
+  gap: .4rem;
+  padding: .6rem;
+  border: 1px solid rgba(42, 37, 34, .16);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(42, 37, 34, .14);
+}
+.hotspot-more-menu[open] > .hotspot-more-actions { display: grid; }
+.hotspot-more-actions .hotspot-btn { width: 100%; min-width: 0; }
+
+@media (max-width: 1100px) {
+  .hotspot-steps { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(180px, .85fr); }
+  .hotspot-step { padding-inline: .85rem; }
+}
+
+@media (max-width: 900px) {
+  .hotspot-modal-header { align-items: flex-start; flex-wrap: wrap; }
+  .hotspot-modal-header-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .hotspot-modal-body { overflow: auto; }
+  .hotspot-steps { grid-template-columns: 1fr; overflow: hidden; }
+  .hotspot-step { padding: .9rem 1rem; }
+  .hotspot-step + .hotspot-step { border-inline-start: 0; border-block-start: 1px solid rgba(120, 98, 70, .18); }
+  .hotspot-more-menu { width: 100%; }
+  .hotspot-more-menu summary { width: 100%; }
+  .hotspot-more-actions,
+  .hotspot-more-menu[open] > .hotspot-more-actions {
+    position: static;
+    min-width: 0;
+    padding: .45rem 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .hotspot-modal-header-actions { justify-content: stretch; }
+  .hotspot-modal-header-actions .btn { flex: 1 1 0; }
+}
+
+@media (max-width: 768px) {
+  .hotspot-modal-body { overflow: visible; }
+}
+
+/* Compact operate-mode pass: keep the ribbon legible while giving the live
+   panorama and its editing workspace the majority of the modal height. */
+.hotspot-modal-body {
+  height: min(82vh, 790px);
+  gap: .55rem;
+}
+.hotspot-steps {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(190px, .72fr);
+  margin-bottom: .1rem;
+}
+.hotspot-step { padding: .62rem .8rem; }
+.hotspot-step h4 { gap: .4rem; margin-bottom: .42rem; font-size: .78rem; letter-spacing: .015em; }
+.hotspot-step-number {
+  flex-basis: 1.2rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: .62rem;
+}
+.hotspot-step p { margin-top: .4rem; font-size: .76rem; line-height: 1.35; }
+.hotspot-tour-status { gap: .3rem; }
+.hotspot-state-pill { min-height: 26px; padding: .15rem .5rem; font-size: .68rem; }
+.hotspot-tour-actions { gap: .35rem; margin-top: .35rem; }
+.hotspot-tour-actions .hotspot-btn,
+.hotspot-more-menu summary { min-height: 44px; padding: .48rem .6rem; font-size: .78rem; }
+.hotspot-editor-status {
+  min-height: 1rem;
+  margin: 0;
+  padding: .18rem .5rem;
+  border: 0;
+  border-inline-start: 2px solid #d8d1c7;
+  border-radius: 0;
+  background: transparent;
+  font-size: .76rem;
+  line-height: 1.3;
+}
+.hotspot-editor-status[data-state="loading"] { border-color: #d8c8ab; background: transparent; }
+.hotspot-editor-status[data-state="success"] { border-color: #8b9b7c; background: transparent; }
+.hotspot-editor-status[data-state="error"] { border-color: #bd7370; background: transparent; }
+.hotspot-editor-stage { gap: .65rem; }
+.hotspot-pano-panel { flex: 2.25; }
+.hotspot-sidebar {
+  flex: 0 1 350px;
+  max-width: 360px;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(42, 37, 34, .08);
+}
+.hotspot-form {
+  flex: 0 1 auto;
+  max-height: 62%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.hotspot-form-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+  min-width: 0;
+  margin-bottom: .65rem !important;
+}
+.hotspot-form-heading > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.hotspot-form-state {
+  flex: 0 0 auto;
+  color: #80633f;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+.hotspot-field { margin-bottom: .58rem; }
+.hotspot-field > label,
+.hotspot-rotation legend { margin-bottom: .28rem; font-size: .68rem; }
+.hotspot-field input,
+.hotspot-field select,
+.hotspot-field textarea { padding: .5rem .6rem; }
+.hotspot-field select { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hotspot-form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 2;
+  margin: .7rem -1rem -1rem;
+  padding: .65rem 1rem 1rem;
+  border-top: 1px solid rgba(42, 37, 34, .12);
+  background: #fff;
+}
+.hotspot-list-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: .8rem 1rem 1rem;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 1100px) {
+  .hotspot-steps { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(175px, .8fr); }
+}
+
+@media (max-width: 900px) {
+  .hotspot-modal-body { height: auto; max-height: none; }
+  .hotspot-steps { grid-template-columns: 1fr; }
+  .hotspot-step { padding: .62rem .8rem; }
+  .hotspot-editor-stage { flex-direction: column; }
+  .hotspot-pano-panel { flex: 0 0 34vh; width: 100%; min-height: 220px; max-height: 320px; }
+  .hotspot-sidebar { flex: 0 0 auto; width: 100%; max-width: none; overflow: visible; }
+  .hotspot-form { max-height: none; overflow: visible; }
+  .hotspot-list-section { overflow: visible; }
+}
+
+@media (max-width: 600px) {
+  .hotspot-modal-body { padding: .65rem; }
+  .hotspot-form-actions .hotspot-btn { flex: 1 1 calc(50% - .35rem); }
+}
+
+/* Form mode owns the desktop sidebar. Keeping the list out of layout avoids
+   flex competition that can collapse fields behind the sticky action bar. */
+.hotspot-sidebar.is-form-active #hotspot-form-wrapper:not(.hidden) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.hotspot-sidebar.is-form-active .hotspot-list-section { display: none; }
+.hotspot-sidebar:not(.is-form-active) .hotspot-list-section { display: block; }
+
+@media (max-width: 900px) {
+  .hotspot-sidebar.is-form-active #hotspot-form-wrapper:not(.hidden) {
+    display: block;
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .hotspot-sidebar.is-form-active .hotspot-list-section { display: none; }
+}

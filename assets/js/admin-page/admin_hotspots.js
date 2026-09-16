@@ -4,6 +4,7 @@
  * ==========================================================================
  */
 document.addEventListener("DOMContentLoaded", () => {
+    window.SevillaHotspotMaterial?.preload?.((error, url) => setTimeout(() => console.warn('Admin hotspot asset unavailable', url, error), 0));
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
     const hotspotModal = document.getElementById("hotspotModal");
     if (!hotspotModal) return;
@@ -43,12 +44,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const panoContainer = document.getElementById("hotspot-pano-container");
     const loadingEl = document.getElementById("hotspot-loading");
     const formWrapper = document.getElementById("hotspot-form-wrapper");
+    const hotspotSidebar = hotspotModal.querySelector('.hotspot-sidebar');
+    const hotspotListSection = hotspotModal.querySelector('.hotspot-list-section');
     const listEl = document.getElementById("hotspot-list");
     const typeSelect = document.getElementById("hs-type");
     const descWrapper = document.getElementById("hs-desc-wrapper");
     const targetWrapper = document.getElementById("hs-target-wrapper");
     const targetSelect = document.getElementById("hs-target-index");
     const formHeading = document.getElementById('hs-form-heading');
+    const formState = document.getElementById('hs-form-state');
     const saveLabel = document.getElementById('hs-save-label');
     const adminViewSelector = document.getElementById("hs-admin-view-selector");
     const viewDescription = document.getElementById("hs-view-description");
@@ -69,12 +73,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const rotationRange = document.getElementById("hs-arrow-rotation-range");
     const rotationInput = document.getElementById("hs-arrow-rotation");
     const saveHotspotButton = document.getElementById("btn-save-hotspot");
+    const editorTour = window.SevillaGuideTour?.init({
+        helpButton: document.getElementById('btn-hotspot-help'),
+        key: `sevilla360-admin-tour-v1-${Number(window.sevillaAdminUserId) || 0}`,
+        steps: [
+            { title: 'Choose a panorama', copy: 'Select the 360 view you want to publish from the panorama chooser.', target: '#hs-admin-view-selector' },
+            { title: 'Set the guest framing', copy: 'Drag and zoom the preview, then save the current guest view. Make a starting scene only when this should open first.', target: '#btn-save-panorama-view' },
+            { title: 'Place and publish hotspots', copy: 'Click the panorama, choose information or walk, set a destination when needed, then save the pin.', target: '#hotspot-pano-container' }
+        ],
+        ready: () => hotspotModal.classList.contains('active') && Boolean(currentPanoMesh)
+    });
 
     // ============================================================
     // CUSTOM HOTSPOT ICONS
     // ============================================================
-    const HOTSPOT_INFO_ICON = "assets/img/hotspot-info.png";
-    const HOTSPOT_ARROW_ICON = "assets/img/hotspot-arrow.png";
+    const HOTSPOT_INFO_ICON = window.SevillaHotspotMaterial?.assets?.info || "assets/img/hotspot-info-v3.png";
+    const HOTSPOT_ARROW_ICON = window.SevillaHotspotMaterial?.assets?.nav || "assets/img/hotspot-nav-v3.png";
 
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>'"]/g, char => ({
@@ -84,8 +98,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function setFormMode(editing) {
         if (formHeading) formHeading.textContent = editing ? 'Edit Hotspot' : 'New Hotspot';
+        if (formState) formState.textContent = editing ? 'Editing saved pin' : 'New pin';
         if (saveLabel) saveLabel.textContent = editing ? 'Update Pin' : 'Save Pin';
         if (saveHotspotButton) saveHotspotButton.title = editing ? 'Update hotspot pin' : 'Save hotspot pin';
+    }
+
+    function setHotspotFormVisible(visible, editing = false) {
+        if (!formWrapper || !hotspotSidebar) return;
+        formWrapper.classList.toggle('hidden', !visible);
+        hotspotSidebar.classList.toggle('is-form-active', visible);
+        hotspotSidebar.classList.toggle('is-editing', visible && editing);
+        if (hotspotListSection) hotspotListSection.setAttribute('aria-hidden', visible ? 'true' : 'false');
+        if (visible) formWrapper.scrollTop = 0;
     }
 
     function currentPhoto() {
@@ -188,7 +212,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (setCurrentViewButton) setCurrentViewButton.disabled = tourBusy || !viewer;
         if (adminViewSelector) adminViewSelector.disabled = tourBusy;
         if (closeModalButton) closeModalButton.disabled = tourBusy;
-        if (saveViewButton) saveViewButton.disabled = tourBusy || !viewDirty || !viewDraft;
+        if (saveViewButton) saveViewButton.disabled = tourBusy || !viewer;
         if (previewViewButton) previewViewButton.disabled = tourBusy || !savedView || !viewer;
         if (clearViewButton) clearViewButton.disabled = tourBusy || (!savedView && !viewDirty);
         formWrapper?.querySelectorAll('button, input, select, textarea').forEach(control => {
@@ -246,30 +270,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function applyArrowRotation(spot, degrees) {
         if (!spot?.material || !Number.isInteger(degrees) || degrees < 0 || degrees > 359) return;
+        spot.userData = spot.userData || {};
+        spot.userData.hotspotRotationDegrees = degrees;
         spot.material.rotation = degrees * Math.PI / 180;
         spot.material.needsUpdate = true;
     }
 
+    function disposeHotspotSpot(spot) {
+        if (!spot) return;
+        try {
+            currentPanoMesh?.remove(spot);
+            if (window.SevillaHotspotMaterial?.dispose) {
+                window.SevillaHotspotMaterial.dispose(spot);
+                return;
+            }
+            spot.userData = spot.userData || {};
+            if (spot.userData.hotspotDisposed) return;
+            spot.userData.hotspotDisposed = true;
+            spot.userData.hotspotTextureRequest = (Number(spot.userData.hotspotTextureRequest) || 0) + 1;
+            spot.visible = false;
+            if (spot.material) {
+                spot.material.visible = false;
+                spot.material.map?.dispose?.();
+                spot.material.dispose?.();
+            }
+        } catch (error) { /* the panorama or texture may already be disposed */ }
+    }
+
     function clearSavedHotspotSpots() {
-        savedHotspotSpots.forEach(spot => {
-            try {
-                currentPanoMesh?.remove(spot);
-                if (spot.material?.map) spot.material.map.dispose();
-                spot.material?.dispose();
-            } catch (error) { /* the panorama or texture may already be disposed */ }
-        });
+        savedHotspotSpots.forEach(disposeHotspotSpot);
         savedHotspotSpots = [];
     }
 
-    function removeSavedHotspotSpot(id) {
+    function takeSavedHotspotSpot(id) {
         const index = savedHotspotSpots.findIndex(spot => String(spot.userData?.hotspotId) === String(id));
-        if (index < 0) return;
+        if (index < 0) return null;
         const [spot] = savedHotspotSpots.splice(index, 1);
-        try {
-            currentPanoMesh?.remove(spot);
-            if (spot.material?.map) spot.material.map.dispose();
-            spot.material?.dispose();
-        } catch (error) { /* the panorama or texture may already be disposed */ }
+        return spot;
     }
 
     function applyView(view, duration = 650) {
@@ -316,25 +353,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // CREATE CUSTOM INFOSPOT
     // ============================================================
     function createHotspotSpot(type, position, rotation = 0) {
+        const onIconError = () => setEditorStatus('Hotspot icon failed to load. The visible fallback marker remains available; retry after checking the asset path.', 'error');
+        if (window.SevillaHotspotMaterial?.create) {
+            return window.SevillaHotspotMaterial.create(type, position, rotation, onIconError);
+        }
         const icon = type === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
         const spot = new PANOLENS.Infospot(350, icon);
-
-        if (position) {
-            spot.position.copy(position);
-        }
-
-        if (spot.material) {
-            spot.material.transparent = true;
-            spot.material.alphaTest = 0.5;
-            spot.material.depthWrite = false;
-            spot.material.needsUpdate = true;
-        }
-
-        if (spot.material && spot.material.map) {
-            spot.material.map.needsUpdate = true;
-        }
+        if (position) spot.position.copy(position);
+        spot.material && (spot.material.transparent = true, spot.material.alphaTest = 0.08, spot.material.depthWrite = false, spot.material.depthTest = false, spot.material.size = 350, spot.material.needsUpdate = true);
         if (type === 'nav') applyArrowRotation(spot, Number.isInteger(rotation) ? rotation : 0);
-
         return spot;
     }
 
@@ -345,48 +372,31 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!pendingSpot) return;
 
         const selectedType = typeSelect?.value || "info";
-        const icon = selectedType === "nav" ? HOTSPOT_ARROW_ICON : HOTSPOT_INFO_ICON;
         const targetSpot = pendingSpot;
         const rotation = selectedArrowRotation() ?? 0;
-        const loader = new THREE.TextureLoader();
-
-        loader.load(icon, (texture) => {
-            texture.needsUpdate = true;
-
-            if (pendingSpot !== targetSpot || !targetSpot.material) {
-                texture.dispose();
-                return;
-            }
-
-            if (targetSpot.material.map) {
-                targetSpot.material.map.dispose();
-            }
-
-            targetSpot.material.map = texture;
+        const onIconError = () => setEditorStatus('Hotspot icon failed to load. The visible fallback marker remains available; retry after checking the asset path.', 'error');
+        if (window.SevillaHotspotMaterial?.refresh) {
+            window.SevillaHotspotMaterial.refresh(targetSpot, selectedType, rotation, onIconError);
+        } else if (targetSpot.material) {
             targetSpot.material.transparent = true;
-            targetSpot.material.alphaTest = 0.5;
+            targetSpot.material.alphaTest = 0.08;
             targetSpot.material.depthWrite = false;
+            targetSpot.material.depthTest = false;
+            targetSpot.material.size = 350;
             targetSpot.material.needsUpdate = true;
-            if (selectedType === 'nav') applyArrowRotation(targetSpot, rotation);
-        });
+        }
     }
 
     // ============================================================
     // REMOVE TEMPORARY PIN
     // ============================================================
     function removeTemporarySpot() {
-        if (pendingSpot && currentPanoMesh) {
-            currentPanoMesh.remove(pendingSpot);
-            if (pendingSpot.material) {
-                if (pendingSpot.material.map) pendingSpot.material.map.dispose();
-                pendingSpot.material.dispose();
-            }
-        }
+        disposeHotspotSpot(pendingSpot);
         pendingSpot = null;
     }
 
     function discardCurrentHotspotDraft(restoreSavedPins = true) {
-        formWrapper.classList.add('hidden');
+        setHotspotFormVisible(false);
         removeTemporarySpot();
         pendingPoint = null;
         hotspotDirty = false;
@@ -433,7 +443,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             refreshTargetDropdown(activeViewIndex);
-            formWrapper.classList.add("hidden");
+            setHotspotFormVisible(false);
             setFormMode(false);
             pendingPoint = null;
             raycastEnabled = false;
@@ -526,7 +536,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (!await confirmDiscardChanges('close this editor')) return;
         hotspotModal.classList.remove("active");
-        formWrapper.classList.add("hidden");
+        setHotspotFormVisible(false);
         removeTemporarySpot();
         clearSavedHotspotSpots();
         pendingPoint = null;
@@ -660,16 +670,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    setCurrentViewButton?.addEventListener('click', () => {
+    function captureCurrentView() {
         if (!viewer || !syncPanoramaReadiness()) {
             const failed = loadingEl?.classList.contains('is-error');
             setEditorStatus(failed ? 'Panorama failed to load. Retry the preview before setting a view.' : 'Panorama is still loading. Try again when the preview is ready.', failed ? 'error' : 'loading');
-            return;
+            return null;
         }
         const center = getPanoramaViewCenter();
         if (!center) {
             setEditorStatus('The preview center could not be read. Move the panorama and try again.', 'error');
-            return;
+            return null;
         }
         const view = {
             x: Number(center?.x),
@@ -680,13 +690,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const magnitude = Math.hypot(view.x, view.y, view.z);
         if (![view.x, view.y, view.z, view.fov, magnitude].every(Number.isFinite) || magnitude < 0.1 || magnitude > 10000 || view.fov < 30 || view.fov > 100) {
             setEditorStatus('View could not be captured. Move the panorama to a valid direction and try again.', 'error');
-            return;
+            return null;
         }
         viewDraft = view;
         viewDirty = true;
-        updateTourStatus('Current view captured — save to publish it');
-        setEditorStatus('Current view captured. Save it to publish this framing.', 'success');
-    });
+        return view;
+    }
 
     async function savePanoramaView(view) {
         const photo = currentPhoto();
@@ -728,7 +737,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     saveViewButton?.addEventListener('click', () => {
-        if (viewDraft && viewDirty) savePanoramaView(viewDraft);
+        if (tourBusy) return;
+        const capturedView = captureCurrentView();
+        if (capturedView) savePanoramaView(capturedView);
     });
 
     previewViewButton?.addEventListener('click', () => {
@@ -777,7 +788,8 @@ document.addEventListener("DOMContentLoaded", () => {
         viewer = new PANOLENS.Viewer({
             container: panoContainer,
             controlBar: false,
-            autoRotate: false
+            autoRotate: false,
+            autoHideInfospot: false
         });
 
         const pano = new PANOLENS.ImagePanorama(imageUrl);
@@ -814,6 +826,7 @@ document.addEventListener("DOMContentLoaded", () => {
             raycastEnabled = true;
             setLoading(false);
             setEditorStatus('Panorama ready. Click the preview to place a hotspot.', 'success');
+            editorTour?.maybeAutoShow();
             savedView = photoSavedView(currentPhoto());
             if (savedView && applySavedFraming) applyView(savedView, 0);
             updateTourStatus();
@@ -856,7 +869,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const wasHidden = formWrapper.classList.contains("hidden");
-        formWrapper.classList.remove("hidden");
 
         if (wasHidden) {
             setFormMode(false);
@@ -865,6 +877,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (rotationInput) rotationInput.value = '0';
             if (rotationRange) rotationRange.value = '0';
         }
+        setHotspotFormVisible(true, false);
 
         hotspotDirty = true;
         toggleTypeFields();
@@ -977,7 +990,7 @@ document.addEventListener("DOMContentLoaded", () => {
         setEditorStatus('Saving hotspot…', 'loading');
         try {
             await postJson('actions/admin/save_hotspot.php', payload);
-            formWrapper.classList.add('hidden');
+            setHotspotFormVisible(false);
             setFormMode(false);
             pendingPoint = null;
             hotspotDirty = false;
@@ -1009,7 +1022,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!hotspot || !currentPanoMesh) return;
             if (hasUnsavedChanges()) {
                 if (!await confirmDiscardChanges('edit a saved hotspot')) return;
+                const wasEditingSavedSpot = Boolean(pendingSpot?.userData?.hotspotId);
                 discardCurrentHotspotDraft(false);
+                if (wasEditingSavedSpot) await loadExistingHotspots(currentMediaId);
             }
 
             document.getElementById('hs-title').value = hotspot.title || '';
@@ -1025,12 +1040,14 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             pendingPoint = new THREE.Vector3(Number(hotspot.position_x), Number(hotspot.position_y), Number(hotspot.position_z));
             removeTemporarySpot();
-            removeSavedHotspotSpot(hotspot.id);
-            pendingSpot = createHotspotSpot(typeSelect.value, pendingPoint, Number(rotationInput?.value || 0));
+            const savedSpot = takeSavedHotspotSpot(hotspot.id);
+            pendingSpot = savedSpot || createHotspotSpot(typeSelect.value, pendingPoint, Number(rotationInput?.value || 0));
             pendingSpot.userData.hotspotId = hotspot.id;
-            currentPanoMesh.add(pendingSpot);
+            pendingSpot.position.copy(pendingPoint);
+            if (pendingSpot.parent !== currentPanoMesh) currentPanoMesh.add(pendingSpot);
+            updateTemporarySpotIcon();
             setFormMode(true);
-            formWrapper.classList.remove('hidden');
+            setHotspotFormVisible(true, true);
             hotspotDirty = true;
             updateTourStatus('Editing an unsaved hotspot');
             document.getElementById('hs-title').focus();

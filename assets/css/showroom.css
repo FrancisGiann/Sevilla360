@@ -3131,3 +3131,36 @@ body.showroom-receptionist-open .showroom-container .details-box {
     justify-content: center;
   }
 }
+.receptionist-guest-count-form {
+  display: grid;
+  gap: .65rem;
+  margin: .5rem 0;
+}
+.receptionist-guest-count-form label {
+  color: var(--color-gold, #c7a16b);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.receptionist-guest-count-form input {
+  width: 100%;
+  min-height: 2.9rem;
+  border: 1px solid rgba(199, 161, 107, .7);
+  border-radius: 10px;
+  background: rgba(23, 35, 29, .88);
+  color: #f5ebd7;
+  padding: .65rem .75rem;
+  font: inherit;
+}
+.receptionist-guest-count-form input:focus-visible {
+  outline: 3px solid rgba(245, 235, 215, .82);
+  outline-offset: 2px;
+}
+.receptionist-guest-count-form input[aria-invalid="true"] { border-color: #f3a9a1; }
+.receptionist-inline-error {
+  margin: 0;
+  color: #ffd8d3;
+  font-size: .82rem;
+  line-height: 1.4;
+}

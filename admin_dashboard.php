@@ -2,9 +2,7 @@
 $required_role = 'admin';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
-require_once 'includes/refund_helper.php';
 require_once 'includes/realtime.php';
-$refund_fee_percent = get_refund_fee_percent($conn);
 $realtime_client_config = realtime_client_config();
 
 // Get the requested page from the URL. If none is set, default to 'overview'
@@ -86,9 +84,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
 </head>
 
 <body class="admin-body">
-    <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
+    <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>; window.sevillaAdminUserId = <?php echo (int)$account_user_id; ?>;</script>
     <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
-    <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="admin-layout">
         <!-- Left Sidebar -->
         <aside class="sidebar" id="admin-sidebar">
@@ -335,6 +332,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
 
     <!-- CMS Scripts -->
     <script src="assets/js/panorama-view-compat.js?v=<?= time() ?>"></script>
+    <script src="assets/js/hotspot-material.js?v=<?= time() ?>"></script>
+    <script src="assets/js/guide_tours.js?v=<?= time() ?>"></script>
     <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
     <script src="assets/js/admin-page/admin_hotspots.js?v=<?= time() ?>"></script>
     <?php endif; ?>

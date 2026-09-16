@@ -5,6 +5,7 @@
  * ==========================================================================
  */
 document.addEventListener("DOMContentLoaded", () => {
+  window.SevillaHotspotMaterial?.preload?.((error, url) => console.warn("Showroom hotspot asset unavailable", url, error));
   
   // --- 1. Global State Variables ---
   const dataMap = window.showroomData || {};
@@ -120,6 +121,16 @@ document.addEventListener("DOMContentLoaded", () => {
       soundUnavailable: false,
       soundFadeTimer: null
   };
+  const showroomTour = window.SevillaGuideTour?.init({
+      helpButton: document.getElementById('btn-showroom-help'),
+      key: 'sevilla360-showroom-tour-v1',
+      steps: [
+          { title: 'Drag to explore', copy: 'Drag the panorama to look around. Your view stays inside this venue.', target: '#pano-container' },
+          { title: 'Info and destinations', copy: 'Open the information marker for venue facts, or use Destinations and walk markers to move between views.', target: '#btn-info' },
+          { title: 'Zoom and fullscreen', copy: 'Use the zoom controls for detail and fullscreen when you want a wider view.', target: '#btn-fullscreen' }
+      ],
+      ready: () => Boolean(currentRoomId && panoContainer?.style.visibility === 'visible' && !receptionistState.isOpen)
+  });
 
   const transitionImage = (image, source, fallbackSources = [], transitionClass = "") => {
       if (!image) return;
@@ -290,6 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
     container: panoContainer,
     controlBar: false, 
     autoRotate: false,
+    autoHideInfospot: false,
     autoRotateSpeed: 0.5,
     antialias: true, 
     cameraFov: 85    
@@ -488,6 +500,8 @@ document.addEventListener("DOMContentLoaded", () => {
       lastFramedPanorama = pano;
       lastFramedActivationToken = activationToken;
       applyPanoramaView(room, index, 650);
+      window.dispatchEvent(new CustomEvent('SevillaShowroomPanoramaReady'));
+      showroomTour?.maybeAutoShow();
       scheduleAutoRotation();
       return true;
   }
@@ -610,13 +624,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
       hotspotsArray.forEach(h => {
           const isNav = h.type === 'nav';
-          const iconUrl = isNav ? 'assets/img/hotspot-arrow.png' : 'assets/img/hotspot-info.png';
           const destinationLabel = String(h.title || 'Destination').trim().slice(0, 48);
           const targetIndex = isNav ? resolveHotspotTargetIndex(h, roomData) : -1;
           if (isNav && (targetIndex < 0 || targetIndex >= (roomData?.pano_urls?.length || 0) || targetIndex === currentViewIndex)) return;
 
-          const spot = new PANOLENS.Infospot(350, iconUrl);
-          spot.position.set(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
+          const position = new THREE.Vector3(parseFloat(h.position_x), parseFloat(h.position_y), parseFloat(h.position_z));
+          const spot = window.SevillaHotspotMaterial?.create
+              ? window.SevillaHotspotMaterial.create(isNav ? 'nav' : 'info', position, Number(h.arrow_rotation), (error, url) => console.warn('Showroom hotspot icon unavailable', url, error))
+              : new PANOLENS.Infospot(350, isNav ? 'assets/img/hotspot-nav-v3.png' : 'assets/img/hotspot-info-v3.png');
+          if (!window.SevillaHotspotMaterial?.create) {
+              spot.position.copy(position);
+              if (spot.material) {
+                  spot.material.transparent = true;
+                  spot.material.alphaTest = 0.08;
+                  spot.material.depthWrite = false;
+                  spot.material.depthTest = false;
+                  spot.material.needsUpdate = true;
+              }
+              window.SevillaHotspotMaterial?.configure(spot, isNav ? 'nav' : 'info', Number(h.arrow_rotation));
+          }
 
           if (isNav) {
               const rotation = Number(h.arrow_rotation);
@@ -1181,6 +1207,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (typeof value === "string" && value.trim() === "") return fallback;
       const number = Number(value);
       return Number.isFinite(number) && number >= 0 ? number : fallback;
+    };
+    const categoryCapacityMax = category => {
+      const capacities = venuesForCategory(category)
+        .map(room => numericFact(room.capacity_value))
+        .filter(value => Number.isInteger(value) && value > 0);
+      return capacities.length ? Math.max(...capacities) : null;
     };
     const formatNumber = value => Number(value).toLocaleString("en-PH");
     const localDateString = date => {
@@ -1802,7 +1834,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!guideState.dialogueChoicesRevealed || !receptionistState.entranceSettled || receptionistRoot.classList.contains("is-entering")) return;
       const first = receptionistRoot.classList.contains("is-date-state")
         ? (receptionistChoices.querySelector(".receptionist-calendar-day[tabindex='0']") || receptionistChoices.querySelector("[data-receptionist-date-submit]"))
-        : receptionistChoices.querySelector("button, a[href]") || receptionistSkip;
+        : receptionistChoices.querySelector("input[data-receptionist-group-input], button, a[href]") || receptionistSkip;
       if (!first) return;
       try { first.focus({ preventScroll: true }); } catch (error) { first.focus(); }
     };
@@ -1904,10 +1936,42 @@ document.addEventListener("DOMContentLoaded", () => {
         title = "What brings you here?";
         message = "I’ll match the villa suggestions to the kind of stay you have in mind.";
         options = [["Relaxation", "relaxation"], ["Family gathering", "family"], ["Private stay", "private"]];
-      } else if (category === "Event Hall" && key === "groupSize" || category === "Resort Villa" && key === "groupSize") {
+      } else if ((category === "Event Hall" || category === "Resort Villa") && key === "groupSize") {
         title = "How many guests?";
-        message = `That lets me prioritize a ${label} that can welcome your group.`;
-        options = [["1–10 guests", 10], ["11–30 guests", 30], ["31–60 guests", 60], ["61+ guests", 61]];
+        const maxCapacity = categoryCapacityMax(category);
+        message = maxCapacity
+          ? `Enter the exact number of guests. Media-ready ${label}s support up to ${formatNumber(maxCapacity)} guests.`
+          : `Enter the exact number of guests. Capacity is not currently listed for media-ready ${label}s, so confirm fit during booking.`;
+        setDialogue(title, message);
+        receptionistChoices.replaceChildren();
+        const form = document.createElement("form");
+        form.className = "receptionist-guest-count-form";
+        form.noValidate = true;
+        const inputLabel = document.createElement("label");
+        inputLabel.textContent = "Guest count";
+        inputLabel.htmlFor = "receptionist-group-size";
+        const input = document.createElement("input");
+        input.id = "receptionist-group-size";
+        input.type = "number";
+        input.inputMode = "numeric";
+        input.min = "1";
+        if (maxCapacity) input.max = String(maxCapacity);
+        input.step = "1";
+        input.required = true;
+        input.dataset.receptionistGroupInput = "true";
+        input.value = Number.isInteger(guideContext.groupSize) && guideContext.groupSize > 0 ? String(guideContext.groupSize) : "";
+        input.setAttribute("aria-describedby", "receptionist-group-size-error");
+        const error = document.createElement("p");
+        error.id = "receptionist-group-size-error";
+        error.className = "receptionist-inline-error";
+        error.setAttribute("role", "alert");
+        error.hidden = true;
+        const continueButton = createChoice("Continue", "receptionist-choice-primary", { "data-receptionist-group-submit": "true" });
+        form.append(inputLabel, input, error, continueButton);
+        form.addEventListener("submit", event => { event.preventDefault(); continueButton.click(); });
+        receptionistChoices.append(form, createBackChoice());
+        window.setTimeout(() => input.focus(), 0);
+        return;
       }
       if (key === "eventDate" || key === "checkInDate" || key === "checkOutDate" || key === "visitDate") {
         receptionistRoot.classList.add("is-date-state");
@@ -2745,11 +2809,15 @@ document.addEventListener("DOMContentLoaded", () => {
         restoreGuideFocus();
         showQueuedInteractionHint();
         if (typeof afterClose === "function") afterClose();
+        showroomTour?.maybeAutoShow();
         const focusTarget = receptionistState.previousFocus instanceof HTMLElement && receptionistState.previousFocus.isConnected ? receptionistState.previousFocus : receptionistReopen;
         focusTarget.focus();
       }, 240);
     };
     const openGreeting = opener => {
+      // The receptionist owns the first-use focus trap. Close a replayed
+      // showroom guide before opening it so the two overlays never compete.
+      showroomTour?.close(true);
       window.clearTimeout(receptionistState.closeTimer);
       window.clearTimeout(receptionistState.entranceTimer);
       clearEntranceEnd();
@@ -2827,7 +2895,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : focusable;
     };
     receptionistRoot.addEventListener("click", event => {
-      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
       if (!target) return;
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
       if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) { closeGuide(); return; }
@@ -2910,6 +2978,33 @@ document.addEventListener("DOMContentLoaded", () => {
         const category = receptionistState.activeCategory;
         const key = target.hasAttribute("data-receptionist-change-group") ? "groupSize" : category === "Hotel Room" ? "preference" : category === "Event Hall" ? "occasion" : "purpose";
         renderQuestion(category, key); focusFirstChoice(); return;
+      }
+      if (target.hasAttribute("data-receptionist-group-submit")) {
+        const input = receptionistRoot.querySelector("[data-receptionist-group-input]");
+        const error = receptionistRoot.querySelector("#receptionist-group-size-error");
+        const raw = String(input?.value ?? "").trim();
+        const maxCapacity = categoryCapacityMax(receptionistState.activeCategory);
+        let message = "";
+        if (!/^\d+$/.test(raw)) message = "Enter a whole number of guests, such as 4.";
+        else {
+          const count = Number(raw);
+          if (!Number.isSafeInteger(count) || count < 1) message = "Enter at least 1 guest.";
+          else if (maxCapacity !== null && count > maxCapacity) message = `Enter ${formatNumber(maxCapacity)} guests or fewer for this category.`;
+          else {
+            guideContext.groupSize = count;
+            saveGuideContext();
+            const category = receptionistState.activeCategory;
+            if (category === "Event Hall" && !guideContext.startDate) renderQuestion(category, "eventDate");
+            else if (category === "Resort Villa" && !guideContext.startDate) renderQuestion(category, "visitDate");
+            else renderRecommendations();
+            focusFirstChoice();
+            return;
+          }
+        }
+        if (error) { error.textContent = message; error.hidden = false; }
+        input?.setAttribute("aria-invalid", "true");
+        input?.focus();
+        return;
       }
       if (target.hasAttribute("data-receptionist-compare")) {
         if (guideState.selectionOrigin === "all") {

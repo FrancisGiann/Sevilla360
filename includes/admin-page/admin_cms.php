@@ -416,33 +416,52 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 <div class="cms-modal-overlay" id="hotspotModal" style="z-index: 5000;">
     <div class="cms-modal-content hotspot-modal-content" role="dialog" aria-modal="true" aria-labelledby="hotspot-modal-title" tabindex="-1">
         <div class="hotspot-modal-header">
-            <div>
+            <div class="hotspot-modal-header-copy">
                 <h3 class="cms-modal-title" id="hotspot-modal-title">Tour Setup &amp; Hotspots</h3>
                 <p>Choose a starting scene and saved view, then place guest directions and information pins.</p>
             </div>
-            <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal" aria-label="Close tour setup">Close</button>
+            <div class="hotspot-modal-header-actions">
+                <button type="button" class="btn cms-btn-outline" id="btn-hotspot-help" aria-label="Replay tour setup guide"><i class="fa-solid fa-circle-question" aria-hidden="true"></i><span>Help</span></button>
+                <button type="button" class="btn cms-btn-outline" id="btnCloseHotspotModal" aria-label="Close tour setup"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>Close</span></button>
+            </div>
         </div>
 
         <div class="hotspot-modal-body">
-            <section class="hotspot-tour-setup" aria-label="Panorama tour settings">
-                <div class="hotspot-view-selector">
-                    <label for="hs-admin-view-selector">Tour panorama</label>
-                    <select id="hs-admin-view-selector" aria-describedby="hs-view-description"></select>
-                    <p id="hs-view-description" class="hotspot-view-description" aria-live="polite"></p>
-                </div>
-                <div class="hotspot-tour-status" aria-live="polite" aria-atomic="true">
-                    <span id="hs-starting-scene-status" class="hotspot-state-pill">Starting scene</span>
-                    <span id="hs-view-preset-status" class="hotspot-state-pill">View not set</span>
-                    <span id="hs-hotspot-count" class="hotspot-state-pill">0 hotspots</span>
-                </div>
-                <div class="hotspot-tour-actions">
-                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-make-starting-scene"><span data-hotspot-button-label>Make Starting Scene</span></button>
-                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-set-current-view"><span data-hotspot-button-label>Set Current View</span></button>
-                    <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-panorama-view" disabled><span data-hotspot-button-label>Save View</span></button>
-                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-preview-saved-view" disabled><span data-hotspot-button-label>Preview Saved View</span></button>
-                    <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-clear-panorama-view" disabled><span data-hotspot-button-label>Clear Default</span></button>
-                </div>
-            </section>
+            <div class="hotspot-steps" aria-label="Tour setup steps">
+                <section class="hotspot-step" data-hotspot-step="1" aria-labelledby="hotspot-step-1-title">
+                    <h4 id="hotspot-step-1-title"><span class="hotspot-step-number" aria-hidden="true">1</span><span>Choose panorama</span></h4>
+                    <div class="hotspot-view-selector">
+                        <label for="hs-admin-view-selector">Tour panorama</label>
+                        <select id="hs-admin-view-selector" aria-describedby="hs-view-description"></select>
+                        <p id="hs-view-description" class="hotspot-view-description" aria-live="polite"></p>
+                    </div>
+                </section>
+                <section class="hotspot-step" data-hotspot-step="2" aria-labelledby="hotspot-step-2-title">
+                    <h4 id="hotspot-step-2-title"><span class="hotspot-step-number" aria-hidden="true">2</span><span>Set guest view</span></h4>
+                    <div class="hotspot-tour-status" aria-live="polite" aria-atomic="true">
+                        <span id="hs-starting-scene-status" class="hotspot-state-pill">Starting scene</span>
+                        <span id="hs-view-preset-status" class="hotspot-state-pill">View not set</span>
+                    </div>
+                    <div class="hotspot-tour-actions">
+                        <button type="button" class="hotspot-btn hotspot-btn-primary" id="btn-save-panorama-view" disabled><span data-hotspot-button-label>Save current guest view</span></button>
+                        <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-make-starting-scene"><span data-hotspot-button-label>Make starting scene</span></button>
+                        <details class="hotspot-more-menu">
+                            <summary>View options</summary>
+                            <div class="hotspot-more-actions">
+                                <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-preview-saved-view" disabled><span data-hotspot-button-label>Preview saved view</span></button>
+                                <button type="button" class="hotspot-btn hotspot-btn-secondary" id="btn-clear-panorama-view" disabled><span data-hotspot-button-label>Reset saved view</span></button>
+                            </div>
+                        </details>
+                    </div>
+                </section>
+                <section class="hotspot-step" data-hotspot-step="3" aria-labelledby="hotspot-step-3-title">
+                    <h4 id="hotspot-step-3-title"><span class="hotspot-step-number" aria-hidden="true">3</span><span>Place and manage hotspots</span></h4>
+                    <div class="hotspot-step-support">
+                        <span id="hs-hotspot-count" class="hotspot-state-pill">0 hotspots</span>
+                        <p>Click the panorama to place an information or walk marker, then save it from the form.</p>
+                    </div>
+                </section>
+            </div>
 
             <p id="hs-editor-status" class="hotspot-editor-status" role="status" aria-live="polite" aria-atomic="true">Choose a panorama to begin editing its tour.</p>
 
@@ -458,7 +477,7 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
                 <div class="hotspot-sidebar">
                     <div id="hotspot-form-wrapper" class="hotspot-form hidden">
-                        <h4><span id="hs-form-heading">New Hotspot</span></h4>
+                        <h4 class="hotspot-form-heading"><span id="hs-form-heading">New Hotspot</span><span class="hotspot-form-state" id="hs-form-state">New pin</span></h4>
                         <div class="hotspot-field">
                             <label for="hs-type">Type</label>
                             <select id="hs-type">

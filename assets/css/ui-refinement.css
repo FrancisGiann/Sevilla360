@@ -1064,3 +1064,43 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
     transform: none !important;
   }
 }
+.sevilla-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  isolation: isolate;
+  display: grid;
+  place-items: end center;
+  padding: 1.25rem;
+  background: rgba(16, 24, 20, .5);
+}
+.sevilla-guide-panel {
+  position: relative;
+  z-index: 1;
+  width: min(32rem, 100%);
+  padding: 1.25rem;
+  border: 1px solid rgba(199, 161, 107, .8);
+  border-radius: 14px;
+  background: #fffaf2;
+  color: #17231d;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, .24);
+}
+.sevilla-guide-panel:focus { outline: 3px solid #c7a16b; outline-offset: 3px; }
+.sevilla-guide-panel-head { display: flex; justify-content: space-between; align-items: center; color: #78552e; font-size: .78rem; font-weight: 700; }
+.sevilla-guide-panel-head button { border: 0; background: transparent; color: inherit; font-size: 1.4rem; cursor: pointer; }
+.sevilla-guide-panel h2 { margin: .6rem 0 .35rem; font-family: var(--font-heading, Georgia, serif); }
+.sevilla-guide-panel p { margin: 0; line-height: 1.5; }
+.sevilla-guide-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+.sevilla-guide-actions button { min-height: 2.5rem; padding: .5rem .8rem; border: 1px solid #c7a16b; border-radius: 8px; background: transparent; color: #17231d; cursor: pointer; }
+.sevilla-guide-actions button:last-child { background: #c7a16b; }
+.sevilla-guide-target-ring {
+  position: fixed;
+  z-index: 0;
+  border: 3px solid #f5ebd7;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(16, 24, 20, .12), 0 0 0 6px rgba(199, 161, 107, .42);
+  pointer-events: none;
+}
+[data-guide-target="true"] { outline: none; }
+@media (prefers-reduced-motion: reduce) { .sevilla-guide-overlay *, [data-guide-target="true"] { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+@media (max-width: 600px) { .sevilla-guide-overlay { place-items: end stretch; padding: .75rem; } .sevilla-guide-panel { width: auto; } }
