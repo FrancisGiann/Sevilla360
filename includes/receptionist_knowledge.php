@@ -393,7 +393,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         'fil' => ['price' => 'Narito ang kasalukuyang public starting rates:', 'capacity' => 'Narito ang kasalukuyang public capacity information:', 'amenities' => 'Narito ang public amenities at descriptions na nakalista ngayon:', 'faq' => 'Narito ang kasalukuyang approved guidance:', 'contact' => 'Narito ang public reception at location information:', 'booking' => 'Matutulungan kitang simulan ang booking.'],
         'taglish' => ['price' => 'Here are the current public starting rates:', 'capacity' => 'Here is the current public capacity information:', 'amenities' => 'Here are the public amenities and descriptions currently listed:', 'faq' => 'Here is the current approved guidance:', 'contact' => 'Here is the public reception and location information:', 'booking' => 'I can help you start a booking.'],
     ][$language];
-    if (($route['kind'] ?? null) === 'booking') {
+    if (($route['kind'] ?? null) === 'booking' && empty($baseSlots['intent'])) {
         $bookingCategory = $category;
         $slots = $bookingCategory !== null ? ['intent' => $bookingCategory] : [];
         $missing = $bookingCategory === 'Hotel Room'

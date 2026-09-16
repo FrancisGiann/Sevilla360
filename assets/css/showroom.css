@@ -3301,6 +3301,7 @@ body.showroom-receptionist-open .showroom-container .details-box {
   flex: 1 1 auto;
   min-height: clamp(5rem, 14svh, 10rem);
   display: grid;
+  align-content: start;
   gap: .45rem;
   max-height: none;
   overflow-y: auto;
@@ -3324,6 +3325,20 @@ body.showroom-receptionist-open .showroom-container .details-box {
   background: rgba(160, 119, 72, .42);
 }
 .receptionist-chat-message[data-role="assistant"] { background: rgba(17, 14, 11, .52); }
+.receptionist-chat-inline-link {
+  display: inline-block;
+  margin-top: .4rem;
+  font-weight: 600;
+  color: #e7c891;
+  text-decoration: underline;
+  text-decoration-color: rgba(231, 200, 145, .4);
+  text-underline-offset: .2rem;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+.receptionist-chat-inline-link:hover {
+  color: #fff;
+  text-decoration-color: #e7c891;
+}
 .receptionist-chat-status { flex: 0 0 auto; min-height: 1.15rem; margin: .15rem 0; color: rgba(255, 250, 241, .72); font-size: .72rem; }
 .receptionist-chat-quick-replies { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 .55rem; }
 .receptionist-chat-quick-replies:empty { display: none; }

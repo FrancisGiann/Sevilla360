@@ -174,7 +174,7 @@
       stored.context = safeContext();
     };
     const setStatus = message => { if (status) status.textContent = message || ""; };
-    const appendMessage = (role, message, persist = true) => {
+    const appendMessage = (role, message, persist = true, action = null) => {
       if (!message || typeof message !== "string") return;
       const normalizedRole = role === "user" ? "user" : "assistant";
       const content = message.trim();
@@ -188,15 +188,60 @@
       bubble.className = "receptionist-chat-message";
       bubble.dataset.role = normalizedRole;
       bubble.setAttribute("role", "article");
-      bubble.textContent = content;
-      transcript.appendChild(bubble);
-      while (transcript.children.length > 16) transcript.firstElementChild.remove();
-      transcript.scrollTop = transcript.scrollHeight;
-      if (persist) {
-        stored.messages = Array.isArray(stored.messages) ? stored.messages : [];
-        stored.messages.push({ role: normalizedRole, content });
-        stored.messages = normalizeMessages(stored.messages);
-        save();
+      
+      if (normalizedRole === "assistant") {
+        const srText = document.createElement("span");
+        srText.className = "sr-only";
+        srText.style.userSelect = "none";
+        srText.textContent = content;
+        bubble.appendChild(srText);
+        
+        const visibleText = document.createElement("span");
+        visibleText.setAttribute("aria-hidden", "true");
+        bubble.appendChild(visibleText);
+        
+        transcript.appendChild(bubble);
+        while (transcript.children.length > 16) transcript.firstElementChild.remove();
+        transcript.scrollTop = transcript.scrollHeight;
+
+        let i = 0;
+        const typeChar = () => {
+          if (document.hidden) i = content.length; // Skip animation if tab is hidden
+          if (i < content.length) {
+            i += 3; // 3 chars per frame = ~180 chars/sec at 60fps
+            visibleText.textContent = content.substring(0, i);
+            transcript.scrollTop = transcript.scrollHeight;
+            requestAnimationFrame(typeChar);
+          } else {
+             visibleText.textContent = content;
+             if (action === "faq" || content.includes("Here is the current approved guidance") || content.includes("Narito ang kasalukuyang approved guidance")) {
+               const link = document.createElement("a");
+               link.href = "support.php#faqs";
+               link.className = "receptionist-chat-inline-link";
+               link.textContent = "View all FAQs";
+               bubble.appendChild(link);
+               transcript.scrollTop = transcript.scrollHeight;
+             }
+             if (persist) {
+               stored.messages = Array.isArray(stored.messages) ? stored.messages : [];
+               stored.messages.push({ role: normalizedRole, content });
+               stored.messages = normalizeMessages(stored.messages);
+               save();
+             }
+          }
+        };
+        requestAnimationFrame(typeChar);
+      } else {
+        bubble.textContent = content;
+        transcript.appendChild(bubble);
+        while (transcript.children.length > 16) transcript.firstElementChild.remove();
+        transcript.scrollTop = transcript.scrollHeight;
+        if (persist) {
+          stored.messages = Array.isArray(stored.messages) ? stored.messages : [];
+          stored.messages.push({ role: normalizedRole, content });
+          stored.messages = normalizeMessages(stored.messages);
+          save();
+        }
       }
     };
     const ensureGreeting = () => {
@@ -210,14 +255,6 @@
       items.slice(0, 4).forEach(item => {
         const label = typeof item === "string" ? item.trim() : "";
         if (!label) return;
-        if (label === "Support FAQs") {
-          const link = document.createElement("a");
-          link.href = "support.php#faqs";
-          link.className = "receptionist-chat-quick-reply";
-          link.textContent = label;
-          quickReplies.appendChild(link);
-          return;
-        }
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
@@ -225,8 +262,11 @@
         quickReplies.appendChild(button);
       });
     };
+    let typingShownAt = 0;
+    const TYPING_MIN_MS = 800;
     const showTypingIndicator = () => {
       removeTypingIndicator();
+      typingShownAt = Date.now();
       const indicator = document.createElement("div");
       indicator.className = "receptionist-typing-indicator";
       indicator.id = "receptionist-typing";
@@ -235,6 +275,11 @@
       indicator.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
       transcript.appendChild(indicator);
       transcript.scrollTop = transcript.scrollHeight;
+    };
+    const waitForTypingMin = () => {
+      const elapsed = Date.now() - typingShownAt;
+      const remaining = TYPING_MIN_MS - elapsed;
+      return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve();
     };
     const removeTypingIndicator = () => {
       const existing = document.getElementById("receptionist-typing");
@@ -294,6 +339,8 @@
           return;
         }
         if (!response.ok || !data || data.success !== true) throw new Error(data?.message || "The receptionist is unavailable.");
+        await waitForTypingMin();
+        removeTypingIndicator();
         let keptGuidedStatus = false;
         if (data.mode === "guided") {
           guidedFallback(data, data.reply);
@@ -305,7 +352,7 @@
           if (data.mode === "knowledge" && typeof options.onKnowledge === "function") options.onKnowledge(data);
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
-          appendMessage("assistant", reply);
+          appendMessage("assistant", reply, true, data.action);
           renderQuickReplies(data.quick_replies);
         }
         if (!keptGuidedStatus) setStatus("");
@@ -349,7 +396,6 @@
     quickReplies.addEventListener("click", event => {
       const button = event.target.closest(".receptionist-chat-quick-reply");
       if (!button) return;
-      if (button.tagName === "A") return;
       const label = button.textContent.trim();
       if (typeof options.onQuickReply === "function" && options.onQuickReply(label) === true) return;
       input.value = label === "Support FAQs" ? "What policies and FAQs can you help with?" : label;

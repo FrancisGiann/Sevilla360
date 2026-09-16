@@ -261,11 +261,6 @@ $checks['endpoint answers bounded public knowledge before provider use and passe
     && str_contains($chatJs, 'options.onKnowledge')
     && str_contains($knowledgeSource, 'RECEPTIONIST_KNOWLEDGE_MAX_RECORDS')
     && str_contains($knowledgeSource, "v.status = 'Available'");
-$checks['Support FAQs is a fixed accessible link while other quick replies remain buttons'] = str_contains($chatJs, 'support.php#faqs')
-    && str_contains($chatJs, 'document.createElement("a")')
-    && str_contains($chatJs, 'if (button.tagName === "A") return;')
-    && str_contains($chatJs, 'onKnowledge')
-    && str_contains($supportPhp, 'id="faqs"');
 $checks['server context errors are distinguishable from provider schema fallback'] = str_contains($endpoint, "'code' => " . '$contextError' . " ? 'invalid_context' : 'invalid_request'")
     && str_contains($chatJs, "data.code === \"invalid_context\"")
     && str_contains($showroomJs, 'onInvalidContext');

@@ -52,8 +52,8 @@ function receptionist_ai_response_schema(): array
                     'purpose' => $nullableString(['relaxation', 'family', 'private']),
                     'group_size' => $nullableInteger(),
                     'preference' => $nullableString(['save', 'best_fit', 'comfort']),
-                    'start_date' => ['type' => ['string', 'null'], 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$'],
-                    'end_date' => ['type' => ['string', 'null'], 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$'],
+                    'start_date' => ['type' => ['string', 'null']],
+                    'end_date' => ['type' => ['string', 'null']],
                     'active_venue_id' => $nullableInteger(),
                     'active_room_group_id' => $nullableInteger(),
                 ],
@@ -243,10 +243,25 @@ function receptionist_ai_clean_message(string $message): string
 
 function receptionist_ai_canonical_date($value, ?DateTimeImmutable $today = null): ?string
 {
-    if (!is_string($value) || !preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value)) return null;
-    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+    if (!is_string($value) || trim($value) === '') return null;
     $today ??= new DateTimeImmutable('today');
-    return $date && $date->format('Y-m-d') === $value && $value >= $today->format('Y-m-d') ? $value : null;
+    
+    // First try strict format
+    $date = null;
+    if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value)) {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+    } else {
+        // Fallback to loose parsing for weak models
+        try {
+            $date = new DateTimeImmutable($value);
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+    
+    if (!$date) return null;
+    $formatted = $date->format('Y-m-d');
+    return $formatted >= $today->format('Y-m-d') ? $formatted : null;
 }
 
 function receptionist_ai_validate_venue_id(mysqli $conn, $value): ?int
@@ -428,7 +443,8 @@ function receptionist_ai_system_prompt(array $faqs, array $context, string $lang
     $faqLines = array_map(static fn(array $faq): string => json_encode(['id' => $faq['id'], 'category' => $faq['category'], 'question' => $faq['question'], 'phrases' => $faq['phrases']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $faqs);
     $venueLines = array_map(static fn(array $venue): string => json_encode($venue, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $venueCatalog);
     $knowledgeLines = array_map(static fn(array $fact): string => json_encode($fact, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), array_slice($knowledge, 0, 8));
-    return "You are Sevilla360's warm professional virtual receptionist. The requested response language is {$language}; always use it for normal, fallback, contact, unsupported, and action copy. Return JSON only with keys language, action, reply, faq_id, slots, quick_replies. Allowed action: ask, social, faq, recommend, venue, availability, contact, unsupported. Use action social for greetings (hi, hello, hey), identity questions (who are you, what is this), thank-you messages, goodbyes, and other conversational messages that do not require factual resort data. Your reply will be shown directly for social, so keep it warm, brief, and helpful. You are the virtual receptionist for M.I. Sevilla Resort & Events Place (Sevilla360). Never mention specific prices, capacities, rates, or invented facts in social replies; gently guide the visitor toward venue exploration instead. Allowed language: en, fil, taglish. Use only the provided FAQ ids for factual FAQ answers; never invent prices, capacities, availability, booking/payment/account facts, or URLs. Public knowledge facts below are bounded approved references, not permission to invent or alter numeric values; factual replies are composed by the server. Use action contact for unknown resort facts. Slots may contain only intent (Event Hall, Hotel Room, Resort Villa), occasion (wedding, celebration, corporate, other), purpose (relaxation, family, private), group_size (positive integer), preference (save, best_fit, comfort), start_date/end_date (YYYY-MM-DD), active_venue_id, and active_room_group_id. Only use a venue id and room group id from the authoritative catalog below, and keep its category consistent with intent. Do not submit bookings. Keep reply concise and provide at most 4 short quick replies. FAQ shortlist: " . implode("\n", $faqLines) . "\nAuthoritative public venue catalog: " . implode("\n", $venueLines) . "\nBounded approved public knowledge: " . implode("\n", $knowledgeLines) . "\nCurrent safe context: " . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $currentDate = date('Y-m-d');
+    return "The current date is {$currentDate}. You are Sevilla360's warm professional virtual receptionist. The requested response language is {$language}; always use it for normal, fallback, contact, unsupported, and action copy. Return JSON only with keys language, action, reply, faq_id, slots, quick_replies. Allowed action: ask, social, faq, recommend, venue, availability, contact, unsupported. Use action social for greetings (hi, hello, hey), identity questions (who are you, what is this), thank-you messages, goodbyes, and other conversational messages that do not require factual resort data. Your reply will be shown directly for social, so keep it warm, brief, and helpful. You are the virtual receptionist for M.I. Sevilla Resort & Events Place (Sevilla360). Never mention specific prices, capacities, rates, or invented facts in social replies; gently guide the visitor toward venue exploration instead. Allowed language: en, fil, taglish. Use only the provided FAQ ids for factual FAQ answers; never invent prices, capacities, availability, booking/payment/account facts, or URLs. Public knowledge facts below are bounded approved references, not permission to invent or alter numeric values; factual replies are composed by the server. Use action contact for unknown resort facts. Slots may contain only intent (Event Hall, Hotel Room, Resort Villa), occasion (wedding, celebration, corporate, other), purpose (relaxation, family, private), group_size (positive integer), preference (save, best_fit, comfort), start_date/end_date (YYYY-MM-DD), active_venue_id, and active_room_group_id. Only use a venue id and room group id from the authoritative catalog below, and keep its category consistent with intent. Do not submit bookings. Keep reply concise and provide at most 4 short quick replies. FAQ shortlist: " . implode("\n", $faqLines) . "\nAuthoritative public venue catalog: " . implode("\n", $venueLines) . "\nBounded approved public knowledge: " . implode("\n", $knowledgeLines) . "\nCurrent safe context: " . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
 function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $baseSlots, array $faqs, string $fallbackLanguage = 'en', ?array $venueCatalog = null): array
@@ -504,15 +520,19 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'unsupported' => 'I can help with venues, availability guidance, bookings, resort policies, at Support FAQs. Para sa iba, contact reception.',
         ],
     ];
-    if ($action !== 'social' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
+    if ($action !== 'social' && $action !== 'ask' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
 
-    if ($action === 'social') {
+    if ($action === 'social' || $action === 'ask') {
         if (preg_match('/₱|\bPHP\s*\d|\bper\s+(?:night|day|person|pax|head|event)\b|\b\d{3,}[,.]?\d*\s*(?:pesos?|php)\b/i', $reply) === 1) {
-            $reply = match ($language) {
-                'fil' => 'Kumusta! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. Paano kita matutulungan?',
-                'taglish' => 'Hello! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. How can I help you?',
-                default => 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?',
-            };
+            if ($action === 'social') {
+                $reply = match ($language) {
+                    'fil' => 'Kumusta! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. Paano kita matutulungan?',
+                    'taglish' => 'Hello! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. How can I help you?',
+                    default => 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?',
+                };
+            } else {
+                $reply = $safeReplies[$language]['ask']; // Fallback to safe ask
+            }
         }
     }
     return [
