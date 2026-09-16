@@ -46,42 +46,18 @@ if ($isLoggedIn && isset($conn) && $conn instanceof mysqli) {
             $admin_notifications = [];
         }
 
-        foreach ($admin_notifications as $b) {
-            $title = "Action Required";
-            $msg = "";
-            $url = "admin_dashboard.php?page=bookings&search=" . urlencode($b['reference_no']);
-            $date_str = date('M j, Y', strtotime($b['start_date']));
-
-            if ($b['cancel_status'] === 'Pending') {
-                $title = "Refund Requested";
-                $msg = "Refund request for {$b['venue_name']} (#{$b['reference_no']})";
-                $hp_unread_count++;
-            } elseif ($b['resched_status'] === 'Pending') {
-                $title = "Reschedule Requested";
-                $msg = "Reschedule request for {$b['venue_name']} (#{$b['reference_no']})";
-                $hp_unread_count++;
-            } elseif ($b['source'] === 'Online' && $b['booking_status'] === 'Pending') {
-                if ($b['venue_category'] === 'Event Hall') {
-                    $title = "New Event Inquiry";
-                    $msg = "Event Hall inquiry for {$b['venue_name']} (#{$b['reference_no']})";
-                } else {
-                    $title = "New Booking Request";
-                    $msg = "Booking request for {$b['venue_name']} (#{$b['reference_no']})";
-                }
-                $hp_unread_count++;
-            }
-
-            if (!empty($msg)) {
-                $hp_notifications[] = [
-                    'id' => $b['id'],
-                    'title' => $title,
-                    'message' => $msg,
-                    'url' => $url,
-                    'is_read' => 0,
-                    'created_at' => $date_str,
-                    'notif_type' => 'admin'
-                ];
-            }
+        foreach ($admin_notifications as $item) {
+            if (empty($item['is_read'])) $hp_unread_count++;
+            $hp_notifications[] = [
+                'id' => $item['key'],
+                'key' => $item['key'],
+                'title' => $item['title'],
+                'message' => $item['message'],
+                'url' => $item['target_url'],
+                'is_read' => !empty($item['is_read']) ? 1 : 0,
+                'created_at' => $item['timestamp'],
+                'notif_type' => 'admin'
+            ];
         }
     }
 }
@@ -177,12 +153,12 @@ $nav = [
 
                                     $item_url = isset($n['url']) ? $n['url'] : '#';
                                 ?>
-                                <a href="<?php echo htmlspecialchars($item_url); ?>" class="s-notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" <?php if (!$isAdmin): ?>data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>"<?php endif; ?> style="text-decoration:none; display:flex;">
+                                <a href="<?php echo htmlspecialchars($item_url); ?>" class="s-notif-item <?php echo $n['is_read'] ? '' : 'unread'; ?>" aria-label="<?php echo htmlspecialchars(($n['is_read'] ? 'Read' : 'Unread') . ' notification: ' . $n['title'] . '. ' . $n['message'], ENT_QUOTES, 'UTF-8'); ?>" <?php if (!$isAdmin): ?>data-id="<?php echo $n['id']; ?>" data-title="<?php echo htmlspecialchars($n['title']); ?>" data-message="<?php echo htmlspecialchars($n['message']); ?>"<?php else: ?>data-admin-notification-key="<?php echo htmlspecialchars((string)($n['key'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"<?php endif; ?> style="text-decoration:none; display:flex;">
                                     <div class="s-notif-icon" style="color: <?php echo $color; ?>;"><i class="fa-solid <?php echo $icon; ?>"></i></div>
                                     <div class="s-notif-info">
                                         <h5><?php echo htmlspecialchars($n['title']); ?></h5>
                                         <p><?php echo htmlspecialchars($n['message']); ?></p>
-                                        <small><?php echo htmlspecialchars($n['created_at']); ?></small>
+                                        <small><?php echo htmlspecialchars($n['created_at']); ?> · <span class="s-notif-read-state"><?php echo $n['is_read'] ? 'Read' : 'Unread'; ?></span></small>
                                     </div>
                                 </a>
                                 <?php endforeach; ?>
@@ -287,17 +263,22 @@ $nav = [
                 hpBtnMarkRead.addEventListener('click', function(e) {
                     e.stopPropagation();
                     fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?> } })
-                    .then(function(r) { return r.json(); })
+                    .then(function(r) { if (!r.ok) throw new Error('Request failed'); return r.json(); })
                     .then(function(res) {
-                        if (res.success) {
-                            var badge = document.getElementById('hpNotifBadge');
-                            if (badge) badge.remove();
-                            if (hpBtnMarkRead) hpBtnMarkRead.remove();
-                            document.querySelectorAll('#hpNotifDropdown .s-notif-item').forEach(function(el) {
-                                el.classList.remove('unread');
-                            });
-                        }
-                    });
+                        if (!res || !res.success) throw new Error(res && res.message ? res.message : 'Request failed');
+                        var badge = document.getElementById('hpNotifBadge');
+                        if (badge) badge.remove();
+                        if (hpBtnMarkRead) hpBtnMarkRead.remove();
+                        document.querySelectorAll('#hpNotifDropdown .s-notif-item').forEach(function(el) {
+                            el.classList.remove('unread');
+                            var state = el.querySelector('.s-notif-read-state');
+                            if (state) state.textContent = 'Read';
+                            var title = el.querySelector('h5')?.textContent || 'Notification';
+                            var message = el.querySelector('p')?.textContent || '';
+                            el.setAttribute('aria-label', 'Read notification: ' + title + '. ' + message);
+                        });
+                    })
+                    .catch(function() { if (window.showAlert) window.showAlert('Notifications', 'Could not mark notifications as read. They remain unread; please try again.', 'error'); });
                 });
             }
 
@@ -306,19 +287,64 @@ $nav = [
                     var id = this.getAttribute('data-id');
                     if (!id) return;
                     e.stopPropagation();
+                    e.preventDefault();
                     var title = this.getAttribute('data-title');
                     var msg = this.getAttribute('data-message');
+                    var wasUnread = this.classList.contains('unread');
+                    if (!wasUnread) {
+                        if (window.showAlert) {
+                            window.showAlert(title, msg, 'info');
+                        } else {
+                            alert(title + "\n\n" + msg);
+                        }
+                        return;
+                    }
                     var self = this;
                     
                     fetch('actions/user/mark_notifications_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'id=' + encodeURIComponent(id) })
-                    .then(function() {
+                    .then(function(response) { if (!response.ok) throw new Error('Request failed'); return response.json(); })
+                    .then(function(result) {
+                        if (!result || !result.success) throw new Error(result && result.message ? result.message : 'Request failed');
                         self.classList.remove('unread');
-                    });
+                        var customerState = self.querySelector('.s-notif-read-state');
+                        if (customerState) customerState.textContent = 'Read';
+                        self.setAttribute('aria-label', 'Read notification: ' + (title || 'Notification') + '. ' + (msg || ''));
+                        var badge = document.getElementById('hpNotifBadge');
+                        var current = badge ? Math.max(0, (parseInt(badge.textContent, 10) || 0) - 1) : 0;
+                        if (badge && current > 0) badge.textContent = String(current); else if (badge) badge.remove();
+                    })
+                    .catch(function() { if (window.showAlert) window.showAlert('Notifications', 'Could not mark this notification as read. It remains unread; please try again.', 'error'); });
                     if (window.showAlert) {
                         window.showAlert(title, msg, 'info');
                     } else {
                         alert(title + "\n\n" + msg);
                     }
+                });
+            });
+
+            document.querySelectorAll('#hpNotifDropdown .s-notif-item[data-admin-notification-key]').forEach(function(item) {
+                item.addEventListener('click', function(e) {
+                    var key = this.getAttribute('data-admin-notification-key');
+                    if (!key || !this.classList.contains('unread')) return;
+                    e.preventDefault();
+                    var destination = this.href;
+                    fetch('actions/admin/mark_notification_read.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'key=' + encodeURIComponent(key) })
+                        .then(function(response) { if (!response.ok) throw new Error('Request failed'); return response.json(); })
+                        .then(function(result) {
+                            if (!result || !result.success) throw new Error(result && result.message ? result.message : 'Request failed');
+                            item.classList.remove('unread');
+                            var adminState = item.querySelector('.s-notif-read-state');
+                            if (adminState) adminState.textContent = 'Read';
+                            item.setAttribute('aria-label', 'Read notification: ' + (item.querySelector('h5')?.textContent || 'Notification') + '. ' + (item.querySelector('p')?.textContent || ''));
+                            var badge = document.getElementById('hpNotifBadge');
+                            var current = badge ? Math.max(0, (parseInt(badge.textContent, 10) || 0) - 1) : 0;
+                            if (badge && current > 0) badge.textContent = String(current); else if (badge) badge.remove();
+                            window.location.href = destination;
+                        })
+                        .catch(function() {
+                            if (window.showAlert) window.showAlert('Notifications', 'Could not save read state. This action remains unread.', 'error');
+                            window.location.href = destination;
+                        });
                 });
             });
         }

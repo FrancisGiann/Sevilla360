@@ -41,6 +41,10 @@ try {
               )
               OR b.booking_status = 'Pending'
               OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid')
+              OR EXISTS (
+                  SELECT 1 FROM manual_payment_submissions mps
+                  WHERE mps.booking_id = b.id AND mps.status = 'pending'
+              )
           )
     ");
     $response['actionRequired'] = (int)($res->fetch_assoc()['c'] ?? 0);

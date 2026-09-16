@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dropdown = document.getElementById('notifDropdown');
     const badge = document.getElementById('global-notif-badge');
     const notifList = document.getElementById('notifList');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
     if (!bell || !dropdown || !badge || !notifList) return;
 
@@ -45,55 +46,28 @@ document.addEventListener("DOMContentLoaded", () => {
             
             // A. Update Notifications UI
             if (Array.isArray(data.notifications)) {
-                let unreadCount = 0;
-                let htmlList = '';
-
-                data.notifications.forEach(b => {
-                    const reference = String(b.reference_no ?? '');
-                    const venue = String(b.venue_name ?? '');
-                    let iconClass = '';
-                    let icon = '';
-                    let message = '';
-                    let timeAgo = new Date(b.start_date).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
-
-                    if (b.cancel_status === 'Pending') {
-                        unreadCount++;
-                        iconClass = 'bg-red'; icon = 'fa-solid fa-arrow-rotate-left';
-                        message = `<strong>Refund Requested</strong> for ${escapeHTML(venue)} (#${escapeHTML(reference)})`;
-                    } else if (b.resched_status === 'Pending') {
-                        unreadCount++;
-                        iconClass = 'bg-blue'; icon = 'fa-solid fa-calendar-day';
-                        message = `<strong>Reschedule Request</strong> for ${escapeHTML(venue)} (#${escapeHTML(reference)})`;
-                    } else if (b.source === 'Online' && b.booking_status === 'Pending') {
-                        unreadCount++;
-                        iconClass = 'bg-yellow'; icon = 'fa-solid fa-champagne-glasses';
-                        const requestLabel = b.venue_category === 'Event Hall'
-                            ? 'New Event Inquiry'
-                            : 'New Booking Request';
-                        message = `<strong>${requestLabel}</strong> for ${escapeHTML(venue)} (#${escapeHTML(reference)})`;
-                    }
-
-                    if (message !== '') {
-                        htmlList += `
-                            <a href="admin_dashboard.php?page=bookings&search=${encodeURIComponent(reference)}" class="notif-item">
-                                <div class="notif-icon ${iconClass}"><i class="${icon}"></i></div>
-                                <div class="notif-content">
-                                    <p>${message}</p>
-                                    <span>Target Date: ${escapeHTML(timeAgo)}</span>
-                                </div>
-                            </a>
-                        `;
-                    }
-                });
-
-                if (unreadCount > 0) {
-                    badge.innerText = unreadCount;
-                    badge.style.display = 'block';
-                    notifList.innerHTML = htmlList;
-                    
+                const items = data.notifications;
+                const unreadCount = items.filter(item => !item.is_read).length;
+                badge.innerText = String(unreadCount);
+                badge.style.display = unreadCount > 0 ? 'block' : 'none';
+                if (!items.length) {
+                    notifList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">No unresolved actions.</div>';
                 } else {
-                    badge.style.display = 'none';
-                    notifList.innerHTML = '<div style="padding: 20px; text-align: center; color: #888; font-size: 0.85rem;">You\'re all caught up!</div>';
+                    const iconFor = kind => ({
+                        cancellation_request: ['bg-red', 'fa-solid fa-arrow-rotate-left'],
+                        reschedule_request: ['bg-blue', 'fa-solid fa-calendar-day'],
+                        payment_proof: ['bg-green', 'fa-solid fa-receipt'],
+                        new_booking: ['bg-yellow', 'fa-solid fa-champagne-glasses']
+                    }[kind] || ['bg-yellow', 'fa-solid fa-bell']);
+                    notifList.innerHTML = '<div class="notif-section-label">Needs action</div>' + items.map(item => {
+                        const [iconClass, icon] = iconFor(item.kind);
+                        const readLabel = item.is_read ? 'Read' : 'Unread';
+                        const timestamp = new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        return `<a href="${escapeHTML(item.target_url)}" class="notif-item ${item.is_read ? 'is-read' : 'is-unread'}" data-notification-key="${escapeHTML(item.key)}" data-read="${item.is_read ? 'true' : 'false'}">
+                            <div class="notif-icon ${iconClass}"><i class="${icon}" aria-hidden="true"></i></div>
+                            <div class="notif-content"><p><strong>${escapeHTML(item.title)}</strong> ${escapeHTML(item.message)}</p><span>${escapeHTML(timestamp)} · <span class="notif-read-state">${readLabel}</span></span></div>
+                        </a>`;
+                    }).join('');
                 }
             }
 
@@ -107,6 +81,40 @@ document.addEventListener("DOMContentLoaded", () => {
             }));
         }
     }
+
+    notifList.addEventListener('click', async event => {
+        const item = event.target.closest('[data-notification-key]');
+        if (!item || !notifList.contains(item)) return;
+        const key = item.dataset.notificationKey || '';
+        if (!key || item.dataset.read === 'true') return;
+        event.preventDefault();
+        try {
+            const response = await fetch('actions/admin/mark_notification_read.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': csrfToken },
+                body: `key=${encodeURIComponent(key)}`
+            });
+            const result = await response.json().catch(() => null);
+            if (!response.ok || !result?.success) throw new Error(result?.message || 'Notification could not be marked read.');
+            item.dataset.read = 'true';
+            item.classList.remove('is-unread');
+            item.classList.add('is-read');
+            const state = item.querySelector('.notif-read-state');
+            if (state) state.textContent = 'Read';
+            const count = Math.max(0, (Number.parseInt(badge.textContent, 10) || 0) - 1);
+            badge.textContent = String(count);
+            badge.style.display = count > 0 ? 'block' : 'none';
+            window.location.href = item.href;
+        } catch (error) {
+            item.classList.add('read-error');
+            item.setAttribute('aria-label', 'Could not save read state. The action remains unread.');
+            window.setTimeout(() => item.classList.remove('read-error'), 2800);
+            // A failed read-state write must not prevent the administrator
+            // from reviewing the underlying action. The server will keep it
+            // unread on the next refresh.
+            window.location.href = item.href;
+        }
+    });
 
     // WebSocket events only invalidate the view; the existing authorized
     // dashboard endpoint remains the source of truth and polling fallback.
