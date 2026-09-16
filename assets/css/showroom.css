@@ -929,6 +929,15 @@ body.no-scroll .footer {
   transform: none;
 }
 
+/* Subtle idle breathing animation */
+.showroom-receptionist.is-ready:not(.is-chat-open) .receptionist-portrait {
+  animation: receptionistIdle 4s ease-in-out infinite;
+}
+@keyframes receptionistIdle {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-.25rem); }
+}
+
 /* Keep the authored entrance transitions alive while the state class settles.
    The class switch reveals the scene through these transitions instead of
    snapping from a timer-only hidden state. */
@@ -3225,6 +3234,48 @@ body.showroom-receptionist-open .showroom-container .details-box {
   margin: 0;
   color: #fffaf1;
   font: 600 .92rem/1.25 var(--font-heading), serif;
+}
+
+/* Chat identity header */
+.receptionist-chat-identity {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+}
+.receptionist-chat-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 1.5px solid rgba(231, 200, 145, .6);
+  object-fit: cover;
+  object-position: top center;
+  flex-shrink: 0;
+}
+.receptionist-chat-identity h3 {
+  margin: 0;
+  font-size: .85rem;
+  line-height: 1.2;
+}
+.receptionist-chat-online {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  font-size: .65rem;
+  color: rgba(255, 250, 241, .7);
+  line-height: 1;
+}
+.receptionist-chat-online::before {
+  content: '';
+  width: .4rem;
+  height: .4rem;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: onlinePulse 2s ease-in-out infinite;
+}
+@keyframes onlinePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
 }
 .receptionist-chat-close {
   min-width: 2.75rem;
