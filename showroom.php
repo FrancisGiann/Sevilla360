@@ -517,7 +517,14 @@ window.process = {
                     aria-controls="receptionist-chat-shell" aria-expanded="false" hidden>Prefer typing? Chat with receptionist</button>
                 <section class="receptionist-chat-shell" id="receptionist-chat-shell" aria-labelledby="receptionist-chat-title" aria-hidden="true" hidden>
                     <div class="receptionist-chat-head">
-                        <h3 id="receptionist-chat-title">Chat with receptionist</h3>
+                        <div class="receptionist-chat-identity">
+                            <img class="receptionist-chat-avatar" src="assets/img/showroom-receptionist.webp"
+                                 alt="" width="36" height="36" aria-hidden="true">
+                            <div>
+                                <h3 id="receptionist-chat-title">Sevilla Receptionist</h3>
+                                <span class="receptionist-chat-online">Online</span>
+                            </div>
+                        </div>
                         <button type="button" class="receptionist-chat-close" data-receptionist-chat-close aria-label="Collapse receptionist chat">Close</button>
                     </div>
                     <p class="receptionist-chat-privacy">Please don’t share payment, account, contact, or personal details. Messages go to an AI service.</p>
