@@ -9,7 +9,7 @@ $realtime_client_config = realtime_client_config();
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
-$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'sales', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms'];
+$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms'];
 if (!in_array($page, $allowed_pages, true)) $page = 'overview';
 $is_admin_user = (($_SESSION['role'] ?? '') === 'admin');
 
@@ -137,11 +137,6 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                     <?php if ($is_admin_user): ?>
                     <li class="nav-group-label"><span>Business</span></li>
                     <li class="nav-item">
-                        <a href="admin_dashboard.php?page=sales"
-                            class="nav-link <?php echo $page === 'sales' ? 'active' : ''; ?>" <?= $page === 'sales' ? 'aria-current="page"' : ''; ?>><i
-                                class="fa-solid fa-chart-line" aria-hidden="true"></i><span class="nav-link-label">Sales</span></a>
-                    </li>
-                    <li class="nav-item">
                         <a href="admin_dashboard.php?page=reviews"
                             class="nav-link <?php echo $page === 'reviews' ? 'active' : ''; ?>" <?= $page === 'reviews' ? 'aria-current="page"' : ''; ?>><i
                                 class="fa-solid fa-star" aria-hidden="true"></i><span class="nav-link-label">Venue Reviews</span></a>
@@ -200,7 +195,6 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                         elseif ($page === 'bookings') echo 'Bookings Management';
                         elseif ($page === 'walkin') echo 'Walk-In Booking';
                         elseif ($page === 'maintenance') echo 'Maintenance';
-                        elseif ($page === 'sales') echo 'Sales';
                         elseif ($page === 'reviews') echo 'Venue Reviews';
                         elseif ($page === 'settings') echo $is_admin_user ? 'System Settings' : 'Account &amp; Security';
                         elseif ($page === 'auditlog') echo 'System Audit Log';
@@ -276,9 +270,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                 if ($page === 'calendar') include 'includes/admin-page/admin_calendar.php';
                 elseif ($page === 'walkin') include 'includes/admin-page/admin_walkin.php';
                 elseif ($page === 'maintenance') include 'includes/admin-page/admin_maintenance.php';
-                elseif ($page === 'sales' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_sales.php';
                 elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_reviews.php';
-                elseif (in_array($page, ['sales', 'reviews'], true)) echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
+                elseif ($page === 'reviews') echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 elseif ($page === 'bookings') include 'includes/admin-page/admin_bookings.php';
                 elseif ($page === 'settings') include 'includes/admin-page/admin_settings.php'; 
                 elseif ($page === 'auditlog') {
@@ -318,9 +311,6 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="assets/js/admin-page/admin_walkin.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'maintenance'): ?>
     <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
-    <?php elseif ($page === 'sales' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_sales.css?v=<?= time() ?>">
-    <script src="assets/js/admin-page/admin_sales.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_reviews.css?v=<?= time() ?>">
     <script src="assets/js/admin-page/admin_reviews.js?v=<?= time() ?>"></script>

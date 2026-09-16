@@ -19,9 +19,6 @@ $dashboardJs = $read('assets/js/user_dashboard.js');
 $dashboardCss = $read('assets/css/user_dashboard.css');
 $index = $read('index.php');
 $indexJs = $read('assets/js/index.js');
-$salesEndpoint = $read('actions/admin/get_sales_report.php');
-$salesPage = $read('includes/admin-page/admin_sales.php');
-$salesJs = $read('assets/js/admin-page/admin_sales.js');
 $overview = $read('includes/admin-page/admin_overview.php');
 $overviewJs = $read('assets/js/admin-page/admin_overview.js');
 $resetMigration = $read('migrations/019_password_reset_security.sql');
@@ -56,12 +53,7 @@ $assert(!str_contains($index, 'top_rated_venues') && !str_contains($index, 'publ
 $assert(str_contains($indexJs, 'No ratings yet') && str_contains($indexJs, 'out of 5') && str_contains($indexJs, 'textContent'), 'catalog has textual rating state and safe review rendering');
 $assert(str_contains($indexJs, 'scrollLock') && str_contains($indexJs, 'scrollY') && str_contains($indexJs, 'paddingRight') && str_contains($indexJs, 'body.style.position') && str_contains($indexJs, 'body.style.top') && str_contains($indexJs, 'body.style.width') && str_contains($indexJs, "body.style.position = 'fixed'") && str_contains($indexJs, 'body.style.position = scrollLock.bodyPosition') && str_contains($indexJs, 'body.style.top = scrollLock.bodyTop') && str_contains($indexJs, 'body.style.width = scrollLock.bodyWidth') && str_contains($indexJs, 'window.scrollTo({left: 0, top: scrollLock.y') && str_contains($read('assets/css/index.css'), 'overscroll-behavior'), 'homepage modal fixes and restores the body while preserving scroll position and containing scroll chaining');
 
-$assert(str_contains($salesEndpoint, "p.status = 'Success'") && str_contains($salesEndpoint, "b.booking_status <> 'Cancelled'"), 'sales sums successful non-cancelled payments');
-$assert(str_contains($salesEndpoint, "'Asia/Manila'") && str_contains($salesEndpoint, 'daysRequested > 366') && str_contains($salesEndpoint, "\\A\\d{4}-\\d{2}-\\d{2}\\z"), 'sales validates Manila dates and maximum range');
-$assert(str_contains($salesEndpoint, "'payment_count'") && str_contains($salesEndpoint, "'average'") && str_contains($salesEndpoint, "'days'"), 'sales response includes totals and daily series');
-$assert(str_contains($salesPage, 'Recorded successful payments') && str_contains($salesPage, 'not accounting or net revenue') && str_contains($salesPage, 'Last 7 Days'), 'sales page explains metric and presets');
-$assert(str_contains($salesJs, 'Asia/Manila') && str_contains($salesJs, 'const now = manilaToday()') && !str_contains($salesJs, 'const now = new Date()') && str_contains($salesJs, 'sales-empty') && str_contains($salesJs, 'sales-loading') && str_contains($salesJs, 'sales-error'), 'sales client uses Manila calendar and explicit loading, empty, and error states');
-$assert(str_contains($overview, 'Monthly Sales') && !str_contains($overview, 'Revenue Trend'), 'overview uses Monthly Sales without revenue trend');
+$assert(str_contains($overview, 'Monthly Sales') && str_contains($overview, '<div class="stat-card">') && !str_contains($overview, 'page=sales') && !str_contains($overview, 'Revenue Trend'), 'overview keeps Monthly Sales as a static metric without a Sales destination');
 $assert(str_contains($overview, 'overview-pipeline') && str_contains($overview, 'Schedule Snapshot') && str_contains($overview, 'Maintenance') && !str_contains($overview, 'charts-grid-2'), 'overview uses one responsive schedule, maintenance, and pipeline composition');
 $assert(str_contains($overviewJs, 'monthlySales') && !str_contains($overviewJs, 'revenueTrend') && str_contains($overviewJs, 'type: "doughnut"') && str_contains($overviewJs, 'cutout: "68%"') && str_contains($overviewJs, 'usePointStyle'), 'overview client uses monthlySales and a compact doughnut pipeline chart');
 

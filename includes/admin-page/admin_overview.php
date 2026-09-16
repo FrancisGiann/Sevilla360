@@ -41,10 +41,10 @@
                 <span class="stat-number color-dark dashboard-metric-pending" id="stat-occupancy-rate">Loading…</span>
             </div>
             <?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
-            <a href="admin_dashboard.php?page=sales" class="stat-card stat-card-link">
+            <div class="stat-card">
                 <h4>Monthly Sales</h4>
                 <span class="stat-number color-green dashboard-metric-pending" id="stat-monthly-sales">Loading…</span>
-            </a>
+            </div>
             <?php endif; ?>
         </div>
     </section>
