@@ -2,12 +2,10 @@
 $required_role = 'customer';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
-require_once 'includes/refund_helper.php';
 require_once 'includes/realtime.php';
 require_once 'includes/booking_lifecycle.php';
 require_once 'includes/manual_payment.php';
 require_once 'includes/customer_booking_status.php';
-$refund_fee_percent = get_refund_fee_percent($conn);
 $realtime_client_config = realtime_client_config();
 $booking_completion_sql = booking_completion_sql('b');
 
@@ -251,7 +249,6 @@ $manual_payment_action_label = static function (array $booking): string {
 <body class="dashboard-body">
     <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
     <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
-    <script>window.refundFeePercent = <?php echo json_encode($refund_fee_percent); ?>;</script>
     <div class="dashboard-layout">
         <!-- Sidebar Backdrop Overlay for Mobile -->
         <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
@@ -804,14 +801,8 @@ $manual_payment_action_label = static function (array $booking): string {
                     <span class="cancel-label">Total Paid by Guest:</span>
                     <span class="cancel-value" id="cancel-paid">₱0</span>
 
-                    <span class="cancel-label tooltip-wrapper">
-                        <div class="tooltip-container">
-                            <i class="fa-regular fa-circle-question"></i>
-                            <div class="tooltip-text">A payment-processing fee is deducted from the total amount paid before calculating your refund. The percentage and refund amount shown here are snapshotted for this request.</div>
-                        </div>
-                        Payment-processing Fee:
-                    </span>
-                    <span class="cancel-value" id="cancel-fee-label">0%</span>
+                    <span class="cancel-label">Payment-processing fee:</span>
+                    <span class="cancel-value" id="cancel-fee-label">No fee deducted</span>
                 </div>
             </div>
 
@@ -840,7 +831,7 @@ $manual_payment_action_label = static function (array $booking): string {
                 <div class="cancel-checkbox-group-ui">
                     <input type="checkbox" id="confirm-fee">
                     <label for="confirm-fee">
-                        <span class="check-title">I understand the payment-processing fee and refund amount shown above.</span>
+                        <span class="check-title">I understand the refund amount shown above.</span>
                         <span class="check-desc">After staff approval, timing depends on processing and your recipient provider.</span>
                     </label>
                 </div>

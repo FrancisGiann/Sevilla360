@@ -99,7 +99,7 @@ try {
         $fingerprintCheck->bind_param('si', $submission['reference_fingerprint'], $submissionId);
         if (!$fingerprintCheck->execute()) throw new RuntimeException('Unable to verify transaction-reference uniqueness.');
         if ($fingerprintCheck->get_result()->num_rows > 0) throw new RuntimeException('This transaction reference has already been submitted.');
-        $methodCode = match ($submission['payment_method']) { 'GCash' => 'GCASH', 'Maya' => 'MAYA', 'Bank Transfer' => 'BANKTRANSFER', default => throw new RuntimeException('Unsupported payment method.') };
+        $methodCode = manual_payment_transaction_method_code((string)$submission['payment_method']);
         $transactionId = 'MANUAL-' . $methodCode . ':' . strtoupper(trim((string)$submission['transaction_reference']));
         $credit = manual_payment_credit_locked($conn, $booking, $currentExpectedCents / 100, (string)$submission['payment_method'], $transactionId, (int)$submissionId);
         $update = $conn->prepare("UPDATE manual_payment_submissions SET status = 'approved', reviewer_user_id = ?, reviewed_at = NOW(), rejection_reason = NULL, payment_id = ? WHERE id = ? AND status = 'pending'");

@@ -197,5 +197,9 @@ $assert(!str_contains($mailer, 'refund_destination_account_identifier')
     && !str_contains($cancel, 'refund_destination_account_identifier" =>')
     && str_contains($mailer, 'sent to the destination you provided'),
     'Destination details are excluded from messages and notifications while the refund email reflects the manual destination workflow.');
+$assert(str_contains($mailer, "SELECT fee_percent,fee_deducted,refund_amount,status FROM cancellations")
+    && str_contains($mailer, 'The saved request included a payment-processing fee of')
+    && str_contains($mailer, 'No payment-processing fee was deducted for this request.'),
+    'Refund emails distinguish historical stored fees from new zero-fee requests without changing stored snapshots.');
 
 echo "Refund destination integration contract checks passed ({$assertions} assertions).\n";

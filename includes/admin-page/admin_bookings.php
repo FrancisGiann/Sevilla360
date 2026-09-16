@@ -106,7 +106,7 @@
                 <span class="label">Venue Type:</span> <span class="value">--</span>
                 <span class="label">Date:</span> <span class="value">--</span>
                 <span class="label">Total Paid by Guest:</span> <span class="value">₱0.00</span>
-                <span class="label">Payment-processing fee:</span> <span class="value">₱0.00</span>
+                <span class="label">Payment-processing fee:</span> <span class="value">₱0.00 (no fee deducted)</span>
                 <span class="label">Reason:</span>
                 <span class="value text-sub-muted" id="modal-ref-reason">--</span>
             </div>

@@ -837,15 +837,13 @@ document.addEventListener("DOMContentLoaded", () => {
           if (cancelTitle) cancelTitle.textContent = 'Cancel Reservation?';
           if (confirmBtn) confirmBtn.textContent = 'Confirm Cancellation';
       } else {
-          const feePercent = Number(window.refundFeePercent ?? 3);
-          const fee = Math.round(amountPaid * feePercent) / 100;
-          const refundAmt = Math.max(0, Math.round((amountPaid - fee) * 100) / 100);
+          const refundAmt = Math.max(0, Math.round(amountPaid * 100) / 100);
 
           const cancelPaidEl = document.getElementById("cancel-paid");
           const cancelRefundTotalEl = document.getElementById("cancel-refund-total");
           if(cancelPaidEl) cancelPaidEl.textContent = `₱${amountPaid.toLocaleString()}`;
           const cancelFeeLabel = document.getElementById("cancel-fee-label");
-          if(cancelFeeLabel) cancelFeeLabel.textContent = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)`;
+          if(cancelFeeLabel) cancelFeeLabel.textContent = 'No fee deducted';
           if(cancelRefundTotalEl) cancelRefundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
 
           if (refundInfoTop) refundInfoTop.style.display = "block";
@@ -898,7 +896,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isRefundable = Boolean(destinationFields && !destinationFields.hidden);
 
       if (reason === "") return showAlert("Missing Info", "Please provide a reason for the cancellation.", "error");
-      if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the payment-processing fee and refund amount shown above.", "error");
+      if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the refund amount shown above.", "error");
 
       const destinationMethod = document.getElementById('cancel-refund-method');
       const destinationName = document.getElementById('cancel-refund-account-name');

@@ -133,13 +133,6 @@ document.addEventListener("DOMContentLoaded", () => {
     formPrefs.addEventListener("change", () => isFormDirty = true);
 
     btnSavePrefs.addEventListener("click", () => {
-      const feeInput = document.getElementById('refund-fee-percent');
-      const feeValue = feeInput?.value.trim() || '';
-      if (feeInput && (!/^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(feeValue) || Number(feeValue) < 0 || Number(feeValue) > 100 || !Number.isFinite(Number(feeValue)))) {
-        feeInput.focus();
-        if (window.showAlert) window.showAlert('Invalid fee', 'Enter a payment-processing fee between 0 and 100.', 'error');
-        return;
-      }
       const originalText = btnSavePrefs.innerHTML;
       btnSavePrefs.innerHTML = "Saving...";
       btnSavePrefs.style.opacity = "0.8";
@@ -176,31 +169,212 @@ document.addEventListener("DOMContentLoaded", () => {
   const manualPaymentForm = document.getElementById('form-manual-payment-settings');
   const manualPaymentSave = document.getElementById('btn-save-manual-payment-settings');
   const manualPaymentStatus = document.getElementById('manual-payment-settings-status');
-  manualPaymentForm?.addEventListener('change', () => { isFormDirty = true; });
+  const manualPaymentList = document.getElementById('manual-payment-methods');
+  const addManualPaymentButton = document.getElementById('btn-add-manual-payment-method');
+  const maxManualPaymentMethods = 50;
+
+  function setManualPaymentStatus(message, isError = false) {
+    if (!manualPaymentStatus) return;
+    manualPaymentStatus.textContent = message;
+    manualPaymentStatus.dataset.error = isError ? 'true' : 'false';
+  }
+
+  function updateManualPaymentMethodControls() {
+    const cards = [...(manualPaymentList?.querySelectorAll('.manual-payment-method') || [])];
+    cards.forEach((card, index) => {
+      const name = card.querySelector('.manual-payment-name')?.value.trim() || 'New payment method';
+      const legend = card.querySelector('legend');
+      if (legend) legend.textContent = name;
+      const moveUp = card.querySelector('.manual-payment-move-up');
+      const moveDown = card.querySelector('.manual-payment-move-down');
+      if (moveUp) {
+        moveUp.disabled = index === 0;
+        moveUp.setAttribute('aria-label', `Move ${name} up`);
+      }
+      if (moveDown) {
+        moveDown.disabled = index === cards.length - 1;
+        moveDown.setAttribute('aria-label', `Move ${name} down`);
+      }
+      const enabled = card.querySelector('input[name$="[enabled]"]')?.checked === true;
+      card.querySelectorAll('input[name$="[account_name]"], input[name$="[account_number]"]').forEach((input) => {
+        input.required = enabled;
+      });
+    });
+    if (addManualPaymentButton) addManualPaymentButton.disabled = cards.length >= maxManualPaymentMethods;
+  }
+
+  function updateSavedQrPreviews(paths) {
+    if (!paths || typeof paths !== 'object') return;
+    manualPaymentList?.querySelectorAll('.manual-payment-method').forEach((card) => {
+      const key = card.dataset.methodKey || '';
+      if (!/^(?:gcash|maya|bank_transfer|custom_[a-f0-9]{32})$/.test(key)) return;
+      const path = typeof paths[key] === 'string' && /^assets\/uploads\/payment-qrs\/[a-f0-9]{48}\.(?:jpg|png|webp)$/.test(paths[key])
+        ? paths[key]
+        : '';
+      const group = card.querySelector('input[type="file"]')?.closest('.form-group');
+      const fileInput = group?.querySelector('input[type="file"]');
+      const methodName = card.querySelector('.manual-payment-name')?.value.trim() || 'Payment method';
+      let image = group?.querySelector('.manual-payment-current-qr');
+      let removeLabel = group?.querySelector('.manual-payment-remove-qr');
+      let emptyNote = group?.querySelector('p.field-help');
+      if (path && group) {
+        if (!image) {
+          image = document.createElement('img');
+          image.className = 'manual-payment-current-qr';
+          group.insertBefore(image, emptyNote || removeLabel || null);
+        }
+        image.src = path;
+        image.alt = `Current ${methodName} payment QR code`;
+        emptyNote?.remove();
+        if (!removeLabel) {
+          removeLabel = document.createElement('label');
+          removeLabel.className = 'manual-payment-remove-qr';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.name = `methods[${key}][remove_qr]`;
+          checkbox.value = '1';
+          removeLabel.append(checkbox, document.createTextNode(' Remove this QR image'));
+          group.appendChild(removeLabel);
+        }
+      } else if (group) {
+        image?.remove();
+        removeLabel?.remove();
+        if (!emptyNote) {
+          emptyNote = document.createElement('p');
+          emptyNote.className = 'field-help';
+          emptyNote.textContent = 'No QR image uploaded.';
+          group.appendChild(emptyNote);
+        }
+      }
+      if (fileInput) fileInput.value = '';
+    });
+  }
+
+  function addManualPaymentMethod() {
+    if (!manualPaymentList || manualPaymentList.children.length >= maxManualPaymentMethods) return;
+    const cryptoApi = window.crypto;
+    if (!cryptoApi?.getRandomValues) {
+      setManualPaymentStatus('This browser cannot safely create a payment method. Reload the page or use a current browser.', true);
+      return;
+    }
+    let key = '';
+    try {
+      do {
+        const bytes = new Uint8Array(16);
+        cryptoApi.getRandomValues(bytes);
+        key = `custom_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+      } while (manualPaymentList.querySelector(`[data-method-key="${key}"]`));
+    } catch {
+      setManualPaymentStatus('This browser cannot safely create a payment method. Reload the page or use a current browser.', true);
+      return;
+    }
+    const card = document.createElement('fieldset');
+    card.className = 'manual-payment-method settings-section-card';
+    card.dataset.methodKey = key;
+    card.innerHTML = `
+      <legend>New payment method</legend>
+      <div class="manual-payment-method-actions" aria-label="Order new payment method for customers">
+        <button type="button" class="btn btn-outline manual-payment-move-up">Move up</button>
+        <button type="button" class="btn btn-outline manual-payment-move-down">Move down</button>
+      </div>
+      <label class="manual-payment-enabled"><input type="checkbox" name="methods[${key}][enabled]" value="1"> Offer this method to customers</label>
+      <div class="form-grid settings-form-grid">
+        <div class="form-group">
+          <label for="payment-${key}-name">Display name</label>
+          <input id="payment-${key}-name" name="methods[${key}][name]" class="form-control manual-payment-name" maxlength="120" autocomplete="off" required>
+        </div>
+        <div class="form-group">
+          <label for="payment-${key}-account-name">Account holder / name</label>
+          <input id="payment-${key}-account-name" name="methods[${key}][account_name]" class="form-control" maxlength="120" autocomplete="off">
+        </div>
+        <div class="form-group settings-field-wide">
+          <label for="payment-${key}-number">Account or mobile number</label>
+          <input id="payment-${key}-number" name="methods[${key}][account_number]" class="form-control" maxlength="120" autocomplete="off">
+        </div>
+        <div class="form-group settings-field-wide">
+          <label for="payment-${key}-details">Payment instructions</label>
+          <textarea id="payment-${key}-details" name="methods[${key}][details]" class="form-control" rows="3" maxlength="1000"></textarea>
+        </div>
+        <div class="form-group settings-field-wide">
+          <label for="payment-${key}-qr">Optional QR image <span class="field-help">JPEG, PNG, or WebP; up to 5 MiB.</span></label>
+          <input id="payment-${key}-qr" name="qr_${key}" class="form-control" type="file" accept="image/jpeg,image/png,image/webp">
+          <p class="field-help">No QR image uploaded.</p>
+        </div>
+      </div>`;
+    manualPaymentList.appendChild(card);
+    updateManualPaymentMethodControls();
+    card.querySelector('.manual-payment-name')?.focus();
+    setManualPaymentStatus('New method added. Enter its display name and account details, then save.');
+    isFormDirty = true;
+  }
+
+  addManualPaymentButton?.addEventListener('click', addManualPaymentMethod);
+  manualPaymentList?.addEventListener('input', (event) => {
+    if (event.target.matches('.manual-payment-name')) updateManualPaymentMethodControls();
+  });
+  manualPaymentForm?.addEventListener('change', (event) => {
+    isFormDirty = true;
+    if (event.target.matches('input[name$="[enabled]"]')) updateManualPaymentMethodControls();
+    if (event.target.matches('input[type="file"][name^="qr_"]')) {
+      const card = event.target.closest('.manual-payment-method');
+      const remove = card?.querySelector('input[name$="[remove_qr]"]');
+      if (event.target.files?.length && remove?.checked) remove.checked = false;
+    }
+    if (event.target.matches('input[name$="[remove_qr]"]') && event.target.checked) {
+      const card = event.target.closest('.manual-payment-method');
+      const qr = card?.querySelector('input[type="file"]');
+      if (qr) qr.value = '';
+    }
+  });
+  manualPaymentList?.addEventListener('click', (event) => {
+    const button = event.target.closest('.manual-payment-move-up, .manual-payment-move-down');
+    const card = button?.closest('.manual-payment-method');
+    if (!button || !card) return;
+    if (button.classList.contains('manual-payment-move-up')) {
+      const previous = card.previousElementSibling;
+      if (previous) manualPaymentList.insertBefore(card, previous);
+    } else {
+      const next = card.nextElementSibling;
+      if (next) manualPaymentList.insertBefore(next, card);
+    }
+    updateManualPaymentMethodControls();
+    button.focus();
+    setManualPaymentStatus(`${card.querySelector('.manual-payment-name')?.value.trim() || 'Payment method'} moved to position ${[...manualPaymentList.children].indexOf(card) + 1} of ${manualPaymentList.children.length}.`);
+    isFormDirty = true;
+  });
+  updateManualPaymentMethodControls();
+
   manualPaymentSave?.addEventListener('click', async () => {
     const hours = document.getElementById('manual-payment-deadline');
+    if (manualPaymentForm && !manualPaymentForm.reportValidity()) return;
     if (!hours || !/^[0-9]+$/.test(hours.value) || Number(hours.value) < 1 || Number(hours.value) > 168) {
       hours?.focus();
-      if (manualPaymentStatus) manualPaymentStatus.textContent = 'Set a deadline between 1 and 168 hours.';
+      setManualPaymentStatus('Set a deadline between 1 and 168 hours.', true);
       return;
     }
     const originalText = manualPaymentSave.textContent;
     manualPaymentSave.disabled = true;
     manualPaymentSave.textContent = 'Saving…';
-    if (manualPaymentStatus) manualPaymentStatus.textContent = 'Saving payment instructions…';
+    setManualPaymentStatus('Saving payment instructions…');
     try {
       const response = await fetch('actions/admin/save_manual_payment_settings.php', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrfToken },
         body: new FormData(manualPaymentForm)
       });
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error('The server returned an unreadable payment settings response. Try again.');
+      }
       if (!response.ok || !data.success) throw new Error(data.message || 'Payment instructions could not be saved.');
+      updateSavedQrPreviews(data.qr_paths);
       isFormDirty = false;
-      if (manualPaymentStatus) manualPaymentStatus.textContent = data.message;
+      setManualPaymentStatus(data.message);
       showToast();
     } catch (error) {
-      if (manualPaymentStatus) manualPaymentStatus.textContent = error.message || 'Payment instructions could not be saved.';
+      setManualPaymentStatus(error.message || 'Payment instructions could not be saved.', true);
     } finally {
       manualPaymentSave.disabled = false;
       manualPaymentSave.textContent = originalText;

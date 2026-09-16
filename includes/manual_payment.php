@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 const MANUAL_PAYMENT_MAX_PROOF_BYTES = 5242880;
+const MANUAL_PAYMENT_MAX_METHODS = 50;
 const MANUAL_PAYMENT_METHODS = [
     'gcash' => 'GCash',
     'maya' => 'Maya',
@@ -35,25 +36,85 @@ function manual_payment_load_instructions(mysqli $conn): array
 
 function manual_payment_decode_instructions(string $raw): array
 {
-    $defaults = [
-        'gcash' => ['enabled' => false, 'account_name' => '', 'account_number' => '', 'details' => '', 'qr_path' => ''],
-        'maya' => ['enabled' => false, 'account_name' => '', 'account_number' => '', 'details' => '', 'qr_path' => ''],
-        'bank_transfer' => ['enabled' => false, 'account_name' => '', 'account_number' => '', 'details' => '', 'qr_path' => ''],
-    ];
     $saved = json_decode((string)$raw, true);
-    if (!is_array($saved)) return $defaults;
-    foreach ($defaults as $key => $default) {
-        $method = $saved[$key] ?? null;
-        if (!is_array($method)) continue;
-        $defaults[$key] = [
-            'enabled' => ($method['enabled'] ?? false) === true || ($method['enabled'] ?? '') === '1' || ($method['enabled'] ?? '') === 'true',
-            'account_name' => trim((string)($method['account_name'] ?? '')),
-            'account_number' => trim((string)($method['account_number'] ?? '')),
-            'details' => trim((string)($method['details'] ?? '')),
-            'qr_path' => manual_payment_safe_qr_path((string)($method['qr_path'] ?? '')),
-        ];
+    if (!is_array($saved)) $saved = [];
+
+    $methods = [];
+    $defaultOrder = 0;
+    foreach (MANUAL_PAYMENT_METHODS as $key => $defaultName) {
+        $method = $saved[$key] ?? [];
+        if (!is_array($method)) $method = [];
+        $methods[$key] = manual_payment_normalize_method($key, $method, $defaultName, $defaultOrder++);
     }
-    return $defaults;
+    foreach ($saved as $key => $method) {
+        if (count($methods) >= MANUAL_PAYMENT_MAX_METHODS) break;
+        if (!is_string($key) || isset($methods[$key]) || !manual_payment_method_key_is_valid($key) || !str_starts_with($key, 'custom_') || !is_array($method)) continue;
+        $name = manual_payment_clean_setting_text($method['name'] ?? '', 120);
+        if ($name === '') continue;
+        $fallbackOrder = count($methods);
+        $methods[$key] = manual_payment_normalize_method($key, $method, $name, $fallbackOrder);
+    }
+    uasort($methods, static fn(array $left, array $right): int => $left['sort_order'] <=> $right['sort_order']);
+    return $methods;
+}
+
+function manual_payment_normalize_method(string $key, array $method, string $defaultName, int $fallbackOrder): array
+{
+    $name = manual_payment_clean_setting_text($method['name'] ?? $defaultName, 120);
+    if ($name === '') $name = $defaultName;
+    $enabledValue = $method['enabled'] ?? false;
+    $enabled = $enabledValue === true || $enabledValue === 1 || $enabledValue === '1' || $enabledValue === 'true';
+    $order = $method['sort_order'] ?? null;
+    if (!is_int($order) && !(is_string($order) && ctype_digit($order))) $order = $fallbackOrder;
+    $order = (int)$order;
+    if ($order < 0 || $order >= MANUAL_PAYMENT_MAX_METHODS) $order = $fallbackOrder;
+
+    return [
+        'name' => $name,
+        'enabled' => $enabled,
+        'account_name' => manual_payment_clean_setting_text($method['account_name'] ?? '', 120),
+        'account_number' => manual_payment_clean_setting_text($method['account_number'] ?? '', 120),
+        'details' => manual_payment_clean_setting_text($method['details'] ?? '', 1000),
+        'qr_path' => manual_payment_safe_qr_path(is_string($method['qr_path'] ?? null) ? $method['qr_path'] : ''),
+        'sort_order' => $order,
+    ];
+}
+
+function manual_payment_clean_setting_text($value, int $maximumLength): string
+{
+    if (!is_string($value) || preg_match('//u', $value) !== 1 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value)) return '';
+    $value = trim($value);
+    $length = function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+    return $length <= $maximumLength ? $value : '';
+}
+
+function manual_payment_method_key_is_valid(string $key): bool
+{
+    return isset(MANUAL_PAYMENT_METHODS[$key]) || preg_match('/\Acustom_[a-f0-9]{32}\z/D', $key) === 1;
+}
+
+function manual_payment_validate_method_name($name): string
+{
+    if (!is_string($name)) throw new RuntimeException('Enter a display name for every payment method.');
+    $clean = manual_payment_clean_setting_text($name, 120);
+    if ($clean === '' || preg_match('/[\r\n]/', $clean)) throw new RuntimeException('Payment method names must be valid single-line text between 1 and 120 characters.');
+    return $clean;
+}
+
+function manual_payment_transaction_method_code(string $method): string
+{
+    return match ($method) {
+        'GCash' => 'GCASH',
+        'Maya' => 'MAYA',
+        'Bank Transfer' => 'BANKTRANSFER',
+        default => 'CUSTOM' . strtoupper(substr(hash('sha256', function_exists('mb_strtolower') ? mb_strtolower($method, 'UTF-8') : strtolower($method)), 0, 16)),
+    };
+}
+
+function manual_payment_validate_transaction_method(string $method): string
+{
+    $method = trim($method);
+    return $method === 'Cash' ? $method : manual_payment_validate_method_name($method);
 }
 
 /** Resolve private proof storage without ever defaulting to the document root. */
@@ -179,8 +240,9 @@ function manual_payment_validate_reference(string $reference): string
 
 function manual_payment_reference_fingerprint(string $method, string $reference): string
 {
-    if (!in_array($method, MANUAL_PAYMENT_METHODS, true)) throw new InvalidArgumentException('Unsupported payment method.');
-    return hash('sha256', strtoupper($method) . '|' . manual_payment_validate_reference($reference));
+    $method = manual_payment_validate_method_name($method);
+    $normalizedMethod = function_exists('mb_strtoupper') ? mb_strtoupper($method, 'UTF-8') : strtoupper($method);
+    return hash('sha256', $normalizedMethod . '|' . manual_payment_validate_reference($reference));
 }
 
 /** Return a customer-safe reference without exposing the internal idempotency key. */
@@ -595,7 +657,7 @@ function manual_payment_assert_no_pending_for_quote(mysqli $conn, int $bookingId
 function manual_payment_credit_locked(mysqli $conn, array $booking, float $amount, string $method, string $transactionId, ?int $approvedSubmissionId = null): array
 {
     $bookingId = (int)$booking['id'];
-    if (!in_array($method, ['Cash', 'GCash', 'Maya', 'Bank Transfer'], true)) throw new RuntimeException('Choose a supported payment method.');
+    $method = manual_payment_validate_transaction_method($method);
     if (!is_finite($amount) || $amount <= 0) throw new RuntimeException('Payment amount must be greater than zero.');
     if ($transactionId === '' || strlen($transactionId) > 100 || preg_match('/[\x00-\x1F\x7F]/', $transactionId)) throw new RuntimeException('Enter a valid transaction reference.');
     if (!in_array((string)$booking['booking_status'], ['Pending', 'Confirmed'], true) || ($booking['payment_status'] ?? '') === 'Refunded' || (int)($booking['is_completed'] ?? 0) === 1) {

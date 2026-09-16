@@ -72,6 +72,9 @@ $checks['proof submission retains CSRF, ownership, deadline, and private receipt
     && str_contains($proofSubmissionEndpoint, 'manual_payment_store_proof((string)$proof[\'tmp_name\'])')
     && str_contains($proofSubmissionEndpoint, 'manual_payment_submission_decision($pendingSubmission, $existing, (int)$bookingId)')
     && str_contains($manualPayment, 'A payment proof is already awaiting review.');
+$checks['payment-proof submission emits in-app and realtime admin signals without outbound mail'] = str_contains($proofSubmissionEndpoint, 'create_user_notification(')
+    && str_contains($proofSubmissionEndpoint, "realtime_enqueue_event(\$conn, 'admin', 'payment.proof_submitted'")
+    && !preg_match('/\b(?:mail|send_[a-z_]+|PHPMailer|mailer)\s*\(/i', $proofSubmissionEndpoint);
 $checks['receipt conversion prefers efficient formats while leaving QR conversion unchanged'] = str_contains($manualPayment, 'function manual_payment_resize_proof_image(GdImage $image, int $maximumEdge = 1920)')
     && str_contains($manualPayment, 'imagewebp($image, $stagingPath, 82)')
     && str_contains($manualPayment, 'imagejpeg($flattened, $stagingPath, 82)')

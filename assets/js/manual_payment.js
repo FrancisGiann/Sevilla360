@@ -294,17 +294,20 @@
         bank_transfer: { name: 'bank-transfer-payment-qr', label: 'Bank Transfer' }
       };
       const safeMethod = Object.hasOwn(methodFiles, method.key) ? methodFiles[method.key] : null;
-      if (!qrMatch || !safeMethod) return;
+      if (!qrMatch) return;
+      const methodSlug = method.label.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'payment-method';
+      const methodName = safeMethod?.name || `${methodSlug}-payment-qr`;
+      const methodLabel = safeMethod?.label || method.label;
 
       this.qr.src = qrPath;
-      this.qr.alt = `${safeMethod.label} payment QR code`;
+      this.qr.alt = `${methodLabel} payment QR code`;
       this.qr.hidden = false;
-      this.qrView.setAttribute('aria-label', `Enlarge ${safeMethod.label} payment QR`);
+      this.qrView.setAttribute('aria-label', `Enlarge ${methodLabel} payment QR`);
       this.qrView.setAttribute('aria-expanded', 'false');
       this.qrView.hidden = false;
       this.qrSave.href = qrPath;
-      this.qrSave.download = `${safeMethod.name}.${qrMatch[1].toLowerCase()}`;
-      this.qrSave.setAttribute('aria-label', `Save ${safeMethod.label} payment QR image`);
+      this.qrSave.download = `${methodName}.${qrMatch[1].toLowerCase()}`;
+      this.qrSave.setAttribute('aria-label', `Save ${methodLabel} payment QR image`);
       this.qrSave.hidden = false;
       this.qrGuidance.textContent = method.key === 'gcash'
         ? 'On this phone, save the QR and upload it in GCash’s QR scanner. Enlarge it here to scan from another device.'

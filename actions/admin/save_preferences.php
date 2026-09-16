@@ -23,24 +23,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
 
-    $refund_fee_raw = $_POST['refund_fee_percent'] ?? null;
-    if (!is_string($refund_fee_raw)) {
-        echo "Error|Enter a payment-processing fee between 0 and 100."; exit;
-    }
-    $refund_fee_raw = trim($refund_fee_raw);
-    if (!preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refund_fee_raw)) {
-        echo "Error|Enter a valid payment-processing fee between 0 and 100."; exit;
-    }
-    $refund_fee_value = (float)$refund_fee_raw;
-    if (!is_finite($refund_fee_value) || $refund_fee_value < 0 || $refund_fee_value > 100) {
-        echo "Error|Enter a payment-processing fee between 0 and 100."; exit;
-    }
-    $refund_fee_percent = number_format($refund_fee_value, 2, '.', '');
-
     // Build our settings array
     $settings = [
-        'refund_fee_percent' => $refund_fee_percent,
-
         'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
         'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),
         'catering_silver' => floatval($_POST['catering_silver'] ?? 750),

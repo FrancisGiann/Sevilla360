@@ -286,19 +286,24 @@ function send_booking_cancellation_email($customer_email, $customer_name, $booki
     $biz = get_biz_info();
     if ($type === 'cancellation_requested') {
         $fee = (float)($snapshot['fee_deducted'] ?? 0);
-        $percent = (float)($snapshot['fee_percent'] ?? 3);
+        $percent = (float)($snapshot['fee_percent'] ?? 0);
         $note = 'Your booking remains active while the resort reviews this request. ' . ((float)$booking['amount_paid'] > 0
-            ? 'Paid amount: <strong>₱' . number_format((float)$booking['amount_paid'], 2) . '</strong>; payment-processing fee (' . number_format($percent, 2) . '%): <strong>₱' . number_format($fee, 2) . '</strong>; estimated refund: <strong>₱' . number_format($amount, 2) . '</strong>.'
+            ? 'Paid amount: <strong>₱' . number_format((float)$booking['amount_paid'], 2) . '</strong>; ' . ($fee > 0 ? 'payment-processing fee (' . number_format($percent, 2) . '%): <strong>₱' . number_format($fee, 2) . '</strong>; ' : 'no payment-processing fee is deducted; ') . 'estimated refund: <strong>₱' . number_format($amount, 2) . '</strong>.'
             : 'No payment has been recorded, so no refund is currently due.');
         $title = 'REFUND REQUEST RECEIVED'; $message = 'Your refund request is pending resort review. It does not cancel the booking yet.'; $status = 'Pending refund review'; $color = '#b5884e'; $subject = "{$biz['biz_name']}: Refund Request Received [{$booking['reference_no']}]";
     } elseif ($type === 'refund') {
-        $note = 'A refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been sent to the destination you provided. Please check with your wallet provider or bank if it does not appear.';
+        $fee = (float)($snapshot['fee_deducted'] ?? 0);
+        $percent = (float)($snapshot['fee_percent'] ?? 0);
+        $fee_note = $fee > 0
+            ? ' The saved request included a payment-processing fee of ₱' . number_format($fee, 2) . ' (' . number_format($percent, 2) . '%).'
+            : ' No payment-processing fee was deducted for this request.';
+        $note = 'A refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been sent to the destination you provided.' . $fee_note . ' Please check with your wallet provider or bank if it does not appear.';
         $title = 'REFUND PROCESSED'; $message = 'Your cancellation request was approved and the booking has been cancelled.'; $status = 'Refunded & Cancelled'; $color = '#2f7d5d'; $subject = "{$biz['biz_name']}: Refund Processed [{$booking['reference_no']}]";
     } elseif ($type === 'customer_cancelled') {
         $note = 'No payment has been recorded, so no refund is due.';
         $title = 'BOOKING CANCELLED'; $message = 'Your booking has been cancelled as requested.'; $status = 'Cancelled'; $color = '#b5884e'; $subject = "{$biz['biz_name']}: Booking Cancelled [{$booking['reference_no']}]";
     } else {
-        $note = ((float)$booking['amount_paid'] > 0 && $amount > 0) ? 'A full refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been issued. The resort absorbs processing fees for this administrator-initiated cancellation.' : 'No refund is due for this booking.';
+        $note = ((float)$booking['amount_paid'] > 0 && $amount > 0) ? 'A full refund of <strong style="color:#2f7d5d;">₱' . number_format($amount, 2) . '</strong> has been issued. No payment-processing fee was deducted.' : 'No refund is due for this booking.';
         $title = 'BOOKING CANCELLED'; $message = 'We regret to inform you that your booking has been cancelled by the administration.'; $status = 'Cancelled'; $color = '#c05a5a'; $subject = "{$biz['biz_name']}: Booking Cancelled [{$booking['reference_no']}]";
     }
     $reason_label = in_array($type, ['cancellation_requested', 'customer_cancelled'], true) ? 'Customer request reason' : 'Administrator note';

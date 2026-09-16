@@ -32,19 +32,37 @@ $assert($fingerprint !== manual_payment_reference_fingerprint('Maya', 'AB 12-34'
 $assert(manual_payment_validate_reference('AB/123') === 'AB123', 'Slash-separated references should normalize safely.');
 $throws(static fn() => manual_payment_validate_reference('abc'), 'Too-short references should be rejected.');
 $throws(static fn() => manual_payment_validate_reference('AB!123'), 'Unsupported reference punctuation should be rejected.');
-$throws(static fn() => manual_payment_reference_fingerprint('Cash', 'AB1234'), 'Customer cash claims should be rejected.');
+$throws(static fn() => manual_payment_reference_fingerprint('', 'AB1234'), 'Blank customer payment method names should be rejected.');
+
+$customKey = 'custom_' . str_repeat('a', 32);
+$methodSettings = manual_payment_decode_instructions(json_encode([
+    'gcash' => ['name' => 'GCash Wallet', 'enabled' => true, 'account_name' => 'Resort', 'account_number' => '09170000000', 'details' => '', 'qr_path' => '', 'sort_order' => 2],
+    'maya' => ['enabled' => false, 'sort_order' => 1],
+    'bank_transfer' => ['enabled' => true, 'sort_order' => 3],
+    $customKey => ['name' => 'MariBank', 'enabled' => true, 'account_name' => 'Sevilla 360', 'account_number' => '0011223344', 'details' => 'Use your booking reference.', 'qr_path' => 'assets/uploads/payment-qrs/' . str_repeat('b', 48) . '.png', 'sort_order' => 0],
+], JSON_THROW_ON_ERROR));
+$assert(array_keys($methodSettings) === [$customKey, 'maya', 'gcash', 'bank_transfer'], 'Manual payment methods retain their saved display order, including custom methods.');
+$assert($methodSettings[$customKey]['name'] === 'MariBank' && $methodSettings[$customKey]['enabled'] && $methodSettings[$customKey]['qr_path'] !== '', 'Custom payment methods decode their display name, active state, account details, and vetted QR path.');
+$assert(!$methodSettings['maya']['enabled'] && $methodSettings['gcash']['name'] === 'GCash Wallet', 'Inactive methods remain manageable and built-in display names can be changed.');
+$assert(manual_payment_method_key_is_valid($customKey) && !manual_payment_method_key_is_valid('custom_bad-key'), 'Only stable custom payment IDs using the server-validated format are accepted.');
+$assert(manual_payment_reference_fingerprint('MariBank', 'MB-ABCD-1234') !== manual_payment_reference_fingerprint('GCash Wallet', 'MB-ABCD-1234'), 'Custom payment reference fingerprints remain scoped to the submitted display name.');
+$assert(manual_payment_transaction_method_code('MariBank') === manual_payment_transaction_method_code('MariBank') && str_starts_with(manual_payment_transaction_method_code('MariBank'), 'CUSTOM'), 'Custom approval transaction IDs receive a stable internal method code.');
+$assert(manual_payment_validate_transaction_method('MariBank') === 'MariBank' && manual_payment_validate_transaction_method('Cash') === 'Cash', 'Payment approval accepts validated custom display names alongside front-desk cash.');
+$throws(static fn() => manual_payment_validate_transaction_method("Bad\nMethod"), 'Payment approval rejects method names with control characters.');
 
 $historyRows = [
     ['transaction_id' => 'MANUAL-GCASH:INTERNAL-7', 'manual_reference' => 'GCash-Reference-77', 'payment_method' => 'GCash', 'amount' => '125.50', 'payment_date' => '2025-01-02 10:00:00'],
     ['transaction_id' => 'ONLINE-ORDER-9', 'manual_reference' => null, 'payment_method' => 'Card', 'amount' => '50.00', 'payment_date' => '2025-01-03 10:00:00'],
     ['transaction_id' => 'MANUAL-MAYA:INTERNAL-8', 'manual_reference' => null, 'payment_method' => 'Maya', 'amount' => '25.00', 'payment_date' => '2025-01-04 10:00:00'],
+    ['transaction_id' => 'MANUAL-CUSTOM:INTERNAL-9', 'manual_reference' => 'MB-REF-55', 'payment_method' => 'MariBank', 'amount' => '99.00', 'payment_date' => '2025-01-05 10:00:00'],
 ];
 $history = manual_payment_format_history($historyRows);
-$assert(count($history) === 3, 'Multiple payment records should remain separate history entries.');
+$assert(count($history) === 4, 'Multiple payment records should remain separate history entries.');
 $assert($history[0]['payment_method'] === 'GCash' && $history[0]['transaction_reference'] === 'GCash-Reference-77', 'Manual payment history should show its submitted reference and method, never the internal key.');
 $assert($history[0]['transaction_id'] === 'GCash-Reference-77', 'The legacy transaction_id field should remain display-safe.');
 $assert($history[1]['transaction_reference'] === 'ONLINE-ORDER-9' && $history[1]['payment_method'] === 'Card', 'Ordinary transactions should fall back to payments.transaction_id.');
 $assert($history[2]['transaction_reference'] === null, 'Unmapped internal manual keys must not be presented as references.');
+$assert($history[3]['payment_method'] === 'MariBank' && $history[3]['transaction_reference'] === 'MB-REF-55', 'Payment history keeps a custom method name as its submitted snapshot.');
 
 $retentionNow = new DateTimeImmutable('2026-09-13 10:00:00');
 $assert(!manual_payment_proof_retention_expired('approved', '2025-09-13 10:00:00', $retentionNow), 'A terminal proof exactly one year old remains available at the boundary.');

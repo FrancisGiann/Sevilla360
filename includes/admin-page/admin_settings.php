@@ -14,10 +14,6 @@ if ($settings_query) {
 }
 
 $biz_map_embed_for_form = google_maps_normalize_embed($current_settings['biz_map_embed'] ?? '') ?? '';
-$refund_fee_raw = trim((string)($current_settings['refund_fee_percent'] ?? '3.00'));
-$refund_fee_percent = preg_match('/\A(?:\d+(?:\.\d{1,2})?|\.\d{1,2})\z/D', $refund_fee_raw) && is_finite((float)$refund_fee_raw) && (float)$refund_fee_raw >= 0 && (float)$refund_fee_raw <= 100
-    ? number_format((float)$refund_fee_raw, 2, '.', '')
-    : '3.00';
 $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
 $social_links = is_array($social_links) ? $social_links : [];
 $manual_payment_instructions = manual_payment_load_instructions($conn);
@@ -315,20 +311,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 
                 <form id="form-prefs" class="settings-form" onsubmit="return false;">
 
-                    <div class="preference-item settings-section-card">
-                        <div class="preference-info">
-                            <h4>Payment-processing fee</h4>
-                            <p>This percentage is deducted from every paid customer cancellation/refund request and snapshotted when the request is submitted. Resort-initiated decisions follow the same recorded refund workflow.</p>
-                        </div>
-                        <div class="form-group settings-inline-field">
-                            <label for="refund-fee-percent">Fee percentage</label>
-                            <div class="input-with-suffix">
-                                <input type="number" id="refund-fee-percent" name="refund_fee_percent" class="form-control" min="0" max="100" step="0.01" inputmode="decimal" value="<?php echo htmlspecialchars($refund_fee_percent, ENT_QUOTES, 'UTF-8'); ?>" required>
-                                <span aria-hidden="true">%</span>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- NEW: BUSINESS INFORMATION CONFIGURATION -->
                     <hr class="panel-divider">
                     <div class="preference-item settings-section-card">
@@ -372,7 +354,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </div>
                             <div class="form-group settings-field-wide">
                                 <label>Resort Policies (Shown at bottom of emails)</label>
-                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Paid customer cancellation/refund requests are subject to the configurable payment-processing fee shown at request time; the fee percentage and refund amount are snapshotted when the request is submitted.\n• Resort-initiated cancellation decisions follow the existing cancellation and refund workflow."); ?></textarea>
+                                <textarea name="biz_policies" class="form-control" rows="4" style="resize: vertical;"><?php echo htmlspecialchars($current_settings['biz_policies'] ?? "• Standard Check-in is at 2:00 PM. Check-out is at 12:00 PM (Unless booking Day Time Stay).\n• Please bring a valid Government ID matching the name on this itinerary.\n• Paid customer cancellation/refund requests receive the full amount paid; the refund amount is recorded when the request is submitted.\n• Resort-initiated cancellation decisions follow the existing cancellation and refund workflow."); ?></textarea>
                             </div>
                         </div>
                         <div class="social-settings-block">
@@ -466,41 +448,57 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             <input type="number" class="form-control" id="manual-payment-deadline" name="deadline_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_deadline_hours; ?>" required>
                         </div>
                     </div>
-                    <div class="manual-payment-methods">
-                    <?php foreach (MANUAL_PAYMENT_METHODS as $method_key => $method_label): $method_settings = $manual_payment_instructions[$method_key]; ?>
-                        <fieldset class="manual-payment-method settings-section-card">
-                            <legend><?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?></legend>
+                    <div class="manual-payment-list-heading">
+                        <div>
+                            <h3>Payment methods</h3>
+                            <p>Reorder methods for customers or switch one off when it is no longer offered. Retired methods stay available here for payment history.</p>
+                        </div>
+                        <button type="button" class="btn btn-outline" id="btn-add-manual-payment-method">+ Add payment method</button>
+                    </div>
+                    <div class="manual-payment-methods" id="manual-payment-methods">
+                    <?php $method_index = 0; foreach ($manual_payment_instructions as $method_key => $method_settings): $method_label = (string)$method_settings['name']; $safe_method_key = htmlspecialchars($method_key, ENT_QUOTES, 'UTF-8'); $safe_method_label = htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?>
+                        <fieldset class="manual-payment-method settings-section-card" data-method-key="<?php echo $safe_method_key; ?>">
+                            <legend><?php echo $safe_method_label; ?></legend>
+                            <div class="manual-payment-method-actions" aria-label="Order <?php echo $safe_method_label; ?> for customers">
+                                <button type="button" class="btn btn-outline manual-payment-move-up" aria-label="Move <?php echo $safe_method_label; ?> up" <?php echo $method_index === 0 ? 'disabled' : ''; ?>>Move up</button>
+                                <button type="button" class="btn btn-outline manual-payment-move-down" aria-label="Move <?php echo $safe_method_label; ?> down" <?php echo $method_index === count($manual_payment_instructions) - 1 ? 'disabled' : ''; ?>>Move down</button>
+                            </div>
                             <label class="manual-payment-enabled">
-                                <input type="checkbox" name="methods[<?php echo htmlspecialchars($method_key, ENT_QUOTES, 'UTF-8'); ?>][enabled]" value="1" <?php echo $method_settings['enabled'] ? 'checked' : ''; ?>>
-                                Offer <?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?> to customers
+                                <input type="checkbox" name="methods[<?php echo $safe_method_key; ?>][enabled]" value="1" <?php echo $method_settings['enabled'] ? 'checked' : ''; ?>>
+                                Offer this method to customers
                             </label>
                             <div class="form-grid settings-form-grid">
                                 <div class="form-group">
-                                    <label for="payment-<?php echo $method_key; ?>-name">Account name</label>
-                                    <input id="payment-<?php echo $method_key; ?>-name" name="methods[<?php echo $method_key; ?>][account_name]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_name'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
+                                    <label for="payment-<?php echo $safe_method_key; ?>-name">Display name</label>
+                                    <input id="payment-<?php echo $safe_method_key; ?>-name" name="methods[<?php echo $safe_method_key; ?>][name]" class="form-control manual-payment-name" maxlength="120" value="<?php echo $safe_method_label; ?>" autocomplete="off" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="payment-<?php echo $method_key; ?>-number">Account number</label>
-                                    <input id="payment-<?php echo $method_key; ?>-number" name="methods[<?php echo $method_key; ?>][account_number]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_number'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
+                                    <label for="payment-<?php echo $safe_method_key; ?>-account-name">Account holder / name</label>
+                                    <input id="payment-<?php echo $safe_method_key; ?>-account-name" name="methods[<?php echo $safe_method_key; ?>][account_name]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_name'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
                                 </div>
                                 <div class="form-group settings-field-wide">
-                                    <label for="payment-<?php echo $method_key; ?>-details">Transfer instructions</label>
-                                    <textarea id="payment-<?php echo $method_key; ?>-details" name="methods[<?php echo $method_key; ?>][details]" class="form-control" rows="2" maxlength="1000"><?php echo htmlspecialchars($method_settings['details'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                    <label for="payment-<?php echo $safe_method_key; ?>-number">Account or mobile number</label>
+                                    <input id="payment-<?php echo $safe_method_key; ?>-number" name="methods[<?php echo $safe_method_key; ?>][account_number]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_number'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
                                 </div>
                                 <div class="form-group settings-field-wide">
-                                    <label for="payment-<?php echo $method_key; ?>-qr">QR image <span class="field-help">JPEG, PNG, or WebP; up to 5 MiB. Leave blank to keep the current image.</span></label>
-                                    <input id="payment-<?php echo $method_key; ?>-qr" name="qr_<?php echo $method_key; ?>" class="form-control" type="file" accept="image/jpeg,image/png,image/webp">
+                                    <label for="payment-<?php echo $safe_method_key; ?>-details">Payment instructions</label>
+                                    <textarea id="payment-<?php echo $safe_method_key; ?>-details" name="methods[<?php echo $safe_method_key; ?>][details]" class="form-control" rows="3" maxlength="1000"><?php echo htmlspecialchars($method_settings['details'], ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                </div>
+                                <div class="form-group settings-field-wide">
+                                    <label for="payment-<?php echo $safe_method_key; ?>-qr">Optional QR image <span class="field-help">JPEG, PNG, or WebP; up to 5 MiB.</span></label>
+                                    <input id="payment-<?php echo $safe_method_key; ?>-qr" name="qr_<?php echo $safe_method_key; ?>" class="form-control" type="file" accept="image/jpeg,image/png,image/webp">
                                     <?php if ($method_settings['qr_path'] !== ''): ?>
-                                    <img class="manual-payment-current-qr" src="<?php echo htmlspecialchars($method_settings['qr_path'], ENT_QUOTES, 'UTF-8'); ?>" alt="Current <?php echo htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?> payment QR code">
+                                    <img class="manual-payment-current-qr" src="<?php echo htmlspecialchars($method_settings['qr_path'], ENT_QUOTES, 'UTF-8'); ?>" alt="Current <?php echo $safe_method_label; ?> payment QR code">
+                                    <label class="manual-payment-remove-qr"><input type="checkbox" name="methods[<?php echo $safe_method_key; ?>][remove_qr]" value="1"> Remove this QR image</label>
                                     <?php else: ?>
                                     <p class="field-help">No QR image uploaded.</p>
                                     <?php endif; ?>
                                 </div>
                             </div>
                         </fieldset>
-                    <?php endforeach; ?>
+                    <?php $method_index++; endforeach; ?>
                     </div>
-                    <p class="field-help" id="manual-payment-settings-status" role="status" aria-live="polite"></p>
+                    <p class="field-help" id="manual-payment-settings-status" role="status" aria-live="polite" data-error="false"></p>
                     <div class="panel-footer"><button type="button" id="btn-save-manual-payment-settings" class="btn btn-primary save-btn">Save Payment Instructions</button></div>
                 </form>
             </div>

@@ -1,19 +1,7 @@
 <?php
-function get_refund_fee_percent(mysqli $conn): float {
-    $percent = 3.0;
-    $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'refund_fee_percent' LIMIT 1");
-    if ($stmt && $stmt->execute()) {
-        $value = $stmt->get_result()->fetch_assoc()['setting_value'] ?? null;
-        if ($value !== null && is_numeric($value) && is_finite((float)$value)) $percent = (float)$value;
-    }
-    return max(0.0, min(100.0, round($percent, 4)));
-}
-
-function calculate_refund_breakdown(mysqli $conn, float $amountPaid): array {
+function calculate_refund_breakdown(float $amountPaid): array {
     $amountPaid = max(0.0, round($amountPaid, 2));
-    $feePercent = get_refund_fee_percent($conn);
-    $fee = $amountPaid > 0 ? round($amountPaid * $feePercent / 100, 2) : 0.0;
-    return ['fee_percent' => $feePercent, 'fee' => $fee, 'refund' => max(0.0, round($amountPaid - $fee, 2))];
+    return ['fee_percent' => 0.0, 'fee' => 0.0, 'refund' => $amountPaid];
 }
 
 /** Validate and normalize the customer-selected destination for a paid refund. */

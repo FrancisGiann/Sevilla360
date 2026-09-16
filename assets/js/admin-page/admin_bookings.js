@@ -336,12 +336,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (exactMatch) {
                     highlightRow(exactMatch.reference_no);
                     setTimeout(() => {
-                        const exactViewButton = Array.from(document.querySelectorAll('.btn-view'))
-                            .find(button => String(button.getAttribute('data-id')) === exactBookingId);
-                        if (exactViewButton) exactViewButton.click();
+                        const exactProofButton = openPaymentProofId
+                            ? Array.from(document.querySelectorAll('.open-manual-proof')).find(button => String(button.dataset.submissionId) === openPaymentProofId)
+                            : null;
+                        const exactViewButton = Array.from(document.querySelectorAll('.btn-view')).find(button => String(button.getAttribute('data-id')) === exactBookingId);
+                        if (exactProofButton) exactProofButton.click();
+                        else if (exactViewButton) exactViewButton.click();
                     }, 300);
                 }
                 urlBookingId = null;
+                openPaymentProofId = null;
             } else if (!suppressUrlSearchAction && urlSearch && res.data && res.data.length > 0) {
                 const match = res.data.find(b => String(b.reference_no || '').toLowerCase() === urlSearch.toLowerCase() || String(b.reference_no || '').toLowerCase().includes(urlSearch.toLowerCase()) || String(b.id) === urlSearch);
                 const targetRef = match ? match.reference_no : urlSearch;
@@ -384,7 +388,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // The table endpoint remains the source of truth; payload is only an invalidation signal.
     window.addEventListener('SevillaRealtimeEvent', event => {
         const detail = event?.detail;
-        if (!detail || typeof detail !== 'object' || detail.channel !== 'admin' || detail.event_type !== 'booking.created') return;
+        // Keep booking review current for every admin-side lifecycle transition
+        // emitted by booking/payment actions; this is still a bounded allowlist
+        // so unrelated admin channel traffic does not churn the table.
+        const refreshEvents = new Set([
+            'booking.created', 'booking.updated', 'booking.expired', 'booking.cancelled', 'booking.completed',
+            'payment.proof_submitted', 'payment.proof_rejected', 'payment.received',
+            'cancellation.requested', 'cancellation.approved', 'cancellation.rejected',
+            'reschedule.requested', 'reschedule.approved', 'reschedule.rejected'
+        ]);
+        if (!detail || typeof detail !== 'object' || detail.channel !== 'admin' || !refreshEvents.has(detail.event_type)) return;
         if (tbody) scheduleRealtimeBookingRefresh();
     });
   
@@ -455,7 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } 
             else if (!isCompleted && displayStatus === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    actionBtns += `<button type="button" class="btn-action btn-refund open-refund" data-id="${Number(b.id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${Number(b.cancel_fee_percent) || Number(window.refundFeePercent) || 3}" data-fee="${Number(b.cancel_fee) || ''}" data-refund="${Number(b.cancel_refund) || ''}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>
+                    actionBtns += `<button type="button" class="btn-action btn-refund open-refund" data-id="${Number(b.id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent === null || b.cancel_fee_percent === '' ? '' : Number(b.cancel_fee_percent)}" data-fee="${b.cancel_fee === null || b.cancel_fee === '' ? '' : Number(b.cancel_fee)}" data-refund="${b.cancel_refund === null || b.cancel_refund === '' ? '' : Number(b.cancel_refund)}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>
                                    `;
                 } else if (b.resched_status === 'Pending') {
                     actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
@@ -561,6 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const urlFilter = urlParams.get('filter');
     const urlSearch = urlParams.get('search');
     let urlBookingId = urlParams.get('booking_id');
+    let openPaymentProofId = urlParams.get('open_payment_proof');
 
     if (urlFilter) {
         const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
@@ -768,7 +782,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const referenceId = this.getAttribute('data-ref') || bookingId;
             const requestSequence = ++refundDestinationRequestSequence;
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
-            const feePercent = Number(this.getAttribute('data-fee-percent') || window.refundFeePercent || 3);
+            const feePercentRaw = this.getAttribute('data-fee-percent');
+            const parsedFeePercent = feePercentRaw !== null && feePercentRaw !== '' ? Number(feePercentRaw) : 0;
+            const feePercent = Number.isFinite(parsedFeePercent) && parsedFeePercent >= 0 ? parsedFeePercent : 0;
             const feeAttr = this.getAttribute('data-fee');
             const refundAttr = this.getAttribute('data-refund');
             const fee = feeAttr !== null && feeAttr !== '' ? Number(feeAttr) : Math.round(totalPaid * feePercent) / 100;
@@ -788,7 +804,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 spans[1].textContent = this.getAttribute('data-venue') || "Unknown";
                 spans[2].textContent = this.getAttribute('data-date') || "--";
                 spans[3].textContent = `₱${totalPaid.toLocaleString()}`;
-                spans[4].textContent = `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)`;
+                spans[4].textContent = fee > 0 ? `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)` : '₱0.00 (no fee deducted)';
             }
             
             const reasonEl = document.getElementById('modal-ref-reason');

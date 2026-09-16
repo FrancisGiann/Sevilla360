@@ -44,9 +44,9 @@ try {
 
     $instructions = manual_payment_load_instructions($conn);
     $methods = [];
-    foreach (MANUAL_PAYMENT_METHODS as $key => $label) {
-        if (!$instructions[$key]['enabled']) continue;
-        $methods[] = ['key' => $key, 'label' => $label] + $instructions[$key];
+    foreach ($instructions as $key => $method) {
+        if (!$method['enabled']) continue;
+        $methods[] = ['key' => $key, 'label' => $method['name']] + $method;
     }
 
     echo json_encode(['success' => true, 'data' => [

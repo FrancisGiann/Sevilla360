@@ -70,6 +70,11 @@ $customerDestination = refund_destination_for_customer([
 $assert($masked === '•••• 4567' && $customerDestination['masked_identifier'] === $masked, 'Customer-safe destinations expose only the final four identifier characters.');
 $assert(!str_contains(json_encode($customerDestination, JSON_THROW_ON_ERROR), '+639171234567'), 'Customer-safe JSON never contains the full wallet identifier.');
 
+$refund = calculate_refund_breakdown(1250.555);
+$assert($refund === ['fee_percent' => 0.0, 'fee' => 0.0, 'refund' => 1250.56], 'New paid refunds return the full rounded paid amount without consulting the retired processing-fee setting.');
+$assert(calculate_refund_breakdown(0.0) === ['fee_percent' => 0.0, 'fee' => 0.0, 'refund' => 0.0]
+    && calculate_refund_breakdown(-30.0)['refund'] === 0.0, 'Zero and negative paid amounts cannot create negative refund estimates.');
+
 $throws(static fn() => normalize_refund_destination(['method' => 'Cash', 'account_name' => 'Maria Cruz', 'account_identifier' => '09171234567']), 'Only the three controlled refund methods are accepted.');
 $throws(static fn() => normalize_refund_destination(['method' => 'GCash', 'account_name' => 'A', 'account_identifier' => '09171234567']), 'Account holder names have a minimum length.');
 $throws(static fn() => normalize_refund_destination(['method' => 'Maya', 'account_name' => "Maria\nCruz", 'account_identifier' => '09171234567']), 'Control characters are rejected from names.');

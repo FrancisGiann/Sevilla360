@@ -52,7 +52,7 @@ function audit_log_safe_details(?string $json, ?string $eventType): array
         $value = preg_replace('/[\x00-\x1F\x7F]/u', '', $value) ?? '';
         $value = trim($value);
         $maxLength = $field === 'reason' ? 500 : ($field === 'booking_reference' ? 80 : 160);
-        if ($field === 'payment_method' && !in_array($value, ['GCash', 'Maya', 'Bank Transfer', 'Cash'], true)) {
+        if ($field === 'payment_method' && ($value === '' || strlen($value) > 120)) {
             continue;
         }
         if ($field === 'role' && !in_array($value, ['admin', 'staff'], true)) {

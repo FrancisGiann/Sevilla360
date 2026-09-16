@@ -14,9 +14,9 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cs
     exit;
 }
 $bookingId = filter_var($_POST['booking_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$methodKey = (string)($_POST['method'] ?? '');
-$method = MANUAL_PAYMENT_METHODS[$methodKey] ?? null;
-if (!$bookingId || $method === null) {
+$methodKeyInput = $_POST['method'] ?? null;
+$methodKey = is_string($methodKeyInput) ? trim($methodKeyInput) : '';
+if (!$bookingId || !manual_payment_method_key_is_valid($methodKey)) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Choose a valid booking and payment method.']);
     exit;
@@ -30,18 +30,30 @@ require_once __DIR__ . '/../../includes/request_context.php';
 
 $proof = $_FILES['receipt_image'] ?? null;
 $stored = null;
+$method = '';
 try {
+    $availableMethods = manual_payment_load_instructions($conn);
+    if (!isset($availableMethods[$methodKey]) || !$availableMethods[$methodKey]['enabled']) throw new RuntimeException('That payment method is no longer available. Refresh and choose another method.');
     if (!is_array($proof) || (int)($proof['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file((string)($proof['tmp_name'] ?? ''))) {
         throw new RuntimeException('Choose a receipt image before submitting.');
     }
     $stored = manual_payment_store_proof((string)$proof['tmp_name']);
-    $reference = trim((string)($_POST['transaction_reference'] ?? ''));
-    $normalizedReference = manual_payment_validate_reference($reference);
-    $fingerprint = hash('sha256', strtoupper($method) . '|' . $normalizedReference);
-    $instructions = manual_payment_load_instructions($conn);
-    if (!$instructions[$methodKey]['enabled']) throw new RuntimeException('That payment method is no longer available. Refresh and choose another method.');
+    $referenceInput = $_POST['transaction_reference'] ?? null;
+    if (!is_string($referenceInput)) throw new RuntimeException('Enter a valid transaction reference.');
+    $reference = trim($referenceInput);
+    manual_payment_validate_reference($reference);
 
     if (!$conn->begin_transaction()) throw new RuntimeException('Unable to start payment submission.');
+    $settingsLock = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'manual_payment_instructions' LIMIT 1 FOR UPDATE");
+    if (!$settingsLock || !$settingsLock->execute()) throw new RuntimeException('Unable to verify the active payment method.');
+    $settingsRow = $settingsLock->get_result()->fetch_assoc();
+    $settingsLock->close();
+    if (!$settingsRow) throw new RuntimeException('No customer payment methods are currently available.');
+    $lockedMethods = manual_payment_decode_instructions((string)$settingsRow['setting_value']);
+    if (!isset($lockedMethods[$methodKey]) || !$lockedMethods[$methodKey]['enabled']) throw new RuntimeException('That payment method is no longer available. Refresh and choose another method.');
+    $method = manual_payment_validate_method_name($lockedMethods[$methodKey]['name']);
+    $fingerprint = manual_payment_reference_fingerprint($method, $reference);
+
     $completionSql = booking_completion_sql('b');
     $sql = "SELECT b.id, b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, b.payment_due_at, b.source, v.category AS venue_category, CASE WHEN {$completionSql} THEN 1 ELSE 0 END AS is_completed, (b.payment_due_at IS NULL OR b.payment_due_at > NOW()) AS deadline_open, EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS pending_cancel_request, EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS pending_reschedule_request FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? AND c.user_id = ? FOR UPDATE";
     $stmt = $conn->prepare($sql);

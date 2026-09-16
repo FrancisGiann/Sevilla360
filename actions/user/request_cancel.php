@@ -66,8 +66,8 @@ if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true)) {
     exit;
 }
 
-// 2. Snapshot the current fee and refund values on each request.
-$refund = calculate_refund_breakdown($conn, $amount_paid);
+// 2. Snapshot the full paid amount as the refund on each request.
+$refund = calculate_refund_breakdown($amount_paid);
 $fee = $refund['fee'];
 $refund_amount = $refund['refund'];
 $fee_percent = $refund['fee_percent'];
@@ -87,7 +87,7 @@ try {
     if ($amount_paid > 0) {
         $destination = normalize_refund_destination(is_array($data['refund_destination'] ?? null) ? $data['refund_destination'] : []);
     }
-    $refund = calculate_refund_breakdown($conn, $amount_paid);
+    $refund = calculate_refund_breakdown($amount_paid);
     $fee = $refund['fee'];
     $refund_amount = $refund['refund'];
     $fee_percent = $refund['fee_percent'];
