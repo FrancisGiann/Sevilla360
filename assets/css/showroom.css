@@ -3336,8 +3336,18 @@ body.showroom-receptionist-open .showroom-container .details-box {
   color: #fffaf1;
   cursor: pointer;
   font: 600 .72rem/1.2 var(--font-body), sans-serif;
+  transition: border-color 180ms ease, background 180ms ease, transform 120ms ease, box-shadow 180ms ease;
 }
-.receptionist-chat-quick-reply:hover { border-color: #e7c891; background: rgba(160, 119, 72, .58); }
+.receptionist-chat-quick-reply:hover {
+  border-color: #e7c891;
+  background: rgba(160, 119, 72, .58);
+  transform: scale(1.03);
+  box-shadow: 0 0 .6rem rgba(231, 200, 145, .18);
+}
+.receptionist-chat-quick-reply:active {
+  transform: scale(.97);
+  transition-duration: 60ms;
+}
 .receptionist-chat-form { flex: 0 0 auto; display: grid; gap: .45rem; }
 .receptionist-chat-form textarea {
   width: 100%;
