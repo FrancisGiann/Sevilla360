@@ -3,6 +3,7 @@ require_once 'config/db_connect.php';
 require_once __DIR__ . '/../manual_payment.php';
 require_once __DIR__ . '/../google_maps.php';
 require_once __DIR__ . '/../hotel_rooms.php';
+require_once __DIR__ . '/../receptionist_faq.php';
 
 // 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -35,21 +36,7 @@ $support_content = [];
 foreach ($support_defaults as $key => $default) {
     $support_content[$key] = $current_settings[$key] ?? $default;
 }
-$support_faq = json_decode($support_content['support_faq_json'], true);
-$support_faq = is_array($support_faq) && count($support_faq) ? $support_faq : [
-    ['question' => 'How long are online dates held?', 'answer' => 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while staff review your submitted payment reference and receipt; a rejected proof starts a fresh 24-hour window.'],
-    ['question' => 'Are hotel rooms priced per night?', 'answer' => "Yes. Hotel stays require at least one night, and the checkout date may coincide with another guest's check-in."],
-    ['question' => 'What happens after an Event Hall inquiry?', 'answer' => 'The resort team reviews the inquiry and contacts you about the final quotation and schedule. No online payment is required when the inquiry is submitted.'],
-    ['question' => 'Where can I see my booking status?', 'answer' => 'Sign in and open your User Dashboard to view status, payment information, notifications, and booking details.']
-];
-foreach ($support_faq as &$faqItem) {
-    if (($faqItem['question'] ?? '') === 'How long are online dates held?') {
-        $faqItem['answer'] = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while staff review your submitted payment reference and receipt; if proof is rejected, a fresh 24-hour window begins.';
-    } elseif (($faqItem['question'] ?? '') === 'What happens after an Event Hall inquiry?') {
-        $faqItem['answer'] = 'The resort team reviews the inquiry and finalizes the quotation. No payment deadline starts until that quotation is finalized; then you can submit the reference and receipt from your dashboard.';
-    }
-}
-unset($faqItem);
+$support_faq = receptionist_faq_load($conn);
 $paymentTerms = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.';
 if (!str_contains((string)$support_content['support_terms'], 'payment window pauses')) $support_content['support_terms'] .= "\n" . $paymentTerms;
 
@@ -267,7 +254,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             <!-- PANEL 3: Support & Information -->
             <div class="settings-panel" id="panel-support">
                 <h2 class="panel-heading">Support &amp; Information</h2>
-                <p class="settings-section-note">Edit the content shown on the public Support &amp; Information page. Leave each FAQ on its own card and use one line per term.</p>
+                <p class="settings-section-note">Edit the shared FAQ set used by Support &amp; Information and the virtual receptionist. Reorder items, add matching phrases, or remove entries you no longer publish.</p>
                 <form id="form-support-content" class="settings-form" onsubmit="return false;">
                     <div class="form-grid">
                         <div class="form-group support-field-wide">
@@ -285,9 +272,9 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     </div>
 
                     <hr class="panel-divider">
-                    <div class="support-settings-heading"><div><h3 class="panel-subheading">Frequently Asked Questions</h3><p class="settings-section-note">Add, edit, or remove the questions shown on the public page.</p></div><button type="button" class="btn btn-outline" id="btn-add-support-faq">+ Add FAQ</button></div>
+                    <div class="support-settings-heading"><div><h3 class="panel-subheading">Frequently Asked Questions</h3><p class="settings-section-note">Each FAQ can have up to 10 short matching phrases. The answer remains the approved factual source for chat replies.</p></div><button type="button" class="btn btn-outline" id="btn-add-support-faq">+ Add FAQ</button></div>
                     <div id="support-faq-list">
-                        <?php foreach ($support_faq as $faq): ?><div class="support-faq-row"><div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" value="<?php echo htmlspecialchars((string)($faq['question'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>" maxlength="240"></div><div class="form-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3"><?php echo htmlspecialchars((string)($faq['answer'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></textarea></div><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div><?php endforeach; ?>
+                        <?php foreach ($support_faq as $faq): ?><div class="support-faq-row" data-faq-id="<?php echo htmlspecialchars((string)$faq['id'], ENT_QUOTES, 'UTF-8'); ?>"><div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" value="<?php echo htmlspecialchars((string)$faq['question'], ENT_QUOTES, 'UTF-8'); ?>" maxlength="240"></div><div class="form-group"><label>Category</label><select class="form-control support-faq-category"><?php foreach (RECEPTIONIST_FAQ_CATEGORIES as $category): ?><option value="<?php echo htmlspecialchars($category, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $faq['category'] === $category ? 'selected' : ''; ?>><?php echo htmlspecialchars($category, ENT_QUOTES, 'UTF-8'); ?></option><?php endforeach; ?></select></div><div class="form-group support-faq-answer-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3" maxlength="3000"><?php echo htmlspecialchars((string)$faq['answer'], ENT_QUOTES, 'UTF-8'); ?></textarea></div><div class="form-group"><label>Phrases <span class="field-help">One per line</span></label><textarea class="form-control support-faq-phrases" placeholder="payment deadline&#10;how long to pay" rows="3" maxlength="1600"><?php echo htmlspecialchars(implode("\n", $faq['phrases']), ENT_QUOTES, 'UTF-8'); ?></textarea></div><div class="support-faq-actions"><button type="button" class="btn btn-outline btn-move-support-faq" data-direction="up" aria-label="Move FAQ up">↑</button><button type="button" class="btn btn-outline btn-move-support-faq" data-direction="down" aria-label="Move FAQ down">↓</button><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div></div><?php endforeach; ?>
                     </div>
 
                     <hr class="panel-divider">

@@ -388,13 +388,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const supportFaqList = document.getElementById('support-faq-list');
   const btnSaveSupport = document.getElementById('btn-save-support');
 
-  function addSupportFaqRow(question = '', answer = '') {
+  const supportFaqCategories = ['General', 'Booking', 'Payments', 'Cancellations & Refunds', 'Venue & Stay', 'Policies'];
+  function addSupportFaqRow(question = '', answer = '', category = 'General', phrases = '') {
     if (!supportFaqList) return;
     const row = document.createElement('div');
     row.className = 'support-faq-row';
-    row.innerHTML = `<div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" maxlength="240"></div><div class="form-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3"></textarea></div><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button>`;
+    row.innerHTML = `<div class="form-group"><label>Question</label><input type="text" class="form-control support-faq-question" placeholder="Question" maxlength="240"></div><div class="form-group"><label>Category</label><select class="form-control support-faq-category">${supportFaqCategories.map(item => `<option value="${item.replace(/&/g, '&amp;')}">${item}</option>`).join('')}</select></div><div class="form-group support-faq-answer-group"><label>Answer</label><textarea class="form-control support-faq-answer" placeholder="Answer" rows="3" maxlength="3000"></textarea></div><div class="form-group"><label>Phrases <span class="field-help">One per line</span></label><textarea class="form-control support-faq-phrases" placeholder="payment deadline\nhow long to pay" rows="3" maxlength="1600"></textarea></div><div class="support-faq-actions"><button type="button" class="btn btn-outline btn-move-support-faq" data-direction="up" aria-label="Move FAQ up">↑</button><button type="button" class="btn btn-outline btn-move-support-faq" data-direction="down" aria-label="Move FAQ down">↓</button><button type="button" class="btn btn-danger btn-remove-support-faq">Remove</button></div>`;
     row.querySelector('.support-faq-question').value = question;
     row.querySelector('.support-faq-answer').value = answer;
+    row.querySelector('.support-faq-category').value = supportFaqCategories.includes(category) ? category : 'General';
+    row.querySelector('.support-faq-phrases').value = phrases;
     supportFaqList.appendChild(row);
     isFormDirty = true;
   }
@@ -402,12 +405,26 @@ document.addEventListener("DOMContentLoaded", () => {
   supportFaqList?.addEventListener('click', event => {
     const button = event.target.closest('.btn-remove-support-faq');
     if (button) { button.closest('.support-faq-row')?.remove(); isFormDirty = true; }
+    const moveButton = event.target.closest('.btn-move-support-faq');
+    if (moveButton) {
+      const row = moveButton.closest('.support-faq-row');
+      if (!row) return;
+      const sibling = moveButton.dataset.direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
+      if (sibling) {
+        if (moveButton.dataset.direction === 'up') supportFaqList.insertBefore(row, sibling);
+        else supportFaqList.insertBefore(sibling, row);
+        isFormDirty = true;
+      }
+    }
   });
   btnSaveSupport?.addEventListener('click', () => {
     const originalText = btnSaveSupport.innerHTML;
     const faqItems = [...(supportFaqList?.querySelectorAll('.support-faq-row') || [])].map(row => ({
+      id: row.dataset.faqId || '',
       question: row.querySelector('.support-faq-question')?.value.trim() || '',
-      answer: row.querySelector('.support-faq-answer')?.value.trim() || ''
+      answer: row.querySelector('.support-faq-answer')?.value.trim() || '',
+      category: row.querySelector('.support-faq-category')?.value || 'General',
+      phrases: (row.querySelector('.support-faq-phrases')?.value || '').split(/\r?\n/).map(phrase => phrase.trim()).filter(Boolean)
     })).filter(item => item.question || item.answer);
     const formData = new FormData(supportForm);
     formData.append('support_faq_json', JSON.stringify(faqItems));

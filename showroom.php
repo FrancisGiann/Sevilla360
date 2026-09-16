@@ -5,6 +5,7 @@ $extra_js = [
     'assets/js/panorama-view-compat.js?v=' . time(),
     'assets/js/hotspot-material.js?v=' . time(),
     'assets/js/guide_tours.js?v=' . time(),
+    'assets/js/receptionist-chat.js?v=' . time(),
     'assets/js/showroom.js?v=' . time(),
 ];
 $active_page = 'showroom';
@@ -15,8 +16,9 @@ require_once 'includes/hotel_rooms.php';
 require_once 'includes/media_helper.php';
 
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
+$hotel_room_group_select = $hotel_group_schema_ready ? 'hr.room_group_id' : 'NULL';
 $hotel_type_code_select = $hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';
-$hotel_type_code_group = $hotel_group_schema_ready ? ', hrg.room_type_code' : '';
+$hotel_type_code_group = $hotel_group_schema_ready ? ', hrg.room_type_code, hr.room_group_id' : '';
 $hotel_type_catalog_join = $hotel_group_schema_ready
     ? ' LEFT JOIN hotel_room_groups hrg ON hrg.id = hr.room_group_id LEFT JOIN hotel_room_types hrt ON hrt.type_code = hrg.room_type_code'
     : '';
@@ -26,7 +28,7 @@ $hotel_type_active_filter = $hotel_group_schema_ready ? " AND (v.category <> 'Ho
 $venues_query = $conn->query("
     SELECT 
         v.id, v.category, v.name AS venue_name, v.status, v.description, v.amenities,
-        hr.room_type, {$hotel_type_code_select} AS room_type_code, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
+        hr.room_type, {$hotel_room_group_select} AS room_group_id, {$hotel_type_code_select} AS room_type_code, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
         eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
         vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
     FROM venues v
@@ -90,6 +92,7 @@ if ($venues_query) {
             'title' => strtoupper($display_name),
             'category' => $v['category'],
             'room_type' => $v['room_type'] ?? '',
+            'room_group_id' => is_numeric($v['room_group_id'] ?? null) ? (int)$v['room_group_id'] : null,
             'room_type_code' => $v['room_type_code'] ?? null,
             'venue_name' => $v['venue_name'],
             'capacity' => $cap,
@@ -510,6 +513,34 @@ window.process = {
                     <button type="button" class="receptionist-choice" data-receptionist-intent="Resort Villa">Villa</button>
                     <button type="button" class="receptionist-choice receptionist-choice-secondary" data-receptionist-close>Just look around</button>
                 </div>
+                <button type="button" class="receptionist-chat-toggle" data-receptionist-chat-toggle
+                    aria-controls="receptionist-chat-shell" aria-expanded="false" hidden>Prefer typing? Chat with receptionist</button>
+                <section class="receptionist-chat-shell" id="receptionist-chat-shell" aria-labelledby="receptionist-chat-title" aria-hidden="true" hidden>
+                    <div class="receptionist-chat-head">
+                        <h3 id="receptionist-chat-title">Chat with receptionist</h3>
+                        <button type="button" class="receptionist-chat-close" data-receptionist-chat-close aria-label="Collapse receptionist chat">Close</button>
+                    </div>
+                    <p class="receptionist-chat-privacy">Please don’t share payment, account, contact, or personal details. Messages go to an AI service.</p>
+                    <div class="receptionist-chat-transcript" id="receptionist-chat-transcript" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Receptionist conversation"></div>
+                    <p class="receptionist-chat-status" id="receptionist-chat-status" role="status" aria-live="polite"></p>
+                    <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Suggested questions"></div>
+                    <form class="receptionist-chat-form" id="receptionist-chat-form">
+                        <label class="sr-only" for="receptionist-chat-input">Ask the receptionist</label>
+                        <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask about venues, stays, policies, or dates" autocomplete="off"></textarea>
+                        <div class="receptionist-chat-form-actions">
+                            <label class="receptionist-chat-locale-label" for="receptionist-chat-locale">Language
+                                <select id="receptionist-chat-locale" name="locale">
+                                    <option value="auto">Auto</option>
+                                    <option value="en">English</option>
+                                    <option value="fil">Filipino</option>
+                                    <option value="taglish">Taglish</option>
+                                </select>
+                            </label>
+                            <button type="submit" class="receptionist-choice receptionist-choice-primary" id="receptionist-chat-send">Send</button>
+                            <button type="button" class="receptionist-choice receptionist-choice-secondary" data-receptionist-chat-start-over>Start over</button>
+                        </div>
+                    </form>
+                </section>
             </div>
             <button type="button" class="receptionist-sound" data-receptionist-sound-toggle
                 aria-pressed="false" aria-label="Turn on resort ambience">Sound off</button>

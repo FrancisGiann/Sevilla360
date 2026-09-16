@@ -3,6 +3,7 @@ $page_title = 'Support - SEVILLA360';
 $extra_css = 'assets/css/support.css?v=' . time();
 $active_page = '';
 require_once 'config/db_connect.php';
+require_once __DIR__ . '/includes/receptionist_faq.php';
 
 $support_settings = [
     'biz_name' => 'Sevilla360',
@@ -22,7 +23,7 @@ $support_settings = [
     'support_privacy' => "We collect the information needed to create and manage reservations, communicate with guests, process payments, and provide resort services.\n\nAccount and booking information is available only to the customer it belongs to and authorized resort staff or administrators. Contact us if you need help reviewing or correcting your information.",
     'support_terms' => "Bookings are subject to availability and the selected payment or inquiry process.\nOnline Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.\nMaximum capacities and venue rules are enforced.\nCancellation and refund handling follows the applicable booking policy and administrator review.\nGuests are responsible for damage to resort property.\nVirtual showroom images are illustrative; actual arrangements and lighting may vary."
 ];
-$support_query = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'biz_%'");
+$support_query = $conn->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'biz_%' OR setting_key LIKE 'support_%'");
 if ($support_query) {
     while ($support_row = $support_query->fetch_assoc()) {
         if (array_key_exists($support_row['setting_key'], $support_settings)) {
@@ -39,8 +40,7 @@ $policy_lines = array_values(array_filter($policy_lines, static function (string
     $normalized = strtolower((string)preg_replace('/\s+/', ' ', trim($without_marker)));
     return !hash_equals($retired_policy_hash, hash('sha256', $normalized));
 }));
-$faq_items = json_decode((string)$support_settings['support_faq_json'], true);
-$faq_items = is_array($faq_items) ? array_values(array_filter($faq_items, static fn($item) => is_array($item) && trim((string)($item['question'] ?? '')) !== '')) : [];
+$faq_items = receptionist_faq_load($conn);
 $privacy_paragraphs = preg_split('/\r\n\r\n|\r\r|\n\n/', trim((string)$support_settings['support_privacy'])) ?: [];
 $terms_lines = preg_split('/\r\n|\r|\n/', trim((string)$support_settings['support_terms'])) ?: [];
 include 'includes/header.php';

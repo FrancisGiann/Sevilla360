@@ -1125,12 +1125,74 @@ document.addEventListener("DOMContentLoaded", () => {
     const receptionistSkip = receptionistRoot.querySelector("[data-receptionist-skip]");
     const receptionistPanel = receptionistRoot.querySelector(".receptionist-panel");
     const categoryLabels = { "Event Hall": "event", "Hotel Room": "hotel", "Resort Villa": "villa" };
-    const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, preference: null, startDate: null, endDate: null };
+    const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, preference: null, startDate: null, endDate: null, activeVenueId: null, activeRoomGroupId: null };
+    const restorableGuideIntents = new Set(["Event Hall", "Hotel Room", "Resort Villa"]);
+    const restorableGuideRanges = new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]);
+    const restorablePositiveId = value => {
+      const number = Number(value);
+      return Number.isInteger(number) && number > 0 && number <= 1000000 ? number : null;
+    };
+    const restorableDate = value => {
+      const text = String(value || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+      const parsed = new Date(`${text}T00:00:00Z`);
+      if (Number.isNaN(parsed.getTime())
+        || parsed.getUTCFullYear() !== Number(text.slice(0, 4))
+        || parsed.getUTCMonth() + 1 !== Number(text.slice(5, 7))
+        || parsed.getUTCDate() !== Number(text.slice(8, 10))) return null;
+      const today = new Date();
+      const todayText = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
+      return Number.isNaN(parsed.getTime()) || text < todayText ? null : text;
+    };
+    const restorableHotelRange = value => {
+      const text = String(value || "").trim().replace("–", "-");
+      if (restorableGuideRanges.has(text)) return text;
+      const count = Number(text);
+      if (!Number.isInteger(count) || count < 1 || count > 16) return null;
+      return count <= 2 ? "1-2" : count <= 4 ? "3-4" : count <= 6 ? "5-6" : count <= 8 ? "7-8" : count <= 12 ? "9-12" : "13-16";
+    };
+    const normalizeRestoredGuideContext = context => {
+      if (!context || typeof context !== "object") return {};
+      const value = (...keys) => keys.map(key => context[key]).find(item => item !== undefined && item !== null && item !== "");
+      const normalized = {};
+      const intent = value("intent");
+      if (restorableGuideIntents.has(intent)) normalized.intent = intent;
+      const activeIntent = normalized.intent || guideContext.intent;
+      const enumValues = {
+        occasion: ["wedding", "celebration", "corporate", "other"],
+        purpose: ["relaxation", "family", "private"],
+        preference: ["save", "best_fit", "comfort"]
+      };
+      Object.keys(enumValues).forEach(key => { const item = value(key); if (enumValues[key].includes(item)) normalized[key] = item; });
+      const rawGroup = value("groupSize", "group_size");
+      if (activeIntent === "Hotel Room") normalized.groupSize = restorableHotelRange(rawGroup);
+      else {
+        const count = Number(rawGroup);
+        if (Number.isInteger(count) && count > 0 && count <= 10000) normalized.groupSize = count;
+      }
+      const start = restorableDate(value("startDate", "start_date"));
+      const end = restorableDate(value("endDate", "end_date"));
+      if (start) normalized.startDate = start;
+      if (end && (!start || end > start)) normalized.endDate = end;
+      const venueId = restorablePositiveId(value("activeVenueId", "active_venue_id"));
+      const roomGroupId = restorablePositiveId(value("activeRoomGroupId", "active_room_group_id"));
+      if (venueId !== null) normalized.activeVenueId = venueId;
+      if (roomGroupId !== null) normalized.activeRoomGroupId = roomGroupId;
+      return normalized;
+    };
+    const applyRestoredGuideContext = context => Object.assign(guideContext, normalizeRestoredGuideContext(context));
     const saveGuideContext = () => {
       try {
         const memory = {
+          intent: guideContext.intent,
+          occasion: guideContext.occasion,
+          purpose: guideContext.purpose,
           groupSize: guideContext.groupSize,
-          preference: guideContext.preference
+          preference: guideContext.preference,
+          startDate: guideContext.startDate,
+          endDate: guideContext.endDate,
+          activeVenueId: guideContext.activeVenueId,
+          activeRoomGroupId: guideContext.activeRoomGroupId
         };
         sessionStorage.setItem("guideContext", JSON.stringify(memory));
       } catch (e) {}
@@ -1138,14 +1200,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const restoreGuideContext = () => {
       try {
         const raw = sessionStorage.getItem("guideContext");
-        if (!raw) return;
-        const memory = JSON.parse(raw);
-        if (memory && typeof memory === "object") {
-          if (memory.groupSize !== undefined && memory.groupSize !== null) {
-            guideContext.groupSize = memory.groupSize;
-          }
-          if (memory.preference !== undefined && memory.preference !== null) {
-            guideContext.preference = memory.preference;
+        if (raw) {
+          const memory = JSON.parse(raw);
+          if (memory && typeof memory === "object") {
+            const savedContext = memory.context && typeof memory.context === "object" ? memory.context : memory;
+            applyRestoredGuideContext(savedContext);
           }
         }
       } catch (e) {}
@@ -1747,6 +1806,7 @@ document.addEventListener("DOMContentLoaded", () => {
           element.removeAttribute("data-dialogue-tabindex");
         }
       });
+      window.dispatchEvent(new CustomEvent("SevillaReceptionistGateChanged", { detail: { gated: Boolean(gated) } }));
     };
     const completeDialogueReveal = () => {
       window.clearTimeout(guideState.dialogueRevealTimer);
@@ -1816,6 +1876,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Keep the full dialogue available to assistive technology even while
       // the visual line mask and Continue cue are still resolving.
       receptionistLive.textContent = message;
+      window.dispatchEvent(new CustomEvent("SevillaReceptionistGuidedState", { detail: { title, message } }));
       resetGuideScroll();
       if (!entrance) receptionistRoot.getBoundingClientRect();
       armDialogue(Boolean(options.requireContinue), entrance);
@@ -2788,6 +2849,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const closeGuide = (afterClose = null) => {
       if (!receptionistState.isOpen) return;
       receptionistState.isOpen = false;
+      window.dispatchEvent(new CustomEvent("SevillaReceptionistClosed"));
       receptionistState.entranceSequence += 1;
       window.clearTimeout(receptionistState.entranceTimer);
       window.clearTimeout(guideState.thinkingTimer);
@@ -2823,6 +2885,7 @@ document.addEventListener("DOMContentLoaded", () => {
       clearEntranceEnd();
       restoreGuideContext();
       const entranceSequence = ++receptionistState.entranceSequence;
+      window.dispatchEvent(new CustomEvent("SevillaReceptionistOpening"));
       receptionistState.previousFocus = opener instanceof HTMLElement ? opener : receptionistReopen;
       const isInitialGreeting = !receptionistState.hasOpened;
       receptionistState.isOpen = true; receptionistState.hasOpened = true; receptionistState.entranceSettled = false; receptionistReopen.hidden = true;
@@ -2888,6 +2951,89 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
     };
+    const applyReceptionistChatAction = result => {
+      const slots = result && result.slots && typeof result.slots === "object" ? result.slots : {};
+      const category = slots.intent || receptionistState.activeCategory;
+      if (slots.intent) guideContext.intent = slots.intent;
+      ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
+        if (slots[key] !== undefined) guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];
+      });
+      if (slots.group_size !== undefined) {
+        if (category === "Hotel Room") {
+          const count = Number(slots.group_size);
+          guideContext.groupSize = Number.isFinite(count) ? (count <= 2 ? "1-2" : count <= 4 ? "3-4" : count <= 6 ? "5-6" : count <= 8 ? "7-8" : count <= 12 ? "9-12" : "13-16") : null;
+        } else guideContext.groupSize = Number(slots.group_size);
+      }
+      if (slots.active_venue_id !== undefined) guideContext.activeVenueId = Number(slots.active_venue_id);
+      if (slots.active_room_group_id !== undefined) guideContext.activeRoomGroupId = Number(slots.active_room_group_id);
+      if (category) receptionistState.activeCategory = category;
+      saveGuideContext();
+      if (result.action === "venue" && slots.active_venue_id) {
+        const room = Object.values(dataMap).find(item => Number(item.venue_id) === Number(slots.active_venue_id)
+          && (!slots.active_room_group_id || Number(item.room_group_id) === Number(slots.active_room_group_id)));
+        if (room) { receptionistState.activeRoomId = room.id; activateVenue(room.id); renderVenue(room); return true; }
+        setDialogue("Venue unavailable", "That venue is not available in the current showroom. Please choose another option.");
+        return true;
+      }
+      if (result.action === "availability") { checkGuideAvailability(); return true; }
+      if (result.action === "recommend") {
+        if (category === "Hotel Room") requestHotelRecommendations(); else renderRecommendations();
+        return true;
+      }
+      if (result.action === "ask") {
+        const missing = Array.isArray(result.missing_slots) ? result.missing_slots : [];
+        const next = missing[0] || (category === "Hotel Room" ? "groupSize" : category ? "groupSize" : "intent");
+        if (next === "active_venue_id") {
+          if (category === "Hotel Room") requestHotelRecommendations(); else renderRecommendations();
+          return true;
+        }
+        if (next === "intent") renderGreeting({ announce: true });
+        else if (next === "start_date") renderQuestion(category, category === "Hotel Room" ? "checkInDate" : dateStepFor(category));
+        else if (next === "end_date") renderQuestion(category, "checkOutDate");
+        else renderQuestion(category, next === "group_size" ? "groupSize" : next);
+        return true;
+      }
+      if (["faq", "contact", "unsupported"].includes(result.action)) {
+        setDialogue(result.action === "faq" ? "From our Support FAQs" : "A note from reception", result.reply || "Please contact reception for help with that question.");
+        return true;
+      }
+      return false;
+    };
+    const initReceptionistChat = () => {
+      if (!window.SevillaReceptionistChat) return;
+      window.SevillaReceptionistChat.init({
+        root: receptionistRoot,
+        choices: receptionistChoices,
+        getContext: () => guideContext,
+        onAction: applyReceptionistChatAction,
+        onKnowledge: data => {
+          // Knowledge replies stay in the typed chat, but their server-validated
+          // context patch still becomes the source for the next turn.
+          applyReceptionistChatAction({ ...(data || {}), action: "knowledge" });
+        },
+        onQuickReply: label => {
+          const category = { Event: "Event Hall", Hotel: "Hotel Room", Villa: "Resort Villa" }[label];
+          if (!category) return false;
+          const choice = receptionistChoices.querySelector(`[data-receptionist-intent="${category}"]`);
+          if (!choice) return false;
+          choice.click();
+          return true;
+        },
+        onStartOver: () => {
+          try { sessionStorage.removeItem("guideContext"); } catch (error) {}
+          renderGreeting({ announce: true, requireContinue: true });
+          focusFirstChoice();
+        },
+        onInvalidContext: data => {
+          Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
+          try { sessionStorage.removeItem("guideContext"); } catch (error) {}
+          renderGreeting({ announce: true });
+          focusFirstChoice();
+          return true;
+        }
+      });
+    };
+    initReceptionistChat();
     const focusableInGuide = () => {
       const focusable = Array.from(receptionistDialog.querySelectorAll("button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])")).filter(element => element.tabIndex >= 0 && !element.hidden && element.getClientRects().length > 0);
       return (receptionistRoot.classList.contains("is-entering") || !receptionistState.entranceSettled)
@@ -3099,7 +3245,17 @@ document.addEventListener("DOMContentLoaded", () => {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
     receptionistState.hasOpened = false;
-    window.setTimeout(() => { if (!receptionistState.hasOpened) openGreeting(); }, 0);
+    let receptionistAutoOpen = true;
+    try {
+      receptionistAutoOpen = sessionStorage.getItem("sevilla360-receptionist-auto-open-v1") !== "1";
+      if (receptionistAutoOpen) sessionStorage.setItem("sevilla360-receptionist-auto-open-v1", "1");
+    } catch (error) {
+      // Storage can be blocked by privacy settings; this page still gets one
+      // opening, while the in-memory state prevents a timer loop.
+      receptionistAutoOpen = true;
+    }
+    if (!receptionistAutoOpen) receptionistReopen.hidden = false;
+    window.setTimeout(() => { if (receptionistAutoOpen && !receptionistState.hasOpened) openGreeting(); }, 0);
   }
 
   // --- 10. Photo Gallery Swap Mode ---
