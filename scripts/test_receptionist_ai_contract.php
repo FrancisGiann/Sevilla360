@@ -26,12 +26,22 @@ $knowledgeSettings = [
     'biz_policies' => "Public cancellations are reviewed by the resort team.\nAdmin-initiated force cancellations receive a 100% refund; processing fee percentage is snapshotted internally.",
 ];
 $knowledgeRecords = receptionist_knowledge_build_records($knowledgeRows, $knowledgeSettings, $defaults);
+$sequenceContext = [];
+$sequenceAnswers = [];
+foreach (['i want to book a venue', 'i wnt a wedding', 'next week sat', 'Event', '100 guest', 'i want infinity hall'] as $sequenceMessage) {
+    $sequenceAnswer = receptionist_knowledge_reply($knowledgeRecords, $sequenceMessage, 'en', $sequenceContext);
+    $sequenceAnswers[] = $sequenceAnswer;
+    if (is_array($sequenceAnswer['slots'] ?? null)) $sequenceContext = array_replace($sequenceContext, $sequenceAnswer['slots']);
+}
 $knowledgePrice = receptionist_knowledge_reply($knowledgeRecords, 'How much for an event?', 'en');
 $knowledgePriceFil = receptionist_knowledge_reply($knowledgeRecords, 'Magkano ang event hall?', 'fil');
 $knowledgePriceTaglish = receptionist_knowledge_reply($knowledgeRecords, 'Magkano ang event hall?', 'taglish');
 $knowledgeCapacity = receptionist_knowledge_reply($knowledgeRecords, 'How many can Infinity Hall fit?', 'en', ['active_venue_id' => 1, 'intent' => 'Event Hall']);
 $knowledgeAmenities = receptionist_knowledge_reply($knowledgeRecords, 'What amenities are included?', 'en');
 $knowledgePolicy = receptionist_knowledge_reply($knowledgeRecords, 'How does payment and cancellation work?', 'en');
+$supportFaqPrompt = 'What policies and FAQs can you help with?';
+$supportFaqIntent = receptionist_knowledge_intent($supportFaqPrompt);
+$supportFaqReply = receptionist_knowledge_reply($knowledgeRecords, $supportFaqPrompt, 'en');
 $knowledgeSelected = receptionist_knowledge_reply($knowledgeRecords, 'What is the capacity?', 'en', ['active_venue_id' => 1, 'intent' => 'Event Hall']);
 $knowledgeUnknownQuote = receptionist_knowledge_reply($knowledgeRecords, 'How much for a custom flower arrangement?', 'en');
 $knowledgeSafePolicy = array_values(array_filter($knowledgeRecords, static fn(array $record): bool => ($record['id'] ?? null) === 'public-policies'))[0] ?? null;
@@ -67,12 +77,28 @@ $checks['public knowledge returns selected capacity and stored amenities only'] 
 $checks['public knowledge routes approved payment and cancellation guidance'] = $knowledgePolicy !== null
     && str_contains($knowledgePolicy['reply'], 'payment')
     && str_contains($knowledgePolicy['reply'], 'cancellation');
+$checks['explicit Support FAQs prompt gets useful bounded guidance and server-owned CTA metadata'] = ($supportFaqIntent['kind'] ?? null) === 'support_faq'
+    && ($supportFaqReply['action'] ?? null) === 'ask'
+    && ($supportFaqReply['show_support_faq_cta'] ?? false) === true
+    && str_contains($supportFaqReply['reply'] ?? '', 'Support & FAQs')
+    && !str_contains($supportFaqReply['reply'] ?? '', 'Reach our team for booking questions');
 $checks['public knowledge selected venue filtering is bounded and safe'] = $knowledgeSelected !== null
     && str_contains($knowledgeSelected['reply'], 'Infinity Hall')
     && !str_contains($knowledgeSelected['reply'], 'Stellar')
     && count($knowledgeRecords) <= RECEPTIONIST_KNOWLEDGE_MAX_RECORDS
     && !array_intersect(['booking_id', 'customer_id', 'payment_submission_id', 'admin_note', 'staff_id'], $knowledgeKeys);
 $checks['unknown custom quotes do not receive unrelated venue prices'] = $knowledgeUnknownQuote === null;
+$checks['six-turn booking sequence is deterministic and accumulates validated slot candidates'] = count($sequenceAnswers) === 6
+    && ($sequenceAnswers[0]['slots']['intent'] ?? null) === 'Event Hall'
+    && ($sequenceAnswers[1]['slots']['occasion'] ?? null) === 'wedding'
+    && ($sequenceAnswers[2]['slots']['start_date'] ?? null) === receptionist_knowledge_booking_date('next week sat')
+    && ($sequenceAnswers[3]['slots']['intent'] ?? null) === 'Event Hall'
+    && ($sequenceAnswers[4]['slots']['group_size'] ?? null) === 100
+    && ($sequenceAnswers[5]['booking_continuation'] ?? false) === true
+    && ($sequenceAnswers[5]['action'] ?? null) === 'venue'
+    && ($sequenceAnswers[5]['slots']['active_venue_id'] ?? null) === 1
+    && ($sequenceAnswers[5]['slots']['occasion'] ?? null) === 'wedding'
+    && ($sequenceAnswers[5]['slots']['group_size'] ?? null) === 100;
 $checks['public policy filtering removes internal cancellation and fee details'] = $knowledgeSafePolicy !== null
     && str_contains($knowledgeSafePolicy['text'], 'Public cancellations are reviewed')
     && !str_contains(strtolower($knowledgeSafePolicy['text']), 'processing fee')
@@ -252,15 +278,27 @@ $checks['endpoint is JSON-only POST, CSRF-protected, bounded, and provider-neutr
 $checks['endpoint answers bounded public knowledge before provider use and passes only a shortlist to prompts'] = str_contains($endpoint, 'receptionist_public_knowledge_records')
     && str_contains($endpoint, 'receptionist_knowledge_reply')
     && str_contains($endpoint, "'mode' => 'knowledge'")
-    && str_contains($endpoint, "'validated_slots' => \$knowledgeAnswer['slots']")
+    && str_contains($endpoint, "'validated_slots' => \$prepared['slots']")
     && str_contains($endpoint, 'receptionist_knowledge_select')
-    && str_contains($endpoint, '$knowledgePatch')
-    && str_contains($endpoint, 'receptionist_ai_validate_slots($conn, $knowledgePatch')
+    && str_contains($endpoint, 'receptionist_chat_prepare_knowledge')
+    && str_contains($aiSource, 'function receptionist_ai_prepare_knowledge')
+    && str_contains($aiSource, '$knowledgePatch')
     && str_contains($aiSource, 'Bounded approved public knowledge')
     && str_contains($chatJs, 'data.mode === "knowledge"')
     && str_contains($chatJs, 'options.onKnowledge')
+    && str_contains($knowledgeSource, 'booking_continuation')
+    && str_contains($showroomJs, 'data.booking_continuation === true')
     && str_contains($knowledgeSource, 'RECEPTIONIST_KNOWLEDGE_MAX_RECORDS')
     && str_contains($knowledgeSource, "v.status = 'Available'");
+$checks['Support FAQs handoff uses deterministic metadata and one fixed local destination'] = str_contains($knowledgeSource, 'receptionist_knowledge_is_support_faq_request')
+    && str_contains($endpoint, '$showSupportFaqCta')
+    && str_contains($endpoint, "'show_support_faq_cta'")
+    && str_contains($chatJs, 'const SUPPORT_FAQ_HREF = "support.php#faqs"')
+    && str_contains($chatJs, 'data.show_support_faq_cta === true')
+    && str_contains($chatJs, 'link.href = SUPPORT_FAQ_HREF')
+    && str_contains($chatJs, 'View Support & FAQs')
+    && !str_contains($chatJs, 'content.includes(')
+    && !str_contains($chatJs, 'link.href = data.');
 $checks['server context errors are distinguishable from provider schema fallback'] = str_contains($endpoint, "'code' => " . '$contextError' . " ? 'invalid_context' : 'invalid_request'")
     && str_contains($chatJs, "data.code === \"invalid_context\"")
     && str_contains($showroomJs, 'onInvalidContext');
@@ -313,7 +351,7 @@ $checks['chat client is safe text-only, bounded, page-scoped, and supports in-ch
     && str_contains($chatJs, 'slice(-16)')
     && str_contains($chatJs, 'sessionStorage.removeItem(STORAGE_KEY)')
     && !str_contains($chatJs, 'sessionStorage.setItem')
-    && str_contains($chatJs, 'serverResetPromise = resetServerSession()')
+    && !str_contains($chatJs, 'serverResetPromise = resetServerSession();')
     && str_contains($chatJs, 'await serverResetPromise')
     && !str_contains($chatJs, 'onGuidedFallback')
     && !str_contains($showroomJs, 'onGuidedFallback')
@@ -340,7 +378,9 @@ $checks['same-page chat reopen does not duplicate the greeting'] = str_contains(
 $checks['Start over clears turns and reseeds the greeting while suppressing guided duplicate copy'] = str_contains($chatJs, 'stored = { messages: [], context: {} };')
     && str_contains($chatJs, 'transcript.replaceChildren();')
     && substr_count($chatJs, 'ensureGreeting();') >= 2
-    && str_contains($chatJs, 'suppressDialogueEvents++');
+    && str_contains($chatJs, 'suppressDialogueEvents++')
+    && str_contains($showroomJs, 'data-receptionist-chat-start-over')
+    && str_contains($showroomJs, 'Object.keys(guideContext).forEach(key => { guideContext[key] = null; });');
 $guidedOrder = strpos($showroomPhp, 'id="receptionist-choices"');
 $chatToggleOrder = strpos($showroomPhp, 'data-receptionist-chat-toggle');
 $chatShellOrder = strpos($showroomPhp, 'id="receptionist-chat-shell"');
@@ -374,8 +414,11 @@ $checks['expanded chat gives the transcript flexible viewport space without clip
 $checks['restored hotel context validates values and maps numeric ranges safely'] = str_contains($showroomJs, 'normalizeRestoredGuideContext')
     && str_contains($showroomJs, 'restorableHotelRange')
     && str_contains($showroomJs, 'restorableDate')
-    && str_contains($chatJs, 'const range = text.match')
-    && str_contains($chatJs, 'Number(range[2])');
+    && str_contains($chatJs, 'groupSizeExact')
+    && !str_contains($chatJs, 'return range ? Number(range[2]) : null');
+$checks['server context is revalidated across turns and init does not reset it'] = str_contains($endpoint, "receptionist_ai_context")
+    && str_contains($resetEndpoint, "receptionist_ai_context")
+    && !str_contains($chatJs, 'serverResetPromise = resetServerSession();');
 $checks['showroom keeps the deterministic source of truth and adds the chat module'] = str_contains($showroomPhp, 'assets/js/receptionist-chat.js?v=')
     && str_contains($showroomPhp, 'receptionist-chat-transcript')
     && str_contains($showroomJs, 'SevillaReceptionistChat.init')
@@ -419,6 +462,143 @@ $checks['AI environment defaults are disabled and keyless'] = str_contains($env,
     && str_contains($env, 'AI_MAX_OUTPUT_TOKENS=600')
     && preg_match('/^AI_API_KEY=\s*$/m', $env) === 1
     && preg_match('/^AI_MODEL=\s*$/m', $env) === 1;
+
+// Reliability/intelligence regression contracts. These are deliberately
+// provider-free: transport behavior is exercised with injectable callbacks.
+$checks['strict canonical dates reject rollover while accepting valid dates'] = receptionist_ai_canonical_date('2024-02-29', new DateTimeImmutable('2024-01-01')) === '2024-02-29'
+    && receptionist_ai_canonical_date('2024-02-30', new DateTimeImmutable('2024-01-01')) === null
+    && receptionist_ai_canonical_date('2023-02-29', new DateTimeImmutable('2023-01-01')) === null;
+$mergedSlots = receptionist_ai_merge_slots(['intent' => 'Hotel Room', 'group_size' => 4, 'start_date' => '2035-01-01'], ['group_size' => null, 'start_date' => null, 'preference' => 'save']);
+$resetSlots = receptionist_ai_merge_slots(['intent' => 'Hotel Room', 'group_size' => 4], ['group_size' => null], ['group_size']);
+$checks['slot merge preserves valid context across model nulls and supports explicit resets'] = ($mergedSlots['group_size'] ?? null) === 4
+    && ($mergedSlots['start_date'] ?? null) === '2035-01-01'
+    && ($mergedSlots['preference'] ?? null) === 'save'
+    && !array_key_exists('group_size', $resetSlots);
+$checks['fallback classes map to safe machine-readable retry semantics'] = receptionist_ai_fallback_metadata('provider_rate_limit')['code'] === 'busy'
+    && receptionist_ai_fallback_metadata('provider_timeout')['code'] === 'provider_timeout'
+    && receptionist_ai_fallback_metadata('provider_transport')['code'] === 'network_error'
+    && receptionist_ai_fallback_metadata('visit_limit')['retryable'] === false
+    && receptionist_ai_fallback_metadata('provider_timeout')['retryable'] === true;
+$checks['deterministic parser handles typo, aliases, exact counts, words, and weekend dates'] = receptionist_knowledge_booking_group_size('wnt to book a party of twenty five') === 25
+    && receptionist_knowledge_booking_group_size('group of 12 guests') === 12
+    && receptionist_knowledge_booking_group_size('kami dalawa') === 2
+    && receptionist_knowledge_category_hint('gusto ko ng reception sa Infinity') === 'Event Hall'
+    && receptionist_knowledge_booking_date('next weekend') !== null;
+$faqMerged = receptionist_faq_merge_defaults([
+    ['id' => 'faq-cms-valid', 'category' => 'General', 'question' => 'Can I bring children?', 'answer' => 'Yes, please include them in the guest count.', 'phrases' => ['kids']],
+    ['question' => 'qwasda', 'answer' => 'x'],
+]);
+$checks['FAQ CMS entries merge with defaults and reject obvious junk'] = count($faqMerged) > count($defaults)
+    && receptionist_faq_find($faqMerged, 'faq-booking-window') !== null
+    && receptionist_faq_find($faqMerged, 'faq-cms-valid') !== null
+    && receptionist_faq_find($faqMerged, receptionist_faq_stable_id('qwasda')) === null;
+$compactCatalog = receptionist_ai_compact_venue_catalog([
+    ['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_group_id' => 8],
+    ['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_group_id' => 8],
+    ['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_group_id' => 9],
+], 10);
+$checks['venue prompt catalog keeps unique authoritative venue/group identities'] = count($compactCatalog) === 2
+    && count(array_unique(array_map(static fn(array $row): string => implode('|', [(string)$row['id'], (string)($row['room_group_id'] ?? '')]), $compactCatalog))) === 2;
+$overflowRows = [];
+for ($overflowIndex = 1; $overflowIndex <= 120; $overflowIndex++) {
+    $overflowRows[] = ['id' => 1000 + $overflowIndex, 'category' => 'Event Hall', 'name' => 'Overflow Hall ' . $overflowIndex, 'description' => 'Overflow event space', 'event_rate' => 10000, 'event_base_capacity' => 10, 'event_max_capacity' => 500];
+}
+$overflowRecords = receptionist_knowledge_build_records($overflowRows, [], $defaults);
+$overflowAnswer = receptionist_knowledge_reply($overflowRecords, 'I want to book Overflow Hall 120', 'en');
+$overflowCatalog = array_map(static fn(array $row): array => ['id' => $row['id'], 'category' => $row['category'], 'name' => $row['name'], 'room_group_id' => null], $overflowRows);
+$prioritizedOverflow = receptionist_ai_compact_venue_catalog($overflowCatalog, 5, 'Please book Overflow Hall 120', []);
+$checks['overflow venue identities remain directly selectable while prompts stay bounded'] = ($overflowAnswer['slots']['active_venue_id'] ?? null) === 1120
+    && count($prioritizedOverflow) === 5
+    && ($prioritizedOverflow[0]['id'] ?? null) === 1120;
+$switchAnswer = receptionist_knowledge_reply($knowledgeRecords, 'book a hotel for 4 guests on March 14, 2037', 'en', [
+    'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100, 'start_date' => '2036-01-01', 'active_venue_id' => 1,
+]);
+$checks['intent switches preserve same-turn details without stale prior-flow slots'] = ($switchAnswer['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($switchAnswer['slots']['group_size'] ?? null) === 4
+    && ($switchAnswer['slots']['start_date'] ?? null) === '2037-03-14'
+    && !array_key_exists('occasion', $switchAnswer['slots'] ?? [])
+    && !array_key_exists('active_venue_id', $switchAnswer['slots'] ?? [])
+    && ($switchAnswer['slots']['group_size'] ?? null) !== 100;
+$preparedSwitch = receptionist_ai_prepare_knowledge($db, [
+    'slots' => ['intent' => 'Hotel Room', 'group_size' => 4, 'start_date' => '2037-03-14'],
+    'missing_slots' => ['end_date'], 'quick_replies' => ['Check-out date'],
+], ['intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100, 'start_date' => '2036-01-01', 'active_venue_id' => 1], []);
+$checks['knowledge preparation preserves same-turn switch patch after clearing stale context'] = ($preparedSwitch['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($preparedSwitch['slots']['group_size'] ?? null) === 4
+    && ($preparedSwitch['slots']['start_date'] ?? null) === '2037-03-14'
+    && !array_key_exists('occasion', $preparedSwitch['slots'] ?? [])
+    && !array_key_exists('active_venue_id', $preparedSwitch['slots'] ?? [])
+    && ($preparedSwitch['slots']['start_date'] ?? null) !== '2036-01-01';
+$fakeAttempts = 0;
+$fakeProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$fakeAttempts): array {
+        $fakeAttempts++;
+        if ($fakeAttempts < 3) return ['status' => 503, 'raw' => '{}'];
+        $payload = ['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'faq_id' => null, 'slots' => [], 'quick_replies' => []];
+        return ['status' => 200, 'raw' => json_encode(['choices' => [['message' => ['content' => json_encode($payload)], 'finish_reason' => 'stop']]])];
+    }, static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
+$retryResult = $fakeProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$checks['provider retries bounded transient failures under one deadline'] = $retryResult['success'] === true
+    && $fakeAttempts === 3 && ($retryResult['diagnostic']['attempt_count'] ?? 0) === 3;
+$parseablePayload = static function (string $finishReason, array $extra = []): string {
+    $payload = ['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'faq_id' => null, 'slots' => [], 'quick_replies' => []];
+    return json_encode(['choices' => [['message' => ['content' => json_encode($payload)], 'finish_reason' => $finishReason]] + $extra]);
+};
+$truncatedProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static fn(string $url, array $headers, string $body, int $timeout, bool $structured): array => ['status' => 200, 'raw' => $parseablePayload('length')],
+    static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
+$truncatedResult = $truncatedProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$blockedProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static fn(string $url, array $headers, string $body, int $timeout, bool $structured): array => ['status' => 200, 'raw' => json_encode(['blocked' => true, 'choices' => [['message' => ['content' => json_encode(['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'faq_id' => null, 'slots' => [], 'quick_replies' => []])], 'finish_reason' => 'stop']]])],
+    static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
+$blockedResult = $blockedProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$checks['parseable truncation or safety blocks never return provider success'] = !$truncatedResult['success']
+    && ($truncatedResult['error_class'] ?? null) === 'provider_truncated'
+    && ($truncatedResult['diagnostic']['truncated'] ?? false) === true
+    && !$blockedResult['success']
+    && ($blockedResult['error_class'] ?? null) === 'provider_blocked'
+    && ($blockedResult['diagnostic']['blocked'] ?? false) === true;
+$deadlineNow = 1000.0;
+$deadlineAttempts = 0;
+$deadlineSleeps = [];
+$deadlineProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$deadlineAttempts, &$deadlineNow): array {
+        $deadlineAttempts++;
+        $deadlineNow += $deadlineAttempts === 1 ? 4.0 : min($timeout / 1000, 2.0);
+        return ['status' => 503, 'raw' => '{}'];
+    }, static function (int $milliseconds) use (&$deadlineSleeps, &$deadlineNow): void { $deadlineSleeps[] = $milliseconds; $deadlineNow += $milliseconds / 1000; }, static function () use (&$deadlineNow): float { return $deadlineNow; });
+$deadlineResult = $deadlineProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$compatNow = 1000.0;
+$compatCalls = [];
+$compatSleeps = [];
+$compatProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$compatCalls, &$compatNow): array {
+        $compatCalls[] = $structured;
+        if ($structured) { $compatNow += 4.0; return ['status' => 400, 'raw' => json_encode(['error' => ['code' => 'response_format', 'message' => 'json schema unsupported']])]; }
+        $compatNow += min($timeout / 1000, 2.0);
+        return ['status' => 503, 'raw' => '{}'];
+    }, static function (int $milliseconds) use (&$compatSleeps): void { $compatSleeps[] = $milliseconds; }, static function () use (&$compatNow): float { return $compatNow; });
+$compatResult = $compatProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$compatDeadlineNow = 1000.0;
+$compatDeadlineCalls = [];
+$compatDeadlineSleeps = [];
+$compatDeadlineProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
+    static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$compatDeadlineCalls, &$compatDeadlineNow): array {
+        $compatDeadlineCalls[] = $structured;
+        $compatDeadlineNow += min($timeout / 1000, 5.0);
+        return ['status' => 400, 'raw' => json_encode(['error' => ['code' => 'response_format', 'message' => 'json schema unsupported']])];
+    }, static function (int $milliseconds) use (&$compatDeadlineSleeps): void { $compatDeadlineSleeps[] = $milliseconds; }, static function () use (&$compatDeadlineNow): float { return $compatDeadlineNow; });
+$compatDeadlineResult = $compatDeadlineProvider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+$checks['provider deadline stops retries and structured fallback before another request or sleep'] = !$deadlineResult['success']
+    && $deadlineAttempts === 2 && $deadlineSleeps === [250] && ($deadlineNow - 1000.0) <= 5.000001
+    && !$compatResult['success'] && $compatCalls === [true, false] && $compatSleeps === []
+    && ($compatResult['diagnostic']['attempt_count'] ?? 0) === 2 && ($compatNow - 1000.0) <= 5.000001
+    && !$compatDeadlineResult['success'] && $compatDeadlineCalls === [true] && $compatDeadlineSleeps === []
+    && ($compatDeadlineResult['error_class'] ?? null) === 'provider_timeout' && ($compatDeadlineNow - 1000.0) <= 5.000001;
+$checks['endpoint exposes fallback metadata and uses the default server logger'] = !str_contains($endpoint, "ini_set('error_log'")
+    && str_contains($endpoint, 'fallback_code') && str_contains($endpoint, 'request_id') && str_contains($endpoint, 'prompt_bytes');
+$checks['client retains exact guest counts separately from hotel display ranges'] = str_contains($showroomJs, 'groupSizeExact')
+    && str_contains($chatJs, 'fallback_code') && str_contains($chatJs, 'pendingMessage');
 
 $failed = array_filter($checks, static fn(bool $passed): bool => !$passed);
 foreach ($checks as $label => $passed) echo ($passed ? 'PASS' : 'FAIL') . " - {$label}\n";

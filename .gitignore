@@ -10,5 +10,10 @@ realtime/node_modules/
 # Ignore error logs
 error_log
 *.log
+# Local receptionist request payloads may contain visitor-provided text.
+scratch/payload.json
+# Keep ad-hoc AI scratch clients and payload fixtures out of accidental staging.
+scratch/test_*.php
+scratch/*.json
 # Ignore backups directory
 storage/backups/

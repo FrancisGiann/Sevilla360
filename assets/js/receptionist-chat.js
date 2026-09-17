@@ -3,6 +3,8 @@
 
   const STORAGE_KEY = "sevilla360-receptionist-chat-v1";
   const MAX_MESSAGE_LENGTH = 500;
+  // This is intentionally client-owned; response text and model payloads never supply navigation URLs.
+  const SUPPORT_FAQ_HREF = "support.php#faqs";
   let initializedRoot = null;
 
   function init(options) {
@@ -22,9 +24,9 @@
     initializedRoot = root;
     root.dataset.receptionistChatReady = "true";
 
-    // Chat transcript is deliberately page-scoped. Remove the legacy
-    // sessionStorage copy so a reload never resurrects another page's chat;
-    // the separate guided context remains owned by showroom.js.
+    // Keep the typed transcript in memory for this page only. The server-side
+    // booking context survives reloads in the PHP session and is revalidated
+    // on every request; transcript text is never persisted in browser storage.
     let stored = { messages: [], context: {} };
     let suppressDialogueEvents = 0;
     try {
@@ -50,6 +52,7 @@
     let gated = true;
     let deferredGate = false;
     let serverResetPromise = Promise.resolve();
+    let pendingMessage = "";
     const setNonChatMode = active => {
       root.classList.toggle("is-chat-open", active);
       [root.querySelector(".receptionist-panel-head"), root.querySelector(".receptionist-message"), document.getElementById("receptionist-continue"), choices].filter(Boolean).forEach(element => {
@@ -154,27 +157,32 @@
     const safeContext = () => {
       const source = typeof options.getContext === "function" ? options.getContext() : {};
       if (!source || typeof source !== "object") return {};
-      const allowed = { intent: "intent", occasion: "occasion", purpose: "purpose", groupSize: "group_size", group_size: "group_size", preference: "preference", startDate: "start_date", endDate: "end_date", activeVenueId: "active_venue_id", active_venue_id: "active_venue_id", activeRoomGroupId: "active_room_group_id", active_room_group_id: "active_room_group_id" };
+      const allowed = { intent: "intent", occasion: "occasion", purpose: "purpose", groupSizeExact: "group_size", groupSize: "group_size", group_size_exact: "group_size", group_size: "group_size", preference: "preference", startDate: "start_date", endDate: "end_date", activeVenueId: "active_venue_id", active_venue_id: "active_venue_id", activeRoomGroupId: "active_room_group_id", active_room_group_id: "active_room_group_id" };
       const normalizeGroupSize = value => {
         const text = String(value).trim();
         if (/^\d+$/.test(text)) return Number(text);
-        const range = text.match(/^(\d+)\s*[-–]\s*(\d+)$/);
-        return range ? Number(range[2]) : null;
+        // A display range is not an exact guest count. It is intentionally
+        // omitted unless guideContext supplies groupSizeExact separately.
+        return null;
       };
-      return Object.keys(allowed).reduce((result, key) => {
+      const result = Object.keys(allowed).reduce((result, key) => {
         const mapped = allowed[key];
         if (source[key] === undefined || source[key] === null || source[key] === "") return result;
         const value = mapped === "group_size" ? normalizeGroupSize(source[key]) : source[key];
         if (mapped !== "group_size" || value !== null) result[mapped] = value;
         return result;
       }, {});
+      const exact = source.groupSizeExact ?? source.group_size_exact;
+      const exactCount = exact === undefined || exact === null || exact === "" ? null : normalizeGroupSize(exact);
+      if (exactCount !== null) result.group_size = exactCount;
+      return result;
     };
     const save = () => {
       stored.messages = normalizeMessages(stored.messages);
       stored.context = safeContext();
     };
     const setStatus = message => { if (status) status.textContent = message || ""; };
-    const appendMessage = (role, message, persist = true, action = null) => {
+    const appendMessage = (role, message, persist = true, action = null, showSupportFaqCta = false) => {
       if (!message || typeof message !== "string") return;
       const normalizedRole = role === "user" ? "user" : "assistant";
       const content = message.trim();
@@ -214,11 +222,12 @@
             requestAnimationFrame(typeChar);
           } else {
              visibleText.textContent = content;
-             if (action === "faq" || content.includes("Here is the current approved guidance") || content.includes("Narito ang kasalukuyang approved guidance")) {
+             if ((action === "faq" || showSupportFaqCta === true) && !bubble.querySelector("[data-receptionist-support-faq]")) {
                const link = document.createElement("a");
-               link.href = "support.php#faqs";
+               link.href = SUPPORT_FAQ_HREF;
                link.className = "receptionist-chat-inline-link";
-               link.textContent = "View all FAQs";
+               link.dataset.receptionistSupportFaq = "true";
+               link.textContent = showSupportFaqCta === true ? "View Support & FAQs" : "View all FAQs";
                bubble.appendChild(link);
                transcript.scrollTop = transcript.scrollHeight;
              }
@@ -286,9 +295,28 @@
       if (existing) existing.remove();
     };
     const csrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
-    const guidedFallback = (data, message) => {
+    const fallbackCopy = {
+      busy: "The receptionist is busy right now. You can retry in a moment; your message is still here.",
+      visit_limit: "This visit has reached its chat limit. Your message is still here; use the guided choices or contact reception.",
+      invalid_request: "Please check your message and try again.",
+      invalid_context: "Those saved booking details are no longer valid. Please choose the venue path again.",
+      provider_timeout: "The receptionist timed out. Retry when you’re ready; your message is still here.",
+      provider_unavailable: "The receptionist service is unavailable. Retry when you’re ready; your message is still here.",
+      network_error: "A network problem interrupted the receptionist. Retry when you’re ready; your message is still here.",
+      server_error: "A temporary server problem interrupted the receptionist. Retry when you’re ready; your message is still here."
+    };
+    const guidedFallback = (data, message, retryable = false) => {
       appendMessage("assistant", message || "I’ll keep the chat open while you choose a venue path below.");
       renderQuickReplies(Array.isArray(data?.quick_replies) && data.quick_replies.length ? data.quick_replies : ["Event", "Hotel", "Villa", "Support FAQs"]);
+      if (retryable) {
+        if (quickReplies.children.length >= 4) quickReplies.lastElementChild.remove();
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "receptionist-chat-quick-reply receptionist-chat-retry";
+        retry.dataset.receptionistChatRetry = "true";
+        retry.textContent = "Retry";
+        quickReplies.appendChild(retry);
+      }
     };
     const submit = async message => {
       const clean = String(message || "").trim();
@@ -299,7 +327,7 @@
         return;
       }
       appendMessage("user", clean);
-      input.value = "";
+      pendingMessage = clean;
       form.dataset.busy = "true";
       form.setAttribute("aria-busy", "true");
       if (send) send.disabled = true;
@@ -327,6 +355,8 @@
           if (last?.dataset.role === "user") last.remove();
           if (Array.isArray(stored.messages)) stored.messages = stored.messages.slice(0, -1);
           save();
+          input.value = pendingMessage;
+          pendingMessage = "";
           setStatus(data.message || localeCopy[locale?.value] || localeCopy.en);
           input.focus();
           return;
@@ -334,17 +364,40 @@
         if (response.status === 422 && data && data.code === "invalid_context") {
           stored.context = {};
           save();
+          input.value = pendingMessage;
+          pendingMessage = "";
           const handled = typeof options.onInvalidContext === "function" && options.onInvalidContext(data) === true;
           if (!handled) guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, data.message);
           return;
         }
-        if (!response.ok || !data || data.success !== true) throw new Error(data?.message || "The receptionist is unavailable.");
+        if (!response.ok || !data || data.success !== true) {
+          const code = data?.fallback_code || data?.code || (response.status === 429 ? "busy" : response.status >= 500 ? "server_error" : "provider_unavailable");
+          const codeCopy = fallbackCopy[code] || fallbackCopy.server_error;
+          const last = transcript.lastElementChild;
+          if (last?.dataset.role === "user") last.remove();
+          stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === pendingMessage));
+          input.value = pendingMessage;
+          pendingMessage = "";
+          guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, codeCopy, code !== "visit_limit");
+          setStatus(code === "busy" || code === "visit_limit" ? codeCopy : "You can retry without losing your message.");
+          return;
+        }
+        input.value = "";
+        pendingMessage = "";
         await waitForTypingMin();
         removeTypingIndicator();
         let keptGuidedStatus = false;
         if (data.mode === "guided") {
-          guidedFallback(data, data.reply);
-          setStatus("Guided choices are available in chat.");
+          const fallbackCode = typeof data.fallback_code === "string" ? data.fallback_code : "";
+          if (fallbackCode && data.retryable !== false) {
+            const last = transcript.lastElementChild;
+            if (last?.dataset.role === "user") last.remove();
+            stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === clean));
+            input.value = clean;
+            pendingMessage = clean;
+          }
+          guidedFallback(data, data.reply, Boolean(fallbackCode && data.retryable !== false));
+          setStatus(fallbackCopy[fallbackCode] || "Guided choices are available in chat.");
           keptGuidedStatus = true;
         } else {
           const reply = typeof data.reply === "string" ? data.reply : "I can help with the guided venue choices.";
@@ -352,13 +405,18 @@
           if (data.mode === "knowledge" && typeof options.onKnowledge === "function") options.onKnowledge(data);
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
-          appendMessage("assistant", reply, true, data.action);
+          appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true);
           renderQuickReplies(data.quick_replies);
         }
         if (!keptGuidedStatus) setStatus("");
       } catch (error) {
-        guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, guidedCopy[locale?.value] || guidedCopy.en);
-        setStatus("Guided choices are available.");
+        const last = transcript.lastElementChild;
+        if (last?.dataset.role === "user") last.remove();
+        stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === pendingMessage));
+        input.value = pendingMessage;
+        pendingMessage = "";
+        guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, "A network problem interrupted the receptionist. Retry when you’re ready; your message is still here.");
+        setStatus("You can retry without losing your message.");
       } finally {
         removeTypingIndicator();
         form.dataset.busy = "false";
@@ -385,7 +443,6 @@
       }
     };
 
-    serverResetPromise = resetServerSession();
     setChatOpen(false, false);
     renderQuickReplies(["Event", "Hotel", "Villa", "Support FAQs"]);
     save();
@@ -396,6 +453,11 @@
     quickReplies.addEventListener("click", event => {
       const button = event.target.closest(".receptionist-chat-quick-reply");
       if (!button) return;
+      if (button.hasAttribute("data-receptionist-chat-retry")) {
+        if (pendingMessage) form.requestSubmit();
+        else input.focus();
+        return;
+      }
       const label = button.textContent.trim();
       if (typeof options.onQuickReply === "function" && options.onQuickReply(label) === true) return;
       input.value = label === "Support FAQs" ? "What policies and FAQs can you help with?" : label;

@@ -18,6 +18,124 @@ function receptionist_ai_sanitize_provider_error_code($value): ?string
     return preg_match('/\A[a-zA-Z0-9_.:-]{1,80}\z/', $value) === 1 ? $value : null;
 }
 
+function receptionist_ai_merge_slots(array $base, array $raw, array $resetKeys = []): array
+{
+    // Keep the legacy array_replace operation as the starting point for
+    // compatibility, then undo null/empty model omissions. A reset is only
+    // honored when explicitly requested by application code (for example,
+    // Start over or a deliberate category change).
+    $merged = array_replace($base, $raw);
+    foreach ($raw as $key => $value) {
+        if (($value === null || $value === '') && !in_array((string)$key, $resetKeys, true)) {
+            if (array_key_exists($key, $base)) $merged[$key] = $base[$key];
+            else unset($merged[$key]);
+        }
+    }
+    foreach ($resetKeys as $key) {
+        if (array_key_exists($key, $raw) && ($raw[$key] === null || $raw[$key] === '')) unset($merged[$key]);
+    }
+    return $merged;
+}
+
+function receptionist_ai_fallback_metadata(string $errorClass): array
+{
+    $normalized = strtolower(trim($errorClass));
+    $map = [
+        'busy' => ['code' => 'busy', 'retryable' => true],
+        'rate_limit' => ['code' => 'busy', 'retryable' => true],
+        'provider_rate_limit' => ['code' => 'busy', 'retryable' => true],
+        'visit_limit' => ['code' => 'visit_limit', 'retryable' => false],
+        'invalid_request' => ['code' => 'invalid_request', 'retryable' => false],
+        'invalid_context' => ['code' => 'invalid_context', 'retryable' => false],
+        'provider_timeout' => ['code' => 'provider_timeout', 'retryable' => true],
+        'timeout' => ['code' => 'provider_timeout', 'retryable' => true],
+        'provider_transport' => ['code' => 'network_error', 'retryable' => true],
+        'network_error' => ['code' => 'network_error', 'retryable' => true],
+        'curl_unavailable' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'provider_http' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'provider_schema' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'invalid_json' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'provider_truncated' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'provider_blocked' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'provider_unavailable' => ['code' => 'provider_unavailable', 'retryable' => true],
+        'server_error' => ['code' => 'server_error', 'retryable' => true],
+    ];
+    return $map[$normalized] ?? ['code' => 'server_error', 'retryable' => true];
+}
+
+function receptionist_ai_retry_delay_ms(int $attempt, int $backoffMs = 250): int
+{
+    $attempt = max(1, min(3, $attempt));
+    $backoffMs = max(0, min(1000, $backoffMs));
+    return min(1000, $backoffMs * (2 ** ($attempt - 1)));
+}
+
+function receptionist_ai_should_retry_transient(string $errorClass, ?int $status = null): bool
+{
+    if (in_array($errorClass, ['provider_transport', 'provider_timeout'], true)) return true;
+    return $status === 408 || $status === 429 || ($status !== null && $status >= 500 && $status <= 599);
+}
+
+function receptionist_ai_retry_policy(int $timeoutSeconds): array
+{
+    $attempts = (int)receptionist_ai_env('AI_MAX_ATTEMPTS', '3');
+    $backoff = (int)receptionist_ai_env('AI_RETRY_BACKOFF_MS', '250');
+    return [
+        'deadline_seconds' => max(1, min(30, $timeoutSeconds)),
+        'max_attempts' => max(1, min(3, $attempts ?: 3)),
+        'backoff_ms' => max(0, min(1000, $backoff ?: 250)),
+    ];
+}
+
+function receptionist_ai_curl_errno_category(int $errno): ?string
+{
+    if ($errno <= 0) return null;
+    if (defined('CURLE_OPERATION_TIMEDOUT') && $errno === CURLE_OPERATION_TIMEDOUT) return 'timeout';
+    if (defined('CURLE_COULDNT_RESOLVE_HOST') && $errno === CURLE_COULDNT_RESOLVE_HOST) return 'dns';
+    if (defined('CURLE_COULDNT_CONNECT') && $errno === CURLE_COULDNT_CONNECT) return 'connect';
+    if (defined('CURLE_SSL_CONNECT_ERROR') && $errno === CURLE_SSL_CONNECT_ERROR) return 'tls';
+    return 'transport';
+}
+
+function receptionist_ai_response_signals(array $decoded, array $choice = []): array
+{
+    $usage = is_array($decoded['usage'] ?? null) ? $decoded['usage'] : [];
+    $candidates = is_array($decoded['candidates'] ?? null) ? $decoded['candidates'] : [];
+    $finish = $choice['finish_reason'] ?? ($choice['finishReason'] ?? ($choice['stop_reason'] ?? ($choice['stopReason'] ?? ($decoded['finish_reason'] ?? ($decoded['finishReason'] ?? ($decoded['stop_reason'] ?? ($decoded['stopReason'] ?? null)))))));
+    if ($finish === null && is_array($candidates[0] ?? null)) {
+        $finish = $candidates[0]['finishReason'] ?? ($candidates[0]['finish_reason'] ?? null);
+    }
+    $finishLower = strtolower((string)$finish);
+    $signals = [
+        'finish_reason' => receptionist_ai_sanitize_provider_error_code($finish),
+        'truncated' => in_array($finishLower, ['length', 'max_tokens', 'max_output_tokens', 'truncated'], true),
+        'blocked' => false,
+    ];
+    if (in_array($finishLower, ['safety', 'blocked', 'block', 'content_filter', 'safety_filter'], true)) $signals['blocked'] = true;
+    foreach (['truncated', 'is_truncated', 'was_truncated'] as $key) {
+        if (($decoded[$key] ?? false) === true || ($choice[$key] ?? false) === true) $signals['truncated'] = true;
+    }
+    foreach (['blocked', 'block_reason', 'blockReason', 'safety_reason', 'safetyReason', 'safety_blocked', 'safetyBlocked'] as $key) {
+        if (array_key_exists($key, $decoded) && $decoded[$key] !== null && $decoded[$key] !== false && $decoded[$key] !== '') $signals['blocked'] = true;
+    }
+    foreach (['prompt_feedback', 'promptFeedback'] as $feedbackKey) {
+        if (!is_array($decoded[$feedbackKey] ?? null)) continue;
+        if (($decoded[$feedbackKey]['block_reason'] ?? ($decoded[$feedbackKey]['blockReason'] ?? '')) !== '') $signals['blocked'] = true;
+    }
+    if ($candidates !== []) {
+        foreach ($candidates as $candidate) {
+            if (!is_array($candidate)) continue;
+            $candidateFinish = strtolower((string)($candidate['finishReason'] ?? ($candidate['finish_reason'] ?? '')));
+            if (in_array($candidateFinish, ['safety', 'blocked', 'block', 'content_filter', 'safety_filter'], true)) $signals['blocked'] = true;
+            if (in_array($candidateFinish, ['length', 'max_tokens', 'max_output_tokens', 'truncated'], true)) $signals['truncated'] = true;
+            if (($candidate['blocked'] ?? false) === true || (($candidate['blockReason'] ?? '') !== '')) $signals['blocked'] = true;
+        }
+    }
+    if (isset($usage['prompt_tokens']) && is_numeric($usage['prompt_tokens'])) $signals['prompt_tokens'] = (int)$usage['prompt_tokens'];
+    if (isset($usage['completion_tokens']) && is_numeric($usage['completion_tokens'])) $signals['completion_tokens'] = (int)$usage['completion_tokens'];
+    return $signals;
+}
+
 function receptionist_ai_should_retry_without_response_format(bool $structured, int $status, ?string $errorCode, string $errorMessage): bool
 {
     if (!$structured || $status < 400 || $status >= 500 || $status === 429) return false;
@@ -71,24 +189,66 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         private readonly string $model,
         private readonly string $providerId = 'openrouter',
         private readonly string $siteUrl = '',
-        private readonly string $siteName = 'Sevilla360'
+        private readonly string $siteName = 'Sevilla360',
+        private readonly ?Closure $transport = null,
+        private readonly ?Closure $sleep = null,
+        private readonly ?Closure $clock = null
     ) {}
 
     public function complete(array $messages, int $maxOutputTokens, int $timeoutSeconds): array
     {
-        $result = $this->request($messages, $maxOutputTokens, $timeoutSeconds, true);
-        if (!empty($result['_retry_without_structured_output'])) {
-            unset($result['_retry_without_structured_output']);
-            $result = $this->request($messages, $maxOutputTokens, $timeoutSeconds, false);
-            if (is_array($result['diagnostic'] ?? null)) $result['diagnostic']['retried_without_response_format'] = true;
+        $policy = receptionist_ai_retry_policy($timeoutSeconds);
+        $started = $this->now();
+        $deadline = $started + $policy['deadline_seconds'];
+        $structured = true;
+        $attempt = 0;
+        $retriedWithoutFormat = false;
+        $last = ['success' => false, 'error_class' => 'provider_unavailable', 'diagnostic' => []];
+        while ($attempt < $policy['max_attempts']) {
+            $remainingMs = $this->remainingMilliseconds($deadline);
+            if ($remainingMs <= 0) {
+                $last = ['success' => false, 'error_class' => 'provider_timeout', 'diagnostic' => []];
+                break;
+            }
+            $attempt++;
+            $requestTimeoutMs = max(1, min($policy['deadline_seconds'] * 1000, $remainingMs));
+            $result = $this->request($messages, $maxOutputTokens, $requestTimeoutMs, $structured);
+            $last = $result;
+            $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
+            $diagnostic['attempt_count'] = $attempt;
+            $diagnostic['deadline_seconds'] = $policy['deadline_seconds'];
+            $result['diagnostic'] = $diagnostic;
+            if (!empty($result['success'])) {
+                if ($retriedWithoutFormat) $result['diagnostic']['retried_without_response_format'] = true;
+                return $result;
+            }
+            if ($structured && !empty($result['_retry_without_structured_output'])) {
+                unset($result['_retry_without_structured_output']);
+                $structured = false;
+                $retriedWithoutFormat = true;
+                $last = $result;
+                continue;
+            }
+            $status = is_int($diagnostic['http_status'] ?? null) ? $diagnostic['http_status'] : null;
+            $errorClass = (string)($result['error_class'] ?? '');
+            if (!receptionist_ai_should_retry_transient($errorClass, $status) || $attempt >= $policy['max_attempts']) break;
+            $remainingMs = $this->remainingMilliseconds($deadline);
+            $delayMs = receptionist_ai_retry_delay_ms($attempt, $policy['backoff_ms']);
+            if ($remainingMs <= 0 || $delayMs >= $remainingMs) break;
+            $this->wait($delayMs);
         }
-        unset($result['_retry_without_structured_output']);
-        return $result;
+        unset($last['_retry_without_structured_output']);
+        if (is_array($last['diagnostic'] ?? null)) {
+            $last['diagnostic']['attempt_count'] = max($attempt, (int)($last['diagnostic']['attempt_count'] ?? 0));
+            $last['diagnostic']['deadline_seconds'] = $policy['deadline_seconds'];
+            if ($retriedWithoutFormat) $last['diagnostic']['retried_without_response_format'] = true;
+        }
+        return $last;
     }
 
-    private function request(array $messages, int $maxOutputTokens, int $timeoutSeconds, bool $structured): array
+    private function request(array $messages, int $maxOutputTokens, int $timeoutMs, bool $structured): array
     {
-        if (!function_exists('curl_init')) return ['success' => false, 'error_class' => 'curl_unavailable'];
+        if ($this->transport === null && !function_exists('curl_init')) return ['success' => false, 'error_class' => 'curl_unavailable'];
         $url = rtrim($this->baseUrl, '/') . '/chat/completions';
         $request = [
             'model' => $this->model,
@@ -117,20 +277,37 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         $headers = ['Authorization: Bearer ' . $this->apiKey, 'Content-Type: application/json'];
         if ($this->siteUrl !== '') $headers[] = 'HTTP-Referer: ' . $this->siteUrl;
         if ($this->siteName !== '') $headers[] = 'X-Title: ' . $this->siteName;
-        $handle = curl_init($url);
-        if ($handle === false) return ['success' => false, 'error_class' => 'curl_init'];
-        curl_setopt_array($handle, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => min(5, max(1, $timeoutSeconds)),
-            CURLOPT_TIMEOUT => max(1, $timeoutSeconds),
-        ]);
-        $raw = curl_exec($handle);
-        $status = (int)curl_getinfo($handle, CURLINFO_HTTP_CODE);
-        $error = curl_error($handle);
-        curl_close($handle);
+        $curlErrno = 0;
+        $error = '';
+        if ($this->transport !== null) {
+            try {
+                $transportResult = ($this->transport)($url, $headers, $body, $timeoutMs, $structured);
+            } catch (Throwable $transportError) {
+                $transportResult = ['status' => 0, 'raw' => '', 'error' => $transportError->getMessage(), 'errno' => 1];
+            }
+            $status = (int)($transportResult['status'] ?? 0);
+            $raw = is_string($transportResult['raw'] ?? null) ? $transportResult['raw'] : '';
+            $error = is_string($transportResult['error'] ?? null) ? $transportResult['error'] : '';
+            $curlErrno = (int)($transportResult['errno'] ?? 0);
+        } else {
+            $handle = curl_init($url);
+            if ($handle === false) return ['success' => false, 'error_class' => 'curl_init', 'diagnostic' => ['request_bytes' => strlen($body)]];
+            curl_setopt_array($handle, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT_MS => min(5000, max(1, $timeoutMs)),
+                CURLOPT_TIMEOUT_MS => max(1, $timeoutMs),
+            ]);
+            $raw = curl_exec($handle);
+            $status = (int)curl_getinfo($handle, CURLINFO_HTTP_CODE);
+            $error = curl_error($handle);
+            $curlErrno = (int)curl_errno($handle);
+            curl_close($handle);
+        }
+        $rawBytes = is_string($raw) ? strlen($raw) : 0;
+        $diagnosticBase = ['http_status' => $status > 0 ? $status : null, 'provider_error_code' => null, 'curl_errno_category' => receptionist_ai_curl_errno_category($curlErrno), 'request_bytes' => strlen($body), 'response_bytes' => $rawBytes];
         if (!is_string($raw) || $raw === '' || $status < 200 || $status >= 300) {
             $decodedError = is_string($raw) ? json_decode($raw, true) : null;
             $providerError = is_array($decodedError['error'] ?? null) ? $decodedError['error'] : (is_array($decodedError) ? $decodedError : []);
@@ -138,25 +315,43 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
             $errorCode = receptionist_ai_sanitize_provider_error_code($providerError['code'] ?? $topLevelCode);
             $errorMessage = is_string($providerError['message'] ?? null) ? strtolower($providerError['message']) : '';
             $formatRejected = receptionist_ai_should_retry_without_response_format($structured, $status, $errorCode, $errorMessage);
-            $diagnostic = [
-                'http_status' => $status > 0 ? $status : null,
-                'provider_error_code' => $errorCode,
-            ];
-            $result = ['success' => false, 'error_class' => $status === 429 ? 'provider_rate_limit' : ($error !== '' ? 'provider_transport' : 'provider_http'), 'diagnostic' => $diagnostic];
+            $diagnostic = $diagnosticBase;
+            $diagnostic['provider_error_code'] = $errorCode;
+            $timedOut = defined('CURLE_OPERATION_TIMEDOUT') && $curlErrno === CURLE_OPERATION_TIMEDOUT;
+            $errorClass = ($status === 408 || $timedOut || str_contains(strtolower($error), 'timed out'))
+                ? 'provider_timeout'
+                : ($status === 429 ? 'provider_rate_limit' : (($error !== '' || $curlErrno > 0 || $status === 0) ? 'provider_transport' : 'provider_http'));
+            $result = ['success' => false, 'error_class' => $errorClass, 'diagnostic' => $diagnostic];
             if ($formatRejected) $result['_retry_without_structured_output'] = true;
             return $result;
         }
         $decoded = json_decode($raw, true);
         $content = is_array($decoded) ? ($decoded['choices'][0]['message']['content'] ?? null) : null;
-        if (!is_string($content) || trim($content) === '') return ['success' => false, 'error_class' => 'provider_schema', 'diagnostic' => ['http_status' => $status, 'provider_error_code' => null]];
+        $choice = is_array($decoded['choices'][0] ?? null) ? $decoded['choices'][0] : [];
+        $diagnostic = $diagnosticBase + receptionist_ai_response_signals($decoded, $choice);
+        if (!is_string($content) || trim($content) === '') return ['success' => false, 'error_class' => 'provider_schema', 'diagnostic' => $diagnostic];
+        if (!empty($diagnostic['blocked'])) return ['success' => false, 'error_class' => 'provider_blocked', 'diagnostic' => $diagnostic];
+        if (!empty($diagnostic['truncated'])) return ['success' => false, 'error_class' => 'provider_truncated', 'diagnostic' => $diagnostic];
         $content = trim($content);
         if (str_starts_with($content, '```')) {
             $content = preg_replace('/\A```(?:json)?\s*|\s*```\z/i', '', $content) ?? $content;
         }
         $payload = json_decode(trim($content), true);
         return is_array($payload)
-            ? ['success' => true, 'payload' => $payload]
-            : ['success' => false, 'error_class' => 'invalid_json', 'diagnostic' => ['http_status' => $status, 'provider_error_code' => null]];
+            ? ['success' => true, 'payload' => $payload, 'diagnostic' => $diagnostic]
+            : ['success' => false, 'error_class' => 'invalid_json', 'diagnostic' => $diagnostic];
+    }
+
+    private function now(): float { return $this->clock !== null ? (float)($this->clock)() : microtime(true); }
+    private function remainingMilliseconds(float $deadline): int
+    {
+        return max(0, (int)floor(($deadline - $this->now()) * 1000));
+    }
+    private function wait(int $milliseconds): void
+    {
+        if ($milliseconds <= 0) return;
+        if ($this->sleep !== null) { ($this->sleep)($milliseconds); return; }
+        usleep($milliseconds * 1000);
     }
 }
 
@@ -218,6 +413,18 @@ function receptionist_ai_guided_message(string $language = 'en', string $variant
         'limit:fil' => 'Naabot na ang chat limit para sa visit na ito. Available pa rin ang guided venue choices o maaari kang makipag-ugnayan sa reception.',
         'limit:taglish' => 'Naabot na ang chat limit for this visit. Available pa rin ang guided venue choices or contact reception.',
         'limit:en' => 'I’ve reached the chat limit for this visit. The guided venue choices are still available, or you can contact reception.',
+        'timeout:fil' => 'Hindi sumagot ang service sa oras. Gamitin ang guided venue choices o subukan muli sa ilang sandali.',
+        'timeout:taglish' => 'Nag-time out ang service. Gamitin ang guided venue choices or try ulit in a moment.',
+        'timeout:en' => 'The receptionist service timed out. Please use the guided venue choices or try again in a moment.',
+        'unavailable:fil' => 'Hindi available ang chat service ngayon. Gamitin ang guided venue choices o kontakin ang reception.',
+        'unavailable:taglish' => 'The chat service is unavailable right now. Use the guided venue choices or contact reception.',
+        'unavailable:en' => 'The chat service is unavailable right now. Please use the guided venue choices or contact reception.',
+        'network:fil' => 'May problema sa connection ng chat service. Gamitin ang guided venue choices o subukan muli.',
+        'network:taglish' => 'May connection issue ang chat service. Use the guided venue choices or try again.',
+        'network:en' => 'There was a connection problem with the chat service. Please use the guided venue choices or try again.',
+        'server:fil' => 'May temporary server problem. Gamitin ang guided venue choices o subukan muli mamaya.',
+        'server:taglish' => 'There is a temporary server problem. Use the guided venue choices or try again later.',
+        'server:en' => 'There is a temporary server problem. Please use the guided venue choices or try again later.',
         'default:fil' => 'Gamitin natin ang guided choices para mahanap ko ang tamang venue details para sa iyo.',
         'default:taglish' => 'Gamitin natin ang guided choices para mahanap ang tamang venue details para sa iyo.',
         default => 'Let’s use the guided choices so I can help with the right venue details.',
@@ -249,21 +456,20 @@ function receptionist_ai_canonical_date($value, ?DateTimeImmutable $today = null
 {
     if (!is_string($value) || trim($value) === '') return null;
     $today ??= new DateTimeImmutable('today');
-    
-    // First try strict format
+    $value = trim($value);
     $date = null;
-    if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value)) {
+    if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value) === 1) {
         $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if (!$date || ($errors !== false && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0)) || $date->format('Y-m-d') !== $value) return null;
+    } elseif (preg_match('/\A\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\z/', $value) === 1) {
+        // Numeric day/month ordering varies by locale. Require the client or
+        // model to send canonical Y-m-d rather than guessing.
+        return null;
     } else {
-        // Fallback to loose parsing for weak models
-        try {
-            $date = new DateTimeImmutable($value);
-        } catch (Exception $e) {
-            return null;
-        }
+        try { $date = new DateTimeImmutable($value); } catch (Exception $e) { return null; }
+        if (!$date) return null;
     }
-    
-    if (!$date) return null;
     $formatted = $date->format('Y-m-d');
     return $formatted >= $today->format('Y-m-d') ? $formatted : null;
 }
@@ -304,7 +510,75 @@ function receptionist_ai_public_venue_catalog(mysqli $conn): array
         ];
     }
     $stmt->close();
-    return $catalog;
+    // Keep the complete validated identity list for server-side selection.
+    // Prompt construction applies its own bounded, query-aware projection.
+    return receptionist_ai_compact_venue_catalog($catalog, 5000);
+}
+
+function receptionist_ai_compact_venue_catalog(array $catalog, int $limit = 80, ?string $query = null, array $context = []): array
+{
+    $unique = [];
+    foreach ($catalog as $venue) {
+        if (!is_array($venue)) continue;
+        $id = filter_var($venue['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($id === false) continue;
+        $category = (string)($venue['category'] ?? '');
+        if (!in_array($category, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) continue;
+        $group = filter_var($venue['room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $key = implode('|', [(int)$id, $category, $group === false ? '' : (int)$group]);
+        if (isset($unique[$key])) continue;
+        $unique[$key] = [
+            'id' => (int)$id,
+            'category' => $category,
+            'name' => receptionist_ai_safe_catalog_text($venue['name'] ?? ''),
+            'room_type' => receptionist_ai_safe_catalog_text($venue['room_type'] ?? ''),
+            'room_group_id' => $group === false ? null : (int)$group,
+        ];
+    }
+    $items = array_values($unique);
+    if ($query !== null || $context !== []) {
+        $normalizedQuery = strtolower((string)preg_replace('/[^\p{L}\p{N}]+/u', ' ', $query ?? ''));
+        $queryTokens = preg_split('/\s+/', trim($normalizedQuery), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $activeVenueId = filter_var($context['active_venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $activeGroupId = filter_var($context['active_room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $scored = [];
+        foreach ($items as $position => $venue) {
+            $name = strtolower((string)($venue['name'] ?? ''));
+            $roomType = strtolower((string)($venue['room_type'] ?? ''));
+            $category = strtolower((string)($venue['category'] ?? ''));
+            $score = 0;
+            if ($activeVenueId !== false && (int)$venue['id'] === (int)$activeVenueId) $score += 1000;
+            if ($activeGroupId !== false && (int)($venue['room_group_id'] ?? 0) === (int)$activeGroupId) $score += 500;
+            if ($normalizedQuery !== '' && $name !== '' && str_contains($normalizedQuery, $name)) $score += 800;
+            if ($normalizedQuery !== '' && $roomType !== '' && str_contains($normalizedQuery, $roomType)) $score += 500;
+            foreach ($queryTokens as $token) {
+                if ($token === '') continue;
+                if (in_array($token, preg_split('/\s+/', $name, -1, PREG_SPLIT_NO_EMPTY), true)) $score += 80;
+                elseif (in_array($token, preg_split('/\s+/', $roomType, -1, PREG_SPLIT_NO_EMPTY), true)) $score += 60;
+                elseif (in_array($token, preg_split('/\s+/', $category, -1, PREG_SPLIT_NO_EMPTY), true)) $score += 20;
+                elseif (strlen($token) >= 5) {
+                    foreach (preg_split('/\s+/', trim($name . ' ' . $roomType), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $candidate) {
+                        if (abs(strlen($candidate) - strlen($token)) <= 1 && levenshtein($token, $candidate) <= 1) { $score += 25; break; }
+                    }
+                }
+            }
+            $scored[] = ['score' => $score, 'position' => $position, 'key' => implode('|', [(string)$venue['id'], (string)$venue['category'], (string)($venue['room_group_id'] ?? '')]), 'venue' => $venue];
+        }
+        usort($scored, static function (array $left, array $right): int {
+            $score = $right['score'] <=> $left['score'];
+            if ($score !== 0) return $score;
+            return $left['position'] <=> $right['position'];
+        });
+        $items = array_map(static fn(array $entry): array => $entry['venue'], $scored);
+    }
+    return array_slice($items, 0, max(1, min(5000, $limit)));
+}
+
+function receptionist_ai_safe_catalog_text($value): string
+{
+    if (!is_string($value)) return '';
+    $value = trim((string)preg_replace('/\s+/', ' ', $value));
+    return preg_match('/[\x00-\x1F\x7F]/', $value) === 1 ? '' : substr($value, 0, 160);
 }
 
 function receptionist_ai_catalog_venue(array $catalog, $value, ?string $category = null, $roomGroupId = null): ?array
@@ -340,7 +614,11 @@ function receptionist_ai_hotel_group_required(array $catalog, int $venueId): boo
 function receptionist_ai_capacity_max(mysqli $conn, string $category): ?int
 {
     if (!in_array($category, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) return null;
-    $stmt = $conn->prepare("SELECT MAX(CASE WHEN v.category = 'Event Hall' THEN eh.max_capacity WHEN v.category = 'Resort Villa' THEN vi.max_capacity WHEN v.category = 'Hotel Room' THEN hr.max_capacity END) AS max_capacity FROM venues v LEFT JOIN event_halls eh ON eh.venue_id = v.id LEFT JOIN villas vi ON vi.venue_id = v.id LEFT JOIN hotel_rooms hr ON hr.venue_id = v.id WHERE v.status = 'Available' AND v.category = ?");
+    try {
+        $stmt = $conn->prepare("SELECT MAX(CASE WHEN v.category = 'Event Hall' THEN eh.max_capacity WHEN v.category = 'Resort Villa' THEN vi.max_capacity WHEN v.category = 'Hotel Room' THEN hr.max_capacity END) AS max_capacity FROM venues v LEFT JOIN event_halls eh ON eh.venue_id = v.id LEFT JOIN villas vi ON vi.venue_id = v.id LEFT JOIN hotel_rooms hr ON hr.venue_id = v.id WHERE v.status = 'Available' AND v.category = ?");
+    } catch (Throwable $error) {
+        return null;
+    }
     if (!$stmt) return null;
     $stmt->bind_param('s', $category);
     if (!$stmt->execute()) { $stmt->close(); return null; }
@@ -353,7 +631,7 @@ function receptionist_ai_capacity_max(mysqli $conn, string $category): ?int
 function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?array $catalog = null): array
 {
     if (!is_array($raw)) throw new InvalidArgumentException('Invalid receptionist slots.');
-    $source = array_replace($base, $raw);
+    $source = receptionist_ai_merge_slots($base, $raw);
     $slots = [];
     $intent = $source['intent'] ?? null;
     if ($intent !== null && !in_array($intent, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) throw new InvalidArgumentException('Invalid receptionist venue category.');
@@ -395,6 +673,24 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
     return $slots;
 }
 
+/**
+ * Prepare deterministic knowledge slots with the same validation used by the
+ * public endpoint. Kept pure (aside from the supplied connection/catalog) so
+ * intent-switch behavior can be regression-tested without bootstrapping HTTP.
+ */
+function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $baseSlots, array $venueCatalog): array
+{
+    $knowledgePatch = is_array($answer['slots'] ?? null) ? $answer['slots'] : [];
+    $knowledgeValidationBase = $baseSlots;
+    if (isset($knowledgePatch['intent'], $knowledgeValidationBase['intent']) && $knowledgePatch['intent'] !== $knowledgeValidationBase['intent']) {
+        foreach (['occasion', 'purpose', 'preference', 'group_size', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'] as $key) unset($knowledgeValidationBase[$key]);
+    }
+    $answer['slots'] = receptionist_ai_validate_slots($conn, $knowledgePatch, $knowledgeValidationBase, $venueCatalog);
+    $answer['missing_slots'] = is_array($answer['missing_slots'] ?? null) ? $answer['missing_slots'] : [];
+    $answer['quick_replies'] = array_slice(array_values(array_filter($answer['quick_replies'] ?? [], 'is_string')), 0, 4);
+    return $answer;
+}
+
 function receptionist_ai_missing_slots(array $slots): array
 {
     $intent = $slots['intent'] ?? null;
@@ -424,15 +720,30 @@ function receptionist_ai_action_missing_slots(string $action, array $slots): arr
 
 function receptionist_ai_shortlist_faq(array $faqs, string $message, int $limit = 5): array
 {
-    $terms = preg_split('/[^\p{L}\p{N}]+/u', strtolower($message), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $normalizedMessage = strtolower((string)preg_replace('/[^\p{L}\p{N}]+/u', ' ', $message));
+    $terms = preg_split('/\s+/', trim($normalizedMessage), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $stopWords = ['the', 'and', 'how', 'what', 'are', 'can', 'for', 'is', 'my', 'with', 'about', 'please', 'may', 'you', 'your', 'this', 'that', 'all'];
+    $terms = array_values(array_filter($terms, static fn(string $term): bool => strlen($term) >= 3 && !in_array($term, $stopWords, true)));
     $scored = [];
     foreach ($faqs as $faq) {
-        $haystack = strtolower((string)($faq['category'] ?? '') . ' ' . (string)$faq['question'] . ' ' . (string)$faq['answer'] . ' ' . implode(' ', $faq['phrases'] ?? []));
+        $phraseText = strtolower((string)($faq['category'] ?? '') . ' ' . (string)$faq['question'] . ' ' . implode(' ', $faq['phrases'] ?? []));
+        $answerText = strtolower((string)$faq['answer']);
+        $haystack = $phraseText . ' ' . $answerText;
+        $haystackTokens = preg_split('/\s+/', trim((string)preg_replace('/[^\p{L}\p{N}]+/u', ' ', $haystack)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $score = 0;
-        foreach ($terms as $term) if (strlen($term) >= 3 && str_contains($haystack, $term)) $score++;
+        foreach ($terms as $term) {
+            if (str_contains($phraseText, $term)) $score += 3;
+            elseif (str_contains($answerText, $term)) $score++;
+            elseif (strlen($term) >= 4) foreach ($haystackTokens as $candidate) {
+                if (abs(strlen($candidate) - strlen($term)) <= 2 && levenshtein($term, $candidate) <= 1) { $score++; break; }
+            }
+        }
         if ($score > 0) $scored[] = ['score' => $score, 'faq' => $faq];
     }
-    usort($scored, static fn(array $left, array $right): int => $right['score'] <=> $left['score']);
+    usort($scored, static function (array $left, array $right): int {
+        $score = $right['score'] <=> $left['score'];
+        return $score !== 0 ? $score : strcmp((string)($left['faq']['id'] ?? ''), (string)($right['faq']['id'] ?? ''));
+    });
     $boundedLimit = max(1, min(5, $limit));
     if (!$scored) {
         // Generic help (for example “Support FAQs”) still needs an approved,
@@ -442,10 +753,10 @@ function receptionist_ai_shortlist_faq(array $faqs, string $message, int $limit 
     return array_map(static fn(array $entry): array => $entry['faq'], array_slice($scored, 0, $boundedLimit));
 }
 
-function receptionist_ai_system_prompt(array $faqs, array $context, string $language = 'en', array $venueCatalog = [], array $knowledge = []): string
+function receptionist_ai_system_prompt(array $faqs, array $context, string $language = 'en', array $venueCatalog = [], array $knowledge = [], ?string $message = null): string
 {
     $faqLines = array_map(static fn(array $faq): string => json_encode(['id' => $faq['id'], 'category' => $faq['category'], 'question' => $faq['question'], 'phrases' => $faq['phrases']], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $faqs);
-    $venueLines = array_map(static fn(array $venue): string => json_encode($venue, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $venueCatalog);
+    $venueLines = array_map(static fn(array $venue): string => json_encode($venue, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), receptionist_ai_compact_venue_catalog($venueCatalog, 80, $message, $context));
     $knowledgeLines = array_map(static fn(array $fact): string => json_encode($fact, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), array_slice($knowledge, 0, 8));
     $currentDate = date('Y-m-d');
     return "The current date is {$currentDate}. You are Sevilla360's warm professional virtual receptionist. The requested response language is {$language}; always use it for normal, fallback, contact, unsupported, and action copy. Return JSON only with keys language, action, reply, faq_id, slots, quick_replies. Allowed action: ask, social, faq, recommend, venue, availability, contact, unsupported. Use action social for greetings (hi, hello, hey), identity questions (who are you, what is this), thank-you messages, goodbyes, and other conversational messages that do not require factual resort data. Your reply will be shown directly for social, so keep it warm, brief, and helpful. You are the virtual receptionist for M.I. Sevilla Resort & Events Place (Sevilla360). Never mention specific prices, capacities, rates, or invented facts in social replies; gently guide the visitor toward venue exploration instead. Allowed language: en, fil, taglish. Use only the provided FAQ ids for factual FAQ answers; never invent prices, capacities, availability, booking/payment/account facts, or URLs. Public knowledge facts below are bounded approved references, not permission to invent or alter numeric values; factual replies are composed by the server. Use action contact for unknown resort facts. Slots may contain only intent (Event Hall, Hotel Room, Resort Villa), occasion (wedding, celebration, corporate, other), purpose (relaxation, family, private), group_size (positive integer), preference (save, best_fit, comfort), start_date/end_date (YYYY-MM-DD), active_venue_id, and active_room_group_id. Only use a venue id and room group id from the authoritative catalog below, and keep its category consistent with intent. Do not submit bookings. Keep reply concise and provide at most 4 short quick replies. FAQ shortlist: " . implode("\n", $faqLines) . "\nAuthoritative public venue catalog: " . implode("\n", $venueLines) . "\nBounded approved public knowledge: " . implode("\n", $knowledgeLines) . "\nCurrent safe context: " . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -464,6 +775,11 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
     $candidateVenueId = $rawSlots['active_venue_id'] ?? ($baseSlots['active_venue_id'] ?? null);
     $candidateGroupId = $rawSlots['active_room_group_id'] ?? ($baseSlots['active_room_group_id'] ?? null);
     $candidateVenue = filter_var($candidateVenueId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if (isset($rawSlots['intent'], $baseSlots['intent']) && $rawSlots['intent'] !== null && $rawSlots['intent'] !== '' && $rawSlots['intent'] !== $baseSlots['intent']) {
+        // An explicit category change is an intent reset. Do not carry
+        // occasion/preference/date/venue fields from the previous flow.
+        $validationBase = [];
+    }
     if ($venueCatalog === null && $candidateVenue !== false) $venueCatalog = receptionist_ai_public_venue_catalog($conn);
     $venueCatalogForValidation = $venueCatalog;
     if ($venueCatalogForValidation === null) $venueCatalogForValidation = [];
@@ -524,7 +840,11 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'unsupported' => 'I\'m best at helping with venues, bookings, and resort info! For anything else, feel free to reach out to our team.',
         ],
     ];
-    if ($action !== 'social' && $action !== 'ask' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
+    // Ask is a routing/clarification action. Do not show arbitrary model
+    // prose here because it can smuggle unsupported venue claims; factual
+    // answers come from deterministic knowledge or an approved FAQ.
+    if ($action === 'ask') $reply = $safeReplies[$language]['ask'];
+    elseif ($action !== 'social' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
 
     if ($action === 'social' || $action === 'ask') {
         if (preg_match('/₱|\bPHP\s*\d|\bper\s+(?:night|day|person|pax|head|event)\b|\b\d{3,}[,.]?\d*\s*(?:pesos?|php)\b/i', $reply) === 1) {

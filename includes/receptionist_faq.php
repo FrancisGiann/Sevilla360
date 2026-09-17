@@ -85,6 +85,11 @@ function receptionist_faq_normalize_item($item, int $index = 0): ?array
     $answer = receptionist_faq_text($item['answer'] ?? ($item['a'] ?? ''), 3000);
     if ($question === null || $answer === null) return null;
 
+    // CMS content is public model grounding. Ignore obvious placeholders and
+    // keyboard-gibberish instead of allowing a weak configuration to replace
+    // useful defaults or enter prompts/replies.
+    if (receptionist_faq_is_junk($question) || receptionist_faq_is_junk($answer)) return null;
+
     $category = receptionist_faq_text($item['category'] ?? 'General', 80) ?? 'General';
     if (!in_array($category, RECEPTIONIST_FAQ_CATEGORIES, true)) $category = 'General';
 
@@ -112,6 +117,15 @@ function receptionist_faq_normalize_item($item, int $index = 0): ?array
     ];
 }
 
+function receptionist_faq_is_junk(string $value): bool
+{
+    $normalized = strtolower(trim((string)preg_replace('/[^a-z0-9]+/i', ' ', $value)));
+    if ($normalized === '' || preg_match('/\bqwasda\b|\b(?:test|lorem ipsum|asdf|foo bar)\b/i', $normalized) === 1) return true;
+    if (preg_match('/^(.)\1{4,}$/u', $normalized) === 1) return true;
+    $letters = preg_replace('/[^a-z]/', '', $normalized) ?? '';
+    return strlen($letters) >= 5 && preg_match('/[aeiou]/', $letters) !== 1;
+}
+
 function receptionist_faq_normalize_items(array $items): array
 {
     $normalized = [];
@@ -131,6 +145,34 @@ function receptionist_faq_normalize_items(array $items): array
     return $normalized;
 }
 
+function receptionist_faq_merge_defaults(array $items): array
+{
+    // Defaults are always retained. A valid CMS row may replace a matching
+    // stable id, extend the list, or be ignored if it duplicates a question.
+    $cms = receptionist_faq_normalize_items($items);
+    $cmsById = [];
+    foreach ($cms as $item) $cmsById[strtolower((string)$item['id'])] = $item;
+    $result = [];
+    $seenQuestions = [];
+    foreach (receptionist_faq_defaults() as $default) {
+        $id = strtolower((string)$default['id']);
+        $item = $cmsById[$id] ?? $default;
+        $question = strtolower((string)$item['question']);
+        if (isset($seenQuestions[$question])) continue;
+        $result[] = $item;
+        $seenQuestions[$question] = true;
+    }
+    foreach ($cms as $item) {
+        $id = strtolower((string)$item['id']);
+        $question = strtolower((string)$item['question']);
+        if (isset($seenQuestions[$question])) continue;
+        $result[] = $item;
+        $seenQuestions[$question] = true;
+        if (count($result) >= 50) break;
+    }
+    return $result;
+}
+
 function receptionist_faq_load(mysqli $conn): array
 {
     $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'support_faq_json' LIMIT 1");
@@ -139,7 +181,7 @@ function receptionist_faq_load(mysqli $conn): array
     $stmt->close();
     if (!$row || !is_string($row['setting_value'] ?? null)) return receptionist_faq_defaults();
     $decoded = json_decode($row['setting_value'], true);
-    return is_array($decoded) ? receptionist_faq_normalize_items($decoded) : receptionist_faq_defaults();
+    return is_array($decoded) ? receptionist_faq_merge_defaults($decoded) : receptionist_faq_defaults();
 }
 
 function receptionist_faq_find(array $items, string $id): ?array

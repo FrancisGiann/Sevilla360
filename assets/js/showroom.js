@@ -722,6 +722,7 @@ document.addEventListener("DOMContentLoaded", () => {
       params.set(room.room_group_id ? "check_out" : "end_date", String(endDate));
     }
     if (room.room_group_id && arguments[3]) params.set("guest_range", String(arguments[3]));
+    if (room.room_group_id && arguments[4]) params.set("guest_count", String(arguments[4]));
     return `booking.php?${params.toString()}`;
   }
 
@@ -1125,7 +1126,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const receptionistSkip = receptionistRoot.querySelector("[data-receptionist-skip]");
     const receptionistPanel = receptionistRoot.querySelector(".receptionist-panel");
     const categoryLabels = { "Event Hall": "event", "Hotel Room": "hotel", "Resort Villa": "villa" };
-    const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, preference: null, startDate: null, endDate: null, activeVenueId: null, activeRoomGroupId: null };
+    const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, groupSizeExact: null, preference: null, startDate: null, endDate: null, activeVenueId: null, activeRoomGroupId: null };
     const restorableGuideIntents = new Set(["Event Hall", "Hotel Room", "Resort Villa"]);
     const restorableGuideRanges = new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]);
     const restorablePositiveId = value => {
@@ -1165,10 +1166,15 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       Object.keys(enumValues).forEach(key => { const item = value(key); if (enumValues[key].includes(item)) normalized[key] = item; });
       const rawGroup = value("groupSize", "group_size");
-      if (activeIntent === "Hotel Room") normalized.groupSize = restorableHotelRange(rawGroup);
+      const rawExactGroup = value("groupSizeExact", "group_size_exact");
+      if (activeIntent === "Hotel Room") {
+        normalized.groupSizeExact = Number.isInteger(Number(rawExactGroup)) && Number(rawExactGroup) > 0 && Number(rawExactGroup) <= 10000
+          ? Number(rawExactGroup) : (Number.isInteger(Number(rawGroup)) && Number(rawGroup) > 0 ? Number(rawGroup) : null);
+        normalized.groupSize = restorableHotelRange(rawGroup || normalized.groupSizeExact);
+      }
       else {
         const count = Number(rawGroup);
-        if (Number.isInteger(count) && count > 0 && count <= 10000) normalized.groupSize = count;
+        if (Number.isInteger(count) && count > 0 && count <= 10000) { normalized.groupSize = count; normalized.groupSizeExact = count; }
       }
       const start = restorableDate(value("startDate", "start_date"));
       const end = restorableDate(value("endDate", "end_date"));
@@ -1189,6 +1195,7 @@ document.addEventListener("DOMContentLoaded", () => {
           purpose: guideContext.purpose,
           groupSize: guideContext.groupSize,
           preference: guideContext.preference,
+          groupSizeExact: guideContext.groupSizeExact,
           startDate: guideContext.startDate,
           endDate: guideContext.endDate,
           activeVenueId: guideContext.activeVenueId,
@@ -1267,6 +1274,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const number = Number(value);
       return Number.isFinite(number) && number >= 0 ? number : fallback;
     };
+    const requestedGuestCount = () => numericFact(guideContext.groupSizeExact ?? guideContext.groupSize);
     const categoryCapacityMax = category => {
       const capacities = venuesForCategory(category)
         .map(room => numericFact(room.capacity_value))
@@ -2020,7 +2028,8 @@ document.addEventListener("DOMContentLoaded", () => {
         input.step = "1";
         input.required = true;
         input.dataset.receptionistGroupInput = "true";
-        input.value = Number.isInteger(guideContext.groupSize) && guideContext.groupSize > 0 ? String(guideContext.groupSize) : "";
+        const existingGuestCount = category === "Hotel Room" ? requestedGuestCount() : numericFact(guideContext.groupSize);
+        input.value = Number.isInteger(existingGuestCount) && existingGuestCount > 0 ? String(existingGuestCount) : "";
         input.setAttribute("aria-describedby", "receptionist-group-size-error");
         const error = document.createElement("p");
         error.id = "receptionist-group-size-error";
@@ -2166,7 +2175,7 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
       const ranked = guideState.shortlist;
-      const requested = numericFact(guideContext.groupSize);
+      const requested = requestedGuestCount();
       const label = categoryLabels[category] || "venue";
       const dateSummary = availabilityDateSummary(category);
       const context = guideContext.occasion || guideContext.purpose;
@@ -2214,13 +2223,13 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistChoices.append(
         createChoice("Change search", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
         ...(guideContext.startDate ? [createChoice("Change date", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" })] : []),
-        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
+        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
       );
     };
     const renderAllPage = (announce = true) => {
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       const category = receptionistState.activeCategory;
-      const requested = numericFact(guideContext.groupSize);
+      const requested = requestedGuestCount();
       const all = guideState.allVenues;
       const pageSize = 3;
       const pageCount = Math.max(1, Math.ceil(all.length / pageSize));
@@ -2263,7 +2272,7 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistChoices.append(
         createChoice("Change search", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
         ...(guideContext.startDate ? [createChoice("Change date", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" })] : []),
-        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
+        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
       );
     };
     const showRecommendationThinking = (title, message) => {
@@ -2302,7 +2311,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         const label = categoryLabels[category] || "venue";
-        const requestedText = numericFact(guideContext.groupSize) === null ? "your group" : `${formatNumber(numericFact(guideContext.groupSize))} guests`;
+      const requestedText = requestedGuestCount() === null ? "your group" : `${formatNumber(requestedGuestCount())} guests`;
         const changeIntentLabel = category === "Event Hall" ? "Change occasion" : category === "Resort Villa" ? "Change purpose" : null;
         setDialogue("No exact capacity match", `I couldn’t find a media-ready ${label} with known capacity for ${requestedText}. You can adjust the group size or view every media-ready option.`, true);
         receptionistChoices.replaceChildren(
@@ -2310,7 +2319,7 @@ document.addEventListener("DOMContentLoaded", () => {
           ...(changeIntentLabel ? [createChoice(changeIntentLabel, "receptionist-choice-secondary", { "data-receptionist-change-primary": "true" })] : []),
           createChoice("View all anyway", "receptionist-choice-secondary", { "data-receptionist-view-all": "true" }),
           createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" }),
-          createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
+          createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
         );
       }, 800);
     };
@@ -2443,6 +2452,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       const formData = new FormData();
       formData.append("guest_range", String(guideContext.groupSize || ""));
+      formData.append("guest_count", String(guideContext.groupSizeExact || ""));
       formData.append("priority", String(guideContext.preference || ""));
       formData.append("check_in", String(guideContext.startDate || ""));
       formData.append("check_out", String(guideContext.endDate || ""));
@@ -2680,6 +2690,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const bookLink = document.createElement("a");
       bookLink.className = "receptionist-choice receptionist-choice-primary receptionist-choice-link";
       bookLink.href = getBookingUrl(room, guideContext.startDate, guideContext.endDate, guideContext.groupSize);
+      if (room.room_group_id && guideContext.groupSizeExact) {
+        const bookingUrl = new URL(bookLink.href, window.location.href);
+        bookingUrl.searchParams.set("guest_count", String(guideContext.groupSizeExact));
+        bookLink.href = `${bookingUrl.pathname}?${bookingUrl.searchParams.toString()}`;
+      }
       bookLink.textContent = room.room_group_id ? "Book this room" : guideContext.startDate ? "Check dates and book" : "Book this venue";
       bookLink.setAttribute("data-receptionist-book", "true");
       if (room.room_group_id) {
@@ -2715,7 +2730,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ...compareAction,
         createChoice("Change search", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
         ...(guideContext.startDate ? [createChoice("Change date", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" })] : []),
-        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true" })
+        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
       );
     };
     const renderResponse = (room, mode) => {
@@ -2734,7 +2749,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const list = document.createElement("ul");
       list.className = "receptionist-response-list";
       if (mode === "why") {
-        const requested = numericFact(guideContext.groupSize);
+        const requested = requestedGuestCount();
         const capacity = numericFact(room.capacity_value);
         const evidence = [];
         if (room.category === "Hotel Room" && Array.isArray(room.reasons) && room.reasons.length) {
@@ -2956,16 +2971,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const category = slots.intent || receptionistState.activeCategory;
       if (slots.intent) guideContext.intent = slots.intent;
       ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
-        if (slots[key] !== undefined) guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];
+        if (slots[key] !== undefined && slots[key] !== null && slots[key] !== "") guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];
       });
-      if (slots.group_size !== undefined) {
+      if (slots.group_size !== undefined && slots.group_size !== null && slots.group_size !== "") {
+        const exactCount = Number(slots.group_size);
+        guideContext.groupSizeExact = Number.isSafeInteger(exactCount) && exactCount > 0 ? exactCount : null;
         if (category === "Hotel Room") {
-          const count = Number(slots.group_size);
-          guideContext.groupSize = Number.isFinite(count) ? (count <= 2 ? "1-2" : count <= 4 ? "3-4" : count <= 6 ? "5-6" : count <= 8 ? "7-8" : count <= 12 ? "9-12" : "13-16") : null;
+          guideContext.groupSize = Number.isFinite(exactCount) ? (exactCount <= 2 ? "1-2" : exactCount <= 4 ? "3-4" : exactCount <= 6 ? "5-6" : exactCount <= 8 ? "7-8" : exactCount <= 12 ? "9-12" : "13-16") : null;
         } else guideContext.groupSize = Number(slots.group_size);
       }
-      if (slots.active_venue_id !== undefined) guideContext.activeVenueId = Number(slots.active_venue_id);
-      if (slots.active_room_group_id !== undefined) guideContext.activeRoomGroupId = Number(slots.active_room_group_id);
+      if (slots.active_venue_id !== undefined && slots.active_venue_id !== null) guideContext.activeVenueId = Number(slots.active_venue_id);
+      if (slots.active_room_group_id !== undefined && slots.active_room_group_id !== null) guideContext.activeRoomGroupId = Number(slots.active_room_group_id);
       if (category) receptionistState.activeCategory = category;
       saveGuideContext();
       if (result.action === "venue" && slots.active_venue_id) {
@@ -3008,8 +3024,11 @@ document.addEventListener("DOMContentLoaded", () => {
         onAction: applyReceptionistChatAction,
         onKnowledge: data => {
           // Knowledge replies stay in the typed chat, but their server-validated
-          // context patch still becomes the source for the next turn.
-          applyReceptionistChatAction({ ...(data || {}), action: "knowledge" });
+          // context patch still becomes the source for the next turn. A
+          // deterministic booking continuation may also carry a real UI
+          // action (for example, opening a selected venue).
+          const bookingContinuation = data && data.booking_continuation === true;
+          applyReceptionistChatAction({ ...(data || {}), action: bookingContinuation ? data.action : "knowledge" });
         },
         onQuickReply: label => {
           const category = { Event: "Event Hall", Hotel: "Hotel Room", Villa: "Resort Villa" }[label];
@@ -3020,6 +3039,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return true;
         },
         onStartOver: () => {
+          Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
           try { sessionStorage.removeItem("guideContext"); } catch (error) {}
           renderGreeting({ announce: true, requireContinue: true });
           focusFirstChoice();
@@ -3087,7 +3107,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (target.hasAttribute("data-receptionist-change-search")) {
         const category = receptionistState.activeCategory;
-        guideContext.occasion = null; guideContext.purpose = null; guideContext.groupSize = null; guideContext.preference = null; guideContext.startDate = null; guideContext.endDate = null;
+        guideContext.occasion = null; guideContext.purpose = null; guideContext.groupSize = null; guideContext.groupSizeExact = null; guideContext.preference = null; guideContext.startDate = null; guideContext.endDate = null;
         guideState.dateDraft = null; guideState.dateFocus = null; guideState.dateMonth = null; guideState.dateQuestionCategory = null;
         guideState.availabilityStatus = "idle"; guideState.availabilityChecked = false; guideState.availabilityConfirmedIds = []; guideState.availabilityRequestToken += 1;
         renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize"); focusFirstChoice(); return;
@@ -3138,6 +3158,7 @@ document.addEventListener("DOMContentLoaded", () => {
           else if (maxCapacity !== null && count > maxCapacity) message = `Enter ${formatNumber(maxCapacity)} guests or fewer for this category.`;
           else {
             guideContext.groupSize = count;
+            guideContext.groupSizeExact = count;
             saveGuideContext();
             const category = receptionistState.activeCategory;
             if (category === "Event Hall" && !guideContext.startDate) renderQuestion(category, "eventDate");
@@ -3169,7 +3190,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.hasAttribute("data-receptionist-intent")) {
         const category = target.getAttribute("data-receptionist-intent"); resetContext(); receptionistState.activeCategory = category; guideContext.intent = category;
         if (category === "Hotel Room") {
-          if (!new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]).has(guideContext.groupSize)) guideContext.groupSize = null;
+          if (!new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]).has(guideContext.groupSize)) { guideContext.groupSize = null; guideContext.groupSizeExact = null; }
           if (!new Set(["save", "best_fit", "comfort"]).has(guideContext.preference)) guideContext.preference = null;
           if (guideContext.groupSize === null) renderQuestion(category, "groupSize");
           else if (guideContext.preference === null) renderQuestion(category, "preference");
@@ -3185,7 +3206,7 @@ document.addEventListener("DOMContentLoaded", () => {
         saveGuideContext();
         const category = receptionistState.activeCategory;
         if (category === "Event Hall" && key === "occasion") {
-          if (numericFact(guideContext.groupSize) === null) renderQuestion(category, "groupSize"); else renderRecommendations();
+          if (requestedGuestCount() === null) renderQuestion(category, "groupSize"); else renderRecommendations();
         }
         else if (category === "Event Hall" && key === "groupSize") {
           if (!guideContext.startDate) renderQuestion(category, "eventDate"); else renderRecommendations();
@@ -3197,7 +3218,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!guideContext.startDate || !guideContext.endDate) renderQuestion(category, "checkInDate"); else requestHotelRecommendations();
         }
         else if (category === "Resort Villa" && key === "purpose") {
-          if (numericFact(guideContext.groupSize) === null) renderQuestion(category, "groupSize"); else renderRecommendations();
+          if (requestedGuestCount() === null) renderQuestion(category, "groupSize"); else renderRecommendations();
         } else if (category === "Resort Villa" && key === "groupSize") {
           if (!guideContext.startDate) renderQuestion(category, "visitDate"); else renderRecommendations();
         } else renderRecommendations();
