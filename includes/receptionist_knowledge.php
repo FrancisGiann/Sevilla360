@@ -470,8 +470,8 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 $lines[] = $label . ': ' . receptionist_knowledge_money((float)$record['base_rate']) . $unit;
                 if (isset($record['overnight_rate'])) $lines[] = $label . ' overnight: ' . receptionist_knowledge_money((float)$record['overnight_rate']) . '/night';
             }
-            $eventPricing = array_values(array_filter($records, static fn(array $record): bool => ($record['kind'] ?? null) === 'event_pricing'));
-            if ($category === 'Event Hall' || preg_match('/\b(event|wedding|birthday|corporate|party)\b/i', $lower)) {
+            if ($category === 'Event Hall' || preg_match('/\b(event|wedding|birthday|corporate|party|catering|a\/v|audio|setup)\b/i', $lower)) {
+                $eventPricing = array_values(array_filter($records, static fn(array $record): bool => ($record['kind'] ?? null) === 'event_pricing'));
                 foreach ($eventPricing[0]['modifiers'] ?? [] as $modifier) $lines[] = ($modifier['label'] ?? 'Option') . ': ' . receptionist_knowledge_money((float)$modifier['amount']) . ' ' . ($modifier['unit'] ?? '');
                 $lines[] = $eventPricing[0]['qualifier'] ?? 'Event options may affect the preliminary estimate; staff confirms the final quotation.';
             }
