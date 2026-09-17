@@ -63,12 +63,13 @@ function receptionist_ai_response_schema(): array
     ];
 }
 
-final class ReceptionistOpenRouterProvider implements ReceptionistAiProviderInterface
+final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderInterface
 {
     public function __construct(
         private readonly string $apiKey,
         private readonly string $baseUrl,
         private readonly string $model,
+        private readonly string $providerId = 'openrouter',
         private readonly string $siteUrl = '',
         private readonly string $siteName = 'Sevilla360'
     ) {}
@@ -105,8 +106,10 @@ final class ReceptionistOpenRouterProvider implements ReceptionistAiProviderInte
                     'schema' => receptionist_ai_response_schema(),
                 ],
             ];
-            $request['provider'] = ['require_parameters' => true];
-            $request['plugins'] = [['id' => 'response-healing']];
+            if ($this->providerId === 'openrouter') {
+                $request['provider'] = ['require_parameters' => true];
+                $request['plugins'] = [['id' => 'response-healing']];
+            }
         }
         $body = json_encode($request, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if (!is_string($body)) return ['success' => false, 'error_class' => 'request_encode'];
@@ -169,11 +172,12 @@ function receptionist_ai_provider(): ?ReceptionistAiProviderInterface
     $provider = strtolower(receptionist_ai_env('AI_PROVIDER', 'openrouter'));
     $key = receptionist_ai_env('AI_API_KEY');
     $model = receptionist_ai_env('AI_MODEL');
-    if ($provider !== 'openrouter' || $key === '' || $model === '') return null;
-    return new ReceptionistOpenRouterProvider(
+    if ($key === '' || $model === '') return null;
+    return new ReceptionistGenericOpenAiProvider(
         $key,
         receptionist_ai_env('AI_BASE_URL', 'https://openrouter.ai/api/v1'),
         $model,
+        $provider,
         receptionist_ai_env('AI_SITE_URL'),
         receptionist_ai_env('AI_SITE_NAME', 'Sevilla360')
     );
