@@ -223,6 +223,76 @@ function receptionist_knowledge_build_records(array $venueRows, array $settings,
         $records[] = $record;
     }
 
+    $dedupedVenues = [];
+    foreach ($records as $record) {
+        $dedupeKey = implode('|', [
+            (string)($record['name'] ?? ''),
+            (string)($record['room_type'] ?? ''),
+            (string)($record['category'] ?? ''),
+            isset($record['base_rate']) ? (string)(float)$record['base_rate'] : '',
+        ]);
+        if (!isset($dedupedVenues[$dedupeKey])) {
+            $record['unit_count'] = 1;
+            $dedupedVenues[$dedupeKey] = $record;
+            continue;
+        }
+
+        $rep =& $dedupedVenues[$dedupeKey];
+        $rep['unit_count']++;
+
+        if (isset($record['capacity_base'])) {
+            $rep['capacity_base'] = isset($rep['capacity_base'])
+                ? min((int)$rep['capacity_base'], (int)$record['capacity_base'])
+                : (int)$record['capacity_base'];
+        }
+        if (isset($record['capacity_max'])) {
+            $rep['capacity_max'] = isset($rep['capacity_max'])
+                ? max((int)$rep['capacity_max'], (int)$record['capacity_max'])
+                : (int)$record['capacity_max'];
+        }
+        if (isset($record['bed_count_min'])) {
+            $rep['bed_count_min'] = isset($rep['bed_count_min'])
+                ? min((int)$rep['bed_count_min'], (int)$record['bed_count_min'])
+                : (int)$record['bed_count_min'];
+        }
+        if (isset($record['bed_count_max'])) {
+            $rep['bed_count_max'] = isset($rep['bed_count_max'])
+                ? max((int)$rep['bed_count_max'], (int)$record['bed_count_max'])
+                : (int)$record['bed_count_max'];
+        }
+        if (isset($record['overnight_rate'])) {
+            $rep['overnight_rate'] = isset($rep['overnight_rate'])
+                ? min((float)$rep['overnight_rate'], (float)$record['overnight_rate'])
+                : (float)$record['overnight_rate'];
+        }
+        if (!isset($rep['description']) && isset($record['description'])) {
+            $rep['description'] = $record['description'];
+        }
+
+        $mergedAmenities = receptionist_knowledge_amenities(array_merge($rep['amenities'] ?? [], $record['amenities'] ?? []));
+        if ($mergedAmenities) {
+            $rep['amenities'] = $mergedAmenities;
+        } else {
+            unset($rep['amenities']);
+        }
+
+        $mergedInclusions = receptionist_knowledge_amenities(array_merge($rep['inclusions'] ?? [], $record['inclusions'] ?? []));
+        if ($mergedInclusions) {
+            $rep['inclusions'] = $mergedInclusions;
+        } else {
+            unset($rep['inclusions']);
+        }
+
+        if (!empty($record['capacity_styles'])) {
+            $rep['capacity_styles'] = $rep['capacity_styles'] ?? [];
+            foreach ($record['capacity_styles'] as $style => $count) {
+                $rep['capacity_styles'][$style] = max((int)($rep['capacity_styles'][$style] ?? 0), (int)$count);
+            }
+        }
+        unset($rep);
+    }
+    $records = array_values($dedupedVenues);
+
     $eventModifiers = [];
     foreach ([
         'event_type_wedding' => ['label' => 'Wedding event fee', 'unit' => 'per event'],
@@ -281,7 +351,7 @@ function receptionist_knowledge_lower(string $value): string
 function receptionist_knowledge_tokens(string $message): array
 {
     $tokens = preg_split('/[^\p{L}\p{N}]+/u', receptionist_knowledge_lower($message), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-    $stopWords = ['the', 'and', 'how', 'does', 'what', 'are', 'can', 'for', 'is', 'my', 'with', 'about', 'please', 'may', 'you', 'your', 'this', 'that', 'ang', 'mga', 'ano', 'paano', 'sa', 'ng', 'para', 'ba', 'may', 'ito', 'ako', 'kami', 'ninyo'];
+    $stopWords = ['the', 'and', 'how', 'does', 'what', 'are', 'can', 'for', 'is', 'my', 'with', 'about', 'please', 'may', 'you', 'your', 'this', 'that', 'all', 'ang', 'mga', 'ano', 'paano', 'sa', 'ng', 'para', 'ba', 'may', 'ito', 'ako', 'kami', 'ninyo'];
     return array_values(array_filter($tokens, static fn(string $token): bool => strlen($token) >= 3 && !in_array($token, $stopWords, true)));
 }
 
@@ -452,15 +522,51 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         return ($name !== '' && str_contains($lower, $name)) || ($roomType !== '' && str_contains($lower, $roomType));
     }));
     if ($mentionedVenues) $venues = $mentionedVenues;
-    $priceIntent = preg_match('/\b(price|rates?|cost|how much|magkano|presyo|bayad|fee|rent|per day|per night)\b/i', $lower) === 1;
+    $priceIntent = preg_match('/\b(prices?|rates?|cost|how much|magkano|presyo|bayad|fee|rent|per day|per night)\b/i', $lower) === 1;
     $capacityIntent = preg_match('/\b(capacity|fit|guests?|pax|ilang|kasya|maximum|how many)\b/i', $lower) === 1;
     $amenityIntent = preg_match('/\b(amenit|included|inclusion|facilit|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed)\b/i', $lower) === 1;
     $policyIntent = ($route['kind'] ?? null) === 'policy' || preg_match('/\b(payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours)\b/i', $lower) === 1;
 
     if ($priceIntent) {
-        $genericRateRequest = preg_match('/\b(starting rates?|rate card|price list|all rates)\b/i', $lower) === 1;
+        $genericRateRequest = preg_match('/\b(starting rates?|rate card|price list|all rates)\b/i', $lower) === 1
+            || preg_match('/\b(venues?|resort)\b/i', $lower) === 1
+            || preg_match('/^(?:(?:what\s+(?:are|is)\s+(?:the\s+|your\s+)?)|(?:ano\s+ang\s+))?(?:prices?|rates?|magkano|how much|presyo)(?:\s+(?:ang\s+)?(?:rates?|presyo|bayad|is\s+it|does\s+it\s+cost|are\s+they|po|ba|din|naman|please))?[?.!]*$/i', trim($lower)) === 1;
+        if ($category === null && empty($venues) && $genericRateRequest) {
+            $categoryMinRates = [];
+            $categoryUnits = [];
+            foreach ($records as $record) {
+                if (($record['kind'] ?? null) !== 'venue') continue;
+                $cat = $record['category'] ?? null;
+                if (!$cat || !isset($record['base_rate'])) continue;
+                $rate = (float)$record['base_rate'];
+                if (!isset($categoryMinRates[$cat]) || $rate < $categoryMinRates[$cat]) {
+                    $categoryMinRates[$cat] = $rate;
+                    $categoryUnits[$cat] = ($record['rate_unit'] ?? '') === 'per day' ? '/day' : (($record['rate_unit'] ?? '') === 'per night' ? '/night' : ' ' . ($record['rate_unit'] ?? ''));
+                }
+            }
+            $labels = [
+                'Event Hall' => 'Event Halls',
+                'Hotel Room' => 'Hotel Rooms',
+                'Resort Villa' => 'Resort Villa',
+            ];
+            $lines = [];
+            foreach ($labels as $cat => $catLabel) {
+                if (isset($categoryMinRates[$cat])) {
+                    $unit = $categoryUnits[$cat] ?? '/day';
+                    $lines[] = $catLabel . ': from ' . receptionist_knowledge_money($categoryMinRates[$cat]) . $unit;
+                }
+            }
+            if ($lines) {
+                $reply = "Here are the starting rates by category:\n" . implode("\n", $lines) . "\nWhich category would you like to know more about?";
+                return [
+                    'action' => 'ask',
+                    'reply' => $reply,
+                    'faq_id' => null,
+                    'quick_replies' => ['Event Halls', 'Hotel Rooms', 'Resort Villa'],
+                ];
+            }
+        }
         if (!$venues && $category !== null) $venues = receptionist_knowledge_find_records($records, 'venue', [], $category, null, null, 6);
-        if (!$venues && $genericRateRequest) $venues = receptionist_knowledge_find_records($records, 'venue', [], null, null, null, 6);
         $priced = array_values(array_filter($venues, static fn(array $record): bool => isset($record['base_rate'])));
         if ($priced) {
             $lines = [];
@@ -475,6 +581,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 foreach ($eventPricing[0]['modifiers'] ?? [] as $modifier) $lines[] = ($modifier['label'] ?? 'Option') . ': ' . receptionist_knowledge_money((float)$modifier['amount']) . ' ' . ($modifier['unit'] ?? '');
                 $lines[] = $eventPricing[0]['qualifier'] ?? 'Event options may affect the preliminary estimate; staff confirms the final quotation.';
             }
+            $lines = array_values(array_unique($lines));
             return ['action' => 'ask', 'reply' => $prefix['price'] . "\n" . implode("\n", array_slice($lines, 0, 12)), 'faq_id' => null, 'quick_replies' => ['Capacity', 'Amenities', 'Support FAQs']];
         }
     }
