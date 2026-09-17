@@ -413,9 +413,12 @@ function receptionist_knowledge_intent(string $message): array
 {
     $lower = receptionist_knowledge_lower($message);
     $informationalBooking = preg_match('/\b(how do i|how can i|how to|what is the (?:booking|reservation) process|booking process|steps? to (?:book|reserve)|where can i (?:book|reserve)|paano (?:mag[- ]?book|mag[- ]?reserve|ang proseso)|ano ang proseso)\b/i', $lower) === 1;
+    $bookingVerbPattern = '(?:book|reserve|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|booking|i[- ]?book|ipa[- ]?book|walk[ -]?in)';
     $directBooking = !$informationalBooking && (
-        preg_match('/\b(?:i|we|ako|kami|gusto|want|need|help me)\b[^.!?\n]{0,48}\b(?:book|reserve|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|booking)\b/i', $lower) === 1
-        || preg_match('/\b(?:book|reserve)\s+(?:an?\s+)?(?:hotel|room|villa|event|venue)\b/i', $lower) === 1
+        preg_match('/\b(?:i|we|ako|kami|gusto|want|need|help me|pwede|maaari)\b[^.!?\n]{0,48}\b' . $bookingVerbPattern . '\b/i', $lower) === 1
+        || preg_match('/\b' . $bookingVerbPattern . '\s+(?:an?\s+)?(?:hotel|room|rooms|villa|event|venue)\b/i', $lower) === 1
+        || preg_match('/\b' . $bookingVerbPattern . '\s+(?:for|para\s+sa)?\s*\d+/i', $lower) === 1
+        || preg_match('/\b(?:mag[- ]?book|magpa[- ]?reserve|mag[- ]?reserve|magpa[- ]?book|i[- ]?book|ipa[- ]?book|walk[ -]?in)\b/i', $lower) === 1
     );
     if ($directBooking) {
         $category = receptionist_knowledge_category_hint($message);
@@ -424,7 +427,7 @@ function receptionist_knowledge_intent(string $message): array
     if ($informationalBooking) {
         return ['kind' => 'booking_process', 'category' => receptionist_knowledge_category_hint($message)];
     }
-    $policy = preg_match('/\b(booking|reservation|payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours)\b/i', $lower) === 1;
+    $policy = preg_match('/\b(booking|reservation|payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours|pwede\s+ba|bawal\s+ba|patakaran|tuntunin|pano|paano|walk.?in|pasok|saan|nasaan|pano\s+pumunta|paano\s+pumunta|direksyon|lokasyon|san\s+kayo)\b/i', $lower) === 1;
     return ['kind' => $policy ? 'policy' : 'other', 'category' => receptionist_knowledge_category_hint($message)];
 }
 
@@ -459,9 +462,9 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     $route = receptionist_knowledge_intent($message);
     $category = $route['category'] ?? (receptionist_knowledge_category_hint($message) ?? (($baseSlots['intent'] ?? null) ?: null));
     $prefix = [
-        'en' => ['price' => 'Here are the current public starting rates:', 'capacity' => 'Here is the current public capacity information:', 'amenities' => 'Here are the public amenities and descriptions currently listed:', 'faq' => 'Here is the current approved guidance:', 'contact' => 'Here is the public reception and location information:', 'booking' => 'I can help you start a booking.'],
-        'fil' => ['price' => 'Narito ang kasalukuyang public starting rates:', 'capacity' => 'Narito ang kasalukuyang public capacity information:', 'amenities' => 'Narito ang public amenities at descriptions na nakalista ngayon:', 'faq' => 'Narito ang kasalukuyang approved guidance:', 'contact' => 'Narito ang public reception at location information:', 'booking' => 'Matutulungan kitang simulan ang booking.'],
-        'taglish' => ['price' => 'Here are the current public starting rates:', 'capacity' => 'Here is the current public capacity information:', 'amenities' => 'Here are the public amenities and descriptions currently listed:', 'faq' => 'Here is the current approved guidance:', 'contact' => 'Here is the public reception and location information:', 'booking' => 'I can help you start a booking.'],
+        'en' => ['price' => 'Here are our starting rates:', 'capacity' => 'Here\'s the capacity info:', 'amenities' => 'Here\'s what\'s included:', 'faq' => 'Here\'s what I found:', 'contact' => 'Here\'s how to reach us:', 'booking' => 'I can help you start a booking!'],
+        'fil' => ['price' => 'Narito ang aming mga starting rates:', 'capacity' => 'Narito ang capacity info:', 'amenities' => 'Narito ang mga kasama:', 'faq' => 'Narito ang nakita ko:', 'contact' => 'Narito kung paano kami maabot:', 'booking' => 'Matutulungan kitang magsimula ng booking!'],
+        'taglish' => ['price' => 'Here are our starting rates:', 'capacity' => 'Here\'s the capacity info:', 'amenities' => 'Here\'s what\'s included:', 'faq' => 'Here\'s what I found:', 'contact' => 'Here\'s how to reach us:', 'booking' => 'I can help you start a booking!'],
     ][$language];
     if (($route['kind'] ?? null) === 'booking' && empty($baseSlots['intent'])) {
         $bookingCategory = $category;
@@ -469,12 +472,50 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         $missing = $bookingCategory === 'Hotel Room'
             ? ['group_size', 'start_date', 'end_date', 'preference']
             : ['group_size', 'start_date'];
-        $detail = $bookingCategory === 'Hotel Room'
-            ? ($language === 'fil' ? 'Ilang bisita, check-in date, at check-out date ang kailangan ko; maaari mong idagdag ang room preference pagkatapos.' : 'How many guests are there, and what are your check-in and check-out dates? You can add a room preference next.')
-            : ($bookingCategory === 'Resort Villa'
-                ? ($language === 'fil' ? 'Ilang bisita at anong petsa ang gusto mong i-book para sa villa?' : 'How many guests and what date would you like for the villa booking?')
-                : ($language === 'fil' ? 'Anong venue type, ilang bisita, at anong petsa ang gusto mong i-book?' : 'Which venue type, how many guests, and what date would you like to book?'));
-        return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $prefix['booking'] . ' ' . $detail, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => $bookingCategory === 'Hotel Room' ? ['Guest count', 'Check-in date', 'Check-out date', 'Support FAQs'] : ['Guest count', 'Booking date', 'Event details', 'Support FAQs']];
+
+        $extractedGroupSize = null;
+        if (preg_match('/\b(?:for|para sa|kami)\s+(\d{1,3})\b/i', $message, $gm)) {
+            $extractedGroupSize = (int)$gm[1];
+        } elseif (preg_match('/\b(\d{1,3})\s*(?:pax|persons?|guests?|people|tao|bisita)\b/i', $message, $gm)) {
+            $extractedGroupSize = (int)$gm[1];
+        } elseif (preg_match('/\b(?:solo|mag-?isa|alone)\b/i', $message)) {
+            $extractedGroupSize = 1;
+        } elseif (preg_match('/\b(?:kami dalawa|dalawa kami|couple|pair)\b/i', $message)) {
+            $extractedGroupSize = 2;
+        }
+
+        if ($extractedGroupSize !== null && $extractedGroupSize > 0) {
+            $slots['group_size'] = $extractedGroupSize;
+            $missing = array_values(array_filter($missing, static fn(string $s): bool => $s !== 'group_size'));
+            if ($bookingCategory === 'Hotel Room') {
+                $detail = ($language === 'fil')
+                    ? "Nakuha ko — {$extractedGroupSize} bisita! Ano ang iyong check-in at check-out dates?"
+                    : "Got it — {$extractedGroupSize} guest(s)! What are your check-in and check-out dates?";
+            } elseif ($bookingCategory === 'Resort Villa') {
+                $detail = ($language === 'fil')
+                    ? "Nakuha ko — {$extractedGroupSize} bisita! Anong petsa ang gusto mong i-book para sa villa?"
+                    : "Got it — {$extractedGroupSize} guest(s)! What date would you like for the villa booking?";
+            } else {
+                $detail = ($language === 'fil')
+                    ? "Nakuha ko — {$extractedGroupSize} bisita! Anong venue type at anong petsa ang gusto mong i-book?"
+                    : "Got it — {$extractedGroupSize} guest(s)! Which venue type and what date would you like to book?";
+            }
+        } else {
+            $detail = $bookingCategory === 'Hotel Room'
+                ? ($language === 'fil' ? 'Ilang bisita, check-in date, at check-out date ang kailangan ko; maaari mong idagdag ang room preference pagkatapos.' : 'How many guests are there, and what are your check-in and check-out dates? You can add a room preference next.')
+                : ($bookingCategory === 'Resort Villa'
+                    ? ($language === 'fil' ? 'Ilang bisita at anong petsa ang gusto mong i-book para sa villa?' : 'How many guests and what date would you like for the villa booking?')
+                    : ($language === 'fil' ? 'Anong venue type, ilang bisita, at anong petsa ang gusto mong i-book?' : 'Which venue type, how many guests, and what date would you like to book?'));
+        }
+
+        $quickReplies = $bookingCategory === 'Hotel Room'
+            ? ['Guest count', 'Check-in date', 'Check-out date', 'Support FAQs']
+            : ['Guest count', 'Booking date', 'Event details', 'Support FAQs'];
+        if ($extractedGroupSize !== null && $extractedGroupSize > 0) {
+            $quickReplies = array_values(array_filter($quickReplies, static fn(string $q): bool => $q !== 'Guest count'));
+        }
+
+        return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $prefix['booking'] . ' ' . $detail, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => $quickReplies];
     }
     if (($route['kind'] ?? null) === 'booking_process') {
         $bookingCategory = $category;
@@ -522,15 +563,15 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         return ($name !== '' && str_contains($lower, $name)) || ($roomType !== '' && str_contains($lower, $roomType));
     }));
     if ($mentionedVenues) $venues = $mentionedVenues;
-    $priceIntent = preg_match('/\b(prices?|rates?|cost|how much|magkano|presyo|bayad|fee|rent|per day|per night)\b/i', $lower) === 1;
-    $capacityIntent = preg_match('/\b(capacity|fit|guests?|pax|ilang|kasya|maximum|how many)\b/i', $lower) === 1;
-    $amenityIntent = preg_match('/\b(amenit|included|inclusion|facilit|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed)\b/i', $lower) === 1;
-    $policyIntent = ($route['kind'] ?? null) === 'policy' || preg_match('/\b(payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours)\b/i', $lower) === 1;
+    $priceIntent = preg_match('/\b(prices?|rates?|cost|how\s+much|magkano|presyo|bayad|fee|rent|per\s+day|per\s+night|singil|bili|halaga|bayarin|mahal|mura|pinakamura)\b/i', $lower) === 1;
+    $capacityIntent = preg_match('/\b(capacity|fit|guests?|pax|ilang|kasya|maximum|how\s+many|ilang\s+tao|pwedeng\s+tao|ilan\s+kaya|ilan|pwede(?!\s+(?:po\s+)?ba\b))\b/i', $lower) === 1;
+    $amenityIntent = preg_match('/\b(amenit|included|inclusion|facilit|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed|meron\s+ba|may\s+ba|available\s+ba|meron\s+bang|may\s+bang)\b/i', $lower) === 1;
+    $policyIntent = ($route['kind'] ?? null) === 'policy' || preg_match('/\b(payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours|pwede\s+ba|bawal\s+ba|patakaran|tuntunin|pano|paano|walk.?in|pasok|saan|nasaan|pano\s+pumunta|paano\s+pumunta|direksyon|lokasyon|san\s+kayo)\b/i', $lower) === 1;
 
     if ($priceIntent) {
-        $genericRateRequest = preg_match('/\b(starting rates?|rate card|price list|all rates)\b/i', $lower) === 1
+        $genericRateRequest = preg_match('/\b(starting rates?|rate card|price list|all rates|cheapest|pinakamura|mura)\b/i', $lower) === 1
             || preg_match('/\b(venues?|resort)\b/i', $lower) === 1
-            || preg_match('/^(?:(?:what\s+(?:are|is)\s+(?:the\s+|your\s+)?)|(?:ano\s+ang\s+))?(?:prices?|rates?|magkano|how much|presyo)(?:\s+(?:ang\s+)?(?:rates?|presyo|bayad|is\s+it|does\s+it\s+cost|are\s+they|po|ba|din|naman|please))?[?.!]*$/i', trim($lower)) === 1;
+            || preg_match('/^(?:(?:what\s+(?:are|is)\s+(?:the\s+|your\s+)?)|(?:ano\s+(?:ang|yung)\s+))?(?:prices?|rates?|magkano|how\s+much|presyo|pinakamura|mura)(?:\s+(?:ang\s+)?(?:rates?|presyo|bayad|is\s+it|does\s+it\s+cost|are\s+they|po|ba|din|naman|please))?[?.!]*$/i', trim($lower)) === 1;
         if ($category === null && empty($venues) && $genericRateRequest) {
             $categoryMinRates = [];
             $categoryUnits = [];
@@ -582,7 +623,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 $lines[] = $eventPricing[0]['qualifier'] ?? 'Event options may affect the preliminary estimate; staff confirms the final quotation.';
             }
             $lines = array_values(array_unique($lines));
-            return ['action' => 'ask', 'reply' => $prefix['price'] . "\n" . implode("\n", array_slice($lines, 0, 12)), 'faq_id' => null, 'quick_replies' => ['Capacity', 'Amenities', 'Support FAQs']];
+            return ['action' => 'ask', 'reply' => $prefix['price'] . "\n" . implode("\n", array_slice($lines, 0, 12)), 'faq_id' => null, 'quick_replies' => ['Book now', 'What\'s included?', 'Contact us']];
         }
     }
 
@@ -602,8 +643,170 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 if (isset($record['bed_count_min'])) $line .= '; ' . number_format((int)$record['bed_count_min']) . (isset($record['bed_count_max']) && $record['bed_count_max'] !== $record['bed_count_min'] ? '–' . number_format((int)$record['bed_count_max']) : '') . ' beds';
                 $lines[] = $line;
             }
-            return ['action' => 'ask', 'reply' => $prefix['capacity'] . "\n" . implode("\n", array_slice($lines, 0, 6)), 'faq_id' => null, 'quick_replies' => ['Starting rates', 'Amenities', 'Support FAQs']];
+            return ['action' => 'ask', 'reply' => $prefix['capacity'] . "\n" . implode("\n", array_slice($lines, 0, 6)), 'faq_id' => null, 'quick_replies' => ['See rates', 'Book now', 'What\'s included?']];
         }
+    }
+
+    $specificAmenityDefs = [
+        'parking' => [
+            'pattern' => '/\b(parking|paradahan|park)\b/i',
+            'keywords' => ['parking', 'paradahan', 'park'],
+            'name' => 'Free parking',
+            'type' => 'available',
+        ],
+        'pool' => [
+            'pattern' => '/\b(pool|swim|palanguyan|swimming)\b/i',
+            'keywords' => ['pool', 'swim', 'palanguyan', 'swimming'],
+            'name' => 'swimming pool',
+            'type' => 'pool',
+        ],
+        'wifi' => [
+            'pattern' => '/\b(wifi|wi[- ]?fi|internet|\bnet\b)\b/i',
+            'keywords' => ['wifi', 'wi-fi', 'internet'],
+            'name' => 'Free wifi',
+            'type' => 'available',
+        ],
+        'gym' => [
+            'pattern' => '/\b(gym|fitness|exercise)\b/i',
+            'keywords' => ['gym', 'fitness', 'exercise'],
+            'name' => 'Gym and fitness facilities',
+            'type' => 'available',
+        ],
+        'breakfast' => [
+            'pattern' => '/\b(breakfast|almusal|morning\s+meal)\b/i',
+            'keywords' => ['breakfast', 'almusal'],
+            'name' => 'Breakfast',
+            'type' => 'included',
+        ],
+        'aircon' => [
+            'pattern' => '/\b(aircon|a\/c|air\s*condition(?:ing|er)?)\b/i',
+            'keywords' => ['aircon', 'air condition', 'aircondition', 'a/c'],
+            'name' => 'Air conditioning',
+            'type' => 'available',
+        ],
+        'tv' => [
+            'pattern' => '/\b(tv|television|telebisyon)\b/i',
+            'keywords' => ['tv', 'television', 'telebisyon', 'smart tv'],
+            'name' => 'TV',
+            'type' => 'available',
+        ],
+        'kitchen' => [
+            'pattern' => '/\b(kitchen|kusina|cook(?:ing)?)\b/i',
+            'keywords' => ['kitchen', 'kusina', 'cook'],
+            'name' => 'Kitchen facilities',
+            'type' => 'available',
+        ],
+    ];
+
+    $matchedAmenityDef = null;
+    foreach ($specificAmenityDefs as $amenityDef) {
+        if (preg_match($amenityDef['pattern'], $lower) === 1) {
+            $matchedAmenityDef = $amenityDef;
+            break;
+        }
+    }
+
+    if ($matchedAmenityDef !== null) {
+        $allVenues = array_values(array_filter($records, static fn(array $r): bool => ($r['kind'] ?? null) === 'venue'));
+        $matchingVenues = [];
+        foreach ($allVenues as $v) {
+            $items = array_merge($v['amenities'] ?? [], $v['inclusions'] ?? []);
+            if (!empty($v['has_private_pool'])) {
+                $items[] = 'private pool';
+            }
+            $hasAmenity = false;
+            foreach ($items as $item) {
+                $itemStr = strtolower((string)$item);
+                foreach ($matchedAmenityDef['keywords'] as $kw) {
+                    $kwLower = strtolower($kw);
+                    if ($kwLower === 'wifi' || $kwLower === 'wi-fi') {
+                        if (str_contains(str_replace(['-', ' '], '', $itemStr), 'wifi') || str_contains($itemStr, 'internet')) {
+                            $hasAmenity = true;
+                            break 2;
+                        }
+                    } elseif ($kwLower === 'tv') {
+                        if (preg_match('/\b(?:smart\s+)?tv\b/i', $itemStr) === 1 || str_contains($itemStr, 'television')) {
+                            $hasAmenity = true;
+                            break 2;
+                        }
+                    } elseif ($kwLower === 'park' || $kwLower === 'parking') {
+                        if (str_contains($itemStr, 'park')) {
+                            $hasAmenity = true;
+                            break 2;
+                        }
+                    } else {
+                        if (str_contains($itemStr, $kwLower)) {
+                            $hasAmenity = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+            if ($hasAmenity) {
+                $matchingVenues[] = $v;
+            }
+        }
+
+        if (empty($matchingVenues)) {
+            return [
+                'action' => 'ask',
+                'reply' => "I'm not sure about that specific amenity. Let me connect you with our team for the most accurate answer.",
+                'faq_id' => null,
+                'quick_replies' => ['See rates', 'Book now', 'More questions'],
+            ];
+        }
+
+        $labels = [];
+        $hasHotel = false;
+        foreach ($matchingVenues as $mv) {
+            $cat = $mv['category'] ?? '';
+            if ($cat === 'Hotel Room') {
+                $hasHotel = true;
+            } elseif ($cat === 'Resort Villa') {
+                $vName = (string)($mv['name'] ?? 'Villa');
+                $labels[] = strcasecmp($vName, 'villa') === 0 ? 'the Villa' : $vName;
+            } else {
+                $labels[] = (string)($mv['name'] ?? 'Event Hall');
+            }
+        }
+        $labels = array_values(array_unique($labels));
+        sort($labels, SORT_NATURAL | SORT_FLAG_CASE);
+        if ($hasHotel) {
+            $labels[] = 'our hotel rooms';
+        }
+
+        if (count($labels) === 1) {
+            $venueList = $labels[0];
+        } elseif (count($labels) === 2) {
+            $venueList = $labels[0] . ' and ' . $labels[1];
+        } else {
+            $venueList = implode(', ', array_slice($labels, 0, -1)) . ', and ' . end($labels);
+        }
+
+        if (count($matchingVenues) === count($allVenues) && count($allVenues) > 0) {
+            if ($matchedAmenityDef['type'] === 'pool') {
+                $reply = "Yes! We have a swimming pool. Pool access is included with all our venues.";
+            } elseif ($matchedAmenityDef['type'] === 'included') {
+                $reply = "Yes! {$matchedAmenityDef['name']} is included with all our venues.";
+            } else {
+                $reply = "Yes! {$matchedAmenityDef['name']} is available at all our venues.";
+            }
+        } else {
+            if ($matchedAmenityDef['type'] === 'pool') {
+                $reply = "Yes! We have a swimming pool. Pool access is included with {$venueList}.";
+            } elseif ($matchedAmenityDef['type'] === 'included') {
+                $reply = "Yes! {$matchedAmenityDef['name']} is included with {$venueList}.";
+            } else {
+                $reply = "Yes! {$matchedAmenityDef['name']} is available at {$venueList}.";
+            }
+        }
+
+        return [
+            'action' => 'ask',
+            'reply' => $reply,
+            'faq_id' => null,
+            'quick_replies' => ['See rates', 'Book now', 'More questions'],
+        ];
     }
 
     if ($amenityIntent) {
@@ -618,7 +821,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 if (!empty($record['description'])) $line .= '. ' . $record['description'];
                 $lines[] = $line;
             }
-            return ['action' => 'ask', 'reply' => $prefix['amenities'] . "\n" . implode("\n", array_slice($lines, 0, 6)), 'faq_id' => null, 'quick_replies' => ['Starting rates', 'Capacity', 'Support FAQs']];
+            return ['action' => 'ask', 'reply' => $prefix['amenities'] . "\n" . implode("\n", array_slice($lines, 0, 6)), 'faq_id' => null, 'quick_replies' => ['See rates', 'Book now', 'Contact us']];
         }
     }
 
@@ -633,9 +836,9 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 if (($record['kind'] ?? null) === 'faq') $lines[] = (string)$record['question'] . ': ' . receptionist_knowledge_excerpt((string)$record['answer']);
                 elseif (($record['kind'] ?? null) === 'policy') $lines[] = receptionist_knowledge_excerpt((string)$record['text']);
             }
-            if ($lines) return ['action' => $faqId !== null ? 'faq' : 'ask', 'reply' => $prefix['faq'] . "\n" . implode("\n\n", array_slice($lines, 0, 3)), 'faq_id' => $faqId, 'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs']];
+            if ($lines) return ['action' => $faqId !== null ? 'faq' : 'ask', 'reply' => $prefix['faq'] . "\n" . implode("\n\n", array_slice($lines, 0, 3)), 'faq_id' => $faqId, 'quick_replies' => ['More FAQs', 'Book now', 'Contact us']];
         }
-        if (preg_match('/\b(contact|address|location|where|phone|email)\b/i', $lower)) {
+        if (preg_match('/\b(contact|address|location|where|phone|email|saan|nasaan|pano\s+pumunta|paano\s+pumunta|direksyon|lokasyon|san\s+kayo)\b/i', $lower)) {
             $contact = array_values(array_filter($records, static fn(array $record): bool => ($record['kind'] ?? null) === 'contact'))[0] ?? null;
             if ($contact) {
                 $parts = [];
