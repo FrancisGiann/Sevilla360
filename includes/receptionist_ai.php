@@ -37,6 +37,14 @@ function receptionist_ai_merge_slots(array $base, array $raw, array $resetKeys =
     return $merged;
 }
 
+function receptionist_ai_append_history(array $history, string $message, string $reply, bool $replace = false): array
+{
+    if ($replace) $history = [];
+    $history[] = ['role' => 'user', 'content' => $message];
+    $history[] = ['role' => 'assistant', 'content' => $reply];
+    return array_slice($history, -16);
+}
+
 function receptionist_ai_fallback_metadata(string $errorClass): array
 {
     $normalized = strtolower(trim($errorClass));
@@ -681,7 +689,10 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
 function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $baseSlots, array $venueCatalog): array
 {
     $knowledgePatch = is_array($answer['slots'] ?? null) ? $answer['slots'] : [];
-    $knowledgeValidationBase = $baseSlots;
+    // Deterministic reset answers are replacements, not empty patches. This
+    // prevents the validator's normal context merge from restoring stale
+    // occasion/date/venue details from the previous flow.
+    $knowledgeValidationBase = ($answer['reset_context'] ?? false) === true ? [] : $baseSlots;
     if (isset($knowledgePatch['intent'], $knowledgeValidationBase['intent']) && $knowledgePatch['intent'] !== $knowledgeValidationBase['intent']) {
         foreach (['occasion', 'purpose', 'preference', 'group_size', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'] as $key) unset($knowledgeValidationBase[$key]);
     }

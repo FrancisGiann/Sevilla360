@@ -67,7 +67,7 @@ $checks['Hotel priority codes expose only the confirmed three options'] = hotel_
     && hotel_parse_recommendation_priority('privacy') === null
     && hotel_parse_recommendation_priority('space') === null
     && str_contains($recommendPhp, 'if (!$guestRange || !$priority)')
-    && str_contains($recommendPhp, "hotel_recommendation_response(['success' => false, 'message' => 'Choose a guest range and recommendation priority.'], 422)");
+    && str_contains($recommendPhp, "hotel_recommendation_response(['success' => false, 'message' => 'Choose a guest count and recommendation priority.'], 422)");
 $checks['Hotel guest ranges allow only the six fixed capacity bands'] = hotel_allowed_guest_ranges() === [
         '1-2' => ['min' => 1, 'max' => 2],
         '3-4' => ['min' => 3, 'max' => 4],
@@ -79,7 +79,7 @@ $checks['Hotel guest ranges allow only the six fixed capacity bands'] = hotel_al
     && hotel_parse_guest_range('17+') === null
     && hotel_parse_guest_range('5-10') === null
     && str_contains($recommendPhp, 'if (!$guestRange || !$priority)')
-    && str_contains($recommendPhp, "['success' => false, 'message' => 'Choose a guest range and recommendation priority.'], 422)")
+    && str_contains($recommendPhp, "['success' => false, 'message' => 'Choose a guest count and recommendation priority.'], 422)")
     && !str_contains($recommendPhp, "'state' => 'contact_reception'");
 $checks['showroom pre-migration fallback aliases NULL exactly once'] = str_contains($showroomPhp, "\$hotel_type_code_select = \$hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';")
     && str_contains($showroomPhp, '{$hotel_type_code_select} AS room_type_code')

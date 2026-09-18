@@ -66,14 +66,12 @@ function receptionist_chat_prepare_knowledge(mysqli $conn, array $answer, array 
     return receptionist_ai_prepare_knowledge($conn, $answer, $baseSlots, $venueCatalog);
 }
 
-function receptionist_chat_store_turn(array $slots, string $message, string $reply, int $count, array $history): void
+function receptionist_chat_store_turn(array $slots, string $message, string $reply, int $count, array $history, bool $replaceContext = false): void
 {
     $allowed = array_flip(['intent', 'occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id']);
     $_SESSION['receptionist_ai_context'] = array_intersect_key($slots, $allowed);
     $_SESSION['receptionist_ai_message_count'] = $count + 1;
-    $history[] = ['role' => 'user', 'content' => $message];
-    $history[] = ['role' => 'assistant', 'content' => $reply];
-    $_SESSION['receptionist_ai_history'] = array_slice($history, -16);
+    $_SESSION['receptionist_ai_history'] = receptionist_ai_append_history($history, $message, $reply, $replaceContext);
 }
 
 $requestId = receptionist_chat_request_id();
@@ -98,6 +96,19 @@ try {
     $language = receptionist_ai_language($requestedLanguage, $rawMessage);
     $message = receptionist_ai_clean_message($rawMessage);
     $requestContext = is_array($request['context'] ?? null) ? $request['context'] : [];
+
+    // Keep a cheap endpoint-wide abuse bound separate from the provider burst
+    // bucket below. Deterministic booking/FAQ turns must not consume provider
+    // capacity, but the endpoint still needs protection before DB work.
+    try {
+        if (!check_rate_limit($conn, 'receptionist_chat', 120, 10)) {
+            receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'busy']);
+            receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'busy'), 'busy', $requestId);
+        }
+    } catch (Throwable $rateError) {
+        receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'server_error']);
+        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'server_error'), 'server_error', $requestId);
+    }
     $venueCatalog = receptionist_ai_public_venue_catalog($conn);
     $sessionSlots = [];
     if (is_array($_SESSION['receptionist_ai_context'] ?? null)) {
@@ -112,16 +123,6 @@ try {
     if (isset($requestSlots['intent'], $sessionSlots['intent']) && $requestSlots['intent'] !== $sessionSlots['intent']) $baseSeed = ['intent' => $requestSlots['intent']];
     $baseSlots = receptionist_ai_validate_slots($conn, $requestSlots, $baseSeed, $venueCatalog);
     $faqs = receptionist_faq_load($conn);
-
-    try {
-        if (!check_rate_limit($conn, 'receptionist_chat', 30, 10)) {
-            receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'busy']);
-            receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'busy'), 'busy', $requestId);
-        }
-    } catch (Throwable $rateError) {
-        receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'server_error']);
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'server_error'), 'server_error', $requestId);
-    }
 
     $count = (int)($_SESSION['receptionist_ai_message_count'] ?? 0);
     if ($count >= 25) {
@@ -141,7 +142,7 @@ try {
             $prepared['fallback_code'] = $metadata['code'];
             $prepared['retryable'] = $metadata['retryable'];
         }
-        receptionist_chat_store_turn($prepared['slots'], $message, (string)$prepared['reply'], $count, $history);
+        receptionist_chat_store_turn($prepared['slots'], $message, (string)$prepared['reply'], $count, $history, ($prepared['reset_context'] ?? false) === true);
         receptionist_chat_response(['success' => true, 'mode' => 'knowledge', 'validated_slots' => $prepared['slots']] + $prepared);
     };
     $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots);
@@ -150,6 +151,18 @@ try {
     if (!$provider) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_unavailable']);
         receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_unavailable'), 'provider_unavailable', $requestId);
+    }
+    // Protect only provider requests from bursts, immediately before the
+    // external call path. Deterministic booking and approved FAQ turns above
+    // do not consume this provider bucket.
+    try {
+        if (!check_rate_limit($conn, 'receptionist_chat_provider', 30, 10)) {
+            receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'busy']);
+            receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'busy'), 'busy', $requestId);
+        }
+    } catch (Throwable $rateError) {
+        receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'server_error']);
+        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'server_error'), 'server_error', $requestId);
     }
     $limits = receptionist_ai_limits();
     $safeContext = array_intersect_key($baseSlots, array_flip(['intent', 'occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id']));

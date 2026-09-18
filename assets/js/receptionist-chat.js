@@ -20,7 +20,7 @@
     const chatShell = document.getElementById("receptionist-chat-shell");
     const chatToggle = root.querySelector("[data-receptionist-chat-toggle]");
     const choices = options.choices || document.getElementById("receptionist-choices");
-    if (!root || !transcript || !form || !input || initializedRoot === root) return;
+    if (!root || !transcript || !form || !input || initializedRoot === root || root.dataset.receptionistChatReady === "true") return;
     initializedRoot = root;
     root.dataset.receptionistChatReady = "true";
 

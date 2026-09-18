@@ -269,7 +269,8 @@ $aiSource = $source('includes/receptionist_ai.php');
 $knowledgeSource = $source('includes/receptionist_knowledge.php');
 $checks['endpoint is JSON-only POST, CSRF-protected, bounded, and provider-neutral'] = str_contains($endpoint, "'application/json'")
     && str_contains($endpoint, "HTTP_X_CSRF_TOKEN")
-    && str_contains($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 30, 10)")
+    && str_contains($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 120, 10)")
+    && str_contains($endpoint, "check_rate_limit(\$conn, 'receptionist_chat_provider', 30, 10)")
     && str_contains($endpoint, 'receptionist_ai_message_count')
     && str_contains($endpoint, 'array_slice($history, -16)')
     && str_contains($endpoint, 'receptionist_ai_shortlist_faq')
@@ -290,6 +291,21 @@ $checks['endpoint answers bounded public knowledge before provider use and passe
     && str_contains($showroomJs, 'data.booking_continuation === true')
     && str_contains($knowledgeSource, 'RECEPTIONIST_KNOWLEDGE_MAX_RECORDS')
     && str_contains($knowledgeSource, "v.status = 'Available'");
+$knowledgeDispatchPosition = strpos($endpoint, 'if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);');
+$providerPosition = strpos($endpoint, '$provider = receptionist_ai_provider();');
+$cheapRateLimitPosition = strpos($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 120, 10)");
+$providerRateLimitPosition = strpos($endpoint, "check_rate_limit(\$conn, 'receptionist_chat_provider', 30, 10)");
+$catalogPosition = strpos($endpoint, '$venueCatalog = receptionist_ai_public_venue_catalog($conn);');
+$checks['deterministic booking turns bypass the provider burst limiter'] = $knowledgeDispatchPosition !== false
+    && $providerPosition !== false
+    && $providerRateLimitPosition !== false
+    && $knowledgeDispatchPosition < $providerPosition
+    && $providerPosition < $providerRateLimitPosition;
+$checks['endpoint abuse bound runs before catalog work and uses a separate provider bucket'] = $cheapRateLimitPosition !== false
+    && $catalogPosition !== false
+    && $cheapRateLimitPosition < $catalogPosition
+    && $cheapRateLimitPosition < $providerRateLimitPosition
+    && $providerRateLimitPosition !== $cheapRateLimitPosition;
 $checks['Support FAQs handoff uses deterministic metadata and one fixed local destination'] = str_contains($knowledgeSource, 'receptionist_knowledge_is_support_faq_request')
     && str_contains($endpoint, '$showSupportFaqCta')
     && str_contains($endpoint, "'show_support_faq_cta'")
@@ -529,6 +545,87 @@ $checks['knowledge preparation preserves same-turn switch patch after clearing s
     && !array_key_exists('occasion', $preparedSwitch['slots'] ?? [])
     && !array_key_exists('active_venue_id', $preparedSwitch['slots'] ?? [])
     && ($preparedSwitch['slots']['start_date'] ?? null) !== '2036-01-01';
+$staleBookingContext = [
+    'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100,
+    'start_date' => '2036-01-01', 'active_venue_id' => 1,
+];
+$genericBookingReply = receptionist_knowledge_reply($knowledgeRecords, 'i want to book', 'en', $staleBookingContext);
+$genericBookingCatalog = [['id' => 1, 'category' => 'Event Hall', 'name' => 'Infinity Hall', 'room_group_id' => null]];
+$preparedGenericBooking = receptionist_ai_prepare_knowledge($db, $genericBookingReply ?? [], $staleBookingContext, $genericBookingCatalog);
+$dateAfterGenericReset = receptionist_knowledge_reply($knowledgeRecords, 'oct 26', 'en', $preparedGenericBooking['slots'] ?? []);
+$genuineContinuation = receptionist_knowledge_reply($knowledgeRecords, '100 guests', 'en', [
+    'intent' => 'Event Hall', 'occasion' => 'wedding', 'start_date' => '2037-10-26',
+]);
+$genericBookingVariants = array_map(static fn(string $prompt): ?array => receptionist_knowledge_reply($knowledgeRecords, $prompt, 'en', $staleBookingContext), [
+    'I would like to reserve', 'I want to make a reservation', 'make a booking', 'reserve',
+]);
+$clearedKeys = ['occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'];
+$checks['generic booking start explicitly resets stale context and asks for venue type'] = ($genericBookingReply['booking_continuation'] ?? false) === true
+    && ($genericBookingReply['missing_slots'] ?? []) === ['intent']
+    && ($genericBookingReply['slots'] ?? []) === []
+    && ($genericBookingReply['reset_context'] ?? false) === true
+    && ($genericBookingReply['quick_replies'] ?? []) === ['Event', 'Hotel', 'Villa', 'Support FAQs']
+    && ($preparedGenericBooking['slots'] ?? []) === []
+    && !array_intersect($clearedKeys, array_keys($preparedGenericBooking['slots'] ?? []));
+$checks['standalone date after generic reset cannot revive event or wedding context'] = ($dateAfterGenericReset['missing_slots'] ?? []) === ['intent']
+    && ($dateAfterGenericReset['slots']['intent'] ?? null) === null
+    && !array_intersect(['occasion', 'active_venue_id', 'group_size'], array_keys($dateAfterGenericReset['slots'] ?? []))
+    && !str_contains(strtolower((string)($dateAfterGenericReset['reply'] ?? '')), 'event date');
+$checks['genuine booking continuation retains current flow context'] = ($genuineContinuation['slots']['intent'] ?? null) === 'Event Hall'
+    && ($genuineContinuation['slots']['occasion'] ?? null) === 'wedding'
+    && ($genuineContinuation['slots']['start_date'] ?? null) === '2037-10-26'
+    && ($genuineContinuation['slots']['group_size'] ?? null) === 100;
+$checks['generic reserve and make-a-booking equivalents also start clean'] = count($genericBookingVariants) === 4
+    && count(array_filter($genericBookingVariants, static fn(?array $answer): bool => is_array($answer)
+        && ($answer['reset_context'] ?? false) === true
+        && ($answer['missing_slots'] ?? []) === ['intent']
+        && ($answer['slots'] ?? []) === [])) === 4;
+$resetSession = $preparedGenericBooking['slots'] ?? [];
+$freshHotelRequestContext = ['intent' => 'Hotel Room', 'group_size' => 4];
+$freshNextSlots = receptionist_ai_validate_slots($db, $freshHotelRequestContext, $resetSession, $genericBookingCatalog);
+$oldWeddingHistory = [
+    ['role' => 'user', 'content' => 'I want an Event Hall wedding on October 26 for 100 guests.'],
+    ['role' => 'assistant', 'content' => 'What kind of event is this?'],
+];
+$startOverSession = [
+    'receptionist_ai_context' => $staleBookingContext,
+    'receptionist_ai_history' => $oldWeddingHistory,
+    'receptionist_ai_message_count' => 12,
+];
+unset($startOverSession['receptionist_ai_context'], $startOverSession['receptionist_ai_history'], $startOverSession['receptionist_ai_message_count']);
+$freshAfterStartOver = receptionist_ai_validate_slots($db, $freshHotelRequestContext, $startOverSession['receptionist_ai_context'] ?? [], $genericBookingCatalog);
+$resetHistory = receptionist_ai_append_history($oldWeddingHistory, 'i want to book', 'Which venue would you like to book?', true);
+$continuedHistory = receptionist_ai_append_history($resetHistory, 'Hotel', 'How many guests?', false);
+$hotelCountReply = receptionist_knowledge_reply($knowledgeRecords, '4 guests', 'en', ['intent' => 'Hotel Room']);
+$checks['generic reset replaces the session flow and the next valid client context is accepted'] = $resetSession === []
+    && $freshNextSlots['intent'] === 'Hotel Room'
+    && $freshNextSlots['group_size'] === 4
+    && !array_key_exists('occasion', $freshNextSlots)
+    && !array_key_exists('start_date', $freshNextSlots)
+    && !array_key_exists('active_venue_id', $freshNextSlots);
+$checks['Start over clears the session flow before accepting a new booking context'] = !array_key_exists('receptionist_ai_context', $startOverSession)
+    && !array_key_exists('receptionist_ai_history', $startOverSession)
+    && !array_key_exists('receptionist_ai_message_count', $startOverSession)
+    && $freshAfterStartOver['intent'] === 'Hotel Room'
+    && $freshAfterStartOver['group_size'] === 4
+    && !array_key_exists('occasion', $freshAfterStartOver);
+$checks['generic reset replaces provider history while ordinary turns append'] = count($resetHistory) === 2
+    && count($continuedHistory) === 4
+    && !str_contains(strtolower(implode(' ', array_column($resetHistory, 'content'))), 'wedding')
+    && $continuedHistory[2]['content'] === 'Hotel';
+$checks['hotel guest count advances to a concrete preference question'] = ($hotelCountReply['missing_slots'][0] ?? null) === 'preference'
+    && str_contains(strtolower((string)($hotelCountReply['reply'] ?? '')), 'best fit')
+    && str_contains(strtolower((string)($hotelCountReply['reply'] ?? '')), 'lowest price')
+    && !str_contains(strtolower((string)($hotelCountReply['reply'] ?? '')), 'choose a venue');
+$checks['generic booking reset is explicit across server and client context boundaries'] = str_contains($knowledgeSource, "'reset_context' => true")
+    && str_contains($aiSource, "\$answer['reset_context']")
+    && !str_contains($endpoint, "receptionist_ai_context_reset")
+    && !str_contains($resetEndpoint, "receptionist_ai_context_reset")
+    && str_contains($showroomJs, 'result.reset_context === true');
+$checks['chat initialization is idempotent and hotel follow-up asks for a concrete count'] = str_contains($chatJs, 'root.dataset.receptionistChatReady === "true"')
+    && str_contains($showroomJs, 'window.__sevilla360ShowroomInitialized === true')
+    && str_contains($showroomJs, 'Choose the option that includes the total number of adults and children')
+    && !str_contains($showroomJs, 'message = "Choose a guest range for your room search."');
 $fakeAttempts = 0;
 $fakeProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',
     static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$fakeAttempts): array {

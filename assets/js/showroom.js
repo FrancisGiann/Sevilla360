@@ -5,6 +5,8 @@
  * ==========================================================================
  */
 document.addEventListener("DOMContentLoaded", () => {
+  if (window.__sevilla360ShowroomInitialized === true) return;
+  window.__sevilla360ShowroomInitialized = true;
   window.SevillaHotspotMaterial?.preload?.((error, url) => console.warn("Showroom hotspot asset unavailable", url, error));
   
   // --- 1. Global State Variables ---
@@ -1995,7 +1997,7 @@ document.addEventListener("DOMContentLoaded", () => {
         options = [["Wedding", "wedding"], ["Celebration", "celebration"], ["Corporate", "corporate"], ["Other", "other"]];
       } else if (category === "Hotel Room" && key === "groupSize") {
         title = "How many guests?";
-        message = "Choose a guest range for your room search.";
+        message = "How many guests will stay? Choose the option that includes the total number of adults and children.";
         options = [["1–2 guests", "1-2"], ["3–4 guests", "3-4"], ["5–6 guests", "5-6"], ["7–8 guests", "7-8"], ["9–12 guests", "9-12"], ["13–16 guests", "13-16"]];
       } else if (category === "Hotel Room" && key === "preference") {
         title = "What matters most?";
@@ -2372,11 +2374,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const heading = state === "no_match" ? "No room matches found" : state === "partial" ? "A few rooms fit" : "Recommended rooms";
       const lead = state === "no_match"
         ? recommendationMessage || (availabilityChecked
-          ? "No room group with an active room is available for this guest range and stay. Change your dates or search details, or contact reception."
-          : "No active room group matches this guest range and recommendation. Try a different guest range or priority, or contact reception.")
+          ? "No room group with an active room is available for this guest count and stay. Change your dates or search details, or contact reception."
+          : "No active room group matches this guest count and recommendation. Try a different guest count or priority, or contact reception.")
         : availabilityChecked
           ? `${results.length} available room option${results.length === 1 ? "" : "s"} for ${guideContext.groupSize} guests, checked ${formatCalendarDate(guideContext.startDate)} to ${formatCalendarDate(guideContext.endDate)}.`
-          : `${results.length} room option${results.length === 1 ? "" : "s"} fit your ${guideContext.groupSize}-guest range. Availability is not checked; add dates to check.`;
+          : `${results.length} room option${results.length === 1 ? "" : "s"} fit your ${guideContext.groupSize}-guest request. Availability is not checked; add dates to check.`;
       setDialogue(heading, lead, announce);
       const resultsGrid = document.createElement("div");
       resultsGrid.className = "receptionist-hotel-results-grid";
@@ -2399,7 +2401,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         const note = document.createElement("span");
         note.className = "receptionist-choice-note receptionist-shortlist-reason";
-        const reasonText = room.reasons?.[0] ? `${room.reasons[0].label}: ${room.reasons[0].value}` : "Fits your selected guest range.";
+        const reasonText = room.reasons?.[0] ? `${room.reasons[0].label}: ${room.reasons[0].value}` : "Fits your selected guest count.";
         const availabilityText = room.availability_checked === true ? "Available for your stay." : "Dates are needed to check availability.";
         note.textContent = `${reasonText} · ${availabilityText}`;
         choice.appendChild(note);
@@ -2967,6 +2969,11 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     };
     const applyReceptionistChatAction = result => {
+      if (result && result.reset_context === true) {
+        Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
+        try { sessionStorage.removeItem("guideContext"); } catch (error) {}
+        receptionistState.activeCategory = null;
+      }
       const slots = result && result.slots && typeof result.slots === "object" ? result.slots : {};
       const category = slots.intent || receptionistState.activeCategory;
       if (slots.intent) guideContext.intent = slots.intent;

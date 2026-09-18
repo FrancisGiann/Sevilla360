@@ -527,12 +527,14 @@ function receptionist_knowledge_intent(string $message): array
     $lower = receptionist_knowledge_normalize_message($message);
     if (receptionist_knowledge_is_support_faq_request($message)) return ['kind' => 'support_faq', 'category' => null];
     $informationalBooking = preg_match('/\b(how do i|how can i|how to|what is the (?:booking|reservation) process|booking process|steps? to (?:book|reserve)|where can i (?:book|reserve)|paano (?:mag[- ]?book|mag[- ]?reserve|ang proseso)|ano ang proseso|booking steps?)\b/i', $lower) === 1;
-    $bookingVerbPattern = '(?:book|wanna|reserve|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|booking|i[- ]?book|ipa[- ]?book|walk[ -]?in)';
+    $bookingVerbPattern = '(?:book|wanna|reserve|reservation|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|booking|i[- ]?book|ipa[- ]?book|walk[ -]?in)';
     $directBooking = !$informationalBooking && (
         preg_match('/\b(?:i|we|ako|kami|gusto|want|need|help me|pwede|maaari)\b[^.!?\n]{0,48}\b' . $bookingVerbPattern . '\b/i', $lower) === 1
         || preg_match('/\b' . $bookingVerbPattern . '\s+(?:an?\s+)?(?:hotel|room|rooms|villa|event|venue)\b/i', $lower) === 1
         || preg_match('/\b' . $bookingVerbPattern . '\s+(?:for|para\s+sa)?\s*\d+/i', $lower) === 1
         || preg_match('/\b(?:want|need|looking\s+for|gusto)\b[^.!?\n]{0,24}\b(?:hotel|room|villa|event|venue)\b/i', $lower) === 1
+        || preg_match('/\b(?:make|start)\s+(?:an?\s+)?(?:booking|reservation)\b/i', $lower) === 1
+        || preg_match('/\A\s*(?:book|reserve|booking|reservation)\s*[.!?]*\z/i', $lower) === 1
         || preg_match('/\b(?:mag[- ]?book|magpa[- ]?reserve|mag[- ]?reserve|magpa[- ]?book|i[- ]?book|ipa[- ]?book|walk[ -]?in)\b/i', $lower) === 1
     );
     if ($directBooking) {
@@ -707,6 +709,21 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     $bookingDates = receptionist_knowledge_booking_dates($message);
     $startDate = $bookingDates[0] ?? null;
     $venue = receptionist_knowledge_booking_venue($records, $message, $category ?? ($baseSlots['intent'] ?? null));
+    if (($route['kind'] ?? null) === 'booking' && $venue === null && receptionist_knowledge_is_generic_booking_start($message)) {
+        return [
+            'mode' => 'knowledge',
+            'booking_continuation' => true,
+            'reset_context' => true,
+            'action' => 'ask',
+            'reply' => $language === 'fil'
+                ? 'Anong venue ang gusto mong i-book — event hall, hotel room, o resort villa?'
+                : 'Which venue would you like to book — an event hall, hotel room, or resort villa?',
+            'faq_id' => null,
+            'slots' => [],
+            'missing_slots' => ['intent'],
+            'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs'],
+        ];
+    }
     $normalizedMessage = receptionist_knowledge_normalized_phrase($message);
     $venueBookingSignal = $venue !== null && ($normalizedMessage === receptionist_knowledge_normalized_phrase((string)($venue['name'] ?? ''))
         || preg_match('/\b(?:want|book|reserve|choose|select|view|show|looking|gusto|mag-?book|i\s+want)\b/i', $lower) === 1);
@@ -777,6 +794,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
             'occasion' => 'Anong uri ng event ito (halimbawa, wedding)? Kakailanganin ko rin ang bilang ng bisita at petsa ng event.',
             'purpose' => 'Ano ang layunin ng iyong stay? Kakailanganin ko rin ang bilang ng bisita at petsa.',
             'group_size' => ($slots['intent'] ?? null) === 'Hotel Room' ? 'Ilang bisita? Kakailanganin ko rin ang check-in at check-out dates.' : 'Ilang bisita? Kakailanganin ko rin ang petsa ng event.',
+            'preference' => 'Ano ang mas mahalaga sa room search mo — best fit, pinakamababang presyo, o comfort?',
             'start_date' => 'Ano ang petsa ng event?',
             default => 'Kumpleto na ang pangunahing detalye. Pumili ng venue o sabihin ang pangalan nito.',
         };
@@ -785,6 +803,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
             'occasion' => 'What kind of event is this (for example, a wedding)? I’ll also need the guest count and event date.',
             'purpose' => 'What is the purpose of your stay? I’ll also need the guest count and date.',
             'group_size' => ($slots['intent'] ?? null) === 'Hotel Room' ? 'How many guests? I’ll then need the check-in and check-out dates.' : 'How many guests? I’ll then need the event date.',
+            'preference' => 'What matters most for your room search — best fit, lowest price, or comfort?',
             'start_date' => ($slots['intent'] ?? null) === 'Hotel Room' ? 'What is the check-in date?' : 'What is the event date?',
             'end_date' => 'What is the check-out date?',
             default => 'I have the main details. Choose a venue, or tell me its name to view it.',
@@ -819,9 +838,22 @@ function receptionist_knowledge_category_hint(string $message): ?string
 {
     $lower = receptionist_knowledge_normalize_message($message);
     if (preg_match('/\b(villa|pool|overnight stay|staycation)\b/i', $lower)) return 'Resort Villa';
-    if (preg_match('/\b(event|events|event hall|function hall|reception|wedding|birthday|corporate|party|venue)\b/i', $lower)) return 'Event Hall';
+    if (preg_match('/\b(event|events|event hall|function hall|reception|hall|wedding|birthday|corporate|party|venue)\b/i', $lower)) return 'Event Hall';
     if (preg_match('/\b(hotel|room|rooms|accommodation|stay|overnight|nightly|check[- ]?in)\b/i', $lower)) return 'Hotel Room';
     return null;
+}
+
+/**
+ * Detect a booking opener that carries no category or usable booking detail.
+ * A generic opener must replace the prior flow rather than inherit its slots.
+ */
+function receptionist_knowledge_is_generic_booking_start(string $message): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    if (receptionist_knowledge_category_hint($message) !== null) return false;
+    if (receptionist_knowledge_booking_group_size($message) !== null || receptionist_knowledge_booking_dates($message) !== []) return false;
+    if (preg_match('/\b(?:wedding|kasal|marriage|birthday|party|celebration|corporate|seminar|conference|family|private|relax(?:ation)?|budget|cheap|cheapest|mura|save|comfort|premium|deluxe)\b/i', $lower) === 1) return false;
+    return preg_match('/\b(?:book|booking|reserve|reservation|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|i[- ]?book|ipa[- ]?book)\b/i', $lower) === 1;
 }
 
 function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = []): ?array

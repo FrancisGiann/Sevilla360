@@ -40,7 +40,7 @@ $guestRangeKey = $requestData['guest_range'] ?? null;
 $guestRange = hotel_parse_guest_range($guestRangeKey);
 $priority = hotel_parse_recommendation_priority($requestData['priority'] ?? null);
 if (!$guestRange || !$priority) {
-    hotel_recommendation_response(['success' => false, 'message' => 'Choose a guest range and recommendation priority.'], 422);
+    hotel_recommendation_response(['success' => false, 'message' => 'Choose a guest count and recommendation priority.'], 422);
 }
 $checkIn = $requestData['check_in'] ?? null;
 $checkOut = $requestData['check_out'] ?? null;
