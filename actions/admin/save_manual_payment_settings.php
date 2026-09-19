@@ -44,12 +44,15 @@ try {
     $hoursRaw = trim((string)($_POST['deadline_hours'] ?? ''));
     if (!ctype_digit($hoursRaw) || (int)$hoursRaw < 1 || (int)$hoursRaw > 168) throw new RuntimeException('Deadline must be between 1 and 168 hours.');
 
-    $postedMethods = $_POST['methods'] ?? null;
-    if (!is_array($postedMethods) || count($postedMethods) > MANUAL_PAYMENT_MAX_METHODS || count($postedMethods) < count($current)) {
-        throw new RuntimeException('The payment method list is incomplete or exceeds the 50-method limit. Refresh and try again.');
+    $postedMethods = $_POST['methods'] ?? [];
+    if (!is_array($postedMethods) || count($postedMethods) > MANUAL_PAYMENT_MAX_METHODS) {
+        throw new RuntimeException('The payment method list exceeds the 50-method limit. Refresh and try again.');
     }
-    foreach ($current as $key => $_method) {
-        if (!array_key_exists($key, $postedMethods)) throw new RuntimeException('Payment methods cannot be deleted from this screen. Disable a method to retire it.');
+    
+    foreach ($current as $key => $method) {
+        if (!array_key_exists($key, $postedMethods) && !empty($method['qr_path'])) {
+            $oldFiles[] = $method['qr_path'];
+        }
     }
 
     $settings = [];

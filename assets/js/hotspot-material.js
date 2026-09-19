@@ -30,18 +30,26 @@
         const material = spot.material;
         const degrees = normalizeDegrees(rotation, storedDegrees(spot));
         spot.userData.hotspotRotationDegrees = degrees;
-        spot.visible = true;
+        // Only force visible/opacity when the spot is NOT currently hidden.
+        // An async texture load that completes after a panorama's leave event
+        // must not resurrect hotspots that were already hidden.
+        const isHidden = Boolean(spot.userData.hotspotHidden);
+        if (!isHidden) {
+            spot.visible = true;
+        }
         spot.frustumCulled = false;
         spot.renderOrder = 10;
         if (material) {
-            material.visible = true;
+            if (!isHidden) {
+                material.visible = true;
+                material.opacity = 1;
+            }
             material.transparent = true;
             material.alphaTest = 0.08;
             material.depthWrite = false;
             // Infospots sit on/near the panorama sphere; depth testing lets
             // the sphere occlude the sprite and produces crescent fragments.
             material.depthTest = false;
-            material.opacity = 1;
             material.size = size;
             material.rotation = degrees * Math.PI / 180;
             material.needsUpdate = true;

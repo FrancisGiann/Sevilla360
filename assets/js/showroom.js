@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastFramedPanorama = null;
   let lastFramedActivationToken = -1;
   const panoramaControlReady = new WeakSet();
+  const viewerAddedPanoramas = new WeakSet();
 
   let currentZoom = 1;
   let panX = 0;
@@ -674,11 +675,17 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       pano.addEventListener('enter', () => {
-          spots.forEach(s => s.show());
+          spots.forEach(s => {
+              if (s.userData) s.userData.hotspotHidden = false;
+              s.show();
+          });
       });
 
       pano.addEventListener('leave', () => {
-          spots.forEach(s => s.hide());
+          spots.forEach(s => {
+              if (s.userData) s.userData.hotspotHidden = true;
+              s.hide();
+          });
       });
   }
 
@@ -813,6 +820,17 @@ document.addEventListener("DOMContentLoaded", () => {
     currentGallery = room.gallery || [];
     currentImageIndex = 0;
 
+    // Remove previous room's panoramas from the Three.js scene so their child
+    // hotspot sprites (depthTest = false) cannot render on top of the new room.
+    // The panorama objects stay in panoCache for reuse — only scene membership
+    // is toggled.  For the cached-re-entry branch below, we re-add them.
+    if (activePanoramas.length > 0) {
+        activePanoramas.forEach(oldPano => {
+            try { viewer.remove(oldPano); } catch (e) { /* already removed */ }
+        });
+        activePanoramas = [];
+    }
+
     // 360 Engine Routing
     const panoUrls = room.panoFailed ? [] : (room.pano_urls || []);
     const btnInfo = document.getElementById("btn-info"); 
@@ -897,6 +915,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             
             viewer.add(pano);
+            viewerAddedPanoramas.add(pano);
             // Register after Viewer.add() so this runs after Panolens' own
             // enter-fade-start listener resets the orbit-control target.
             pano.addEventListener('enter-fade-start', () => {
@@ -922,6 +941,18 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
         activePanoramas = panoCache[roomId];
+        // Re-add cached panoramas to the viewer scene (they were removed when
+        // leaving this room).  viewer.add() also calls addPanoramaEventListener
+        // which would stack listeners on every re-entry, so use the guard set.
+        activePanoramas.forEach(cachedPano => {
+            if (!viewerAddedPanoramas.has(cachedPano)) {
+                viewer.add(cachedPano);
+                viewerAddedPanoramas.add(cachedPano);
+            } else {
+                // Already initialised — just restore scene membership.
+                try { viewer.scene.add(cachedPano); } catch (e) {}
+            }
+        });
         currentPanoIndex = 0;
         const initialPanorama = activePanoramas[currentPanoIndex];
         const alreadyCurrent = viewer.panorama === initialPanorama;

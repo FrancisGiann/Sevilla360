@@ -261,11 +261,11 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             <label for="support-intro">Page introduction</label>
                             <textarea id="support-intro" name="support_intro" class="form-control" rows="2"><?php echo htmlspecialchars($support_content['support_intro'], ENT_QUOTES, 'UTF-8'); ?></textarea>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group support-field-wide">
                             <label for="support-contact-heading">Contact heading</label>
                             <input id="support-contact-heading" name="support_contact_heading" class="form-control" value="<?php echo htmlspecialchars($support_content['support_contact_heading'], ENT_QUOTES, 'UTF-8'); ?>" maxlength="120">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group support-field-wide">
                             <label for="support-contact-description">Contact description</label>
                             <textarea id="support-contact-description" name="support_contact_description" class="form-control" rows="2"><?php echo htmlspecialchars($support_content['support_contact_description'], ENT_QUOTES, 'UTF-8'); ?></textarea>
                         </div>
@@ -449,6 +449,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             <div class="manual-payment-method-actions" aria-label="Order <?php echo $safe_method_label; ?> for customers">
                                 <button type="button" class="btn btn-outline manual-payment-move-up" aria-label="Move <?php echo $safe_method_label; ?> up" <?php echo $method_index === 0 ? 'disabled' : ''; ?>>Move up</button>
                                 <button type="button" class="btn btn-outline manual-payment-move-down" aria-label="Move <?php echo $safe_method_label; ?> down" <?php echo $method_index === count($manual_payment_instructions) - 1 ? 'disabled' : ''; ?>>Move down</button>
+                                <button type="button" class="btn btn-danger btn-remove-manual-payment" aria-label="Remove <?php echo $safe_method_label; ?>">Remove</button>
                             </div>
                             <label class="manual-payment-enabled">
                                 <input type="checkbox" name="methods[<?php echo $safe_method_key; ?>][enabled]" value="1" <?php echo $method_settings['enabled'] ? 'checked' : ''; ?>>

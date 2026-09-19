@@ -422,10 +422,22 @@ textarea:focus {
 .btn-done:hover {
   background: #bbf7d0;
 }
-/* Prevent awkward text wrapping in the maintenance table */
-.bookings-table th, 
-.bookings-table td {
+/* Prevent awkward text wrapping in the maintenance table headers, but allow cells to wrap if needed to fit the screen */
+.bookings-table th {
   white-space: nowrap; 
+}
+.bookings-table td {
+  white-space: normal; 
+}
+.bookings-table td[data-label="Start Date"],
+.bookings-table td[data-label="End Date"] {
+  white-space: nowrap;
+}
+.maint-action-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 /* Ensure the action buttons don't have unnecessary margins since we use flex gap now */

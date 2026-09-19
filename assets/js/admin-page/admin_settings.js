@@ -276,6 +276,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="manual-payment-method-actions" aria-label="Order new payment method for customers">
         <button type="button" class="btn btn-outline manual-payment-move-up">Move up</button>
         <button type="button" class="btn btn-outline manual-payment-move-down">Move down</button>
+        <button type="button" class="btn btn-danger btn-remove-manual-payment" aria-label="Remove new payment method">Remove</button>
       </div>
       <label class="manual-payment-enabled"><input type="checkbox" name="methods[${key}][enabled]" value="1"> Offer this method to customers</label>
       <div class="form-grid settings-form-grid">
@@ -327,6 +328,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   manualPaymentList?.addEventListener('click', (event) => {
+    const removeBtn = event.target.closest('.btn-remove-manual-payment');
+    if (removeBtn) {
+      removeBtn.closest('.manual-payment-method')?.remove();
+      updateManualPaymentMethodControls();
+      isFormDirty = true;
+      return;
+    }
     const button = event.target.closest('.manual-payment-move-up, .manual-payment-move-down');
     const card = button?.closest('.manual-payment-method');
     if (!button || !card) return;
