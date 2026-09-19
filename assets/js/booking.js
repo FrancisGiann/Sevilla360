@@ -1616,7 +1616,7 @@ class BookingController {
             if (!label) return false;
 
             try {
-                const groupParam = card.dataset.roomGroupId ? `&room_group_id=${encodeURIComponent(card.dataset.roomGroupId)}` : '';
+                const groupParam = card.dataset.roomGroupId && card.dataset.roomGroupId !== "0" ? `&room_group_id=${encodeURIComponent(card.dataset.roomGroupId)}` : '';
                 const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}${groupParam}`;
                 const res  = await fetch(url);
                 const data = await res.json();

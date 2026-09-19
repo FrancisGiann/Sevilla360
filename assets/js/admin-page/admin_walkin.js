@@ -1562,7 +1562,8 @@ class AdminWalkinController {
             if (!label) return;
 
             try {
-                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}`;
+                const groupParam = card.dataset.roomGroupId && card.dataset.roomGroupId !== "0" ? `&room_group_id=${encodeURIComponent(card.dataset.roomGroupId)}` : '';
+                const url = `actions/bookings/get_room_availability.php?building_name=${encodeURIComponent(building)}&room_type=${encodeURIComponent(roomType)}&start_date=${start}&end_date=${end}${groupParam}`;
                 const res  = await fetch(url);
                 const data = await res.json();
                 if (requestId === this.addonAvailabilityRequestId && data.success) {

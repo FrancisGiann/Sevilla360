@@ -29,8 +29,8 @@ try {
             }
             $stmt = $conn->prepare('SELECT g.id FROM hotel_room_groups g
                 INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
-                WHERE g.building_name = ? AND (g.room_type_code = ? OR g.legacy_room_type = ?) ORDER BY t.sort_order, g.sort_order, g.id');
-            $stmt->bind_param('sss', $building, $roomType, $roomType);
+                WHERE g.building_name = ? AND (g.room_type_code = ? OR g.legacy_room_type = ? OR t.display_name = ?) ORDER BY t.sort_order, g.sort_order, g.id');
+            $stmt->bind_param('ssss', $building, $roomType, $roomType, $roomType);
             $stmt->execute();
             $groupIds = array_map(static fn(array $row): int => (int)$row['id'], $stmt->get_result()->fetch_all(MYSQLI_ASSOC));
             $stmt->close();
