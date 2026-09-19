@@ -1674,6 +1674,13 @@ class AdminWalkinController {
         this.state.summary.html = '';
         this.determineActiveTab();
 
+        if (this.state.activeTabId !== 'tab-event') {
+            this.syncSystemLineItem('type', '', 0);
+            this.syncSystemLineItem('style', '', 0);
+            this.syncSystemLineItem('catering', '', 0);
+            this.syncSystemLineItem('av', '', 0);
+        }
+
         switch (this.state.activeTabId) {
             case 'tab-hotel': this.calcHotelMath(); break;
             case 'tab-event': this.calcEventMath(); break;
