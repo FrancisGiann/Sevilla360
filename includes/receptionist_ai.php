@@ -189,6 +189,12 @@ function receptionist_ai_response_schema(): array
     ];
 }
 
+function receptionist_ai_normalize_model_id(string $providerId, string $model): string
+{
+    if (strtolower($providerId) !== 'google' || str_starts_with($model, 'models/')) return $model;
+    return 'models/' . $model;
+}
+
 final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderInterface
 {
     public function __construct(
@@ -208,7 +214,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         $policy = receptionist_ai_retry_policy($timeoutSeconds);
         $started = $this->now();
         $deadline = $started + $policy['deadline_seconds'];
-        $structured = true;
+        $structured = strtolower($this->providerId) !== 'google';
         $attempt = 0;
         $retriedWithoutFormat = false;
         $last = ['success' => false, 'error_class' => 'provider_unavailable', 'diagnostic' => []];
@@ -259,7 +265,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         if ($this->transport === null && !function_exists('curl_init')) return ['success' => false, 'error_class' => 'curl_unavailable'];
         $url = rtrim($this->baseUrl, '/') . '/chat/completions';
         $request = [
-            'model' => $this->model,
+            'model' => receptionist_ai_normalize_model_id($this->providerId, $this->model),
             'messages' => $messages,
             'temperature' => 0.2,
             'max_tokens' => $maxOutputTokens,

@@ -479,6 +479,31 @@ $checks['AI environment defaults are disabled and keyless'] = str_contains($env,
     && preg_match('/^AI_API_KEY=\s*$/m', $env) === 1
     && preg_match('/^AI_MODEL=\s*$/m', $env) === 1;
 
+$captureRequest = static function (string $model, string $providerId): array {
+    $capturedRequest = [];
+    $provider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', $model, $providerId, '', 'Test',
+        static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$capturedRequest): array {
+            $decoded = json_decode($body, true);
+            $capturedRequest = is_array($decoded) ? $decoded : [];
+            return ['status' => 200, 'raw' => json_encode(['choices' => [['message' => ['content' => json_encode(['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'faq_id' => null, 'slots' => [], 'quick_replies' => []])], 'finish_reason' => 'stop']]])];
+        }, static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
+    $provider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
+    return $capturedRequest;
+};
+$googleBareRequest = $captureRequest('gemini-3.6-flash', 'google');
+$googlePrefixedRequest = $captureRequest('models/gemini-3.6-flash', 'google');
+$openRouterRequest = $captureRequest('custom/model-id', 'openrouter');
+$checks['Google request model IDs use one models prefix while other providers stay unchanged'] = ($googleBareRequest['model'] ?? null) === 'models/gemini-3.6-flash'
+    && ($googlePrefixedRequest['model'] ?? null) === 'models/gemini-3.6-flash'
+    && ($openRouterRequest['model'] ?? null) === 'custom/model-id';
+$checks['Google requests omit unsupported structured-output options while OpenRouter retains strict schema'] = !array_key_exists('response_format', $googleBareRequest)
+    && !array_key_exists('provider', $googleBareRequest)
+    && !array_key_exists('plugins', $googleBareRequest)
+    && is_array($openRouterRequest['response_format'] ?? null)
+    && ($openRouterRequest['response_format']['type'] ?? null) === 'json_schema'
+    && ($openRouterRequest['provider']['require_parameters'] ?? null) === true
+    && ($openRouterRequest['plugins'][0]['id'] ?? null) === 'response-healing';
+
 // Reliability/intelligence regression contracts. These are deliberately
 // provider-free: transport behavior is exercised with injectable callbacks.
 $checks['strict canonical dates reject rollover while accepting valid dates'] = receptionist_ai_canonical_date('2024-02-29', new DateTimeImmutable('2024-01-01')) === '2024-02-29'
