@@ -6,7 +6,7 @@
             <p>You have selected:<br>
                 <strong id="selected-date-text" class="modal-date-highlight"></strong>
             </p>
-            <p class="modal-subtext">Proceeding will lock these dates for 30 minutes while you complete your booking.
+            <p class="modal-subtext">Proceeding will lock these dates for 15 minutes while you complete your booking.
             </p>
         </div>
         <div class="modal-actions-center">

@@ -5,6 +5,7 @@ require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/request_context.php';
+require_once '../../includes/event_bundle.php';
 
 function submit_walkin_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -214,7 +215,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $line_items_data = json_decode($_POST['custom_line_items'], true);
             if (is_array($line_items_data)) {
                 foreach ($line_items_data as $item) {
-                    $amt = floatval($item['amount']);
+                    $name = trim((string)($item['name'] ?? ''));
+                    if ($name === '' || str_starts_with($name, 'Event Hall + Hotel Bundle Discount')) continue;
+                    $amt = floatval($item['amount'] ?? 0);
                     if ($amt > 0) {
                         $total_addons_cost += $amt;
                         $true_total += $amt;
@@ -289,8 +292,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($venue_category === 'Event Hall' && is_array($line_items_data) && count($line_items_data) > 0) {
             $stmt_li = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
             foreach ($line_items_data as $item) {
-                $name = trim($item['name']);
-                $amt = floatval($item['amount']);
+                $name = trim((string)($item['name'] ?? ''));
+                if ($name === '' || str_starts_with($name, 'Event Hall + Hotel Bundle Discount')) continue;
+                $amt = floatval($item['amount'] ?? 0);
                 if ($amt > 0) {
                     $stmt_li->bind_param("isd", $booking_id, $name, $amt);
                     $stmt_li->execute();
@@ -381,7 +385,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Apply the documented Event Hall + Hotel bundle once to the
             // Event Hall base plus authoritative allocated-room subtotal.
             if ($room_addon_subtotal > 0) {
-                $bundle_discount = round(($base_amount + $room_addon_subtotal) * 0.20, 2);
+                $bundle_discount_percent = load_event_bundle_discount_percent($conn);
+                $bundle_discount = round(($base_amount + $room_addon_subtotal) * event_bundle_discount_rate($bundle_discount_percent), 2);
                 $true_total = round($true_total + $room_addon_subtotal - $bundle_discount, 2);
                 $total_addons_cost = round($total_addons_cost + $room_addon_subtotal - $bundle_discount, 2);
                 $amount_paid = 0;
@@ -392,11 +397,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $stmt_bundle = $conn->prepare("UPDATE bookings SET addons_amount = ?, total_amount = ?, amount_paid = ?, payment_status = ? WHERE id = ?");
                 $stmt_bundle->bind_param('dddsi', $total_addons_cost, $true_total, $amount_paid, $payment_status, $booking_id);
                 $stmt_bundle->execute();
-                $discount_name = 'Event Hall + Hotel Bundle Discount (20%)';
-                $stmt_discount = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
-                $negative_discount = -$bundle_discount;
-                $stmt_discount->bind_param('isd', $booking_id, $discount_name, $negative_discount);
-                $stmt_discount->execute();
+                if ($bundle_discount > 0) {
+                    $discount_name = event_bundle_discount_label($bundle_discount_percent);
+                    $stmt_discount = $conn->prepare("INSERT INTO booking_line_items (booking_id, item_name, amount) VALUES (?, ?, ?)");
+                    $negative_discount = -$bundle_discount;
+                    $stmt_discount->bind_param('isd', $booking_id, $discount_name, $negative_discount);
+                    $stmt_discount->execute();
+                }
             }
         }
         // =========================================================================

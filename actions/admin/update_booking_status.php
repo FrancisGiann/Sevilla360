@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/refund_helper.php';
 require_once __DIR__ . '/../../includes/realtime.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
+require_once __DIR__ . '/../../includes/event_bundle.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -203,7 +204,7 @@ try {
             if ($name === '' || !is_finite($amount) || $amount < 0) continue;
             // Allocated room inventory is authoritative; do not let an edited
             // browser line item replace or duplicate its database subtotal.
-            if (str_starts_with($name, 'Room Add-on:') || $name === 'Hotel Add-on Rooms' || $name === 'Event Hall + Hotel Bundle Discount (20%)') continue;
+            if (str_starts_with($name, 'Room Add-on:') || $name === 'Hotel Add-on Rooms' || str_starts_with($name, 'Event Hall + Hotel Bundle Discount')) continue;
             $normalized_line_items[] = ['name' => $name, 'amount' => $amount];
             $addons_amount += $amount;
         }
@@ -216,9 +217,12 @@ try {
         if ($room_subtotal > 0) {
             $normalized_line_items[] = ['name' => 'Hotel Add-on Rooms', 'amount' => $room_subtotal];
             $addons_amount += $room_subtotal;
-            $bundle_discount = round(($base_rate + $room_subtotal) * 0.20, 2);
-            $normalized_line_items[] = ['name' => 'Event Hall + Hotel Bundle Discount (20%)', 'amount' => -$bundle_discount];
-            $addons_amount -= $bundle_discount;
+            $bundle_discount_percent = load_event_bundle_discount_percent($conn);
+            $bundle_discount = round(($base_rate + $room_subtotal) * event_bundle_discount_rate($bundle_discount_percent), 2);
+            if ($bundle_discount > 0) {
+                $normalized_line_items[] = ['name' => event_bundle_discount_label($bundle_discount_percent), 'amount' => -$bundle_discount];
+                $addons_amount -= $bundle_discount;
+            }
         }
         $new_total = $base_rate + $addons_amount;
 

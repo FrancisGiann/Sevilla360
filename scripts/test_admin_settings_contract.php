@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
+require_once $root . '/includes/event_bundle.php';
 $read = static function (string $path) use ($root): string {
     $contents = file_get_contents($root . '/' . $path);
     if ($contents === false) {
@@ -41,6 +42,7 @@ foreach ([$readyFields, $legacyFields] as $fields) {
 
 $paymentSettingsSave = $read('actions/admin/save_manual_payment_settings.php');
 $preferencesSave = $read('actions/admin/save_preferences.php');
+$eventBundle = $read('includes/event_bundle.php');
 $settingsClient = $read('assets/js/admin-page/admin_settings.js');
 $manualPaymentHelper = $read('includes/manual_payment.php');
 $paymentDetails = $read('actions/user/get_manual_payment_details.php');
@@ -76,4 +78,27 @@ $assert(!str_contains($settings, 'refund-fee-percent')
     && !str_contains($settingsClient, 'payment-processing fee between')
     && !str_contains($preferencesSave, 'refund_fee_percent'), 'the retired processing-fee control is absent from settings, save validation, and the preferences payload.');
 
-echo "Admin Settings contract checks passed (9 assertions)\n";
+$assert(str_contains($eventBundle, "EVENT_BUNDLE_DISCOUNT_SETTING_KEY = 'event_hall_bundle_discount_percent'")
+    && str_contains($eventBundle, 'EVENT_BUNDLE_DISCOUNT_DEFAULT_PERCENT = 20.0')
+    && str_contains($eventBundle, 'is_finite($percent)')
+    && str_contains($eventBundle, '$percent < 0 || $percent > 100')
+    && str_contains($eventBundle, 'event_bundle_discount_label'), 'bundle discount defaults, validates finite 0..100 percentages, and formats one shared line-item label.');
+$assert(str_contains($settings, 'name="event_hall_bundle_discount_percent"')
+    && str_contains($settings, 'min="0" max="100" step="0.01"')
+    && str_contains($settings, 'selected hotel-room subtotal')
+    && str_contains($preferencesSave, 'parse_event_bundle_discount_percent')
+    && strpos($preferencesSave, 'parse_event_bundle_discount_percent') < strpos($preferencesSave, 'INSERT INTO system_settings'), 'the administrator can configure the escaped bundle percentage and the server validates it before upserting settings.');
+
+$assert(parse_event_bundle_discount_percent(0) === 0.0
+    && parse_event_bundle_discount_percent('20.25') === 20.25
+    && parse_event_bundle_discount_percent(100) === 100.0, 'bundle percentage parsing accepts the inclusive boundaries and supported decimals.');
+$invalidBundleValues = ['', 'not-a-number', INF, -0.01, 100.01, [20], true];
+foreach ($invalidBundleValues as $invalidBundleValue) {
+    $assert(parse_event_bundle_discount_percent($invalidBundleValue) === null, 'invalid bundle percentage values are rejected without coercion.');
+}
+$assert(event_bundle_discount_rate('20.25') === 0.2025
+    && event_bundle_discount_label('20.25') === 'Event Hall + Hotel Bundle Discount (20.25%)'
+    && normalize_event_bundle_discount_percent('malformed') === 20.0
+    && normalize_event_bundle_discount_percent(INF) === 20.0, 'bundle rate, dynamic label, and malformed stored-value fallback remain consistent.');
+
+echo "Admin Settings contract checks passed (14 assertions)\n";

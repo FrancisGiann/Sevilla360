@@ -4,6 +4,7 @@ require_once __DIR__ . '/../manual_payment.php';
 require_once __DIR__ . '/../google_maps.php';
 require_once __DIR__ . '/../hotel_rooms.php';
 require_once __DIR__ . '/../receptionist_faq.php';
+require_once __DIR__ . '/../event_bundle.php';
 
 // 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -39,6 +40,7 @@ foreach ($support_defaults as $key => $default) {
 $support_faq = receptionist_faq_load($conn);
 $paymentTerms = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.';
 if (!str_contains((string)$support_content['support_terms'], 'payment window pauses')) $support_content['support_terms'] .= "\n" . $paymentTerms;
+$event_bundle_discount_percent = normalize_event_bundle_discount_percent($current_settings[EVENT_BUNDLE_DISCOUNT_SETTING_KEY] ?? null);
 
 // 2. Fetch all Venues and their specific child-table data
 $hotel_group_ready = hotel_group_schema_ready($conn);
@@ -408,6 +410,18 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                                 <input type="number" name="av_setup" class="form-control"
                                     value="<?php echo $current_settings['av_setup'] ?? 5000; ?>">
                             </div>
+                                </div>
+                            </div>
+                            <div class="pricing-group">
+                                <h5>Event Hall Bundle</h5>
+                                <div class="pricing-fields pricing-fields-single">
+                                    <div class="form-group">
+                                        <label for="event-hall-bundle-discount">Event Hall + Hotel Bundle Discount (%)</label>
+                                        <input type="number" id="event-hall-bundle-discount" name="event_hall_bundle_discount_percent" class="form-control"
+                                            min="0" max="100" step="0.01"
+                                            value="<?php echo htmlspecialchars(format_event_bundle_discount_percent($event_bundle_discount_percent), ENT_QUOTES, 'UTF-8'); ?>">
+                                        <small class="field-help">Applied to the Event Hall base rate plus the selected hotel-room subtotal. Enter 0 to disable the discount.</small>
+                                    </div>
                                 </div>
                             </div>
                         </div>

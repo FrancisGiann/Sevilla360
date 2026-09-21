@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../includes/google_maps.php';
+require_once __DIR__ . '/../../includes/event_bundle.php';
 require '../../config/db_connect.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
@@ -14,6 +15,12 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    $bundle_discount_percent = parse_event_bundle_discount_percent($_POST[EVENT_BUNDLE_DISCOUNT_SETTING_KEY] ?? EVENT_BUNDLE_DISCOUNT_DEFAULT_PERCENT);
+    if ($bundle_discount_percent === null) {
+        echo "Error|Event Hall + Hotel bundle discount must be a finite number from 0 to 100.";
+        exit;
+    }
 
     $map_embed_input = $_POST['biz_map_embed'] ?? '';
     $map_embed_url = google_maps_normalize_embed($map_embed_input);
@@ -31,6 +38,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         'catering_gold' => floatval($_POST['catering_gold'] ?? 1200),
         'catering_platinum' => floatval($_POST['catering_platinum'] ?? 1800),
         'av_setup' => floatval($_POST['av_setup'] ?? 5000),
+        EVENT_BUNDLE_DISCOUNT_SETTING_KEY => format_event_bundle_discount_percent($bundle_discount_percent),
         
         // Business Information
         'biz_name' => trim($_POST['biz_name'] ?? 'Sevilla360'),

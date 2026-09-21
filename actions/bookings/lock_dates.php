@@ -39,7 +39,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $end_date   = is_string($end_date_raw) ? trim($end_date_raw) : '';
     $session_id = session_id();
     $source     = $is_staff_booking ? 'walkin' : 'online'; // walkin or online
-    $lock_mins  = ($source === 'walkin') ? 60 : 30; // 1 hour for walk-in, 30 min for online
+    $lock_mins  = ($source === 'walkin') ? 60 : 15; // 1 hour for walk-in, 15 minutes for online
 
     $room_type = trim((string)($_POST['room_type'] ?? ''));
     $room_name = trim((string)($_POST['room_name'] ?? ''));

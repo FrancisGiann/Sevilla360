@@ -25,7 +25,7 @@ class BookingController {
             isDatesLocked: false,
             activeCalendar: null,
             timerInterval: null,
-            timeLimit: 1800, 
+            timeLimit: 900,
             summary: { total: 0, amountDue: 0, rows: [], bundleDiscount: 0 },
             calendars: {},
             addonConfirmedRange: null,
@@ -1248,7 +1248,7 @@ class BookingController {
     stopTimerAndReset() {
         clearInterval(this.state.timerInterval);
         this.state.timerInterval = null;
-        this.state.timeLimit = 1800;
+        this.state.timeLimit = 900;
         this.state.isDatesLocked = false;
         this.state.lockExpiresAt = null;
         this.state.confirmedSelectionKey = '';
@@ -1295,7 +1295,7 @@ class BookingController {
             window.isDatesLocked = false;
             clearInterval(this.state.timerInterval);
             this.state.timerInterval = null;
-            this.state.timeLimit = 1800;
+            this.state.timeLimit = 900;
             this.state.lockExpiresAt = null;
             this.state.confirmedSelectionKey = '';
             this.getEl("timer-box")?.classList.remove("running");
@@ -1441,10 +1441,10 @@ class BookingController {
         const title = dateModal?.querySelector('.modal-title');
         const subtext = dateModal?.querySelector('.modal-subtext');
         const canHold = this.auth.isCustomer && !isEventInquiry;
-        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : (canHold ? 'Confirm dates for a 30-minute hold' : 'Confirm your dates');
+        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : (canHold ? 'Confirm dates for a 15-minute hold' : 'Confirm your dates');
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : (canHold ? 'Your selection is available now. Confirm to place the server-authoritative 30-minute hold.' : 'Available now — not held. Keep this selection and sign in when you are ready to reserve.');
+            : (canHold ? 'Your selection is available now. Confirm to place the server-authoritative 15-minute hold.' : 'Available now — not held. Keep this selection and sign in when you are ready to reserve.');
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
             ? `${startStr} — ${endStr}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
@@ -1857,6 +1857,15 @@ class BookingController {
         }
     }
 
+    getEventBundleDiscountPercent() {
+        const raw = Number(this.getEl('event-bundle-estimate')?.dataset.discountPercent);
+        return Number.isFinite(raw) && raw >= 0 && raw <= 100 ? raw : 20;
+    }
+
+    formatEventBundleDiscountPercent(percent) {
+        return Number(percent.toFixed(2)).toString();
+    }
+
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
@@ -1925,14 +1934,19 @@ class BookingController {
         });
 
         // Match the administrator's authoritative finalization rule: the
-        // 20% bundle estimate applies only to hall base + selected room
-        // subtotal. Staff still finalizes the quote server-side.
+        // configured bundle estimate applies only to hall base + selected
+        // room subtotal. Staff still finalizes the quote server-side.
+        const bundleDiscountPercent = this.getEventBundleDiscountPercent();
         if (roomSubtotal > 0 && venue > 0) {
-            const estimatedDiscount = Math.round((venue + roomSubtotal) * 0.20 * 100) / 100;
+            const estimatedDiscount = Math.round((venue + roomSubtotal) * (bundleDiscountPercent / 100) * 100) / 100;
             this.state.summary.bundleDiscount = estimatedDiscount;
-            this.state.summary.total -= estimatedDiscount;
-            this.appendSummaryRow('Estimated — final quote after resort review: Event Hall + Hotel Bundle Discount (20%)', -estimatedDiscount);
+            if (estimatedDiscount > 0) {
+                this.state.summary.total -= estimatedDiscount;
+                this.appendSummaryRow(`Estimated — final quote after resort review: Event Hall + Hotel Bundle Discount (${this.formatEventBundleDiscountPercent(bundleDiscountPercent)}%)`, -estimatedDiscount);
+            }
         }
+        const bundleLabel = this.getEl('event-bundle-estimate-label');
+        if (bundleLabel) bundleLabel.textContent = `Event Hall + Hotel Bundle Discount (${this.formatEventBundleDiscountPercent(bundleDiscountPercent)}%)`;
 
         // A/V SETUP ADD-ON
         let avTotal = 0;

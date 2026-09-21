@@ -11,6 +11,7 @@ $extra_js = [
 $active_page = 'booking';              
 require_once 'includes/session_init.php';
 require_once 'includes/booking_intent.php';
+require_once 'includes/event_bundle.php';
 
 $booking_resume_marker = booking_auth_consume_resume_marker();
 $booking_resume = isset($_GET['resume']) && $_GET['resume'] === '1'
@@ -25,6 +26,7 @@ include 'includes/header.php';
 require_once 'config/db_connect.php';
 require_once 'includes/media_helper.php';
 require_once 'includes/hotel_rooms.php';
+$event_bundle_discount_percent = load_event_bundle_discount_percent($conn);
 $saved_contact_phone = '';
 if ($booking_is_customer) {
     $phone_stmt = $conn->prepare("SELECT phone FROM customers WHERE user_id = ? LIMIT 1");
@@ -177,7 +179,7 @@ unset($villa);
                     <p><strong>Operating Hours:</strong> <span class="sum-val">Per Event Schedule</span></p>
                     <p><strong>Guests:</strong> <span class="sum-val" id="sum-ev-guests">--</span></p>
                     <p><strong>Payment:</strong> <span class="sum-val" id="sum-ev-payment">To Be Arranged</span></p>
-                    <p id="event-bundle-estimate" style="display:none; color:var(--color-gold);" aria-live="polite"><strong>Bundle:</strong> Estimated — final quote after resort review (<span id="event-bundle-estimate-amount">₱0.00</span> discount)</p>
+                    <p id="event-bundle-estimate" data-discount-percent="<?php echo htmlspecialchars(format_event_bundle_discount_percent($event_bundle_discount_percent), ENT_QUOTES, 'UTF-8'); ?>" style="display:none; color:var(--color-gold);" aria-live="polite"><strong>Bundle:</strong> <span id="event-bundle-estimate-label"><?php echo htmlspecialchars(event_bundle_discount_label($event_bundle_discount_percent), ENT_QUOTES, 'UTF-8'); ?></span> estimated — final quote after resort review (<span id="event-bundle-estimate-amount">₱0.00</span> discount)</p>
                     <div class="estimate-card" id="event-estimate-card" role="status" aria-live="polite">
                         <strong>Estimated total</strong>
                         <span id="event-estimate-total">₱0.00</span>
@@ -262,7 +264,7 @@ unset($villa);
                     <div class="timer-box" id="timer-box">
                         <span id="timer-text">Select your dates to book.</span>
                         <span id="countdown-wrapper" style="display: none;">Session expires in: <span
-                                id="countdown">30:00</span></span>
+                                id="countdown">15:00</span></span>
                     </div>
 
                     <div class="terms-group">
