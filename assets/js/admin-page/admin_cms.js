@@ -5,6 +5,9 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
 
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
@@ -268,6 +271,15 @@ document.addEventListener('DOMContentLoaded', () => {
               const isPrimary = Number(photo.is_primary) === 1;
               const starColor = isPrimary ? "var(--color-gold)" : "#ccc";
               const primaryLabel = isPrimary ? "Primary image" : "Set as primary image";
+              const thumbnailPath = /^assets\/uploads\/\.cms-thumbnails\/[a-f0-9]{64}\.webp$/.test(String(photo.thumbnail_path || ''))
+                  ? photo.thumbnail_path
+                  : 'assets/img/placeholder.jpg';
+              const thumbnailVersion = Number(photo.thumbnail_version);
+              const thumbnailUrl = `${thumbnailPath}${thumbnailVersion > 0 ? `?v=${thumbnailVersion}` : ''}`;
+              const originalPath = /^assets\/uploads\/[A-Za-z0-9_.-]+$/.test(String(photo.file_path || ''))
+                  ? photo.file_path
+                  : '';
+              const fileName = escapeHTML(photo.file_name);
               
               mgGrid.innerHTML += `
                   <div class="mg-photo-card" data-id="${photo.id}" style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
@@ -277,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
                           <input type="checkbox" class="mg-bulk-check" value="${photo.id}" style="cursor: pointer; transform: scale(1.2); margin: 0;">
                       </div>
 
-                      <img src="${photo.file_path}?v=${Date.now()}" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
+                      <img src="${escapeHTML(thumbnailUrl)}" data-original-src="${escapeHTML(originalPath)}" alt="${fileName}" width="${Number(photo.thumbnail_width) || 480}" height="${Number(photo.thumbnail_height) || 270}" loading="lazy" decoding="async" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           
                           ${currentManageType === '360'
@@ -286,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                   <i class="fa-solid fa-star" aria-hidden="true"></i>
                               </button>`}
                           
-                          <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${photo.file_name}</span>
+                          <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${fileName}</span>
                           
                           <button class="btn-delete-media" data-id="${photo.id}" style="background: none; border: none; color: #c75c5c; cursor: pointer; padding: 5px;">
                               <i class="fa-solid fa-trash"></i>
@@ -335,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // LIGHTBOX
           if (e.target.classList.contains('mg-thumb')) {
-              lightboxImg.src = e.target.src;
+              lightboxImg.src = e.target.dataset.originalSrc || e.target.src;
               lightbox.style.display = 'flex';
               return;
           }

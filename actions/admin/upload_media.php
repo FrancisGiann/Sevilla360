@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
+require_once __DIR__ . '/../../includes/media_helper.php';
 
 final class MediaUploadException extends RuntimeException
 {
@@ -223,7 +224,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$stmt_check) throw new Exception('Could not load existing media.');
             $stmt_check->bind_param('s', $website_slot); if (!$stmt_check->execute()) throw new Exception('Could not load existing media.');
             $res = $stmt_check->get_result();
-            while ($old_media = $res->fetch_assoc()) { $old_files[] = ['id' => (int)$old_media['id'], 'path' => dirname(__DIR__, 2) . '/' . ltrim($old_media['file_path'], '/')]; }
+            while ($old_media = $res->fetch_assoc()) {
+                $old_path = media_cms_upload_file_path((string)$old_media['file_path']);
+                $old_files[] = [
+                    'id' => (int)$old_media['id'],
+                    'path' => $old_path,
+                    'thumbnail_path' => media_cms_thumbnail_file_path((string)$old_media['file_path']),
+                ];
+            }
             $stmt_del = $conn->prepare("DELETE FROM media_cms WHERE slot_assignment = ?");
             if (!$stmt_del) throw new Exception('Could not replace existing media records.');
             $stmt_del->bind_param('s', $website_slot); if (!$stmt_del->execute()) throw new Exception('Could not replace existing media records.');
@@ -231,6 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($validated as $file) {
             if (!move_uploaded_file($file['tmp'], $file['destination'])) throw new Exception('Failed to move uploaded image.');
             $new_files[] = $file['destination'];
+            $new_files[] = media_cms_thumbnail_file_path($file['db_path']);
+            media_cms_ensure_admin_thumbnail($file['db_path']);
             $stmt_insert = $conn->prepare("INSERT INTO media_cms (file_name, file_path, media_type, slot_assignment) VALUES (?, ?, ?, ?)");
             if (!$stmt_insert) throw new Exception('Could not record uploaded media.');
             $stmt_insert->bind_param('ssss', $file['filename'], $file['db_path'], $media_type, $website_slot);
@@ -247,7 +257,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$conn->commit()) throw new Exception('Could not commit uploaded media.');
         $committed = true; $transaction_started = false;
         $cleanup_failures = [];
-        foreach ($old_files as $old) { if (is_file($old['path']) && !unlink($old['path'])) $cleanup_failures[] = $old['path']; }
+        $upload_root = media_cms_upload_root();
+        foreach ($old_files as $old) {
+            foreach ([$old['path'], $old['thumbnail_path']] as $path) {
+                if (!media_cms_unlink_safe($path, $upload_root)) $cleanup_failures[] = $path;
+            }
+        }
         if ($cleanup_failures) error_log('Media replacement committed but old-file cleanup failed: ' . implode(', ', $cleanup_failures));
         echo json_encode(['success' => true, 'message' => "Successfully uploaded $successful_uploads file(s)!", 'cleanup_warning' => $cleanup_failures ? 'Old media files were retained because physical cleanup failed.' : null]);
     } catch (Throwable $e) {

@@ -78,7 +78,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_cms.css') ?>">
     <?php endif; ?>
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
 </head>
@@ -331,11 +331,11 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
     <!-- CMS Scripts -->
-    <script src="assets/js/panorama-view-compat.js?v=<?= time() ?>"></script>
-    <script src="assets/js/hotspot-material.js?v=<?= time() ?>"></script>
-    <script src="assets/js/guide_tours.js?v=<?= time() ?>"></script>
-    <script src="assets/js/admin-page/admin_cms.js?v=<?= time() ?>"></script>
-    <script src="assets/js/admin-page/admin_hotspots.js?v=<?= time() ?>"></script>
+    <script src="assets/js/panorama-view-compat.js?v=<?= filemtime(__DIR__ . '/assets/js/panorama-view-compat.js') ?>"></script>
+    <script src="assets/js/hotspot-material.js?v=<?= filemtime(__DIR__ . '/assets/js/hotspot-material.js') ?>"></script>
+    <script src="assets/js/guide_tours.js?v=<?= filemtime(__DIR__ . '/assets/js/guide_tours.js') ?>"></script>
+    <script src="assets/js/admin-page/admin_cms.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_cms.js') ?>"></script>
+    <script src="assets/js/admin-page/admin_hotspots.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_hotspots.js') ?>"></script>
     <?php endif; ?>
 </body>
 

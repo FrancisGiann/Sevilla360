@@ -64,8 +64,10 @@ if ($venues_query) {
     }
 }
 
-// Order by id DESC so the newest uploaded photo takes precedence
-$query = "SELECT * FROM media_cms ORDER BY is_primary DESC, id DESC";
+// One narrow, stable query powers cards, galleries, and hotspot editing.
+$query = "SELECT id, file_name, file_path, media_type, slot_assignment, is_primary,
+                 showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov
+          FROM media_cms ORDER BY is_primary DESC, id DESC";
 $result = $conn->query($query);
 
 $uploaded_media = []; // For the one-to-one homepage system slots
@@ -75,6 +77,27 @@ $pano_venue_photos = [];     // Grouped 360 panoramas
 
 if ($result && $result->num_rows > 0) {
     while($row = $result->fetch_assoc()) {
+        try {
+            $row['file_path'] = media_cms_upload_relative_path((string)$row['file_path']);
+        } catch (Throwable $e) {
+            error_log('CMS media path unavailable for media id ' . (int)$row['id'] . ': ' . $e->getMessage());
+            continue;
+        }
+        try {
+            $thumbnail = media_cms_ensure_admin_thumbnail($row['file_path']);
+            $thumbnailFile = media_cms_thumbnail_file_path($row['file_path']);
+            $row['thumbnail_path'] = $thumbnail['path'];
+            $row['thumbnail_version'] = (int)(@filemtime($thumbnailFile) ?: 0);
+            $row['thumbnail_width'] = (int)$thumbnail['width'];
+            $row['thumbnail_height'] = (int)$thumbnail['height'];
+        } catch (Throwable $e) {
+            // A failed derivative must never send the full source to a card.
+            error_log('CMS thumbnail unavailable for media id ' . (int)$row['id'] . ': ' . $e->getMessage());
+            $row['thumbnail_path'] = 'assets/img/placeholder.jpg';
+            $row['thumbnail_version'] = 0;
+            $row['thumbnail_width'] = MEDIA_CMS_THUMBNAIL_WIDTH;
+            $row['thumbnail_height'] = MEDIA_CMS_THUMBNAIL_HEIGHT;
+        }
         $slot = $row['slot_assignment'];
         
         if ($slot === 'gallery') {
@@ -92,25 +115,41 @@ if ($result && $result->num_rows > 0) {
     }
 }
 
-// Separate ASC-ordered dataset specifically for hotspot placement
-// so "View 1/2/3" numbering always matches showroom.php's pano_urls order.
-$pano_asc_query = $conn->query("
-    SELECT id, slot_assignment, file_path, file_name, is_primary, showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov
-    FROM media_cms 
-    WHERE media_type = '360' AND slot_assignment LIKE '%\\_360'
-    ORDER BY is_primary DESC, id ASC
-");
+// Keep a PHP-only ordered view for the card's Hotspots button. The editor
+// derives the same order from galleryData, so no duplicate panorama payload is
+// emitted and View 1/2/3 stays aligned with showroom.php's pano_urls order.
 $pano_venue_photos_ordered = [];
-if ($pano_asc_query) {
-    while ($row = $pano_asc_query->fetch_assoc()) {
-        $pano_venue_photos_ordered[$row['slot_assignment']][] = $row;
-    }
+foreach ($pano_venue_photos as $slot => $photos) {
+    usort($photos, static function (array $left, array $right): int {
+        $primaryOrder = (int)$right['is_primary'] <=> (int)$left['is_primary'];
+        return $primaryOrder !== 0 ? $primaryOrder : ((int)$left['id'] <=> (int)$right['id']);
+    });
+    $pano_venue_photos_ordered[$slot] = $photos;
+}
+
+$cms_gallery_data = [];
+foreach (array_merge($standard_venue_photos, $pano_venue_photos) as $slot => $photos) {
+    $cms_gallery_data[$slot] = array_map(static function (array $photo): array {
+        return [
+            'id' => (int)$photo['id'],
+            'file_name' => (string)$photo['file_name'],
+            'file_path' => (string)$photo['file_path'],
+            'is_primary' => (int)$photo['is_primary'],
+            'thumbnail_path' => (string)$photo['thumbnail_path'],
+            'thumbnail_version' => (int)$photo['thumbnail_version'],
+            'thumbnail_width' => (int)$photo['thumbnail_width'],
+            'thumbnail_height' => (int)$photo['thumbnail_height'],
+            'showroom_view_x' => $photo['showroom_view_x'],
+            'showroom_view_y' => $photo['showroom_view_y'],
+            'showroom_view_z' => $photo['showroom_view_z'],
+            'showroom_fov' => $photo['showroom_fov'],
+        ];
+    }, $photos);
 }
 ?>
 
 <script>
-window.galleryData = <?php echo json_encode(array_merge($standard_venue_photos, $pano_venue_photos)); ?>;
-window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
+window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 </script>
 
 <div class="cms-container">
@@ -131,13 +170,12 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
         <!-- 1. SYSTEM SLOTS (Hero Banner & Welcome Photo) -->
         <?php foreach($website_slots as $slot_key => $slot_info): 
             $has_img = isset($uploaded_media[$slot_key]);
-            $img_path = $has_img ? $uploaded_media[$slot_key]['file_path'] : 'assets/img/placeholder.jpg';
         ?>
         <div class="cms-card" data-type="standard">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
-                <img src="<?php echo htmlspecialchars($img_path); ?>?v=<?php echo time(); ?>">
+                <?php echo media_cms_card_image_markup($uploaded_media[$slot_key], $slot_info['title']); ?>
                 <?php else: ?>
                 <span style="color:#888;">Empty Slot</span>
                 <?php endif; ?>
@@ -161,16 +199,15 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
             $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
             $has_img = $photo_count > 0;
-            // Use ASC-ordered array for thumbnail and Hotspots button ID so it
-            // matches what panoDataOrdered[slot][0] resolves to in the JS editor.
+            // Use the primary-first ascending-ID view for the card and hotspot button.
             $ordered_photos_array = isset($pano_venue_photos_ordered[$slot_key]) ? $pano_venue_photos_ordered[$slot_key] : $photos_array;
-            $first_photo = $has_img ? $ordered_photos_array[0]['file_path'] : '';
+            $first_photo = $has_img ? $ordered_photos_array[0] : null;
         ?>
         <div class="cms-card" data-type="360">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
-                <img src="<?php echo htmlspecialchars($first_photo); ?>?v=<?php echo time(); ?>">
+                <?php echo media_cms_card_image_markup($first_photo, $slot_info['title']); ?>
                 <?php else: ?>
                 <span style="color:#888;">Empty Slot</span>
                 <?php endif; ?>
@@ -211,13 +248,13 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
             $photos_array = isset($standard_venue_photos[$slot_key]) ? $standard_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
             $has_img = $photo_count > 0;
-            $first_photo = $has_img ? $photos_array[0]['file_path'] : ''; 
+            $first_photo = $has_img ? $photos_array[0] : null;
         ?>
         <div class="cms-card" data-type="standard">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
-                <img src="<?php echo htmlspecialchars($first_photo); ?>?v=<?php echo time(); ?>">
+                <?php echo media_cms_card_image_markup($first_photo, $slot_info['title']); ?>
                 <?php else: ?>
                 <span style="color:#888;">Empty Slot</span>
                 <?php endif; ?>
@@ -249,9 +286,9 @@ window.panoDataOrdered = <?php echo json_encode($pano_venue_photos_ordered); ?>;
 
         <!-- 4. GENERAL GALLERY ITEMS -->
         <?php foreach($gallery_items as $item): ?>
-        <div class="cms-card" data-type="<?php echo $item['media_type']; ?>">
+        <div class="cms-card" data-type="<?php echo htmlspecialchars((string)$item['media_type'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
             <div class="cms-img-wrapper">
-                <img src="<?php echo htmlspecialchars($item['file_path']); ?>?v=<?php echo time(); ?>">
+                <?php echo media_cms_card_image_markup($item, (string)$item['file_name']); ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">

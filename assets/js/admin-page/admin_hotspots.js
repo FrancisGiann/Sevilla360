@@ -411,7 +411,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".btn-place-hotspots").forEach((btn) => {
         btn.addEventListener("click", () => {
             currentSlot = btn.getAttribute("data-slot");
-            currentPhotosArray = (window.panoDataOrdered && window.panoDataOrdered[currentSlot]) || [];
+            currentPhotosArray = Array.isArray(window.galleryData?.[currentSlot])
+                ? window.galleryData[currentSlot].slice().filter(photo => photo.file_path && String(photo.file_path).startsWith('assets/uploads/'))
+                    .sort((left, right) => (Number(right.is_primary) - Number(left.is_primary)) || (Number(left.id) - Number(right.id)))
+                : [];
 
             if (currentPhotosArray.length === 0) {
                 return;

@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
+require_once __DIR__ . '/../../includes/media_helper.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -111,18 +112,12 @@ try {
         }
     }
 
-    // Delete physically from folder
+    // Resolve source and deterministic thumbnail paths before deleting the DB
+    // rows. Both paths stay rooted under assets/uploads and reject symlinks.
     foreach (array_keys($files_to_delete) as $media_index) {
         $media = $files_to_delete[$media_index];
-        $uploadRoot = realpath(__DIR__ . '/../../assets/uploads');
-        $relative = ltrim(str_replace('\\', '/', (string)$media['file_path']), '/');
-        $candidate = $uploadRoot !== false ? __DIR__ . '/../../' . $relative : '';
-        $physical_path = $candidate !== '' ? realpath($candidate) : false;
-        $candidateDir = $candidate !== '' ? realpath(dirname($candidate)) : false;
-        if ($uploadRoot === false || $candidateDir !== $uploadRoot || ($physical_path !== false && dirname($physical_path) !== $uploadRoot)) {
-            throw new Exception('Media file path is invalid.');
-        }
-        $media['_physical_path'] = $physical_path;
+        $media['_physical_path'] = media_cms_upload_file_path((string)$media['file_path']);
+        $media['_thumbnail_path'] = media_cms_thumbnail_file_path((string)$media['file_path']);
         $files_to_delete[$media_index] = $media;
     }
 
@@ -148,10 +143,12 @@ try {
 
     if (!$conn->commit()) throw new Exception('Database transaction could not be committed.');
     $cleanupWarnings = [];
+    $uploadRoot = media_cms_upload_root();
     foreach ($files_to_delete as $media) {
-        $physicalPath = $media['_physical_path'] ?? null;
-        if ($physicalPath !== null && is_file($physicalPath) && !@unlink($physicalPath)) {
-            $cleanupWarnings[] = basename((string)$media['file_path']);
+        foreach ([$media['_physical_path'] ?? null, $media['_thumbnail_path'] ?? null] as $physicalPath) {
+            if ($physicalPath !== null && !media_cms_unlink_safe($physicalPath, $uploadRoot)) {
+                $cleanupWarnings[] = basename((string)$media['file_path']);
+            }
         }
     }
     echo json_encode(['success' => true, 'message' => count($ids) . ' file(s) deleted successfully.', 'cleanup_warnings' => $cleanupWarnings]);
