@@ -3007,6 +3007,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const slots = result && result.slots && typeof result.slots === "object" ? result.slots : {};
       const category = slots.intent || receptionistState.activeCategory;
+      if (slots.intent && guideContext.intent !== slots.intent) {
+        ["occasion", "purpose", "groupSize", "groupSizeExact", "preference", "startDate", "endDate", "activeVenueId", "activeRoomGroupId"].forEach(key => { guideContext[key] = null; });
+      }
       if (slots.intent) guideContext.intent = slots.intent;
       ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
         if (slots[key] !== undefined && slots[key] !== null && slots[key] !== "") guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];

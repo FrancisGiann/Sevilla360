@@ -837,10 +837,21 @@ function receptionist_knowledge_select(array $records, string $message, int $lim
 function receptionist_knowledge_category_hint(string $message): ?string
 {
     $lower = receptionist_knowledge_normalize_message($message);
-    if (preg_match('/\b(villa|pool|overnight stay|staycation)\b/i', $lower)) return 'Resort Villa';
+    if (preg_match('/\b(villa|overnight stay|staycation)\b/i', $lower)) return 'Resort Villa';
     if (preg_match('/\b(event|events|event hall|function hall|reception|hall|wedding|birthday|corporate|party|venue)\b/i', $lower)) return 'Event Hall';
     if (preg_match('/\b(hotel|room|rooms|accommodation|stay|overnight|nightly|check[- ]?in)\b/i', $lower)) return 'Hotel Room';
     return null;
+}
+
+function receptionist_knowledge_explicit_category_switch(string $message): ?string
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    $matches = [];
+    if (preg_match('/\b(?:villa|staycation)\b/i', $lower)) $matches[] = 'Resort Villa';
+    if (preg_match('/\b(?:hotel|rooms?|accommodations?|check[- ]?in|check[- ]?out|overnight stay)\b/i', $lower)) $matches[] = 'Hotel Room';
+    if (preg_match('/\b(?:event halls?|function halls?|event spaces?|weddings?|birthdays?|corporate events?|receptions?|parties|party venue)\b/i', $lower)) $matches[] = 'Event Hall';
+    $matches = array_values(array_unique($matches));
+    return count($matches) === 1 ? $matches[0] : null;
 }
 
 /**
@@ -856,9 +867,66 @@ function receptionist_knowledge_is_generic_booking_start(string $message): bool
     return preg_match('/\b(?:book|booking|reserve|reservation|mag[- ]?book|magpa[- ]?book|mag[- ]?reserve|magpa[- ]?reserve|magpareserba|i[- ]?book|ipa[- ]?book)\b/i', $lower) === 1;
 }
 
-function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = []): ?array
+function receptionist_knowledge_is_memory_request(string $message): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    return preg_match('/\bwhat did i (?:say|ask|tell you)\b|\bwhat was i (?:looking for|asking)\b|\bano (?:ang )?(?:sinabi|sinagot) ko\b|\bano yung sinabi ko\b/i', $lower) === 1;
+}
+
+function receptionist_knowledge_memory_reply(string $message, string $language, array $baseSlots, array $history): ?array
+{
+    if (!receptionist_knowledge_is_memory_request($message)) return null;
+    if (function_exists('receptionist_ai_public_history')) $history = receptionist_ai_public_history($history);
+    $userMessages = [];
+    foreach ($history as $turn) {
+        if (($turn['role'] ?? null) !== 'user' || !is_string($turn['content'] ?? null)) continue;
+        if (receptionist_knowledge_is_memory_request($turn['content'])) continue;
+        $userMessages[] = $turn['content'];
+    }
+    $previous = $userMessages ? end($userMessages) : null;
+    if (!is_string($previous)) {
+        $reply = match ($language) {
+            'fil' => 'Wala pa akong naunang mensahe sa chat na ito. Ano ang gusto mong itanong?',
+            'taglish' => 'Wala pa akong earlier message sa chat na ito. Ano ang gusto mong itanong?',
+            default => 'I don’t have an earlier message in this chat yet. What would you like to ask?'
+        };
+    } else {
+        $reply = match ($language) {
+            'fil' => 'Ang huli mong sinabi ay: “' . $previous . '”.',
+            'taglish' => 'Your last message was: “' . $previous . '”.',
+            default => 'Your last message was: “' . $previous . '”.'
+        };
+    }
+    return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $baseSlots, 'missing_slots' => [], 'quick_replies' => ['Continue', 'Support FAQs']];
+}
+
+function receptionist_knowledge_walk_in_reply(string $message, string $language, array $baseSlots): ?array
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    if (preg_match('/\bwalk[ -]?ins?\b/i', $lower) !== 1) return null;
+
+    $reply = match ($language) {
+        'fil' => 'Hindi ko makukumpirma rito kung tumatanggap ng walk-in. Makipag-ugnayan muna sa reception bago pumunta para tiyakin ang availability.',
+        'taglish' => 'I can’t confirm walk-in availability here. Please contact reception muna before visiting to check.',
+        default => 'I can’t confirm walk-in availability here. Please contact reception before visiting to check.',
+    };
+    return [
+        'mode' => 'knowledge',
+        'action' => 'ask',
+        'reply' => $reply,
+        'faq_id' => null,
+        'slots' => $baseSlots,
+        'missing_slots' => [],
+        'quick_replies' => ['Support FAQs'],
+        'show_support_contact_cta' => true,
+    ];
+}
+
+function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = [], array $history = []): ?array
 {
     $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
+    $memoryReply = receptionist_knowledge_memory_reply($message, $language, $baseSlots, $history);
+    if ($memoryReply !== null) return $memoryReply;
     $tokens = receptionist_knowledge_tokens($message);
     if (!$tokens) return null;
     $lower = receptionist_knowledge_normalize_message($message);
@@ -890,6 +958,8 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
             'show_support_faq_cta' => true,
         ];
     }
+    $walkInReply = receptionist_knowledge_walk_in_reply($message, $language, $baseSlots);
+    if ($walkInReply !== null) return $walkInReply;
     $bookingContinuation = receptionist_knowledge_booking_continuation($records, $message, $language, $baseSlots, $route, $category);
     if ($bookingContinuation !== null) return $bookingContinuation;
     if (($route['kind'] ?? null) === 'booking' && empty($baseSlots['intent'])) {

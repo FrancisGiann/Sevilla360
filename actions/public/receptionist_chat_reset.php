@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/session_init.php';
+require_once __DIR__ . '/../../includes/receptionist_ai.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -22,4 +23,5 @@ if (!is_string($sessionCsrf) || $sessionCsrf === '' || !is_string($clientCsrf) |
 }
 
 unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context']);
+$_SESSION['receptionist_ai_owner'] = receptionist_ai_session_owner();
 receptionist_chat_reset_response(['success' => true]);

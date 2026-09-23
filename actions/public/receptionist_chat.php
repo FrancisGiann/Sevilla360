@@ -72,6 +72,7 @@ function receptionist_chat_store_turn(array $slots, string $message, string $rep
     $_SESSION['receptionist_ai_context'] = array_intersect_key($slots, $allowed);
     $_SESSION['receptionist_ai_message_count'] = $count + 1;
     $_SESSION['receptionist_ai_history'] = receptionist_ai_append_history($history, $message, $reply, $replaceContext);
+    $_SESSION['receptionist_ai_owner'] = receptionist_ai_session_owner();
 }
 
 $requestId = receptionist_chat_request_id();
@@ -95,6 +96,7 @@ try {
     $rawMessage = is_string($request['message'] ?? null) ? $request['message'] : '';
     $language = receptionist_ai_language($requestedLanguage, $rawMessage);
     $message = receptionist_ai_clean_message($rawMessage);
+    receptionist_ai_enforce_session_owner();
     $requestContext = is_array($request['context'] ?? null) ? $request['context'] : [];
 
     // Keep a cheap endpoint-wide abuse bound separate from the provider burst
@@ -118,10 +120,9 @@ try {
             unset($_SESSION['receptionist_ai_context']);
         }
     }
-    $requestSlots = receptionist_ai_validate_slots($conn, $requestContext, [], $venueCatalog);
-    $baseSeed = $sessionSlots;
-    if (isset($requestSlots['intent'], $sessionSlots['intent']) && $requestSlots['intent'] !== $sessionSlots['intent']) $baseSeed = ['intent' => $requestSlots['intent']];
-    $baseSlots = receptionist_ai_validate_slots($conn, $requestSlots, $baseSeed, $venueCatalog);
+    $contextResolution = receptionist_ai_resolve_context($sessionSlots, $requestContext, receptionist_knowledge_explicit_category_switch($message));
+    $requestSlots = receptionist_ai_validate_slots($conn, $contextResolution['request_slots'], [], $venueCatalog);
+    $baseSlots = receptionist_ai_validate_slots($conn, $requestSlots, $contextResolution['base_slots'], $venueCatalog);
     $faqs = receptionist_faq_load($conn);
 
     $count = (int)($_SESSION['receptionist_ai_message_count'] ?? 0);
@@ -130,13 +131,14 @@ try {
         receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'visit_limit'), 'visit_limit', $requestId);
     }
 
-    $history = is_array($_SESSION['receptionist_ai_history'] ?? null) ? $_SESSION['receptionist_ai_history'] : [];
+    $history = receptionist_ai_public_history(is_array($_SESSION['receptionist_ai_history'] ?? null) ? $_SESSION['receptionist_ai_history'] : []);
     $shortlist = receptionist_ai_shortlist_faq($faqs, $message);
     $knowledgeRecords = receptionist_public_knowledge_records($conn, $faqs);
     $showSupportFaqCta = receptionist_knowledge_is_support_faq_request($message);
     $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta): never {
         $prepared = receptionist_chat_prepare_knowledge($conn, $answer, $baseSlots, $venueCatalog);
         $prepared['show_support_faq_cta'] = $showSupportFaqCta || ($prepared['show_support_faq_cta'] ?? false) === true;
+        $prepared['show_support_contact_cta'] = ($prepared['show_support_contact_cta'] ?? false) === true;
         if ($fallbackClass !== null) {
             $metadata = receptionist_ai_fallback_metadata($fallbackClass);
             $prepared['fallback_code'] = $metadata['code'];
@@ -145,7 +147,7 @@ try {
         receptionist_chat_store_turn($prepared['slots'], $message, (string)$prepared['reply'], $count, $history, ($prepared['reset_context'] ?? false) === true);
         receptionist_chat_response(['success' => true, 'mode' => 'knowledge', 'validated_slots' => $prepared['slots']] + $prepared);
     };
-    $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots);
+    $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
     if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);
     $provider = receptionist_ai_provider();
     if (!$provider) {
@@ -179,7 +181,7 @@ try {
     } catch (Throwable $providerError) {
         $latencyMs = (int)round((microtime(true) - $started) * 1000);
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_unavailable', 'latency_ms' => $latencyMs, 'prompt_bytes' => $promptBytes]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, 'provider_unavailable');
         receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_unavailable'), 'provider_unavailable', $requestId);
     }
@@ -188,7 +190,7 @@ try {
         $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
         $fallbackClass = (string)($result['error_class'] ?? 'provider_unavailable');
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => $fallbackClass, 'latency_ms' => $latencyMs, 'attempt_count' => $diagnostic['attempt_count'] ?? null, 'prompt_bytes' => $promptBytes, 'response_bytes' => $diagnostic['response_bytes'] ?? null, 'http_status' => $diagnostic['http_status'] ?? null, 'curl_errno_category' => $diagnostic['curl_errno_category'] ?? null, 'finish_reason' => $diagnostic['finish_reason'] ?? null, 'truncated' => $diagnostic['truncated'] ?? null, 'blocked' => $diagnostic['blocked'] ?? null]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, $fallbackClass);
         receptionist_chat_guided($language, receptionist_chat_guided_copy($language, $fallbackClass), $fallbackClass, $requestId);
     }
@@ -198,11 +200,12 @@ try {
         $normalized = receptionist_ai_normalize_output($result['payload'], $conn, $baseSlots, $shortlist, $language, $venueCatalog);
     } catch (Throwable $providerSchemaError) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_schema', 'latency_ms' => $latencyMs, 'prompt_bytes' => $promptBytes]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, 'provider_schema');
         receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_schema'), 'provider_schema', $requestId);
     }
     $normalized['show_support_faq_cta'] = $showSupportFaqCta;
+    $normalized['show_support_contact_cta'] = false;
     receptionist_chat_store_turn($normalized['slots'], $message, (string)$normalized['reply'], $count, $history);
     $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
     receptionist_chat_log('success', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'latency_ms' => $latencyMs, 'action' => $normalized['action'], 'attempt_count' => $diagnostic['attempt_count'] ?? null, 'prompt_bytes' => $promptBytes, 'response_bytes' => $diagnostic['response_bytes'] ?? null, 'finish_reason' => $diagnostic['finish_reason'] ?? null, 'truncated' => $diagnostic['truncated'] ?? null, 'blocked' => $diagnostic['blocked'] ?? null]);

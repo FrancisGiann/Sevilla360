@@ -45,6 +45,77 @@ function receptionist_ai_append_history(array $history, string $message, string 
     return array_slice($history, -16);
 }
 
+function receptionist_ai_session_owner(): string
+{
+    if (($_SESSION['logged_in'] ?? false) !== true) return 'guest';
+    $userId = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $role = is_string($_SESSION['role'] ?? null) ? $_SESSION['role'] : '';
+    if (!is_int($userId) || $userId < 1 || !in_array($role, ['customer', 'staff', 'admin'], true)) return 'guest';
+    return 'authenticated:' . hash('sha256', $role . ':' . $userId);
+}
+
+function receptionist_ai_resolve_context(array $sessionSlots, array $requestSlots, ?string $messageIntent): array
+{
+    $sessionIntent = $sessionSlots['intent'] ?? null;
+    $requestIntent = $requestSlots['intent'] ?? null;
+    $validIntent = static fn($intent): bool => in_array($intent, ['Event Hall', 'Hotel Room', 'Resort Villa'], true);
+
+    if ($validIntent($sessionIntent)) {
+        if ($validIntent($messageIntent) && $messageIntent !== $sessionIntent) {
+            // The current message explicitly switches flows. Extract new slots
+            // from its text instead of inheriting stale browser form values.
+            return ['request_slots' => [], 'base_slots' => []];
+        }
+        if ($validIntent($requestIntent) && $requestIntent !== $sessionIntent && $messageIntent !== $requestIntent) {
+            // A stale showroom context must not replace the PHP chat session
+            // when the visitor gives a follow-up without naming a new venue.
+            return ['request_slots' => [], 'base_slots' => $sessionSlots];
+        }
+        return ['request_slots' => $requestSlots, 'base_slots' => $sessionSlots];
+    }
+
+    if ($validIntent($messageIntent) && $validIntent($requestIntent) && $messageIntent !== $requestIntent) {
+        return ['request_slots' => [], 'base_slots' => []];
+    }
+    // Before this chat session has a category, an existing guided showroom
+    // selection can seed the typed conversation.
+    return ['request_slots' => $requestSlots, 'base_slots' => $requestSlots];
+}
+
+function receptionist_ai_enforce_session_owner(): void
+{
+    $owner = receptionist_ai_session_owner();
+    if (!array_key_exists('receptionist_ai_owner', $_SESSION)) {
+        // Preserve legacy anonymous session state across deployment. Authenticated
+        // sessions without an owner marker cannot safely inherit prior history.
+        if ($owner !== 'guest') {
+            unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context']);
+        }
+        $_SESSION['receptionist_ai_owner'] = $owner;
+        return;
+    }
+    if ($_SESSION['receptionist_ai_owner'] !== $owner) {
+        unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context']);
+        $_SESSION['receptionist_ai_owner'] = $owner;
+    }
+}
+
+function receptionist_ai_public_history(array $history): array
+{
+    $public = [];
+    foreach (array_slice($history, -16) as $turn) {
+        if (!is_array($turn) || !in_array($turn['role'] ?? null, ['user', 'assistant'], true) || !is_string($turn['content'] ?? null)) continue;
+        $content = trim($turn['content']);
+        if ($content === '' || preg_match('//u', $content) !== 1 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $content) === 1) continue;
+        $maximum = $turn['role'] === 'user' ? 500 : 1200;
+        $length = function_exists('mb_strlen') ? mb_strlen($content, 'UTF-8') : strlen($content);
+        if ($length > $maximum) continue;
+        if (receptionist_ai_is_sensitive_message($content)) continue;
+        $public[] = ['role' => $turn['role'], 'content' => $content];
+    }
+    return $public;
+}
+
 function receptionist_ai_fallback_metadata(string $errorClass): array
 {
     $normalized = strtolower(trim($errorClass));
@@ -403,6 +474,7 @@ function receptionist_ai_language(string $requested, string $message): string
 {
     if (in_array($requested, ['en', 'fil', 'taglish'], true)) return $requested;
     $lower = strtolower($message);
+    if (preg_match('/\b(?:pwede|puwede|maaari)\s+(?:po\s+)?(?:ba|bang)\b|\bmag[- ]?walk[ -]?in\b/u', $lower) === 1) return 'fil';
     $filipinoWords = ['magkano', 'paano', 'saan', 'salamat', 'gusto', 'kailangan', 'pwede', 'mayroon', 'booking'];
     $hits = 0;
     foreach ($filipinoWords as $word) if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $lower)) $hits++;
@@ -857,11 +929,12 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'unsupported' => 'I\'m best at helping with venues, bookings, and resort info! For anything else, feel free to reach out to our team.',
         ],
     ];
-    // Ask is a routing/clarification action. Do not show arbitrary model
-    // prose here because it can smuggle unsupported venue claims; factual
-    // answers come from deterministic knowledge or an approved FAQ.
-    if ($action === 'ask') $reply = $safeReplies[$language]['ask'];
-    elseif ($action !== 'social' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
+    // Preserve useful clarifying questions, but keep factual answers on the
+    // deterministic public-knowledge/approved-FAQ path.
+    $safeAsk = preg_match('/\A(?:what|which|when|where|who|why|how|would|could|can|do|does|did|is|are|will|may|please|tell me|ano|alin|sino|kailan|saan|paano|bakit|ilan|ilang|anong|gaano|maaari|pwede)\b[^.!?]{0,239}\?\z/iu', $reply) === 1
+        && preg_match('/(?:₱|\bPHP\s*\d|\d|\b(?:price|prices|rate|rates|cost|capacity|available|availability|include|includes|amenities|wifi|parking|payment|cancell?ation|policy|policies|address|phone|email|there\s+(?:is|are)|we\s+have|our\s+(?:rooms?|venues?))\b)/i', $reply) !== 1;
+    if ($action === 'ask' && !$safeAsk) $reply = $safeReplies[$language]['ask'];
+    elseif ($action !== 'social' && $action !== 'ask' && isset($safeReplies[$language][$action])) $reply = $safeReplies[$language][$action];
 
     if ($action === 'social' || $action === 'ask') {
         if (preg_match('/₱|\bPHP\s*\d|\bper\s+(?:night|day|person|pax|head|event)\b|\b\d{3,}[,.]?\d*\s*(?:pesos?|php)\b/i', $reply) === 1) {

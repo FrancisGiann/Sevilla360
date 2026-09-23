@@ -34,6 +34,8 @@ foreach (['i want to book a venue', 'i wnt a wedding', 'next week sat', 'Event',
     if (is_array($sequenceAnswer['slots'] ?? null)) $sequenceContext = array_replace($sequenceContext, $sequenceAnswer['slots']);
 }
 $knowledgePrice = receptionist_knowledge_reply($knowledgeRecords, 'How much for an event?', 'en');
+$walkInReply = receptionist_knowledge_reply($knowledgeRecords, 'pwede po ba mag walk in?', 'fil', ['intent' => 'Hotel Room', 'group_size' => 2]);
+$walkInEnglishReply = receptionist_knowledge_reply($knowledgeRecords, 'Can I come as a walk-in?', 'en');
 $knowledgePriceFil = receptionist_knowledge_reply($knowledgeRecords, 'Magkano ang event hall?', 'fil');
 $knowledgePriceTaglish = receptionist_knowledge_reply($knowledgeRecords, 'Magkano ang event hall?', 'taglish');
 $knowledgeCapacity = receptionist_knowledge_reply($knowledgeRecords, 'How many can Infinity Hall fit?', 'en', ['active_venue_id' => 1, 'intent' => 'Event Hall']);
@@ -77,6 +79,15 @@ $checks['public knowledge returns selected capacity and stored amenities only'] 
 $checks['public knowledge routes approved payment and cancellation guidance'] = $knowledgePolicy !== null
     && str_contains($knowledgePolicy['reply'], 'payment')
     && str_contains($knowledgePolicy['reply'], 'cancellation');
+$checks['walk-in requests ask guests to confirm and link to the current public contact details'] = ($walkInReply['action'] ?? null) === 'ask'
+    && ($walkInReply['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($walkInReply['slots']['group_size'] ?? null) === 2
+    && ($walkInReply['show_support_contact_cta'] ?? false) === true
+    && str_contains(strtolower($walkInReply['reply'] ?? ''), 'reception')
+    && str_contains(strtolower($walkInReply['reply'] ?? ''), 'makukumpirma')
+    && str_contains(strtolower($walkInEnglishReply['reply'] ?? ''), 'can’t confirm')
+    && ($walkInEnglishReply['show_support_contact_cta'] ?? false) === true
+    && !str_contains($walkInReply['reply'] ?? '', 'event hall, hotel room, o resort villa');
 $checks['explicit Support FAQs prompt gets useful bounded guidance and server-owned CTA metadata'] = ($supportFaqIntent['kind'] ?? null) === 'support_faq'
     && ($supportFaqReply['action'] ?? null) === 'ask'
     && ($supportFaqReply['show_support_faq_cta'] ?? false) === true
@@ -180,6 +191,7 @@ $renamedFaq = receptionist_faq_normalize_item(['id' => 'faq-existing', 'question
 $checks['existing FAQ ids survive question edits while new rows get safe ids'] = $renamedFaq['id'] === 'faq-existing'
     && preg_match('/\Afaq-[a-z0-9][a-z0-9_-]{0,78}\z/D', receptionist_faq_normalize_item(['question' => 'New question', 'answer' => 'Answer'])['id']) === 1;
 $checks['language extraction supports Filipino and English fallback'] = receptionist_ai_language('auto', 'Magkano ang booking at paano magbayad?') === 'fil'
+    && receptionist_ai_language('auto', 'pwede po ba mag walk in?') === 'fil'
     && receptionist_ai_language('auto', 'Which venue is available?') === 'en'
     && receptionist_ai_language('taglish', 'Any venue') === 'taglish';
 $checks['sensitive input is rejected before provider use with localized recovery copy'] = $rejects(static fn() => receptionist_ai_clean_message('My payment reference is ABC12345'))
@@ -253,9 +265,17 @@ $checks['malformed actions and FAQ IDs are rejected'] = $rejects(static fn() => 
 $fabricatedPrice = receptionist_ai_normalize_output(['language' => 'en', 'action' => 'ask', 'reply' => 'The event costs ₱999999.', 'slots' => [], 'quick_replies' => []], $db, [], $defaults);
 $checks['fabricated model pricing cannot affect the server-authored reply'] = !str_contains($fabricatedPrice['reply'], '999999')
     && str_contains($fabricatedPrice['reply'], 'venue');
+$clarifyingAsk = receptionist_ai_normalize_output(['language' => 'en', 'action' => 'ask', 'reply' => 'How many guests will be staying?', 'slots' => [], 'quick_replies' => []], $db, [], $defaults);
+$unsupportedAsk = receptionist_ai_normalize_output(['language' => 'en', 'action' => 'ask', 'reply' => 'All our rooms include free Wi-Fi. Would you like a room?', 'slots' => [], 'quick_replies' => []], $db, [], $defaults);
+$mixedClaimAsk = receptionist_ai_normalize_output(['language' => 'en', 'action' => 'ask', 'reply' => 'We have a pool. Which date works?', 'slots' => [], 'quick_replies' => []], $db, [], $defaults);
+$checks['model clarifying questions survive normalization while factual ask claims stay server-authored'] = ($clarifyingAsk['reply'] ?? null) === 'How many guests will be staying?'
+    && !str_contains($unsupportedAsk['reply'] ?? '', 'free Wi-Fi')
+    && str_contains($unsupportedAsk['reply'] ?? '', 'venue')
+    && !str_contains($mixedClaimAsk['reply'] ?? '', 'We have a pool');
 
 $endpoint = $source('actions/public/receptionist_chat.php');
 $resetEndpoint = $source('actions/public/receptionist_chat_reset.php');
+$historyEndpoint = $source('actions/public/receptionist_chat_history.php');
 $showroomPhp = $source('showroom.php');
 $showroomJs = $source('assets/js/showroom.js');
 $showroomCss = $source('assets/css/showroom.css');
@@ -315,12 +335,27 @@ $checks['Support FAQs handoff uses deterministic metadata and one fixed local de
     && str_contains($chatJs, 'View Support & FAQs')
     && !str_contains($chatJs, 'content.includes(')
     && !str_contains($chatJs, 'link.href = data.');
+$checks['walk-in contact handoff uses a fixed local contact URL populated by Support settings'] = str_contains($endpoint, "'show_support_contact_cta'")
+    && str_contains($chatJs, 'const SUPPORT_CONTACT_HREF = "support.php#contact"')
+    && str_contains($chatJs, 'link.href = SUPPORT_CONTACT_HREF')
+    && str_contains($chatJs, 'link.textContent = "Contact reception"')
+    && str_contains($supportPhp, 'id="contact"')
+    && str_contains($supportPhp, "\$support_settings['biz_email']")
+    && str_contains($supportPhp, "\$support_settings['biz_phone']");
 $checks['server context errors are distinguishable from provider schema fallback'] = str_contains($endpoint, "'code' => " . '$contextError' . " ? 'invalid_context' : 'invalid_request'")
     && str_contains($chatJs, "data.code === \"invalid_context\"")
     && str_contains($showroomJs, 'onInvalidContext');
-$checks['endpoint has no transcript persistence or outbound mail'] = !str_contains($endpoint, 'mail(')
+$checks['chat history remains bounded to PHP session and avoids durable transcript writes'] = str_contains($endpoint, 'receptionist_ai_public_history')
+    && str_contains($endpoint, 'receptionist_ai_history')
     && !str_contains($endpoint, 'create_user_notification')
+    && !str_contains($endpoint, 'mail(')
     && !str_contains($endpoint, 'INSERT INTO');
+$checks['history restore is same-origin CSRF-protected, no-store, owner-bound, and bounded'] = str_contains($historyEndpoint, "'POST'")
+    && str_contains($historyEndpoint, "'application/json'")
+    && str_contains($historyEndpoint, 'HTTP_X_CSRF_TOKEN')
+    && str_contains($historyEndpoint, "Cache-Control: no-store, private")
+    && str_contains($historyEndpoint, 'receptionist_ai_enforce_session_owner')
+    && str_contains($historyEndpoint, 'receptionist_ai_public_history');
 $checks['server reset clears AI session state and is CSRF-protected'] = str_contains($resetEndpoint, "unset(\$_SESSION['receptionist_ai_message_count']")
     && str_contains($resetEndpoint, "receptionist_ai_history")
     && str_contains($resetEndpoint, 'HTTP_X_CSRF_TOKEN')
@@ -361,12 +396,13 @@ $checks['structured-output retry policy excludes non-format, rate-limit, and ser
 $checks['provider diagnostic code sanitizer excludes raw provider details'] = receptionist_ai_sanitize_provider_error_code('unsupported_parameter') === 'unsupported_parameter'
     && receptionist_ai_sanitize_provider_error_code('message with spaces and secrets') === null
     && receptionist_ai_sanitize_provider_error_code(str_repeat('x', 81)) === null;
-$checks['chat client is safe text-only, bounded, page-scoped, and supports in-chat guided fallback'] = str_contains($chatJs, 'textContent = message')
+$checks['chat client is safe text-only, bounded, session-restored, and supports in-chat guided fallback'] = str_contains($chatJs, 'textContent = message')
     && str_contains($showroomPhp, 'maxlength="500"')
-    && str_contains($chatJs, 'sessionStorage')
+    && !str_contains($chatJs, 'sessionStorage')
     && str_contains($chatJs, 'slice(-16)')
-    && str_contains($chatJs, 'sessionStorage.removeItem(STORAGE_KEY)')
-    && !str_contains($chatJs, 'sessionStorage.setItem')
+    && str_contains($chatJs, 'restoreServerHistory')
+    && str_contains($chatJs, 'receptionist_chat_history.php')
+    && str_contains($chatJs, 'serverHistoryPromise')
     && !str_contains($chatJs, 'serverResetPromise = resetServerSession();')
     && str_contains($chatJs, 'await serverResetPromise')
     && !str_contains($chatJs, 'onGuidedFallback')
@@ -391,7 +427,12 @@ $checks['first typed-chat open seeds a localized virtual receptionist greeting']
 $checks['same-page chat reopen does not duplicate the greeting'] = str_contains($chatJs, 'if (stored.messages.length || transcript.children.length) return;')
     && str_contains($chatJs, 'chatShell.hidden = !next')
     && str_contains($chatJs, 'setChatOpen(!chatOpen)');
-$checks['Start over clears turns and reseeds the greeting while suppressing guided duplicate copy'] = str_contains($chatJs, 'stored = { messages: [], context: {} };')
+$checks['Start over clears server and visible turns and reseeds the greeting'] = str_contains($chatJs, 'conversationGeneration++')
+    && str_contains($chatJs, 'requestGeneration !== conversationGeneration')
+    && str_contains($chatJs, 'pendingMessage = "";')
+    && str_contains($chatJs, 'serverHistoryPromise = Promise.resolve();')
+    && str_contains($chatJs, 'serverResetPromise = resetServerSession()')
+    && str_contains($chatJs, 'stored = { messages: [], context: {} };')
     && str_contains($chatJs, 'transcript.replaceChildren();')
     && substr_count($chatJs, 'ensureGreeting();') >= 2
     && str_contains($chatJs, 'suppressDialogueEvents++')
@@ -525,6 +566,59 @@ $checks['deterministic parser handles typo, aliases, exact counts, words, and we
     && receptionist_knowledge_booking_group_size('kami dalawa') === 2
     && receptionist_knowledge_category_hint('gusto ko ng reception sa Infinity') === 'Event Hall'
     && receptionist_knowledge_booking_date('next weekend') !== null;
+$hotelTurnOne = receptionist_knowledge_reply($knowledgeRecords, 'i want to book a hotel room');
+$hotelPreparedOne = receptionist_ai_prepare_knowledge($db, $hotelTurnOne ?? [], [], []);
+$staleGuideResolution = receptionist_ai_resolve_context($hotelPreparedOne['slots'] ?? [], [
+    'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 80,
+], receptionist_knowledge_category_hint('we are two people'));
+$hotelTurnTwo = receptionist_knowledge_reply($knowledgeRecords, 'we are two people', 'en', $staleGuideResolution['base_slots'] ?? []);
+$hotelPreparedTwo = receptionist_ai_prepare_knowledge($db, $hotelTurnTwo ?? [], $staleGuideResolution['base_slots'] ?? [], []);
+$checks['hotel booking follow-up keeps PHP session intent when stale showroom context conflicts'] = ($hotelPreparedOne['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($staleGuideResolution['request_slots'] ?? null) === []
+    && ($hotelPreparedTwo['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($hotelPreparedTwo['slots']['group_size'] ?? null) === 2
+    && ($hotelPreparedTwo['missing_slots'][0] ?? null) === 'preference'
+    && str_contains(strtolower($hotelPreparedTwo['reply'] ?? ''), 'room search');
+$poolFollowUpResolution = receptionist_ai_resolve_context(
+    ['intent' => 'Hotel Room'], ['intent' => 'Event Hall'], receptionist_knowledge_explicit_category_switch('is there a pool?')
+);
+$checks['amenity words do not switch booking category while explicit villa references do'] = ($poolFollowUpResolution['base_slots']['intent'] ?? null) === 'Hotel Room'
+    && ($poolFollowUpResolution['request_slots'] ?? null) === []
+    && receptionist_knowledge_explicit_category_switch('What about in the villa?') === 'Resort Villa';
+$memoryHistory = receptionist_ai_append_history([], 'I want to book a hotel room for two people.', 'How many guests?');
+$memoryReply = receptionist_knowledge_reply($knowledgeRecords, 'what did I say?', 'en', ['intent' => 'Hotel Room', 'group_size' => 2], $memoryHistory);
+$privateHistory = receptionist_ai_public_history([
+    ['role' => 'user', 'content' => 'I want a hotel room for two people.'],
+    ['role' => 'user', 'content' => 'My email is visitor@example.test'],
+    ['role' => 'assistant', 'content' => 'Your phone number is 09171234567.'],
+    ['role' => 'assistant', 'content' => 'What dates do you need?'],
+]);
+$checks['bounded session recall answers a direct memory question without returning sensitive user turns'] = str_contains($memoryReply['reply'] ?? '', 'hotel room for two people')
+    && count($privateHistory) === 2
+    && !str_contains(implode(' ', array_column($privateHistory, 'content')), 'visitor@example.test')
+    && !str_contains(implode(' ', array_column($privateHistory, 'content')), '09171234567');
+$priorSession = $_SESSION ?? [];
+$_SESSION = [
+    'receptionist_ai_history' => [['role' => 'user', 'content' => 'legacy guest turn']],
+    'receptionist_ai_context' => ['intent' => 'Hotel Room'],
+    'receptionist_ai_message_count' => 3,
+];
+receptionist_ai_enforce_session_owner();
+$guestHistoryPreserved = ($_SESSION['receptionist_ai_owner'] ?? null) === 'guest'
+    && isset($_SESSION['receptionist_ai_history'][0]['content']);
+$_SESSION = [
+    'logged_in' => true,
+    'user_id' => 42,
+    'role' => 'customer',
+    'receptionist_ai_history' => [['role' => 'user', 'content' => 'previous owner turn']],
+    'receptionist_ai_context' => ['intent' => 'Hotel Room'],
+    'receptionist_ai_message_count' => 3,
+];
+receptionist_ai_enforce_session_owner();
+$authenticatedHistoryCleared = str_starts_with((string)($_SESSION['receptionist_ai_owner'] ?? ''), 'authenticated:')
+    && !isset($_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_message_count']);
+$_SESSION = $priorSession;
+$checks['legacy guest history survives owner-marker introduction while unowned authenticated history is cleared'] = $guestHistoryPreserved && $authenticatedHistoryCleared;
 $faqMerged = receptionist_faq_merge_defaults([
     ['id' => 'faq-cms-valid', 'category' => 'General', 'question' => 'Can I bring children?', 'answer' => 'Yes, please include them in the guest count.', 'phrases' => ['kids']],
     ['question' => 'qwasda', 'answer' => 'x'],

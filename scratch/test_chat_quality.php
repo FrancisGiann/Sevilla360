@@ -63,12 +63,14 @@ $testCases = [
     [
         'id' => 7,
         'query' => 'i want to book a room for 2',
-        'expected' => 'Should pre-fill group_size=2 and NOT ask for guest count again',
+        'expected' => 'Should keep group_size=2 and ask for the next hotel detail, not guest count',
         'validate' => function (?array $res): bool {
             return $res !== null
+                && ($res['slots']['intent'] ?? null) === 'Hotel Room'
                 && ($res['slots']['group_size'] ?? null) === 2
                 && !in_array('group_size', $res['missing_slots'] ?? [], true)
-                && str_contains($res['reply'] ?? '', '2 guest(s)')
+                && (($res['missing_slots'][0] ?? null) === 'preference')
+                && str_contains(strtolower($res['reply'] ?? ''), 'room search')
                 && !str_contains(strtolower($res['reply'] ?? ''), 'how many guests');
         },
     ],

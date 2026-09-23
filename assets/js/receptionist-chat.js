@@ -1,10 +1,10 @@
 (function (window, document) {
   "use strict";
 
-  const STORAGE_KEY = "sevilla360-receptionist-chat-v1";
   const MAX_MESSAGE_LENGTH = 500;
   // This is intentionally client-owned; response text and model payloads never supply navigation URLs.
   const SUPPORT_FAQ_HREF = "support.php#faqs";
+  const SUPPORT_CONTACT_HREF = "support.php#contact";
   let initializedRoot = null;
 
   function init(options) {
@@ -24,14 +24,10 @@
     initializedRoot = root;
     root.dataset.receptionistChatReady = "true";
 
-    // Keep the typed transcript in memory for this page only. The server-side
-    // booking context survives reloads in the PHP session and is revalidated
-    // on every request; transcript text is never persisted in browser storage.
+    // The visible transcript lives in memory. A bounded, sanitized copy can be
+    // restored from the same PHP session after navigation or reload.
     let stored = { messages: [], context: {} };
     let suppressDialogueEvents = 0;
-    try {
-      sessionStorage.removeItem(STORAGE_KEY);
-    } catch (error) {}
 
     const normalizeMessages = messages => {
       if (!Array.isArray(messages)) return [];
@@ -52,6 +48,8 @@
     let gated = true;
     let deferredGate = false;
     let serverResetPromise = Promise.resolve();
+    let serverHistoryPromise = Promise.resolve();
+    let conversationGeneration = 0;
     let pendingMessage = "";
     const setNonChatMode = active => {
       root.classList.toggle("is-chat-open", active);
@@ -182,7 +180,7 @@
       stored.context = safeContext();
     };
     const setStatus = message => { if (status) status.textContent = message || ""; };
-    const appendMessage = (role, message, persist = true, action = null, showSupportFaqCta = false) => {
+    const appendMessage = (role, message, persist = true, action = null, showSupportFaqCta = false, animate = true, showSupportContactCta = false) => {
       if (!message || typeof message !== "string") return;
       const normalizedRole = role === "user" ? "user" : "assistant";
       const content = message.trim();
@@ -197,7 +195,7 @@
       bubble.dataset.role = normalizedRole;
       bubble.setAttribute("role", "article");
       
-      if (normalizedRole === "assistant") {
+      if (normalizedRole === "assistant" && animate) {
         const srText = document.createElement("span");
         srText.className = "sr-only";
         srText.style.userSelect = "none";
@@ -222,12 +220,19 @@
             requestAnimationFrame(typeChar);
           } else {
              visibleText.textContent = content;
-             if ((action === "faq" || showSupportFaqCta === true) && !bubble.querySelector("[data-receptionist-support-faq]")) {
+             if ((action === "faq" || showSupportFaqCta === true || showSupportContactCta === true)
+               && !bubble.querySelector("[data-receptionist-support-faq], [data-receptionist-support-contact]")) {
                const link = document.createElement("a");
-               link.href = SUPPORT_FAQ_HREF;
                link.className = "receptionist-chat-inline-link";
-               link.dataset.receptionistSupportFaq = "true";
-               link.textContent = showSupportFaqCta === true ? "View Support & FAQs" : "View all FAQs";
+               if (showSupportContactCta === true) {
+                 link.href = SUPPORT_CONTACT_HREF;
+                 link.dataset.receptionistSupportContact = "true";
+                 link.textContent = "Contact reception";
+               } else {
+                 link.href = SUPPORT_FAQ_HREF;
+                 link.dataset.receptionistSupportFaq = "true";
+                 link.textContent = showSupportFaqCta === true ? "View Support & FAQs" : "View all FAQs";
+               }
                bubble.appendChild(link);
                transcript.scrollTop = transcript.scrollHeight;
              }
@@ -257,6 +262,25 @@
       stored.messages = normalizeMessages(stored.messages);
       if (stored.messages.length || transcript.children.length) return;
       appendMessage("assistant", greetingCopy[selectedLocale()]);
+    };
+    const restoreServerHistory = async () => {
+      const generation = conversationGeneration;
+      try {
+        const response = await fetch("actions/public/receptionist_chat_history.php", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
+          body: "{}"
+        });
+        const data = await response.json();
+        if (generation !== conversationGeneration || !response.ok || data?.success !== true) return;
+        const messages = normalizeMessages(data.history);
+        if (!messages.length) return;
+        transcript.replaceChildren();
+        stored.messages = messages;
+        stored.context = safeContext();
+        messages.forEach(turn => appendMessage(turn.role, turn.content, false, null, false, false));
+      } catch (error) {}
     };
     const renderQuickReplies = items => {
       quickReplies.replaceChildren();
@@ -321,23 +345,32 @@
     const submit = async message => {
       const clean = String(message || "").trim();
       if (!clean || clean.length > MAX_MESSAGE_LENGTH || form.dataset.busy === "true" || form.dataset.resetting === "true") return;
+      const requestGeneration = conversationGeneration;
       if (looksSensitive(clean)) {
         setStatus(localeCopy[locale?.value] || localeCopy.en);
         input.focus();
         return;
       }
-      appendMessage("user", clean);
-      pendingMessage = clean;
       form.dataset.busy = "true";
       form.setAttribute("aria-busy", "true");
       if (send) send.disabled = true;
       setStatus("");
+      await serverHistoryPromise;
+      if (requestGeneration !== conversationGeneration || form.dataset.resetting === "true") {
+        form.dataset.busy = "false";
+        form.removeAttribute("aria-busy");
+        if (send) send.disabled = false;
+        return;
+      }
+      appendMessage("user", clean);
+      pendingMessage = clean;
       showTypingIndicator();
       const context = safeContext();
       stored.context = context;
       save();
       try {
         const resetReady = await serverResetPromise;
+        if (requestGeneration !== conversationGeneration) return;
         if (resetReady === false) {
           guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, guidedCopy[locale?.value] || guidedCopy.en);
           setStatus("Chat reset could not be confirmed; guided choices are still available.");
@@ -350,6 +383,7 @@
           body: JSON.stringify({ message: clean, locale: locale?.value || "auto", context })
         });
         const data = await response.json();
+        if (requestGeneration !== conversationGeneration) return;
         if (response.status === 422 && data && data.code === "sensitive_input") {
           const last = transcript.lastElementChild;
           if (last?.dataset.role === "user") last.remove();
@@ -385,6 +419,7 @@
         input.value = "";
         pendingMessage = "";
         await waitForTypingMin();
+        if (requestGeneration !== conversationGeneration) return;
         removeTypingIndicator();
         let keptGuidedStatus = false;
         if (data.mode === "guided") {
@@ -403,13 +438,15 @@
           const reply = typeof data.reply === "string" ? data.reply : "I can help with the guided venue choices.";
           suppressDialogueEvents++;
           if (data.mode === "knowledge" && typeof options.onKnowledge === "function") options.onKnowledge(data);
+          else if (data.action === "ask" && typeof options.onKnowledge === "function") options.onKnowledge({ ...data, booking_continuation: false });
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
-          appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true);
+          appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true, true, data.show_support_contact_cta === true);
           renderQuickReplies(data.quick_replies);
         }
         if (!keptGuidedStatus) setStatus("");
       } catch (error) {
+        if (requestGeneration !== conversationGeneration) return;
         const last = transcript.lastElementChild;
         if (last?.dataset.role === "user") last.remove();
         stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === pendingMessage));
@@ -443,6 +480,7 @@
       }
     };
 
+    serverHistoryPromise = restoreServerHistory();
     setChatOpen(false, false);
     renderQuickReplies(["Event", "Hotel", "Villa", "Support FAQs"]);
     save();
@@ -470,8 +508,12 @@
       if (close) { setChatOpen(false); return; }
       const target = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-start-over]") : null;
       if (target) {
+        conversationGeneration++;
+        serverHistoryPromise = Promise.resolve();
+        pendingMessage = "";
+        input.value = "";
+        removeTypingIndicator();
         stored = { messages: [], context: {} };
-        try { sessionStorage.removeItem(STORAGE_KEY); } catch (error) {}
         transcript.replaceChildren();
         renderQuickReplies(["Event", "Hotel", "Villa", "Support FAQs"]);
         form.dataset.resetting = "true";
