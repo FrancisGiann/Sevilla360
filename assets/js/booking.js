@@ -22,6 +22,7 @@ class BookingController {
         this.draftTtlMs = 2 * 60 * 60 * 1000;
         this.state = {
             activeTabId: 'event-hall', 
+            currentStep: 1,
             isDatesLocked: false,
             activeCalendar: null,
             timerInterval: null,
@@ -55,9 +56,18 @@ class BookingController {
         this.bindModalsAndSubmission();
         this.bindUnloadHook();
         this.determineActiveTab();
+        this.syncHotelRoomSelection();
+        this.syncVenueSelectionDisplays();
+        window.addEventListener('pageshow', () => {
+            this.syncHotelRoomSelection();
+            this.syncVenueSelectionDisplays();
+            this.calculateSummary();
+        });
         this.preselectFromURL();
         this.preselectDatesFromURL();
         this.restoreDraftIfRequested();
+        this.calculateSummary();
+        this.updateBookingStepUI();
     }
 
     isValidDraftDate(value) {
@@ -115,6 +125,11 @@ class BookingController {
             }
             if (typeof draft.confirmedSelectionKey !== 'string') {
                 draft.confirmedSelectionKey = '';
+                changed = true;
+            }
+            const draftStep = Number.parseInt(draft.step, 10);
+            if (!Number.isInteger(draftStep) || draftStep < 1 || draftStep > 4) {
+                draft.step = 1;
                 changed = true;
             }
             if (changed) window.sessionStorage.setItem(this.draftKey, JSON.stringify(draft));
@@ -182,6 +197,7 @@ class BookingController {
             version: 1,
             createdAt: existing?.createdAt || Date.now(),
             activeTabId: this.state.activeTabId,
+            step: this.state.currentStep,
             category,
             venueId: context.venueId || '',
             roomGroupId: context.roomGroupId || '',
@@ -415,6 +431,10 @@ class BookingController {
         }
         } finally {
             this.isRestoringDraft = false;
+            const requestedStep = Math.min(4, Math.max(1, Number.parseInt(draft.step, 10) || 1));
+            this.state.currentStep = Math.min(requestedStep, this.getMaximumReachableStep());
+            this.clearBookingStepError();
+            this.updateBookingStepUI();
             this.saveDraft();
         }
     }
@@ -438,32 +458,24 @@ class BookingController {
         if (tabBtn) this.handleTabSwitch(tabBtn);
 
         const venueId = urlParams.get('venue_id');
+        const hasVenueId = urlParams.has('venue_id');
         const roomGroupId = urlParams.get('room_group_id');
         const roomType = urlParams.get('room_type');
         const venueName = urlParams.get('venue_name');
+        const selectVenueFromURL = (select) => {
+            const options = Array.from(select?.options || []);
+            const option = hasVenueId
+                ? options.find(item => String(item.dataset.id || '') === venueId)
+                : (venueName ? options.find(item => item.dataset.name === venueName) : null);
+            if (!select || !option) return;
+            select.selectedIndex = option.index;
+            select.dispatchEvent(new Event('change'));
+        };
 
         if (category === 'Event Hall') {
-            const select = this.getEl('event-venue');
-            if (select && venueName) {
-                for (let i = 0; i < select.options.length; i++) {
-                    if (select.options[i].text.includes(venueName)) {
-                        select.selectedIndex = i;
-                        select.dispatchEvent(new Event('change'));
-                        break;
-                    }
-                }
-            }
+            selectVenueFromURL(this.getEl('event-venue'));
         } else if (category === 'Resort Villa') {
-            const select = this.getEl('villa-type');
-            if (select && venueName) {
-                for (let i = 0; i < select.options.length; i++) {
-                    if (select.options[i].text.includes(venueName)) {
-                        select.selectedIndex = i;
-                        select.dispatchEvent(new Event('change'));
-                        break;
-                    }
-                }
-            }
+            selectVenueFromURL(this.getEl('villa-type'));
         } else if (category === 'Hotel Room') {
             const typeSelect = this.getEl('hotel-room-type');
             const groupRoom = roomGroupId ? Object.values(window.hotelRoomData || {}).flat().find(item => String(item.room_group_id || '') === String(roomGroupId)) : null;
@@ -486,6 +498,10 @@ class BookingController {
                 }
             }
         }
+        if (this.validateBookingStep(1).valid) {
+            this.state.currentStep = 2;
+            this.updateBookingStepUI();
+        }
     }
 
     async preselectDatesFromURL() {
@@ -507,7 +523,9 @@ class BookingController {
         }
         this.calculateSummary();
         this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
-        window.history.replaceState(null, '', window.location.pathname);
+        const currentUrl = new URL(window.location.href);
+        ['check_in', 'check_out', 'start_date', 'end_date'].forEach(key => currentUrl.searchParams.delete(key));
+        window.history.replaceState(window.history.state, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
     }
 
     initCalendars() {
@@ -533,39 +551,266 @@ class BookingController {
             });
         }
 
-        document.querySelectorAll(".tab-btn").forEach(btn => {
-            btn.addEventListener("click", (e) => this.handleTabSwitch(e.target));
+        const bookingTabs = Array.from(document.querySelectorAll('[data-booking-tablist] [role="tab"][data-tab]'));
+        bookingTabs.forEach((btn, index) => {
+            btn.addEventListener("click", () => this.handleTabSwitch(btn));
+            btn.addEventListener("keydown", (event) => {
+                const offsets = { ArrowRight: 1, ArrowLeft: -1 };
+                let nextIndex = null;
+                if (Object.hasOwn(offsets, event.key)) nextIndex = (index + offsets[event.key] + bookingTabs.length) % bookingTabs.length;
+                else if (event.key === 'Home') nextIndex = 0;
+                else if (event.key === 'End') nextIndex = bookingTabs.length - 1;
+                if (nextIndex === null || !bookingTabs.length) return;
+                event.preventDefault();
+                bookingTabs[nextIndex].focus();
+                this.handleTabSwitch(bookingTabs[nextIndex]);
+            });
+        });
+
+        document.querySelectorAll('[data-booking-step-nav], [data-booking-step-next], [data-booking-step-back]').forEach(button => {
+            button.addEventListener('click', () => {
+                const requestedStep = Number.parseInt(button.dataset.bookingStepNav || button.dataset.bookingStepNext || button.dataset.bookingStepBack, 10);
+                this.navigateToBookingStep(requestedStep);
+            });
+        });
+        ['input', 'change'].forEach(eventName => document.addEventListener(eventName, event => {
+            if (event.target.closest('.tab-content')) this.clearBookingStepError();
+        }));
+        document.addEventListener('click', event => {
+            if (event.target.closest('.cal-day-cell')) this.clearBookingStepError();
         });
     }
 
-    bindUIInteractions() {
-        // Image swap: reads data-img from selected option (no hardcoded imageMap)
-        this.setupImageSwap("event-venue", "event-img");
-        this.setupImageSwap("villa-type", "villa-img");
+    getActiveBookingCalendar() {
+        const calendarKey = this.state.activeTabId === 'hotel-rooms'
+            ? 'hotel'
+            : (this.state.activeTabId === 'resort-villa' ? 'villa' : 'event');
+        return this.state.calendars[calendarKey] || null;
+    }
 
+    getBookingSelectionIssue() {
+        if (this.state.activeTabId === 'hotel-rooms') {
+            const roomType = this.getEl('hotel-room-type');
+            const roomSelect = this.getEl('hotel-room-name');
+            const room = roomSelect?.options[roomSelect.selectedIndex];
+            if (!roomType?.value) return { message: 'Choose a room category to continue.', target: roomType };
+            if (!room?.dataset.name || roomSelect.disabled) return { message: 'Choose an available building to continue.', target: roomSelect };
+            return null;
+        }
+
+        const selectId = this.state.activeTabId === 'resort-villa' ? 'villa-type' : 'event-venue';
+        const select = this.getEl(selectId);
+        const option = select?.options[select.selectedIndex];
+        const id = Number.parseInt(option?.dataset.id || '', 10);
+        if (!Number.isSafeInteger(id) || id < 1) {
+            return {
+                message: this.state.activeTabId === 'resort-villa' ? 'Choose a villa to continue.' : 'Choose an event hall to continue.',
+                target: select
+            };
+        }
+        return null;
+    }
+
+    getGuestCountIssue({ checkEventStyle = this.state.currentStep >= 3 } = {}) {
+        const isEvent = this.state.activeTabId === 'event-hall';
+        const input = this.getEl(isEvent ? 'event-guests' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel-guests' : 'villa-guests'));
+        const count = input?.valueAsNumber;
+        const min = Number.parseInt(input?.min || '1', 10);
+        const max = input?.max ? Number.parseInt(input.max, 10) : null;
+        if (!Number.isInteger(count) || count < min || (Number.isInteger(max) && count > max)) {
+            return {
+                message: isEvent
+                    ? `Enter a whole number of guests from ${min}${Number.isInteger(max) ? ` to ${max}` : ' or more'}.`
+                    : `Enter a whole number of guests from ${min}${Number.isInteger(max) ? ` to ${max}` : ' or more'}.`,
+                target: input
+            };
+        }
+        if (isEvent && checkEventStyle) {
+            const hall = this.getEl('event-venue')?.selectedOptions[0];
+            const styleKey = this.getEl('event-style')?.value || '';
+            const capacity = Number.parseInt(hall?.dataset[styleKey] || '', 10);
+            if (!Number.isInteger(capacity) || capacity < 1) {
+                return { message: 'This event hall has no listed capacity for the selected setup. Choose another seating style.', target: this.getEl('event-style') };
+            }
+            if (count > capacity) {
+                return { message: `The selected seating style holds up to ${capacity} guests. Lower the guest count or choose another style.`, target: input };
+            }
+        }
+        return null;
+    }
+
+    validateBookingStep(step) {
+        if (step === 1) {
+            const issue = this.getBookingSelectionIssue();
+            return issue ? { valid: false, issue } : { valid: true };
+        }
+        if (step === 3 && this.state.activeTabId === 'event-hall') {
+            const issue = this.getGuestCountIssue({ checkEventStyle: true });
+            return issue ? { valid: false, issue: { ...issue, step: 3 } } : { valid: true };
+        }
+        if (step !== 2) return { valid: true };
+
+        const selectionIssue = this.getBookingSelectionIssue();
+        if (selectionIssue) return { valid: false, issue: { ...selectionIssue, step: 1 } };
+        const calendar = this.getActiveBookingCalendar();
+        if (!calendar?.startDate || !calendar.endDate) {
+            return { valid: false, issue: { step: 2, message: 'Choose your date or date range, then confirm it to continue.', target: calendar?.container } };
+        }
+        const sameDay = calendar.startDate.getTime() === calendar.endDate.getTime();
+        if (this.state.activeTabId === 'hotel-rooms' && (!calendar.endDate || sameDay)) {
+            return { valid: false, issue: { step: 2, message: 'Hotel stays need at least one night. Choose a checkout date after check-in.', target: calendar.container } };
+        }
+        if (this.state.activeTabId === 'resort-villa') {
+            const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value;
+            if ((stayType === 'Overnight' && sameDay) || (stayType !== 'Overnight' && !sameDay)) {
+                return { valid: false, issue: { step: 2, message: 'Choose dates that match the selected villa stay, then confirm them.', target: calendar.container } };
+            }
+        }
+        const currentSelectionKey = this.buildSelectionKey(calendar);
+        if (!currentSelectionKey || this.state.confirmedSelectionKey !== currentSelectionKey) {
+            return { valid: false, issue: { step: 2, message: 'Confirm these dates for the selected room or venue before continuing.', target: calendar.container } };
+        }
+        if (this.state.activeTabId !== 'event-hall' && this.auth.isCustomer && !this.state.isDatesLocked) {
+            return { valid: false, issue: { step: 2, message: 'Your date hold has expired. Confirm the dates again to continue.', target: calendar.container } };
+        }
+        const guestIssue = this.getGuestCountIssue({ checkEventStyle: false });
+        return guestIssue
+            ? { valid: false, issue: { ...guestIssue, step: 2 } }
+            : { valid: true };
+    }
+
+    getMaximumReachableStep() {
+        if (!this.validateBookingStep(1).valid) return 1;
+        if (!this.validateBookingStep(2).valid) return 2;
+        if (!this.validateBookingStep(3).valid) return 3;
+        return 4;
+    }
+
+    clearBookingStepError() {
+        const error = document.querySelector('[data-booking-step-error]');
+        if (error) {
+            error.textContent = '';
+            error.hidden = true;
+        }
+        document.querySelectorAll('.booking-section [aria-invalid="true"]').forEach(element => element.removeAttribute('aria-invalid'));
+    }
+
+    updateBookingStepUI() {
+        const currentStep = Math.min(4, Math.max(1, Number.parseInt(this.state.currentStep, 10) || 1));
+        this.state.currentStep = currentStep;
+        document.querySelectorAll('[data-booking-step-panel]').forEach(panel => {
+            const active = Number.parseInt(panel.dataset.bookingStepPanel, 10) === currentStep;
+            panel.hidden = !active;
+            panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+        });
+        document.querySelectorAll('[data-booking-step-nav]').forEach(button => {
+            const step = Number.parseInt(button.dataset.bookingStepNav, 10);
+            const current = step === currentStep;
+            button.classList.toggle('is-current', current);
+            button.classList.toggle('is-complete', step < currentStep);
+            if (current) button.setAttribute('aria-current', 'step');
+            else button.removeAttribute('aria-current');
+        });
+        const bookingGrid = document.querySelector('.booking-grid');
+        const reviewMount = this.getEl('booking-review-mount');
+        const summary = this.getEl('booking-summary');
+        const sidebar = document.querySelector('.booking-sidebar');
+        const reviewing = currentStep === 4;
+        if (bookingGrid) bookingGrid.classList.toggle('is-reviewing', reviewing);
+        if (reviewMount) reviewMount.hidden = !reviewing;
+        const summaryDestination = reviewing ? reviewMount : sidebar;
+        if (summary && summaryDestination && summary.parentElement !== summaryDestination) {
+            summaryDestination.appendChild(summary);
+        }
+        const footer = this.getEl('booking-summary-footer');
+        if (footer) footer.hidden = currentStep !== 4;
+        if (this.state.activeTabId === 'event-hall') {
+            const option = this.getEl('event-venue')?.selectedOptions[0];
+            const capacities = ['theater', 'classroom', 'banquet'].map(key => {
+                const value = Number.parseInt(option?.dataset[key] || '', 10);
+                return Number.isInteger(value) && value > 0 ? value : null;
+            });
+            this.updateEventGuestLimit(Boolean(option?.dataset.id), capacities, true);
+        }
+        const summaryJump = document.querySelector('.booking-summary-jump');
+        if (summaryJump) {
+            summaryJump.textContent = currentStep === 4 ? 'Go to contact and submit' : 'View live summary';
+            summaryJump.setAttribute('aria-label', currentStep === 4
+                ? 'Jump to the booking summary and submission controls'
+                : 'Jump to the live booking summary');
+        }
+    }
+
+    focusBookingElement(element) {
+        if (!element) return;
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+        window.requestAnimationFrame(() => {
+            element.focus({ preventScroll: true });
+            element.scrollIntoView?.({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        });
+    }
+
+    showBookingStepIssue(issue) {
+        const error = document.querySelector('[data-booking-step-error]');
+        if (error) {
+            error.textContent = issue.message;
+            error.hidden = false;
+        }
+        if (issue.target) {
+            issue.target.setAttribute?.('aria-invalid', 'true');
+            this.focusBookingElement(issue.target);
+        }
+    }
+
+    setBookingStep(step, { focus = true, save = true } = {}) {
+        const nextStep = Math.min(4, Math.max(1, Number.parseInt(step, 10) || 1));
+        this.state.currentStep = nextStep;
+        this.clearBookingStepError();
+        this.updateBookingStepUI();
+        if (save) this.saveDraft();
+        if (!focus) return;
+
+        const isMobile = window.matchMedia?.('(max-width: 992px)').matches === true;
+        if (nextStep === 4 && isMobile) {
+            const panel = document.getElementById(`tab-${this.state.activeTabId}`);
+            const heading = panel?.querySelector('[data-booking-step-panel="4"] .booking-step-heading');
+            this.focusBookingElement(heading || this.getEl('booking-summary'));
+            return;
+        }
+        const panel = document.getElementById(`tab-${this.state.activeTabId}`);
+        const heading = panel?.querySelector(`[data-booking-step-panel="${nextStep}"] .booking-step-heading`);
+        this.focusBookingElement(heading);
+    }
+
+    navigateToBookingStep(requestedStep) {
+        const targetStep = Number.parseInt(requestedStep, 10);
+        if (!Number.isInteger(targetStep) || targetStep < 1 || targetStep > 4) return;
+        if (targetStep <= this.state.currentStep) {
+            this.setBookingStep(targetStep);
+            return;
+        }
+        for (let prerequisite = 1; prerequisite < targetStep; prerequisite++) {
+            const result = this.validateBookingStep(prerequisite);
+            if (result.valid) continue;
+            const issue = result.issue || {};
+            const issueStep = Math.min(4, Math.max(1, issue.step || prerequisite));
+            this.setBookingStep(issueStep, { focus: false });
+            this.showBookingStepIssue(issue);
+            return;
+        }
+        this.setBookingStep(targetStep);
+    }
+
+    bindUIInteractions() {
         const hotelTypeSelect = this.getEl("hotel-room-type");
         if (hotelTypeSelect) {
             hotelTypeSelect.addEventListener("change", (e) => this.populateSpecificHotelRooms(e.target.value));
             this.getEl("hotel-room-name").addEventListener('change', (e) => {
                 if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
                 const opt = e.target.options[e.target.selectedIndex];
-                this.updateHotelInformation(opt);
-                const hotelGuests = this.getEl('hotel-guests');
-                if (hotelGuests) {
-                    hotelGuests.max = String(parseInt(opt.dataset.maxCap, 10) || 1);
-                    if (parseInt(hotelGuests.value, 10) > parseInt(hotelGuests.max, 10)) hotelGuests.value = hotelGuests.max;
-                }
-                // Update summary label with room display (building + room_number)
-                const roomLabel = document.getElementById("sum-ht-room");
-                if (roomLabel) roomLabel.innerText = opt.dataset.display || opt.text.split('(')[0].trim();
-                // Update hotel image from CMS data-img
-                const hotelImg = this.getEl('hotel-img');
-                if (hotelImg && opt.dataset.img) {
-                    hotelImg.style.opacity = '0';
-                    setTimeout(() => { hotelImg.src = opt.dataset.img; hotelImg.style.opacity = '1'; }, 300);
-                }
+                this.updateHotelRoomDisplay(opt);
                 // Fetch booked dates using group info
-                if (opt.dataset.type && opt.dataset.name && this.state.calendars.hotel) {
+                if (opt?.dataset.type && opt?.dataset.name && this.state.calendars.hotel) {
                     this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name, null, false, opt.dataset.roomGroupId || null);
                 }
                 this.calculateSummary();
@@ -574,55 +819,12 @@ class BookingController {
 
         this.getEl('event-venue')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            const venueName = opt.text.split('(')[0].trim();
-            const label = document.getElementById("sum-ev-venue");
-            if (label) label.innerText = venueName;
-            
-            if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
-            this.updateVenueInformation(opt, 'event-venue-description', 'event-venue-amenities');
-
-            // Dynamically update event style dropdown capacities
-            const styleSelect = this.getEl('event-style');
-            if (styleSelect && opt.dataset.theater) {
-                styleSelect.options[0].text = `Theater Style (${opt.dataset.theater} pax)`;
-                styleSelect.options[1].text = `Classroom Style (${opt.dataset.classroom} pax)`;
-                styleSelect.options[2].text = `Banquet Type (${opt.dataset.banquet} pax)`;
-                
-                const guestInput = this.getEl('event-guests');
-                if (guestInput) {
-                    const selectedCapacity = parseInt(opt.dataset[styleSelect.value], 10) || 0;
-                    guestInput.setAttribute('max', selectedCapacity || Math.max(opt.dataset.theater, opt.dataset.classroom, opt.dataset.banquet));
-                }
-            }
-            const styleSelectForCapacity = this.getEl('event-style');
-            const eventGuestInput = this.getEl('event-guests');
-            if (styleSelectForCapacity && eventGuestInput) {
-                styleSelectForCapacity.onchange = () => {
-                    const selectedCapacity = parseInt(opt.dataset[styleSelectForCapacity.value], 10) || 0;
-                    eventGuestInput.setAttribute('max', selectedCapacity || '');
-                };
-                styleSelectForCapacity.dispatchEvent(new Event('change'));
-            }
+            this.updateEventHallSelection(opt, true);
         });
 
         this.getEl('villa-type')?.addEventListener('change', (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            const villaName = opt.text.split('(')[0].trim();
-            const label = document.getElementById("sum-vl-type");
-            if (label) label.innerText = villaName;
-            const extraRateLabel = this.getEl('villa-extra-rate');
-            if (extraRateLabel) extraRateLabel.textContent = this.formatCurrency(parseFloat(opt.dataset.extraPax) || 0);
-            const villaCapacityNote = this.getEl('villa-capacity-note');
-            if (villaCapacityNote) villaCapacityNote.textContent = `Base Capacity: ${parseInt(opt.dataset.baseCap, 10) || 0} Pax | Maximum: ${parseInt(opt.dataset.maxCap, 10) || 0} Pax`;
-            const villaGuests = this.getEl('villa-guests');
-            if (villaGuests) {
-                villaGuests.max = String(parseInt(opt.dataset.maxCap, 10) || 1);
-                if (parseInt(villaGuests.value, 10) > parseInt(villaGuests.max, 10)) villaGuests.value = villaGuests.max;
-            }
-
-            if (this.state.calendars.villa) this.state.calendars.villa.fetchBookedDates('Resort Villa', villaName);
-            this.updateVenueInformation(opt, 'villa-description', 'villa-amenities');
-            this.updateVillaInformation(opt);
+            this.updateVillaSelection(opt, true);
         });
 
         document.querySelectorAll('input[name="event-type"]').forEach(radio => {
@@ -942,21 +1144,165 @@ class BookingController {
         if (activeBtn) this.state.activeTabId = activeBtn.getAttribute('data-tab');
     }
 
-    // Image swap: reads data-img attribute from selected option (CMS-backed)
-    setupImageSwap(selectId, imgId) {
-        const select = this.getEl(selectId);
-        const img = this.getEl(imgId);
-        if (!select || !img) return;
+    syncVenueSelectionDisplays() {
+        const eventSelect = this.getEl('event-venue');
+        this.updateEventHallSelection(eventSelect?.options[eventSelect.selectedIndex], false);
+        const villaSelect = this.getEl('villa-type');
+        this.updateVillaSelection(villaSelect?.options[villaSelect.selectedIndex], false);
+        const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay';
+        this.configureVillaStayMode(stayType, false);
+    }
 
-        select.addEventListener("change", (e) => {
-            const opt = e.target.options[e.target.selectedIndex];
-            const imgSrc = opt.dataset.img || 'assets/img/placeholder.jpg';
-            img.style.opacity = "0";
-            setTimeout(() => {
-                img.src = imgSrc;
-                img.style.opacity = "1";
-            }, 300);
+    updateSelectedItemImage(option, panelId, imageId, placeholderId, itemLabel) {
+        const panel = this.getEl(panelId);
+        const image = this.getEl(imageId);
+        const placeholder = this.getEl(placeholderId);
+        if (!panel || !image || !placeholder) return;
+
+        const name = String(option?.dataset.name || '').trim();
+        const hasSelection = Boolean(name || String(option?.dataset.id || '').trim());
+        const source = String(option?.dataset.img || '').trim();
+        const sourcePath = source.split(/[?#]/, 1)[0].toLowerCase();
+        const hasPhoto = hasSelection && source !== ''
+            && sourcePath !== 'placeholder.jpg' && !sourcePath.endsWith('/placeholder.jpg');
+        panel.hidden = !hasSelection;
+        panel.classList.toggle('no-photo', hasSelection && !hasPhoto);
+        image.hidden = !hasPhoto;
+        image.alt = hasPhoto ? `Photo of ${itemLabel} ${name}` : '';
+        image.onerror = () => {
+            if (image.dataset.source !== source) return;
+            image.hidden = true;
+            panel.classList.add('no-photo');
+            placeholder.textContent = `No photo is available for ${itemLabel} ${name}.`;
+            placeholder.hidden = false;
+        };
+        if (hasPhoto) {
+            image.dataset.source = source;
+            if (image.getAttribute('src') !== source) image.setAttribute('src', source);
+        } else {
+            image.dataset.source = '';
+            image.removeAttribute('src');
+        }
+        placeholder.textContent = hasSelection && !hasPhoto
+            ? `No photo is available for ${itemLabel} ${name}.`
+            : '';
+        placeholder.hidden = !hasSelection || hasPhoto;
+    }
+
+    updateEventHallSelection(option, refreshAvailability) {
+        const hasSelection = Boolean(String(option?.dataset.id || '').trim());
+        const name = hasSelection
+            ? String(option.dataset.name || option.textContent.split('(')[0].trim())
+            : '';
+        const summaryVenue = this.getEl('sum-ev-venue');
+        if (summaryVenue) summaryVenue.textContent = hasSelection ? name : 'Not selected';
+        this.updateVenueInformation(option, 'event-venue-description', 'event-venue-amenities', 'event hall');
+        this.updateSelectedItemImage(option, 'event-image-panel', 'event-img', 'event-image-placeholder', 'event hall');
+
+        const styleSelect = this.getEl('event-style');
+        const guestInput = this.getEl('event-guests');
+        const capacities = ['theater', 'classroom', 'banquet'].map(key => {
+            const raw = String(option?.dataset[key] ?? '').trim();
+            const parsed = Number.parseInt(raw, 10);
+            return raw !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : null;
         });
+        if (styleSelect) {
+            const labels = ['Theater Style', 'Classroom Style', 'Banquet Type'];
+            Array.from(styleSelect.options).forEach((style, index) => {
+                style.textContent = hasSelection && capacities[index] !== null
+                    ? `${labels[index]} (${capacities[index]} pax)`
+                    : labels[index];
+            });
+            styleSelect.onchange = () => this.updateEventGuestLimit(hasSelection, capacities);
+        }
+        this.updateEventGuestLimit(hasSelection, capacities, true);
+
+        const rateRaw = String(option?.value ?? '').trim();
+        const rate = Number.parseFloat(rateRaw);
+        const facts = {
+            'event-base-rate': hasSelection && rateRaw !== '' && Number.isFinite(rate) ? this.formatCurrency(rate) : '—',
+            'event-theater-capacity': capacities[0] ? `${capacities[0]} guests` : '—',
+            'event-classroom-capacity': capacities[1] ? `${capacities[1]} guests` : '—',
+            'event-banquet-capacity': capacities[2] ? `${capacities[2]} guests` : '—'
+        };
+        Object.entries(facts).forEach(([id, value]) => {
+            const fact = this.getEl(id);
+            if (fact) {
+                fact.textContent = value;
+                fact.classList.toggle('fact-placeholder', value === '—');
+            }
+        });
+
+        if (refreshAvailability && hasSelection && this.state.calendars.event) {
+            this.state.calendars.event.fetchBookedDates('Event Hall', name);
+        }
+    }
+
+    updateEventGuestLimit(hasSelection, capacities, fallbackToAvailable = false) {
+        const guestInput = this.getEl('event-guests');
+        const styleSelect = this.getEl('event-style');
+        if (!guestInput) return;
+        if (!hasSelection) {
+            guestInput.removeAttribute('max');
+            const capacityNote = this.getEl('event-capacity-note');
+            if (capacityNote) capacityNote.textContent = 'Select an event hall to view capacity by setup style.';
+            return;
+        }
+        const selectedIndex = ['theater', 'classroom', 'banquet'].indexOf(styleSelect?.value || '');
+        const selectedCapacity = selectedIndex >= 0 ? capacities[selectedIndex] : null;
+        const availableCapacity = capacities.filter(value => value !== null && value > 0);
+        const isSelectingGuests = this.state.currentStep < 3;
+        const maxCapacity = isSelectingGuests
+            ? (availableCapacity.length ? Math.max(...availableCapacity) : null)
+            : (selectedCapacity !== null && selectedCapacity > 0
+                ? selectedCapacity
+                : (fallbackToAvailable && availableCapacity.length ? Math.max(...availableCapacity) : null));
+        if (maxCapacity) guestInput.setAttribute('max', String(maxCapacity));
+        else guestInput.removeAttribute('max');
+        const capacityNote = this.getEl('event-capacity-note');
+        const styleLabels = { theater: 'Theater', classroom: 'Classroom', banquet: 'Banquet' };
+        if (capacityNote && isSelectingGuests) capacityNote.textContent = availableCapacity.length
+            ? 'Guest count must fit the seating style selected in Options.'
+            : 'This event hall has no listed seating capacities.';
+        else if (capacityNote) capacityNote.textContent = selectedCapacity
+            ? `${styleLabels[styleSelect?.value] || 'Selected setup'} capacity: ${selectedCapacity} guests.`
+            : `${styleLabels[styleSelect?.value] || 'Selected setup'} capacity is not listed for this event hall.`;
+    }
+
+    updateVillaSelection(option, refreshAvailability) {
+        const hasSelection = Boolean(String(option?.dataset.id || '').trim());
+        const name = hasSelection
+            ? String(option.dataset.name || option.textContent.split('(')[0].trim())
+            : '';
+        const summaryVilla = this.getEl('sum-vl-type');
+        if (summaryVilla) summaryVilla.textContent = hasSelection ? name : 'Not selected';
+        this.updateVenueInformation(option, 'villa-description', 'villa-amenities', 'villa');
+        this.updateSelectedItemImage(option, 'villa-image-panel', 'villa-img', 'villa-image-placeholder', 'villa');
+        this.updateVillaInformation(option);
+
+        const rateRaw = String(option?.dataset.extraPax ?? '').trim();
+        const extraRate = Number.parseFloat(rateRaw);
+        const extraRateLabel = this.getEl('villa-extra-rate');
+        if (extraRateLabel) extraRateLabel.textContent = hasSelection && rateRaw !== '' && Number.isFinite(extraRate)
+            ? this.formatCurrency(extraRate)
+            : (hasSelection ? 'Rate not listed' : 'configured rate');
+
+        const maxCapacity = Number.parseInt(option?.dataset.maxCap || '', 10);
+        const villaGuests = this.getEl('villa-guests');
+        if (villaGuests) {
+            if (hasSelection && Number.isFinite(maxCapacity) && maxCapacity > 0) {
+                villaGuests.max = String(maxCapacity);
+                if (Number.parseInt(villaGuests.value, 10) > maxCapacity) villaGuests.value = String(maxCapacity);
+            } else if (hasSelection) {
+                villaGuests.removeAttribute('max');
+            } else {
+                villaGuests.max = '1';
+            }
+        }
+
+        if (refreshAvailability && hasSelection && this.state.calendars.villa) {
+            this.state.calendars.villa.fetchBookedDates('Resort Villa', name);
+        }
     }
 
     setupToggle(checkboxId, targetId) {
@@ -967,14 +1313,44 @@ class BookingController {
         }
     }
 
-    populateSpecificHotelRooms(category) {
+    syncHotelRoomSelection() {
+        const typeSelect = this.getEl('hotel-room-type');
+        const roomSelect = this.getEl('hotel-room-name');
+        const category = String(typeSelect?.value || '');
+        if (!roomSelect) return;
+        if (!category) {
+            this.populateSpecificHotelRooms('');
+            return;
+        }
+
+        const existingOption = roomSelect.options[roomSelect.selectedIndex];
+        this.populateSpecificHotelRooms(category, {
+            roomGroupId: existingOption?.dataset.roomGroupId || '',
+            buildingName: existingOption?.dataset.name || ''
+        });
+    }
+
+    populateSpecificHotelRooms(category, requestedSelection = null) {
         if (typeof window.hotelRoomData === "undefined") return;
         const nameSelect = this.getEl("hotel-room-name");
+        if (!nameSelect) return;
+        if (!category) {
+            nameSelect.replaceChildren(new Option('Select category first...', '', true, true));
+            nameSelect.disabled = true;
+            const label = this.getEl("sum-ht-type");
+            if (label) label.textContent = 'Not selected';
+            this.updateHotelRoomDisplay(nameSelect.options[0]);
+            this.calculateSummary();
+            return;
+        }
         const rooms = window.hotelRoomData[category];
-        if (!rooms || !nameSelect) return;
+        if (!rooms) return;
+
+        const requestedGroupId = String(requestedSelection?.roomGroupId || '');
+        const requestedBuilding = String(requestedSelection?.buildingName || '');
 
         nameSelect.innerHTML = '<option value="" disabled selected>Select a building...</option>';
-        rooms.forEach((room) => {
+        (Array.isArray(rooms) ? rooms : []).forEach((room) => {
             const opt = document.createElement("option");
             opt.value = room.nightly_rate;
             opt.dataset.roomGroupId = room.room_group_id || '';
@@ -995,12 +1371,50 @@ class BookingController {
             opt.textContent = `${room.building_name} (${room.total_inventory} Units)`;
             nameSelect.appendChild(opt);
         });
-        nameSelect.disabled = false;
+        nameSelect.disabled = nameSelect.options.length <= 1;
 
-        this.updateHotelInformation(nameSelect.options[nameSelect.selectedIndex]);
-        
         const label = this.getEl("sum-ht-type");
-        if (label) label.innerText = category;
+        if (label) label.textContent = category;
+
+        const restoredOption = Array.from(nameSelect.options).find(option => option.value && (
+            (requestedGroupId && String(option.dataset.roomGroupId || '') === requestedGroupId)
+            || (!requestedGroupId && requestedBuilding && String(option.dataset.name || '') === requestedBuilding)
+        ));
+        if (restoredOption) {
+            nameSelect.selectedIndex = restoredOption.index;
+            if (requestedSelection) {
+                this.updateHotelRoomDisplay(restoredOption);
+                this.state.calendars.hotel?.fetchBookedDates(restoredOption.dataset.type, restoredOption.dataset.name, null, false, restoredOption.dataset.roomGroupId || null);
+                this.calculateSummary();
+            } else {
+                nameSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        } else {
+            nameSelect.selectedIndex = 0;
+            this.updateHotelRoomDisplay(nameSelect.options[0]);
+            this.calculateSummary();
+        }
+    }
+
+    updateHotelRoomDisplay(option) {
+        const hasSelection = Boolean(String(option?.dataset.name || '').trim());
+        this.updateHotelInformation(option);
+
+        const hotelGuests = this.getEl('hotel-guests');
+        if (hotelGuests) {
+            hotelGuests.max = String(hasSelection ? (parseInt(option.dataset.maxCap, 10) || 1) : 1);
+            if (parseInt(hotelGuests.value, 10) > parseInt(hotelGuests.max, 10)) hotelGuests.value = hotelGuests.max;
+        }
+
+        const roomLabel = this.getEl('sum-ht-room');
+        if (roomLabel) roomLabel.textContent = hasSelection ? (option.dataset.display || option.text.split('(')[0].trim()) : 'Not selected';
+        const checkIn = this.getEl('sum-ht-in');
+        const checkOut = this.getEl('sum-ht-out');
+        if (checkIn) checkIn.textContent = hasSelection ? this.formatTime(option.dataset.checkIn) : '—';
+        if (checkOut) checkOut.textContent = hasSelection ? this.formatTime(option.dataset.checkOut) : '—';
+
+        const imagePanel = this.getEl('hotel-image-panel');
+        if (imagePanel) this.updateSelectedItemImage(option, 'hotel-image-panel', 'hotel-img', 'hotel-image-placeholder', 'accommodation');
     }
 
     updateHotelInformation(option) {
@@ -1008,7 +1422,12 @@ class BookingController {
         const amenities = this.getEl('hotel-amenities');
         if (!description || !amenities || !option) return;
 
-        const hasSelection = Boolean(option.value);
+        const hasSelection = Boolean(String(option.dataset.name || '').trim());
+        const hasNightlyRate = option.value !== '' && Number.isFinite(Number(option.value));
+        const hasExtraPaxRate = option.dataset.extraPax !== '' && Number.isFinite(Number(option.dataset.extraPax));
+        const baseCapacity = parseInt(option.dataset.baseCap, 10);
+        const maxCapacity = parseInt(option.dataset.maxCap, 10);
+        const bedCount = parseInt(option.dataset.bedCount, 10);
         const hasDescription = hasSelection && Boolean((option.dataset.description || '').trim());
         description.textContent = hasDescription
             ? option.dataset.description
@@ -1030,11 +1449,11 @@ class BookingController {
         }
 
         const facts = {
-            'hotel-base-capacity': hasSelection ? `${parseInt(option.dataset.baseCap, 10) || 0} guests` : '—',
-            'hotel-max-capacity': hasSelection ? `${parseInt(option.dataset.maxCap, 10) || 0} guests` : '—',
-            'hotel-bed-count': hasSelection ? `${parseInt(option.dataset.bedCount, 10) || 0}` : '—',
-            'hotel-nightly-rate': hasSelection ? this.formatCurrency(option.value) : '—',
-            'hotel-extra-rate-fact': hasSelection ? this.formatCurrency(option.dataset.extraPax) : '—',
+            'hotel-base-capacity': hasSelection && Number.isFinite(baseCapacity) && baseCapacity > 0 ? `${baseCapacity} guests` : '—',
+            'hotel-max-capacity': hasSelection && Number.isFinite(maxCapacity) && maxCapacity > 0 ? `${maxCapacity} guests` : '—',
+            'hotel-bed-count': hasSelection && Number.isFinite(bedCount) && bedCount > 0 ? `${bedCount}` : '—',
+            'hotel-nightly-rate': hasSelection && hasNightlyRate ? this.formatCurrency(option.value) : '—',
+            'hotel-extra-rate-fact': hasSelection && hasExtraPaxRate ? this.formatCurrency(option.dataset.extraPax) : '—',
             'hotel-check-times': hasSelection ? `${this.formatTime(option.dataset.checkIn)} – ${this.formatTime(option.dataset.checkOut)}` : '—'
         };
         Object.entries(facts).forEach(([id, value]) => {
@@ -1085,12 +1504,23 @@ class BookingController {
 
     updateVillaInformation(option) {
         if (!option) return;
-        const hasSelection = Boolean(option.value);
+        const hasSelection = Boolean(String(option.dataset.id || '').trim());
+        const baseCapacity = Number.parseInt(option.dataset.baseCap || '', 10);
+        const maxCapacity = Number.parseInt(option.dataset.maxCap || '', 10);
+        const extraPaxRaw = String(option.dataset.extraPax || '').trim();
+        const extraPaxRate = Number.parseFloat(extraPaxRaw);
+        const dayRateRaw = String(option.value || '').trim();
+        const nightRateRaw = String(option.dataset.overnight || '').trim();
+        const dayRateNumber = Number.parseFloat(dayRateRaw);
+        const nightRateNumber = Number.parseFloat(nightRateRaw);
+        const configuredDayRate = dayRateRaw !== '' && Number.isFinite(dayRateNumber);
+        const configuredNightRate = nightRateRaw !== '' && Number.isFinite(nightRateNumber);
         const facts = {
-            'villa-base-capacity': hasSelection ? `${parseInt(option.dataset.baseCap, 10) || 0} guests` : '—',
-            'villa-max-capacity': hasSelection ? `${parseInt(option.dataset.maxCap, 10) || 0} guests` : '—',
-            'villa-extra-rate-fact': hasSelection ? this.formatCurrency(option.dataset.extraPax) : '—',
-            'villa-private-pool': hasSelection ? (option.dataset.privatePool === '1' ? 'Yes' : 'No') : '—'
+            'villa-base-capacity': hasSelection && Number.isFinite(baseCapacity) && baseCapacity > 0 ? `${baseCapacity} guests` : '—',
+            'villa-max-capacity': hasSelection && Number.isFinite(maxCapacity) && maxCapacity > 0 ? `${maxCapacity} guests` : '—',
+            'villa-extra-rate-fact': hasSelection && extraPaxRaw !== '' && Number.isFinite(extraPaxRate) ? this.formatCurrency(extraPaxRate) : '—',
+            'villa-private-pool': hasSelection && option.dataset.privatePool === '1' ? 'Yes'
+                : (hasSelection && option.dataset.privatePool === '0' ? 'No' : '—')
         };
         Object.entries(facts).forEach(([id, value]) => {
             const fact = this.getEl(id);
@@ -1101,16 +1531,22 @@ class BookingController {
         });
         const capacityNotes = [this.getEl('villa-capacity-note'), this.getEl('villa-capacity-note-guest')];
         capacityNotes.forEach(note => {
-            if (note) note.textContent = hasSelection
-                ? `Maximum capacity: ${parseInt(option.dataset.maxCap, 10) || 0} guests.`
-                : 'Select a villa to view its configured capacity.';
+            if (note) note.textContent = !hasSelection
+                ? 'Select a villa to view its configured capacity.'
+                : (Number.isFinite(maxCapacity) && maxCapacity > 0
+                    ? `Maximum capacity: ${maxCapacity} guests.`
+                    : 'Capacity details are not available for this villa.');
         });
-        const dayRate = hasSelection ? this.formatCurrency(option.value) : '—';
-        const overnightRate = hasSelection ? this.formatCurrency(option.dataset.overnight) : '—';
+        const dayRate = !hasSelection ? '—' : (configuredDayRate ? this.formatCurrency(dayRateNumber) : 'Rate not listed');
+        const overnightRate = !hasSelection ? '—' : (configuredNightRate ? this.formatCurrency(nightRateNumber) : 'Rate not listed');
         const dayDetails = this.getEl('stay-day-details');
         const nightDetails = this.getEl('stay-night-details');
-        if (dayDetails) dayDetails.textContent = `${dayRate} total · One calendar date · ${this.formatTime(option.dataset.dayIn)}–${this.formatTime(option.dataset.dayOut)}`;
-        if (nightDetails) nightDetails.textContent = `${overnightRate} total · One night · checkout next day · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`;
+        if (dayDetails) dayDetails.textContent = hasSelection
+            ? `${dayRate} total · One calendar date · ${this.formatTime(option.dataset.dayIn)}–${this.formatTime(option.dataset.dayOut)}`
+            : 'Select a villa to view rate and hours.';
+        if (nightDetails) nightDetails.textContent = hasSelection
+            ? `${overnightRate} total · One night · checkout next day · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`
+            : 'Select a villa to view rate and hours.';
         this.renderVillaInclusions('stay-day-inclusions', option.dataset.dayInclusions, hasSelection);
         this.renderVillaInclusions('stay-night-inclusions', option.dataset.nightInclusions, hasSelection);
         this.updateVillaStaySelection(document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
@@ -1120,12 +1556,17 @@ class BookingController {
         document.querySelectorAll('.villa-stay-card').forEach(card => {
             card.classList.toggle('selected', card.querySelector('input')?.value === stayType);
         });
+        if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').textContent = stayType === 'Overnight' ? 'Overnight' : 'Day Time Stay';
         const option = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
-        if (!option || !option.value) return;
+        const hasSelection = Boolean(String(option?.dataset.id || '').trim());
+        if (!hasSelection) {
+            if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').textContent = '—';
+            if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').textContent = '—';
+            return;
+        }
         const overnight = stayType === 'Overnight';
         const inTime = overnight ? option.dataset.nightIn : option.dataset.dayIn;
         const outTime = overnight ? option.dataset.nightOut : option.dataset.dayOut;
-        if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = overnight ? 'Overnight' : 'Day Time Stay';
         if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = this.formatTime(inTime);
         if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = this.formatTime(outTime);
     }
@@ -1155,19 +1596,25 @@ class BookingController {
         return true;
     }
 
-    updateVenueInformation(option, descriptionId, amenitiesId) {
+    updateVenueInformation(option, descriptionId, amenitiesId, itemLabel = 'venue') {
         const description = this.getEl(descriptionId);
         const amenities = this.getEl(amenitiesId);
         if (!description || !amenities || !option) return;
-        const hasDescription = Boolean((option.dataset.description || '').trim());
-        description.textContent = hasDescription ? option.dataset.description : 'No additional description is available for this venue.';
+        const hasSelection = Boolean(String(option.dataset.id || option.dataset.name || '').trim());
+        const article = /^[aeiou]/i.test(itemLabel) ? 'an' : 'a';
+        const hasDescription = hasSelection && Boolean((option.dataset.description || '').trim());
+        description.textContent = hasDescription
+            ? option.dataset.description
+            : (hasSelection
+                ? `No additional description is available for this ${itemLabel}.`
+                : `Select ${article} ${itemLabel} to view its description.`);
         description.classList.toggle('venue-description-empty', !hasDescription);
         amenities.replaceChildren();
         const items = (option.dataset.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
         if (!items.length) {
             const empty = document.createElement('li');
             empty.className = 'amenities-empty';
-            empty.textContent = 'No amenities listed.';
+            empty.textContent = hasSelection ? 'No amenities listed.' : `Select ${article} ${itemLabel} to view its amenities.`;
             amenities.appendChild(empty);
             return;
         }
@@ -1201,15 +1648,40 @@ class BookingController {
     }
 
     executeTabVisualSwitch(btn, target) {
-        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-        document.querySelectorAll(".summary-container").forEach(s => s.classList.remove("active"));
+        document.querySelectorAll('[data-booking-tablist] [role="tab"]').forEach(tab => {
+            const selected = tab === btn;
+            tab.classList.toggle('active', selected);
+            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+            tab.tabIndex = selected ? 0 : -1;
+        });
+        document.querySelectorAll(".tab-content").forEach(panel => {
+            const active = panel.id === `tab-${target}`;
+            panel.classList.toggle('active', active);
+            panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+        });
+        document.querySelectorAll(".summary-container").forEach(summary => {
+            const active = summary.id === `sum-${target}`;
+            summary.classList.toggle('active', active);
+            summary.setAttribute('aria-hidden', active ? 'false' : 'true');
+        });
 
-        btn.classList.add("active");
-        this.getEl(`tab-${target}`)?.classList.add("active");
-        this.getEl(`sum-${target}`)?.classList.add("active");
-        
         this.state.activeTabId = target;
+        this.state.currentStep = 1;
+        this.clearBookingStepError();
+        this.updateBookingStepUI();
+        this.updateBookingSubmitLabel();
+    }
+
+    updateBookingSubmitLabel() {
+        const button = this.getEl('btn-proceed');
+        if (!button) return;
+        const labels = {
+            'event-hall': this.auth.isCustomer ? 'SUBMIT EVENT INQUIRY' : 'SIGN IN TO SUBMIT EVENT INQUIRY',
+            'hotel-rooms': this.auth.isCustomer ? 'RESERVE HOTEL ROOM' : 'SIGN IN TO RESERVE A HOTEL ROOM',
+            'resort-villa': this.auth.isCustomer ? 'RESERVE RESORT VILLA' : 'SIGN IN TO RESERVE A RESORT VILLA'
+        };
+        button.textContent = labels[this.state.activeTabId] || 'SUBMIT BOOKING';
+        button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
     }
 
     startTimer(expiresAt) {
@@ -1217,6 +1689,7 @@ class BookingController {
         const expiry = Number(expiresAt || this.state.lockExpiresAt);
         if (!Number.isFinite(expiry) || expiry <= Math.floor(Date.now() / 1000)) {
             this.stopTimerAndReset();
+            this.returnToDatesStep('Your temporary hold expired. Confirm your dates again to continue.');
             showAlert("Hold unavailable", "The temporary hold could not be confirmed. Please choose your dates again.", "error");
             return;
         }
@@ -1236,6 +1709,7 @@ class BookingController {
 
             if (remaining <= 0) {
                 this.stopTimerAndReset();
+                this.returnToDatesStep('Your temporary hold expired. Confirm your dates again to continue.');
                 showAlert("Hold expired", "Your temporary hold has expired. Please confirm your dates again.", "warning");
                 const proceedBtn = this.getEl("btn-proceed");
                 if(proceedBtn) { proceedBtn.disabled = true; proceedBtn.style.opacity = "0.5"; }
@@ -1274,6 +1748,12 @@ class BookingController {
 
         if (this.state.activeCalendar) this.state.activeCalendar.clearSelection();
         this.calculateSummary();
+    }
+
+    returnToDatesStep(message) {
+        this.setBookingStep(2, { focus: false });
+        const calendar = this.getActiveBookingCalendar();
+        this.showBookingStepIssue({ step: 2, message, target: calendar?.container });
     }
 
     async unlockDatesAPI() {
@@ -1732,6 +2212,23 @@ class BookingController {
         const totalValEl = this.getEl('summary-total-val');
         const dueValEl = this.getEl('summary-due-val');
         const pricingSection = this.getEl('pricing-section');
+        const eventEstimateCard = this.getEl('event-estimate-card');
+        const eventEstimateGuidance = this.getEl('event-estimate-guidance');
+        const pricingGuidance = this.getEl('pricing-guidance');
+        const context = this.getTabContextData();
+        const calendarKey = this.state.activeTabId === 'event-hall' ? 'event'
+            : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa');
+        const calendar = this.state.calendars[calendarKey];
+        const hasVenue = this.state.activeTabId === 'hotel-rooms'
+            ? Boolean(context.roomType && context.roomName)
+            : Boolean(context.venueId);
+        const hasDates = this.state.activeTabId === 'hotel-rooms'
+            ? Boolean(calendar?.startDate && calendar?.endDate)
+            : Boolean(calendar?.startDate);
+        const isEventInquiry = this.state.activeTabId === 'event-hall';
+        const eventGuests = Number.parseInt(this.getEl('event-guests')?.value, 10) || 0;
+        const hasRequiredEstimateInputs = !isEventInquiry || !this.getEl('check-catering')?.checked || eventGuests >= 10;
+        const hasPriceInputs = hasVenue && hasDates && hasRequiredEstimateInputs;
 
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
@@ -1741,7 +2238,7 @@ class BookingController {
         
         if (breakdownEl) {
             breakdownEl.replaceChildren();
-            if (this.state.summary.rows.length === 0) {
+            if (hasPriceInputs && this.state.summary.rows.length === 0) {
                 const emptyRow = document.createElement('div');
                 emptyRow.className = 'summary-row';
                 emptyRow.style.color = '#b5884e';
@@ -1763,35 +2260,34 @@ class BookingController {
                 });
             }
         }
-        if (totalValEl) totalValEl.textContent = this.formatCurrency(this.state.summary.total);
+        if (pricingSection) pricingSection.hidden = isEventInquiry || !hasPriceInputs;
+        if (eventEstimateCard) eventEstimateCard.hidden = !isEventInquiry || !hasPriceInputs;
+        if (eventEstimateGuidance) eventEstimateGuidance.hidden = !isEventInquiry || hasPriceInputs;
+        if (pricingGuidance) {
+            pricingGuidance.hidden = isEventInquiry || hasPriceInputs;
+            pricingGuidance.textContent = this.state.activeTabId === 'hotel-rooms'
+                ? 'Choose a room and dates to see your estimate.'
+                : 'Choose a villa and dates to see your estimate.';
+        }
+        if (totalValEl) totalValEl.textContent = hasPriceInputs ? this.formatCurrency(this.state.summary.total) : '—';
         const eventEstimate = this.getEl('event-estimate-total');
-        if (eventEstimate && this.state.activeTabId === 'event-hall') eventEstimate.textContent = this.formatCurrency(this.state.summary.total);
+        if (eventEstimate && isEventInquiry && hasPriceInputs) eventEstimate.textContent = this.formatCurrency(this.state.summary.total);
 
         let activeRadioName = 'hotel-payment';
         let summaryTextId = 'sum-ht-payment'; 
         let schemePct = 1.0;
         let schemeText = '100% Full';
 
-        const proceedBtn = this.getEl("btn-proceed");
-
-        if (this.state.activeTabId === 'event-hall') {
+        if (isEventInquiry) {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
             schemePct = 0; 
-            
-            if (proceedBtn) {
-                proceedBtn.innerText = this.auth.isCustomer ? "SUBMIT EVENT INQUIRY" : "SIGN IN TO SUBMIT INQUIRY";
-                proceedBtn.style.backgroundColor = "var(--color-dark)";
-            }
             if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
-            if (pricingSection) pricingSection.style.display = "none";
 
         } else {
             if (this.getEl("timer-box")) {
                 this.getEl("timer-box").style.display = this.state.isDatesLocked ? "block" : "none";
             }
-            if (pricingSection) pricingSection.style.display = "block";
-
             if (this.state.activeTabId === 'resort-villa') {
                 activeRadioName = 'villa-payment';
                 summaryTextId = 'sum-vl-payment';
@@ -1805,11 +2301,8 @@ class BookingController {
                 }
             });
 
-            if (proceedBtn) {
-                proceedBtn.innerText = this.auth.isCustomer ? "SUBMIT BOOKING" : "SIGN IN TO RESERVE";
-                proceedBtn.style.backgroundColor = "var(--color-gold)";
-            }
         }
+        this.updateBookingSubmitLabel();
 
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
@@ -1817,15 +2310,15 @@ class BookingController {
             this.getEl(summaryTextId).innerText = schemeText; 
         }
 
-        if (dueValEl) dueValEl.textContent = this.formatCurrency(this.state.summary.amountDue);
+        if (dueValEl) dueValEl.textContent = hasPriceInputs ? this.formatCurrency(this.state.summary.amountDue) : '—';
 
         const bundleEstimateEl = this.getEl('event-bundle-estimate');
         const bundleAmountEl = this.getEl('event-bundle-estimate-amount');
         const bundleDiscount = this.state.summary.bundleDiscount;
         if (bundleEstimateEl) {
-            bundleEstimateEl.style.display = this.state.activeTabId === 'event-hall' && bundleDiscount > 0 ? 'block' : 'none';
+            bundleEstimateEl.style.display = isEventInquiry && hasPriceInputs && bundleDiscount > 0 ? 'block' : 'none';
         }
-        if (bundleAmountEl) bundleAmountEl.textContent = this.formatCurrency(bundleDiscount);
+        if (bundleAmountEl) bundleAmountEl.textContent = hasPriceInputs ? this.formatCurrency(bundleDiscount) : '—';
     }
 
     calcHotelMath() {
@@ -1844,6 +2337,8 @@ class BookingController {
         const extraPaxRate = parseFloat(selectedOpt?.dataset.extraPax) || 800;
 
         const extraFee = this.calcExtraPax(this.getEl('hotel-guests'), baseCap, extraPaxRate, this.getEl('hotel-extra-fee'), this.getEl('sum-ht-guests'));
+        const feeSummary = this.getEl('sum-ht-fee');
+        if (feeSummary) feeSummary.textContent = nameSelect?.value ? this.formatCurrency(extraFee) : '—';
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
@@ -1869,6 +2364,9 @@ class BookingController {
     calcEventMath() {
         const days = this.state.calendars.event?.totalNights || 1;
         const venue = this.safeFloat(this.getEl('event-venue')?.value) * days;
+        const guestCount = Number(this.getEl('event-guests')?.value);
+        const guestSummary = this.getEl('sum-ev-guests');
+        if (guestSummary) guestSummary.textContent = Number.isSafeInteger(guestCount) && guestCount > 0 ? String(guestCount) : '--';
         
         this.state.summary.total += venue;
         if (venue > 0) this.appendSummaryRow(`Venue Rate (x${days} days)`, venue);
@@ -1983,6 +2481,8 @@ class BookingController {
         const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
 
         const extraFee = this.calcExtraPax(this.getEl('villa-guests'), villaCap, villaExtraPax, this.getEl('villa-extra-fee'), this.getEl('sum-vl-guests'));
+        const feeSummary = this.getEl('sum-vl-fee');
+        if (feeSummary) feeSummary.textContent = villaSelect?.value ? this.formatCurrency(extraFee) : '—';
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 

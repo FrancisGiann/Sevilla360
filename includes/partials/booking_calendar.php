@@ -1,4 +1,4 @@
-<div class="calendar-ui" id="<?= $calendarId ?>">
+<div class="calendar-ui" id="<?= $calendarId ?>" tabindex="-1" role="group" aria-label="Date selector">
     <div class="cal-header">
         <button type="button" class="cal-nav prev-month">&larr;</button>
         <h4 class="cal-month-year">Month Year</h4>
