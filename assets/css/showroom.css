@@ -3215,10 +3215,10 @@ body.showroom-receptionist-open .showroom-container .details-box {
 }
 .showroom-receptionist.is-chat-open .receptionist-panel-head,
 .showroom-receptionist.is-chat-open .receptionist-message,
-.showroom-receptionist.is-chat-open .receptionist-continue,
-.showroom-receptionist.is-chat-open .receptionist-choices {
+.showroom-receptionist.is-chat-open .receptionist-continue {
   display: none !important;
 }
+.showroom-receptionist.is-chat-open .receptionist-skip { display: none !important; }
 .showroom-receptionist.is-chat-open .receptionist-panel {
   overflow: hidden;
 }
@@ -3297,17 +3297,37 @@ body.showroom-receptionist-open .showroom-container .details-box {
   line-height: 1.4;
 }
 .receptionist-chat-shell.is-gated { opacity: .58; pointer-events: none; }
-.receptionist-chat-transcript {
+.receptionist-chat-conversation {
+  display: flex;
   flex: 1 1 auto;
-  min-height: clamp(5rem, 14svh, 10rem);
-  display: grid;
-  align-content: start;
-  gap: .45rem;
-  max-height: none;
+  flex-direction: column;
+  gap: .65rem;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: .15rem .15rem .55rem;
   scrollbar-width: thin;
+}
+.receptionist-chat-transcript {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  display: grid;
+  align-content: start;
+  gap: .45rem;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+.receptionist-chat-guided-content:empty { display: none; }
+.receptionist-chat-conversation #receptionist-choices {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+  scrollbar-gutter: auto;
 }
 .receptionist-chat-message {
   max-width: 90%;
@@ -3341,8 +3361,13 @@ body.showroom-receptionist-open .showroom-container .details-box {
 }
 .receptionist-chat-inline-link:focus-visible { outline: 3px solid rgba(245, 235, 215, .86); outline-offset: 2px; border-radius: .2rem; }
 .receptionist-chat-status { flex: 0 0 auto; min-height: 1.15rem; margin: .15rem 0; color: rgba(255, 250, 241, .72); font-size: .72rem; }
-.receptionist-chat-quick-replies { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 .55rem; }
+.receptionist-chat-status:empty { display: none; }
+.receptionist-chat-quick-replies { flex: 0 0 auto; display: flex; flex-direction: column; gap: .35rem; margin: .2rem 0 .55rem; }
 .receptionist-chat-quick-replies:empty { display: none; }
+.receptionist-chat-quick-reply-group { display: flex; flex-wrap: wrap; align-items: stretch; gap: .35rem; }
+.receptionist-chat-guided-actions:empty,
+.receptionist-chat-suggested-actions:empty { display: none; }
+.receptionist-chat-category-actions .receptionist-chat-quick-reply { flex: 1 1 0; min-width: 0; padding-inline: .4rem; font-size: .7rem; }
 .receptionist-chat-quick-reply {
   min-height: 2.75rem;
   padding: .45rem .7rem;
@@ -3468,4 +3493,304 @@ body.showroom-receptionist-open .showroom-container .details-box {
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;
   }
+}
+
+/* A selected venue and its conversation share one bounded surface. */
+.showroom-receptionist.is-chat-open .receptionist-panel {
+  background: rgba(20, 16, 12, .98);
+  overflow: hidden;
+}
+
+.showroom-receptionist.is-chat-open .receptionist-panel-head,
+.showroom-receptionist.is-chat-open .receptionist-message,
+.showroom-receptionist.is-chat-open .receptionist-continue {
+  display: none !important;
+}
+.showroom-receptionist.is-chat-open .receptionist-skip { display: none !important; }
+.showroom-receptionist.is-chat-open #receptionist-choices [data-receptionist-chat-start-over] { display: none !important; }
+
+.showroom-receptionist.is-chat-open .receptionist-showcase-title {
+  display: block;
+  margin: 0 0 .2rem;
+  color: #fffaf1;
+  font: 500 clamp(1.25rem, 2vw, 1.75rem)/1.15 var(--font-heading), serif;
+  letter-spacing: -.01em;
+}
+
+@media (min-width: 701px) {
+  .showroom-receptionist.is-chat-open:not(.is-venue-state):not(.is-date-state) .receptionist-panel {
+    position: absolute;
+    top: 50%;
+    right: clamp(1.25rem, 3vw, 3.5rem);
+    bottom: auto;
+    left: clamp(27rem, 34vw, 40rem);
+    display: flex;
+    flex-direction: column;
+    width: auto;
+    height: min(88svh, 48rem);
+    max-height: min(88svh, 48rem);
+    padding: 1.1rem;
+    border: 1px solid rgba(231, 200, 145, .42);
+    border-radius: .6rem;
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .48);
+    transform: translateY(-50%);
+  }
+
+  .showroom-receptionist.is-chat-open:not(.is-venue-state):not(.is-date-state) .receptionist-portrait-wrap {
+    inset: 0 auto 0 0;
+    z-index: 1;
+    width: min(34vw, 38rem);
+    height: 100svh;
+    display: flex;
+    opacity: 1;
+    overflow: hidden;
+    transform: none;
+  }
+
+  .showroom-receptionist.is-chat-open:not(.is-venue-state):not(.is-date-state) .receptionist-chat-shell {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    flex: 1 1 auto;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-panel {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    right: clamp(1.25rem, 3vw, 3.5rem);
+    bottom: auto;
+    left: clamp(27rem, 34vw, 40rem);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: .65rem;
+    width: auto;
+    height: min(88svh, 48rem);
+    max-height: min(88svh, 48rem);
+    padding: 1.1rem;
+    border: 1px solid rgba(231, 200, 145, .42);
+    border-radius: .6rem;
+    box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .48);
+    transform: translateY(-50%);
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-portrait-wrap {
+    inset: 0 auto 0 0;
+    z-index: 1;
+    width: min(34vw, 38rem);
+    height: 100svh;
+    display: flex;
+    opacity: 1;
+    overflow: hidden;
+    transform: none;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-portrait {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    object-position: left bottom;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-shell {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: .9rem;
+  }
+
+  .showroom-receptionist.is-chat-open:not(.is-venue-state) .receptionist-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(92vw, 62rem);
+  }
+
+  .showroom-receptionist.is-chat-open:not(.is-venue-state) .receptionist-chat-shell {
+    width: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-showcase {
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, clamp(10rem, 14vw, 13rem));
+    gap: .35rem .9rem;
+    padding: .15rem 0 .1rem;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-sharp-image {
+    width: 100%;
+    max-width: 13rem;
+    min-height: 0;
+    justify-self: end;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-primary-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .5rem;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-primary-actions .receptionist-choice {
+    min-height: 3rem;
+    font-size: .74rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .showroom-receptionist.is-chat-open:not(.is-venue-state):not(.is-date-state) .receptionist-panel {
+    height: 100svh;
+    max-height: 100svh;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-panel {
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    width: 100%;
+    height: 100svh;
+    max-height: 100svh;
+    padding: max(8.5rem, calc(env(safe-area-inset-top) + 7rem)) max(1rem, env(safe-area-inset-right)) max(.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    border: 0;
+    border-radius: 0;
+    overflow: hidden;
+    transform: none;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-portrait-wrap {
+    inset: 0 auto auto 50%;
+    z-index: 2;
+    width: 6.5rem;
+    height: 8rem;
+    display: flex;
+    align-items: flex-end;
+    opacity: 1;
+    overflow: hidden;
+    transform: translateX(-50%);
+  }
+
+  .showroom-receptionist.is-chat-open:not(.is-venue-state):not(.is-date-state) .receptionist-portrait-wrap {
+    inset: 0 auto auto 50%;
+    width: 6.5rem;
+    height: 8rem;
+    transform: translateX(-50%);
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-portrait {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    object-fit: cover;
+    object-position: 48% 8%;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-shell {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: .65rem;
+    flex: 1 1 auto;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-transcript {
+    min-height: 1.5rem;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-form-actions {
+    align-items: center;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-locale-label {
+    width: auto;
+    flex: 1 1 7rem;
+    margin-right: 0;
+    justify-content: flex-start;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-locale-label select {
+    min-width: 4rem;
+    flex: 1;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-chat-form-actions .receptionist-choice {
+    flex: 1 1 auto;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-showcase {
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 8rem);
+    gap: .35rem .65rem;
+    padding: .1rem 0;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-showcase-copy {
+    order: 1;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-sharp-image {
+    order: 2;
+    width: 100%;
+    max-width: 8rem;
+    min-height: 0;
+    justify-self: end;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-primary-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .35rem;
+  }
+
+  .showroom-receptionist.is-chat-open.is-venue-state .receptionist-primary-actions .receptionist-choice {
+    min-height: 2.75rem;
+    padding: .45rem .35rem;
+    font-size: .75rem;
+    line-height: 1.2;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-description,
+  .showroom-receptionist.is-chat-open .receptionist-rationale {
+    display: block;
+    -webkit-line-clamp: 2;
+  }
+
+  .showroom-receptionist.is-chat-open .receptionist-amenities {
+    display: flex;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Exact guest-count forms use one full-width input and a balanced action row. */
+.receptionist-choices > .receptionist-guest-count-form {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.receptionist-guest-count-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .65rem;
+}
+
+.receptionist-guest-count-actions .receptionist-choice {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 9rem;
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  padding: .6rem .75rem;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.receptionist-guest-count-actions .receptionist-choice-primary {
+  margin-left: auto;
 }

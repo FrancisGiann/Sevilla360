@@ -110,6 +110,17 @@ $checks['six-turn booking sequence is deterministic and accumulates validated sl
     && ($sequenceAnswers[5]['slots']['active_venue_id'] ?? null) === 1
     && ($sequenceAnswers[5]['slots']['occasion'] ?? null) === 'wedding'
     && ($sequenceAnswers[5]['slots']['group_size'] ?? null) === 100;
+$eventCategoryChoice = receptionist_knowledge_reply($knowledgeRecords, 'event hall', 'en');
+$weddingGuidedChoice = receptionist_knowledge_reply($knowledgeRecords, 'wedding', 'en', $eventCategoryChoice['slots'] ?? []);
+$otherGuidedChoice = receptionist_knowledge_reply($knowledgeRecords, 'other event', 'en', ['intent' => 'Event Hall']);
+$fitGuidedChoice = receptionist_knowledge_reply($knowledgeRecords, 'best fit', 'en', ['intent' => 'Hotel Room']);
+$villaGuidedChoice = receptionist_knowledge_reply($knowledgeRecords, 'family', 'en', ['intent' => 'Resort Villa']);
+$checks['guided occasion and preference actions sync deterministic server slots instead of resetting to welcome'] = ($weddingGuidedChoice['slots']['occasion'] ?? null) === 'wedding'
+    && ($weddingGuidedChoice['missing_slots'][0] ?? null) === 'group_size'
+    && str_contains(strtolower($weddingGuidedChoice['reply'] ?? ''), 'how many guests')
+    && ($otherGuidedChoice['slots']['occasion'] ?? null) === 'other'
+    && ($fitGuidedChoice['slots']['preference'] ?? null) === 'best_fit'
+    && ($villaGuidedChoice['slots']['purpose'] ?? null) === 'family';
 $checks['public policy filtering removes internal cancellation and fee details'] = $knowledgeSafePolicy !== null
     && str_contains($knowledgeSafePolicy['text'], 'Public cancellations are reviewed')
     && !str_contains(strtolower($knowledgeSafePolicy['text']), 'processing fee')
@@ -272,6 +283,19 @@ $checks['model clarifying questions survive normalization while factual ask clai
     && !str_contains($unsupportedAsk['reply'] ?? '', 'free Wi-Fi')
     && str_contains($unsupportedAsk['reply'] ?? '', 'venue')
     && !str_contains($mixedClaimAsk['reply'] ?? '', 'We have a pool');
+$helperBaseSlots = ['intent' => 'Event Hall', 'occasion' => 'wedding'];
+$helperVenueAttempt = receptionist_ai_normalize_helper_output([
+    'language' => 'en', 'action' => 'venue', 'reply' => 'Opening venue 999.', 'faq_id' => null,
+    'slots' => ['intent' => 'Hotel Room', 'active_venue_id' => 999], 'quick_replies' => ['Start over'],
+], $db, $helperBaseSlots, $defaults);
+$helperClaimAttempt = receptionist_ai_normalize_helper_output([
+    'language' => 'en', 'action' => 'social', 'reply' => 'We have a pool and free Wi-Fi.', 'faq_id' => null,
+    'slots' => [], 'quick_replies' => [],
+], $db, [], $defaults);
+$checks['optional AI helper cannot change venue navigation or invent resort facts'] = ($helperVenueAttempt['action'] ?? null) === 'ask'
+    && ($helperVenueAttempt['slots'] ?? null) === $helperBaseSlots
+    && ($helperVenueAttempt['quick_replies'] ?? null) === []
+    && ($helperClaimAttempt['reply'] ?? null) === 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?';
 
 $endpoint = $source('actions/public/receptionist_chat.php');
 $resetEndpoint = $source('actions/public/receptionist_chat_reset.php');
@@ -294,7 +318,7 @@ $checks['endpoint is JSON-only POST, CSRF-protected, bounded, and provider-neutr
     && str_contains($endpoint, 'receptionist_ai_message_count')
     && str_contains($endpoint, 'array_slice($history, -16)')
     && str_contains($endpoint, 'receptionist_ai_shortlist_faq')
-    && str_contains($endpoint, 'normalize_output($result[\'payload\'], $conn, $baseSlots, $shortlist')
+    && str_contains($endpoint, 'normalize_helper_output($result[\'payload\'], $conn, $baseSlots, $shortlist')
     && str_contains($endpoint, "'validated_slots'");
 $checks['endpoint answers bounded public knowledge before provider use and passes only a shortlist to prompts'] = str_contains($endpoint, 'receptionist_public_knowledge_records')
     && str_contains($endpoint, 'receptionist_knowledge_reply')
@@ -311,6 +335,13 @@ $checks['endpoint answers bounded public knowledge before provider use and passe
     && str_contains($showroomJs, 'data.booking_continuation === true')
     && str_contains($knowledgeSource, 'RECEPTIONIST_KNOWLEDGE_MAX_RECORDS')
     && str_contains($knowledgeSource, "v.status = 'Available'");
+$providerFailureFallback = strpos($endpoint, 'catch (Throwable $providerError)') ?: false;
+$deterministicFailureReply = strpos($endpoint, '$deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);', $providerFailureFallback ?: 0) ?: false;
+$providerFailureBranch = $providerFailureFallback !== false ? substr($endpoint, $providerFailureFallback, 2500) : '';
+$checks['known deterministic flow remains available after provider timeout'] = $providerFailureFallback !== false
+    && $deterministicFailureReply !== false
+    && str_contains($providerFailureBranch, 'if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, \'provider_unavailable\');')
+    && str_contains($providerFailureBranch, 'receptionist_chat_guided($language, receptionist_chat_guided_copy($language, \'provider_unavailable\')');
 $knowledgeDispatchPosition = strpos($endpoint, 'if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);');
 $providerPosition = strpos($endpoint, '$provider = receptionist_ai_provider();');
 $cheapRateLimitPosition = strpos($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 120, 10)");
@@ -424,9 +455,18 @@ $checks['first typed-chat open seeds a localized virtual receptionist greeting']
     && str_contains($chatJs, 'const selectedLocale')
     && str_contains($chatJs, 'const ensureGreeting')
     && preg_match('/if \(next\) \{\s*ensureGreeting\(\);/s', $chatJs) === 1;
+$checks['fresh chat reconciles old guide state after history and preserves current-page guide actions'] = str_contains($chatJs, 'const hasPriorConversation = stored.messages.some(turn => turn.role === "user");')
+    && str_contains($chatJs, 'options.onFreshChatOpen()')
+    && str_contains($chatJs, 'before revealing chat')
+    && str_contains($showroomJs, 'if (currentPageGuideInteraction) return;')
+    && !str_contains($showroomJs, 'const visibleSelectedVenue =')
+    && str_contains($showroomJs, 'markCurrentPageGuideInteraction();')
+    && str_contains($showroomJs, 'sessionStorage.removeItem("guideContext");')
+    && str_contains($showroomJs, 'renderGreeting({ announce: false });');
 $checks['same-page chat reopen does not duplicate the greeting'] = str_contains($chatJs, 'if (stored.messages.length || transcript.children.length) return;')
     && str_contains($chatJs, 'chatShell.hidden = !next')
-    && str_contains($chatJs, 'setChatOpen(!chatOpen)');
+    && str_contains($chatJs, 'setChatOpen(true)')
+    && str_contains($chatJs, 'if (chatOpen) { setChatOpen(false); return; }');
 $checks['Start over clears server and visible turns and reseeds the greeting'] = str_contains($chatJs, 'conversationGeneration++')
     && str_contains($chatJs, 'requestGeneration !== conversationGeneration')
     && str_contains($chatJs, 'pendingMessage = "";')
@@ -447,7 +487,8 @@ $checks['guided choices remain primary before the secondary chat DOM path'] = $g
 $checks['chat uses an exclusive root mode and keeps closed aria state consistent'] = str_contains($chatJs, 'is-chat-open')
     && str_contains($chatJs, 'const setNonChatMode')
     && str_contains($chatJs, 'gated || !chatOpen ? "true" : "false"')
-    && str_contains($showroomCss, '.showroom-receptionist.is-chat-open .receptionist-choices')
+    && str_contains($chatJs, 'restoreChoicesHome();')
+    && str_contains($showroomCss, '.receptionist-chat-conversation #receptionist-choices')
     && str_contains($showroomCss, 'overflow: hidden;');
 $checks['chat avoids closed-flow mirroring and normalizes stored duplicate turns'] = str_contains($chatJs, 'const normalizeMessages')
     && str_contains($chatJs, 'if (!chatOpen) return;')
@@ -458,15 +499,64 @@ $checks['successful AI action gate events do not collapse active typed chat'] = 
     && str_contains($chatJs, 'if (!next && deferredGate)')
     && str_contains($chatJs, 'setGated(Boolean(event.detail?.gated))');
 $checks['chat panel is compact, dark, bounded, touch-safe, and responsive'] = str_contains($showroomCss, 'background-color: #17120e !important')
-    && str_contains($showroomCss, 'min-height: clamp(5rem, 14svh, 10rem)')
+    && str_contains($showroomCss, '.receptionist-chat-conversation')
+    && str_contains($showroomCss, 'overflow-y: auto;')
     && str_contains($showroomCss, '.receptionist-chat-toggle')
     && str_contains($showroomCss, '.receptionist-chat-form-actions .receptionist-choice { width: auto; flex: 0 0 auto; }')
     && str_contains($showroomCss, 'flex: 1 0 100%')
     && str_contains($showroomCss, '@media (max-width: 700px)');
+$checks['unified panel keeps chat, guided choices, and venue details visible together'] = str_contains($showroomCss, '.showroom-receptionist.is-chat-open .receptionist-panel {')
+    && str_contains($showroomCss, 'height: min(88svh, 48rem)')
+    && str_contains($showroomCss, 'left: clamp(27rem, 34vw, 40rem)')
+    && str_contains($showroomCss, '.receptionist-chat-conversation #receptionist-choices')
+    && str_contains($showroomPhp, 'id="receptionist-chat-guided-content"')
+    && str_contains($chatJs, 'guidedContent.appendChild(choices)')
+    && str_contains($chatJs, 'choicesHomeAnchor.parentNode.insertBefore(choices, choicesHomeAnchor.nextSibling)')
+    && !str_contains($showroomCss, '#receptionist-choices:has(> [data-receptionist-intent])')
+    && !str_contains($showroomCss, '#receptionist-choices:has([data-receptionist-answer])')
+    && str_contains($showroomCss, 'background: rgba(20, 16, 12, .98);')
+    && str_contains($showroomCss, 'flex-direction: column;')
+    && str_contains($showroomJs, 'showcase.dataset.receptionistVenueCard = "true";')
+    && str_contains($showroomJs, 'appendFact(facts, "Capacity"')
+    && str_contains($showroomJs, 'appendFact(facts, "Starting rate"')
+    && str_contains($showroomJs, 'receptionist-amenities')
+    && str_contains($showroomJs, 'const findReceptionistVenue')
+    && str_contains($showroomJs, 'const restoreSelectedVenueCard');
+$checks['stable quick-action IDs drive category switching without duplicate text dispatch'] = str_contains($chatJs, 'button.dataset.receptionistQuickAction')
+    && str_contains($chatJs, 'button.dataset.receptionistChatPrompt')
+    && str_contains($chatJs, 'options.onQuickAction(actionId, prompt => submit(prompt))')
+    && str_contains($chatJs, 'if (chatOpen && event.isTrusted && guided')
+    && str_contains($showroomJs, 'if (category) { markCurrentPageGuideInteraction(); return true; }')
+    && str_contains($chatJs, 'category_event_hall: "event hall"')
+    && str_contains($chatJs, 'category_hotel_room: "hotel room"')
+    && str_contains($chatJs, 'submitCategoryAction(actionId)')
+    && str_contains($chatJs, 'guidedCategory.getAttribute("data-receptionist-intent")')
+    && !str_contains($showroomJs, 'querySelector(`[data-receptionist-intent="${category}"]`)');
+$checks['chat moves the live guided node into one conversation scroll region without mirrored controls'] = str_contains($chatJs, 'moveChoicesIntoChat')
+    && str_contains($chatJs, 'restoreChoicesHome')
+    && str_contains($showroomPhp, 'id="receptionist-choices"')
+    && substr_count($showroomPhp, 'id="receptionist-choices"') === 1
+    && str_contains($showroomJs, 'data-answer-key": key')
+    && str_contains($showroomCss, '.receptionist-chat-conversation #receptionist-choices')
+    && !str_contains($chatJs, 'const guidedReplies =')
+    && !str_contains($chatJs, 'const categoryReplies =');
+$checks['hotel guest-range controls keep their canonical data on the moved guided node'] = str_contains($showroomJs, 'data-answer-key": key')
+    && str_contains($chatJs, 'event.target.closest(".receptionist-choices [data-receptionist-answer]')
+    && str_contains($chatJs, 'moveChoicesIntoChat')
+    && !str_contains($chatJs, 'renderGuidedReplies');
+$checks['retry fallback preserves the fixed category row and inserts Retry in suggestions'] = str_contains($chatJs, 'if (suggestedReplies.children.length >= 4) suggestedReplies.lastElementChild.remove();')
+    && str_contains($chatJs, 'suggestedReplies.appendChild(retry);')
+    && !str_contains($chatJs, 'quickReplies.lastElementChild.remove()');
+$checks['venue cards require exact hotel room-group identity and clear unavailable stale cards'] = str_contains($showroomJs, 'requestedRoomGroupId > 0 && Number(item.room_group_id) === requestedRoomGroupId')
+    && str_contains($showroomJs, 'guideContext.activeRoomGroupId = room.room_group_id ? Number(room.room_group_id) : null;')
+    && str_contains($showroomJs, 'guideContext.activeVenueId = null;')
+    && str_contains($showroomJs, 'Venue not in this showroom')
+    && str_contains($showroomJs, 'Browse available options');
 $checks['expanded chat gives the transcript flexible viewport space without clipping controls'] = str_contains($showroomCss, 'height: min(60svh, 38rem, calc(78svh - 3.5rem))')
     && str_contains($showroomCss, 'flex: 1 1 auto;')
     && str_contains($showroomCss, 'max-height: none;')
-    && str_contains($showroomCss, 'min-height: clamp(5rem, 14svh, 10rem)')
+    && str_contains($showroomCss, '.receptionist-chat-conversation')
+    && str_contains($showroomCss, 'min-height: 0;')
     && str_contains($showroomCss, 'height: min(90svh, calc(100svh - 2rem))');
 $checks['restored hotel context validates values and maps numeric ranges safely'] = str_contains($showroomJs, 'normalizeRestoredGuideContext')
     && str_contains($showroomJs, 'restorableHotelRange')
@@ -648,12 +738,19 @@ $checks['overflow venue identities remain directly selectable while prompts stay
 $switchAnswer = receptionist_knowledge_reply($knowledgeRecords, 'book a hotel for 4 guests on March 14, 2037', 'en', [
     'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100, 'start_date' => '2036-01-01', 'active_venue_id' => 1,
 ]);
+$categoryActionSwitch = receptionist_knowledge_reply($knowledgeRecords, 'hotel room', 'en', [
+    'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100, 'start_date' => '2036-01-01', 'active_venue_id' => 1,
+]);
 $checks['intent switches preserve same-turn details without stale prior-flow slots'] = ($switchAnswer['slots']['intent'] ?? null) === 'Hotel Room'
     && ($switchAnswer['slots']['group_size'] ?? null) === 4
     && ($switchAnswer['slots']['start_date'] ?? null) === '2037-03-14'
     && !array_key_exists('occasion', $switchAnswer['slots'] ?? [])
     && !array_key_exists('active_venue_id', $switchAnswer['slots'] ?? [])
     && ($switchAnswer['slots']['group_size'] ?? null) !== 100;
+$checks['stable hotel category command resets server context before guest follow-up'] = ($categoryActionSwitch['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($categoryActionSwitch['missing_slots'][0] ?? null) === 'group_size'
+    && !array_key_exists('occasion', $categoryActionSwitch['slots'] ?? [])
+    && !array_key_exists('active_venue_id', $categoryActionSwitch['slots'] ?? []);
 $preparedSwitch = receptionist_ai_prepare_knowledge($db, [
     'slots' => ['intent' => 'Hotel Room', 'group_size' => 4, 'start_date' => '2037-03-14'],
     'missing_slots' => ['end_date'], 'quick_replies' => ['Check-out date'],

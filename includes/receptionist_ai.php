@@ -777,6 +777,11 @@ function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $b
     $answer['slots'] = receptionist_ai_validate_slots($conn, $knowledgePatch, $knowledgeValidationBase, $venueCatalog);
     $answer['missing_slots'] = is_array($answer['missing_slots'] ?? null) ? $answer['missing_slots'] : [];
     $answer['quick_replies'] = array_slice(array_values(array_filter($answer['quick_replies'] ?? [], 'is_string')), 0, 4);
+    $allowedQuickActions = ['category_event_hall', 'category_hotel_room', 'category_resort_villa', 'support_faqs', 'venue_details', 'venue_change', 'venue_list', 'start_over'];
+    $answer['quick_actions'] = array_values(array_unique(array_filter(
+        is_array($answer['quick_actions'] ?? null) ? $answer['quick_actions'] : [],
+        static fn($action): bool => is_string($action) && in_array($action, $allowedQuickActions, true)
+    )));
     return $answer;
 }
 
@@ -958,4 +963,37 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
         'missing_slots' => $missingForAction ?: receptionist_ai_missing_slots($slots),
         'quick_replies' => $quickReplies,
     ];
+}
+
+/**
+ * Normalize the optional provider response as a chat-only helper. Booking,
+ * category, venue, date, FAQ, and navigation actions are owned by the
+ * deterministic knowledge and showroom paths.
+ */
+function receptionist_ai_normalize_helper_output(array $payload, mysqli $conn, array $baseSlots, array $faqs, string $fallbackLanguage = 'en', ?array $venueCatalog = null): array
+{
+    $language = in_array($fallbackLanguage, ['en', 'fil', 'taglish'], true) ? $fallbackLanguage : 'en';
+    $action = ($payload['action'] ?? null) === 'social' ? 'social' : 'ask';
+    $payload['action'] = $action;
+    $payload['faq_id'] = null;
+    $payload['slots'] = [];
+    $payload['quick_replies'] = [];
+
+    if ($action === 'social') {
+        $reply = is_string($payload['reply'] ?? null) ? $payload['reply'] : '';
+        $containsResortClaim = preg_match('/₱|\bPHP\s*\d|\b(?:prices?|rates?|cost|capacity|available|availability|located|address|includes?|amenities|pool|wi[- ]?fi|parking|payment|cancell?ation|polic(?:y|ies)|our\s+(?:rooms?|venues?|hotel|villa)|we\s+have|we\s+offer)\b/i', $reply) === 1;
+        if ($containsResortClaim) {
+            $payload['reply'] = match ($language) {
+                'fil' => 'Kumusta! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. Paano kita matutulungan?',
+                'taglish' => 'Hello! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. How can I help you?',
+                default => 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?',
+            };
+        }
+    }
+
+    $normalized = receptionist_ai_normalize_output($payload, $conn, $baseSlots, $faqs, $language, $venueCatalog);
+    $normalized['slots'] = $baseSlots;
+    $normalized['missing_slots'] = [];
+    $normalized['quick_replies'] = [];
+    return $normalized;
 }

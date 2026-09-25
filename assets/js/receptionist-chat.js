@@ -20,9 +20,39 @@
     const chatShell = document.getElementById("receptionist-chat-shell");
     const chatToggle = root.querySelector("[data-receptionist-chat-toggle]");
     const choices = options.choices || document.getElementById("receptionist-choices");
+    const chatConversation = document.getElementById("receptionist-chat-conversation");
+    const guidedContent = document.getElementById("receptionist-chat-guided-content");
     if (!root || !transcript || !form || !input || initializedRoot === root || root.dataset.receptionistChatReady === "true") return;
     initializedRoot = root;
     root.dataset.receptionistChatReady = "true";
+
+    const choicesHome = choices?.parentNode || null;
+    const choicesHomeNext = choices?.nextSibling || null;
+    const choicesHomeAnchor = choicesHome ? document.createComment("receptionist-choices-home") : null;
+    if (choicesHome && choicesHomeAnchor) choicesHome.insertBefore(choicesHomeAnchor, choices);
+    let preferGuidedContent = false;
+    const moveChoicesIntoChat = () => {
+      if (choices && guidedContent && choices.parentNode !== guidedContent) guidedContent.appendChild(choices);
+    };
+    const restoreChoicesHome = () => {
+      if (!choices || !choicesHome) return;
+      if (choicesHomeAnchor?.parentNode) {
+        choicesHomeAnchor.parentNode.insertBefore(choices, choicesHomeAnchor.nextSibling);
+      } else {
+        const next = choicesHomeNext?.parentNode === choicesHome ? choicesHomeNext : null;
+        choicesHome.insertBefore(choices, next);
+      }
+    };
+    const scrollConversationToEnd = () => {
+      const scrollArea = chatConversation || transcript;
+      if (!scrollArea) return;
+      if (preferGuidedContent && choices && guidedContent?.contains(choices)) {
+        const choicesTop = choices.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop;
+        scrollArea.scrollTop = Math.max(0, choicesTop);
+        return;
+      }
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    };
 
     // The visible transcript lives in memory. A bounded, sanitized copy can be
     // restored from the same PHP session after navigation or reload.
@@ -50,10 +80,12 @@
     let serverResetPromise = Promise.resolve();
     let serverHistoryPromise = Promise.resolve();
     let conversationGeneration = 0;
+    let chatOpenGeneration = 0;
+    let pendingChatOpen = false;
     let pendingMessage = "";
     const setNonChatMode = active => {
       root.classList.toggle("is-chat-open", active);
-      [root.querySelector(".receptionist-panel-head"), root.querySelector(".receptionist-message"), document.getElementById("receptionist-continue"), choices].filter(Boolean).forEach(element => {
+      [root.querySelector(".receptionist-panel-head"), root.querySelector(".receptionist-message"), document.getElementById("receptionist-continue")].filter(Boolean).forEach(element => {
         element.setAttribute("aria-hidden", active ? "true" : (element === choices && gated ? "true" : "false"));
         if ("inert" in element && !(element === choices && gated)) element.inert = active;
         element.querySelectorAll("button, a[href], input, select, textarea, [tabindex]").forEach(control => {
@@ -69,12 +101,17 @@
       });
     };
     const setChatOpen = (open, restoreFocus = true) => {
+      chatOpenGeneration++;
       const next = Boolean(open) && !gated;
       chatOpen = next;
+      if (!next) pendingChatOpen = false;
       if (!next && deferredGate) {
         gated = true;
         deferredGate = false;
       }
+      if (!next) preferGuidedContent = false;
+      if (next) moveChoicesIntoChat();
+      else restoreChoicesHome();
       setNonChatMode(next);
       if (chatShell) {
         chatShell.hidden = !next;
@@ -90,7 +127,7 @@
         ensureGreeting();
         window.requestAnimationFrame(() => {
           input.focus();
-          if (transcript) transcript.scrollTop = transcript.scrollHeight;
+          scrollConversationToEnd();
         });
       } else if (restoreFocus && !gated && chatToggle && !chatToggle.hidden) {
         chatToggle.focus();
@@ -208,7 +245,7 @@
         
         transcript.appendChild(bubble);
         while (transcript.children.length > 16) transcript.firstElementChild.remove();
-        transcript.scrollTop = transcript.scrollHeight;
+        scrollConversationToEnd();
 
         let i = 0;
         const typeChar = () => {
@@ -216,7 +253,7 @@
           if (i < content.length) {
             i += 3; // 3 chars per frame = ~180 chars/sec at 60fps
             visibleText.textContent = content.substring(0, i);
-            transcript.scrollTop = transcript.scrollHeight;
+            scrollConversationToEnd();
             requestAnimationFrame(typeChar);
           } else {
              visibleText.textContent = content;
@@ -234,7 +271,7 @@
                  link.textContent = showSupportFaqCta === true ? "View Support & FAQs" : "View all FAQs";
                }
                bubble.appendChild(link);
-               transcript.scrollTop = transcript.scrollHeight;
+               scrollConversationToEnd();
              }
              if (persist) {
                stored.messages = Array.isArray(stored.messages) ? stored.messages : [];
@@ -249,7 +286,7 @@
         bubble.textContent = content;
         transcript.appendChild(bubble);
         while (transcript.children.length > 16) transcript.firstElementChild.remove();
-        transcript.scrollTop = transcript.scrollHeight;
+        scrollConversationToEnd();
         if (persist) {
           stored.messages = Array.isArray(stored.messages) ? stored.messages : [];
           stored.messages.push({ role: normalizedRole, content });
@@ -282,19 +319,78 @@
         messages.forEach(turn => appendMessage(turn.role, turn.content, false, null, false, false));
       } catch (error) {}
     };
-    const renderQuickReplies = items => {
-      quickReplies.replaceChildren();
-      if (!Array.isArray(items)) return;
-      items.slice(0, 4).forEach(item => {
-        const label = typeof item === "string" ? item.trim() : "";
-        if (!label) return;
+    const quickActionLabels = {
+      category_event_hall: "Event",
+      category_hotel_room: "Hotel",
+      category_resort_villa: "Villa",
+      support_faqs: "Support FAQs",
+      venue_details: "See details",
+      venue_change: "Change venue",
+      venue_list: "Browse venues",
+      start_over: "Start over",
+      retry_provider: "Retry"
+    };
+    const suggestedReplies = document.createElement("div");
+    suggestedReplies.className = "receptionist-chat-quick-reply-group receptionist-chat-suggested-actions";
+    suggestedReplies.setAttribute("role", "group");
+    suggestedReplies.setAttribute("aria-label", "Suggested questions");
+    quickReplies.replaceChildren(suggestedReplies);
+    const hasActiveGuidedContent = () => Boolean(choices?.querySelector(
+      "[data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-date-submit], .receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card]"
+    ));
+    const removeRedundantPromptChips = () => {
+      if (!hasActiveGuidedContent()) return;
+      suggestedReplies.querySelectorAll("[data-receptionist-chat-prompt]").forEach(button => button.remove());
+    };
+    const legacyQuickActionIds = {
+      event: "category_event_hall",
+      "event hall": "category_event_hall",
+      hotel: "category_hotel_room",
+      villa: "category_resort_villa",
+      "support faqs": "support_faqs",
+      "see details": "venue_details",
+      "change venue": "venue_change",
+      "see event halls": "venue_list",
+      "browse venues": "venue_list",
+      "start over": "start_over"
+    };
+    const renderQuickReplies = (items, actionIds = []) => {
+      suggestedReplies.replaceChildren();
+      const addedActionIds = new Set();
+      const addAction = id => {
+        if (!["support_faqs", "retry_provider"].includes(id)
+          || !Object.prototype.hasOwnProperty.call(quickActionLabels, id) || addedActionIds.has(id) || suggestedReplies.children.length >= 4) return;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
+        button.dataset.receptionistQuickAction = id;
+        button.textContent = quickActionLabels[id];
+        suggestedReplies.appendChild(button);
+        addedActionIds.add(id);
+      };
+      const addPrompt = prompt => {
+        const label = typeof prompt === "string" ? prompt.trim() : "";
+        if (!label || hasActiveGuidedContent() || suggestedReplies.children.length >= 4) return;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "receptionist-chat-quick-reply";
+        button.dataset.receptionistChatPrompt = label;
         button.textContent = label;
-        quickReplies.appendChild(button);
+        suggestedReplies.appendChild(button);
+      };
+      (Array.isArray(actionIds) ? actionIds : []).forEach(addAction);
+      (Array.isArray(items) ? items : []).slice(0, 4).forEach(item => {
+        const label = typeof item === "string" ? item.trim() : "";
+        if (!label) return;
+        const actionId = legacyQuickActionIds[label.toLowerCase()];
+        if (actionId) addAction(actionId); else addPrompt(label);
       });
+      removeRedundantPromptChips();
     };
+    if (choices && typeof MutationObserver === "function") {
+      const guidedContentObserver = new MutationObserver(removeRedundantPromptChips);
+      guidedContentObserver.observe(choices, { childList: true, subtree: true });
+    }
     let typingShownAt = 0;
     const TYPING_MIN_MS = 800;
     const showTypingIndicator = () => {
@@ -307,7 +403,7 @@
       indicator.setAttribute("aria-label", "Receptionist is typing");
       indicator.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
       transcript.appendChild(indicator);
-      transcript.scrollTop = transcript.scrollHeight;
+      scrollConversationToEnd();
     };
     const waitForTypingMin = () => {
       const elapsed = Date.now() - typingShownAt;
@@ -331,20 +427,21 @@
     };
     const guidedFallback = (data, message, retryable = false) => {
       appendMessage("assistant", message || "I’ll keep the chat open while you choose a venue path below.");
-      renderQuickReplies(Array.isArray(data?.quick_replies) && data.quick_replies.length ? data.quick_replies : ["Event", "Hotel", "Villa", "Support FAQs"]);
+      renderQuickReplies(Array.isArray(data?.quick_replies) ? data.quick_replies : [], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
       if (retryable) {
-        if (quickReplies.children.length >= 4) quickReplies.lastElementChild.remove();
+        if (suggestedReplies.children.length >= 4) suggestedReplies.lastElementChild.remove();
         const retry = document.createElement("button");
         retry.type = "button";
         retry.className = "receptionist-chat-quick-reply receptionist-chat-retry";
-        retry.dataset.receptionistChatRetry = "true";
-        retry.textContent = "Retry";
-        quickReplies.appendChild(retry);
+        retry.dataset.receptionistQuickAction = "retry_provider";
+        retry.textContent = quickActionLabels.retry_provider;
+        suggestedReplies.appendChild(retry);
       }
     };
-    const submit = async message => {
+    const submit = async (message, displayMessage = message) => {
       const clean = String(message || "").trim();
       if (!clean || clean.length > MAX_MESSAGE_LENGTH || form.dataset.busy === "true" || form.dataset.resetting === "true") return;
+      preferGuidedContent = false;
       const requestGeneration = conversationGeneration;
       if (looksSensitive(clean)) {
         setStatus(localeCopy[locale?.value] || localeCopy.en);
@@ -362,7 +459,8 @@
         if (send) send.disabled = false;
         return;
       }
-      appendMessage("user", clean);
+      const visibleMessage = String(displayMessage || clean).trim();
+      appendMessage("user", visibleMessage);
       pendingMessage = clean;
       showTypingIndicator();
       const context = safeContext();
@@ -409,7 +507,7 @@
           const codeCopy = fallbackCopy[code] || fallbackCopy.server_error;
           const last = transcript.lastElementChild;
           if (last?.dataset.role === "user") last.remove();
-          stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === pendingMessage));
+          stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
           input.value = pendingMessage;
           pendingMessage = "";
           guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, codeCopy, code !== "visit_limit");
@@ -427,7 +525,7 @@
           if (fallbackCode && data.retryable !== false) {
             const last = transcript.lastElementChild;
             if (last?.dataset.role === "user") last.remove();
-            stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === clean));
+            stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
             input.value = clean;
             pendingMessage = clean;
           }
@@ -442,14 +540,14 @@
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
           appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true, true, data.show_support_contact_cta === true);
-          renderQuickReplies(data.quick_replies);
+          renderQuickReplies(data.quick_replies, data.quick_actions);
         }
         if (!keptGuidedStatus) setStatus("");
       } catch (error) {
         if (requestGeneration !== conversationGeneration) return;
         const last = transcript.lastElementChild;
         if (last?.dataset.role === "user") last.remove();
-        stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === pendingMessage));
+        stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
         input.value = pendingMessage;
         pendingMessage = "";
         guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, "A network problem interrupted the receptionist. Retry when you’re ready; your message is still here.");
@@ -479,10 +577,21 @@
         return false;
       }
     };
+    const categoryActionCommands = {
+      category_event_hall: "event hall",
+      category_hotel_room: "hotel room",
+      category_resort_villa: "villa"
+    };
+    const submitCategoryAction = actionId => {
+      const command = categoryActionCommands[actionId];
+      if (!command || form.dataset.busy === "true" || form.dataset.resetting === "true") return false;
+      void submit(command);
+      return true;
+    };
 
     serverHistoryPromise = restoreServerHistory();
     setChatOpen(false, false);
-    renderQuickReplies(["Event", "Hotel", "Villa", "Support FAQs"]);
+    renderQuickReplies([], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
     save();
     form.addEventListener("submit", event => { event.preventDefault(); submit(input.value); });
     input.addEventListener("keydown", event => {
@@ -491,31 +600,66 @@
     quickReplies.addEventListener("click", event => {
       const button = event.target.closest(".receptionist-chat-quick-reply");
       if (!button) return;
-      if (button.hasAttribute("data-receptionist-chat-retry")) {
+      const actionId = button.dataset.receptionistQuickAction;
+      if (actionId === "retry_provider") {
         if (pendingMessage) form.requestSubmit();
         else input.focus();
         return;
       }
-      const label = button.textContent.trim();
-      if (typeof options.onQuickReply === "function" && options.onQuickReply(label) === true) return;
-      input.value = label === "Support FAQs" ? "What policies and FAQs can you help with?" : label;
+      if (actionId) {
+        const isCategoryAction = Object.prototype.hasOwnProperty.call(categoryActionCommands, actionId);
+        if (isCategoryAction) suppressDialogueEvents++;
+        const handled = typeof options.onQuickAction === "function" && options.onQuickAction(actionId, prompt => submit(prompt)) === true;
+        if (isCategoryAction) window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
+        if (handled) {
+          if (Object.prototype.hasOwnProperty.call(categoryActionCommands, actionId)) submitCategoryAction(actionId);
+          else if (actionId !== "start_over" && actionId !== "support_faqs") appendMessage("user", button.textContent.trim());
+        }
+        return;
+      }
+      const prompt = button.dataset.receptionistChatPrompt;
+      if (!prompt) return;
+      input.value = prompt;
       form.requestSubmit();
     });
     root.addEventListener("click", event => {
       const toggle = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-toggle]") : null;
-      if (toggle) { setChatOpen(!chatOpen); return; }
+      if (toggle) {
+        if (chatOpen) { setChatOpen(false); return; }
+        if (pendingChatOpen) {
+          pendingChatOpen = false;
+          chatOpenGeneration++;
+          return;
+        }
+        pendingChatOpen = true;
+        const openGeneration = ++chatOpenGeneration;
+        // Guide state is stored separately from chat history. Reconcile it
+        // before revealing chat so stale recommendations never paint beside
+        // a fresh greeting while the history request is still in flight.
+        serverHistoryPromise.then(() => {
+          if (!pendingChatOpen || openGeneration !== chatOpenGeneration || chatOpen) return;
+          pendingChatOpen = false;
+          const hasPriorConversation = stored.messages.some(turn => turn.role === "user");
+          if (!hasPriorConversation && typeof options.onFreshChatOpen === "function") options.onFreshChatOpen();
+          ensureGreeting();
+          setChatOpen(true);
+        });
+        return;
+      }
       const close = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-close]") : null;
       if (close) { setChatOpen(false); return; }
       const target = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-start-over]") : null;
       if (target) {
+        chatOpenGeneration++;
         conversationGeneration++;
+        preferGuidedContent = false;
         serverHistoryPromise = Promise.resolve();
         pendingMessage = "";
         input.value = "";
         removeTypingIndicator();
         stored = { messages: [], context: {} };
         transcript.replaceChildren();
-        renderQuickReplies(["Event", "Hotel", "Villa", "Support FAQs"]);
+        renderQuickReplies([], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
         form.dataset.resetting = "true";
         serverResetPromise = resetServerSession().finally(() => { delete form.dataset.resetting; });
         if (typeof options.onStartOver === "function") {
@@ -526,8 +670,22 @@
         if (chatOpen) input.focus();
         return;
       }
-      const guided = event.target instanceof Element ? event.target.closest(".receptionist-choices [data-receptionist-intent], .receptionist-choices [data-receptionist-answer], .receptionist-choices [data-receptionist-group-submit]") : null;
-      if (chatOpen && guided && guided.textContent.trim()) appendMessage("user", guided.textContent.trim());
+      const guidedCategory = event.target instanceof Element ? event.target.closest(".receptionist-choices [data-receptionist-intent]") : null;
+      if (chatOpen && event.isTrusted && guidedCategory) {
+        const actionId = {
+          "Event Hall": "category_event_hall",
+          "Hotel Room": "category_hotel_room",
+          "Resort Villa": "category_resort_villa"
+        }[guidedCategory.getAttribute("data-receptionist-intent")];
+        if (actionId) {
+          suppressDialogueEvents++;
+          submitCategoryAction(actionId);
+          window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
+        }
+        return;
+      }
+      const guided = event.target instanceof Element ? event.target.closest(".receptionist-choices [data-receptionist-answer], .receptionist-choices [data-receptionist-group-submit]") : null;
+      if (chatOpen && event.isTrusted && guided && guided.textContent.trim()) appendMessage("user", guided.textContent.trim());
     });
     root.addEventListener("keydown", event => {
       if (event.key !== "Escape" || !chatOpen || !chatShell?.contains(document.activeElement)) return;
@@ -539,7 +697,10 @@
       if (suppressDialogueEvents > 0) { suppressDialogueEvents--; return; }
       if (!chatOpen) return;
       const message = event.detail && typeof event.detail.message === "string" ? event.detail.message : "";
-      if (message) appendMessage("assistant", message);
+      if (message) {
+        preferGuidedContent = Boolean(choices && guidedContent?.contains(choices));
+        appendMessage("assistant", message);
+      }
     });
     window.addEventListener("SevillaReceptionistGateChanged", event => setGated(Boolean(event.detail?.gated)));
     window.addEventListener("SevillaReceptionistClosed", () => setChatOpen(false, false));

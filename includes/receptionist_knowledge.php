@@ -675,14 +675,30 @@ function receptionist_knowledge_booking_venue(array $records, string $message, ?
             foreach ($record['items'] as $indexedVenue) if (is_array($indexedVenue)) $venueRecords[] = $indexedVenue;
         }
     }
-    $best = null;
+    $bestMatches = [];
     $bestScore = 0;
     foreach ($venueRecords as $record) {
         if (($record['kind'] ?? null) !== 'venue' || ($category !== null && ($record['category'] ?? null) !== $category)) continue;
         $name = receptionist_knowledge_normalized_phrase((string)($record['name'] ?? ''));
         $roomType = receptionist_knowledge_normalized_phrase((string)($record['room_type'] ?? ''));
         if (in_array($name, ['event', 'event hall', 'venue', 'hall', 'hotel', 'room', 'villa'], true)) continue;
-        if ($name !== '' && str_contains($messageText, ' ' . $name . ' ')) return $record;
+        $identity = (string)($record['venue_id'] ?? '') . '|' . (string)($record['room_group_id'] ?? '');
+        $compositeName = trim($name . ' ' . $roomType);
+        if ($compositeName !== '' && $roomType !== '' && str_contains($messageText, ' ' . $compositeName . ' ')) {
+            if ($bestScore !== PHP_INT_MAX) $bestMatches = [];
+            $bestMatches[$identity] = $record;
+            $bestScore = PHP_INT_MAX;
+            continue;
+        }
+        if ($bestScore !== PHP_INT_MAX && $name !== '' && str_contains($messageText, ' ' . $name . ' ')) {
+            if ($category !== 'Hotel Room') return $record;
+            // A hotel name can map to several sellable room groups. Never
+            // silently choose the first group when the visitor has not named it.
+            $bestMatches[$identity] = $record;
+            $bestScore = max($bestScore, 1);
+            continue;
+        }
+        if ($bestScore === PHP_INT_MAX) continue;
         $aliases = array_values(array_unique(array_filter([$name, preg_replace('/\b(?:hall|room|villa|hotel)\b/', '', $name) ?: '', $roomType])));
         foreach ($aliases as $alias) {
             $alias = trim($alias);
@@ -691,15 +707,23 @@ function receptionist_knowledge_booking_venue(array $records, string $message, ?
             $matched = count($aliasTokens) > 1
                 ? str_contains($messageText, ' ' . $alias . ' ')
                 : in_array($alias, $messageTokens, true);
-            if ($matched && count($aliasTokens) > $bestScore) { $best = $record; $bestScore = count($aliasTokens); }
+            if ($matched && count($aliasTokens) >= $bestScore) {
+                if (count($aliasTokens) > $bestScore) $bestMatches = [];
+                $bestMatches[$identity] = $record;
+                $bestScore = count($aliasTokens);
+            }
             if (!$matched && count($aliasTokens) === 1 && strlen($alias) >= 5) {
                 foreach ($messageTokens as $token) {
-                    if (abs(strlen($token) - strlen($alias)) <= 1 && levenshtein($token, $alias) <= 1) { $best = $record; $bestScore = max($bestScore, 1); break; }
+                    if (abs(strlen($token) - strlen($alias)) <= 1 && levenshtein($token, $alias) <= 1) {
+                        if ($bestScore <= 1) $bestMatches[$identity] = $record;
+                        $bestScore = max($bestScore, 1);
+                        break;
+                    }
                 }
             }
         }
     }
-    return $best;
+    return count($bestMatches) === 1 ? reset($bestMatches) : null;
 }
 
 function receptionist_knowledge_booking_continuation(array $records, string $message, string $language, array $baseSlots, array $route, ?string $category): ?array
@@ -725,9 +749,12 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         ];
     }
     $normalizedMessage = receptionist_knowledge_normalized_phrase($message);
-    $venueBookingSignal = $venue !== null && ($normalizedMessage === receptionist_knowledge_normalized_phrase((string)($venue['name'] ?? ''))
+    $venueName = receptionist_knowledge_normalized_phrase((string)($venue['name'] ?? ''));
+    $venueRoomIdentity = receptionist_knowledge_normalized_phrase(trim((string)($venue['name'] ?? '') . ' ' . (string)($venue['room_type'] ?? '')));
+    $venueBookingSignal = $venue !== null && ($normalizedMessage === $venueName
+        || (($venue['category'] ?? null) === 'Hotel Room' && $normalizedMessage === $venueRoomIdentity)
         || preg_match('/\b(?:want|book|reserve|choose|select|view|show|looking|gusto|mag-?book|i\s+want)\b/i', $lower) === 1);
-    $shortLabel = preg_match('/^\s*(?:event|venue|hall|hotel|room|villa|wedding|birthday|corporate)\s*[.!?]*\s*$/i', $message) === 1;
+    $shortLabel = preg_match('/^\s*(?:(?:a|an|the)\s+)?(?:event(?:\s+hall)?|venue|hall|hotel(?:\s+room)?|room|villa|wedding|birthday|corporate)\s*[.!?]*\s*$/i', $message) === 1;
     $bookingSignal = ($route['kind'] ?? null) === 'booking'
         || $shortLabel
         || $groupSize !== null
@@ -735,6 +762,9 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         || $venueBookingSignal
         || preg_match('/(?:\b(?:hotel|room)\b[^.!?\n]{0,24}\b(?:budget|cheap|cheapest|mura|save)\b|\b(?:budget|cheap|cheapest|mura|save)\b[^.!?\n]{0,24}\b(?:hotel|room)\b)/i', $lower) === 1
         || preg_match('/(?:\bvilla\b[^.!?\n]{0,24}\b(?:family|private|relax)\b|\b(?:family|private|relax)\b[^.!?\n]{0,24}\bvilla\b)/i', $lower) === 1
+        || (($baseSlots['intent'] ?? null) === 'Event Hall' && preg_match('/\bother\b/i', $lower) === 1)
+        || (($baseSlots['intent'] ?? null) === 'Hotel Room' && preg_match('/\b(?:best\s*fit|fit|match|comfort|higher|premium|deluxe)\b/i', $lower) === 1)
+        || (($baseSlots['intent'] ?? null) === 'Resort Villa' && preg_match('/\b(?:relax|relaxation|rest|family|kids|children|private|privacy)\b/i', $lower) === 1)
         || preg_match('/\b(?:i|we|want|need|gusto|looking)\b[^.!?\n]{0,32}\b(?:wedding|birthday|corporate|celebration|kasal|marriage)\b/i', $lower) === 1
         || (($baseSlots['intent'] ?? null) !== null && preg_match('/\b(?:wedding|birthday|corporate|celebration|kasal|marriage)\b/i', $lower) === 1);
     if (!$bookingSignal) return null;
@@ -749,6 +779,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         if (preg_match('/\b(?:wedding|kasal|marriage)\b/i', $lower)) $patch['occasion'] = 'wedding';
         elseif (preg_match('/\b(?:birthday|party|celebration|celebrate)\b/i', $lower)) $patch['occasion'] = 'celebration';
         elseif (preg_match('/\b(?:corporate|company|seminar|conference)\b/i', $lower)) $patch['occasion'] = 'corporate';
+        elseif (preg_match('/\bother\b/i', $lower)) $patch['occasion'] = 'other';
     } elseif ($intent === 'Hotel Room') {
         if (preg_match('/\b(?:lowest|low|save|cheapest|budget|mura)\b/i', $lower)) $patch['preference'] = 'save';
         elseif (preg_match('/\b(?:best\s*fit|fit|match)\b/i', $lower)) $patch['preference'] = 'best_fit';
@@ -776,7 +807,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     }
     if ($venueBookingSignal) {
         $name = (string)($venue['name'] ?? 'That venue');
-        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'venue', 'reply' => $language === 'fil' ? "Pinili mo ang {$name}. Bubuksan ko ang venue details para ma-review mo." : "{$name} selected. I’ll open the venue details for you to review.", 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => ['See details', 'Change venue', 'Start over']];
+        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'venue', 'reply' => $language === 'fil' ? "Pinili mo ang {$name}. Bubuksan ko ang venue details para ma-review mo." : "{$name} selected. I’ll open the venue details for you to review.", 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['venue_details', 'venue_change', 'start_over']];
     }
     $missing = [];
     if (($slots['intent'] ?? null) === 'Event Hall' && !array_key_exists('occasion', $slots)) $missing[] = 'occasion';
@@ -813,7 +844,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         $venueLabel = ($slots['intent'] ?? null) === 'Hotel Room' ? 'hotel room' : (($slots['intent'] ?? null) === 'Resort Villa' ? 'resort villa' : 'event hall');
         $reply = $language === 'fil' ? "Kumpleto na ang pangunahing details. Pumili ng {$venueLabel} o sabihin ang pangalan nito para makita." : "I have the main details. Choose a {$venueLabel}, or tell me its name to view it.";
     }
-    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => $next === 'active_venue_id' ? ['Infinity Hall', 'See event halls', 'Change date', 'Start over'] : [$nextLabel, 'Start over']];
+    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => $next === 'active_venue_id' ? [] : [$nextLabel], 'quick_actions' => $next === 'active_venue_id' ? ['venue_list', 'start_over'] : ['start_over']];
 }
 
 function receptionist_knowledge_select(array $records, string $message, int $limit = 8): array
@@ -1047,6 +1078,52 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     }
     $venueId = receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null);
     $roomGroupId = receptionist_knowledge_positive_int($baseSlots['active_room_group_id'] ?? null);
+    $selectedContextVenue = $venueId !== null
+        ? receptionist_knowledge_find_records($records, 'venue', [], $category, $venueId, $roomGroupId, 2)
+        : [];
+    $explicitDetailsIntent = preg_match('/\b(?:see\s+(?:the\s+)?details?|show\s+(?:the\s+)?details?|more\s+details?|tell\s+me\s+more|view\s+(?:the\s+)?details?|open\s+(?:it|the\s+venue))\b/i', $lower) === 1;
+    $cardRevealIntent = preg_match('/^\s*where(?:\s+is\s+(?:it|that|this|the\s+venue|the\s+selected\s+venue))?\s*[?.!]*\s*$/i', $lower) === 1;
+    $locationQuestion = preg_match('/\b(?:address|location|located|directions?|saan|nasaan|paano\s+pumunta|direksyon|lokasyon)\b/i', $lower) === 1;
+    if (!$locationQuestion && preg_match('/\bwhere\s+(?:is|are|can\s+i\s+find)\b/i', $lower) === 1 && count($selectedContextVenue) === 1) {
+        $selectedName = receptionist_knowledge_lower((string)($selectedContextVenue[0]['name'] ?? ''));
+        $selectedRoomType = receptionist_knowledge_lower((string)($selectedContextVenue[0]['room_type'] ?? ''));
+        $locationQuestion = ($selectedName !== '' && preg_match('/\b' . preg_quote($selectedName, '/') . '\b/i', $lower) === 1)
+            || ($selectedRoomType !== '' && preg_match('/\b' . preg_quote($selectedRoomType, '/') . '\b/i', $lower) === 1);
+    }
+    $detailIntent = $explicitDetailsIntent || ($cardRevealIntent && !$locationQuestion);
+    if ($detailIntent && $venueId !== null) {
+        $selected = $selectedContextVenue;
+        if (count($selected) === 1 && ($category !== 'Hotel Room' || $roomGroupId !== null)) {
+            $name = (string)($selected[0]['name'] ?? 'The selected venue');
+            $roomType = trim((string)($selected[0]['room_type'] ?? ''));
+            if ($roomType !== '') $name .= ' — ' . $roomType;
+            return [
+                'mode' => 'knowledge',
+                'booking_continuation' => true,
+                'action' => 'venue',
+                'reply' => $language === 'fil' ? "Narito ang detalye ng napili mong {$name}." : "Here are the details for {$name}.",
+                'faq_id' => null,
+                'slots' => $baseSlots,
+                'missing_slots' => [],
+                'quick_replies' => [],
+                'quick_actions' => ['venue_details', 'venue_change', 'start_over'],
+            ];
+        }
+    }
+    if ($locationQuestion && count($selectedContextVenue) === 1) {
+        $contact = array_values(array_filter($records, static fn(array $record): bool => ($record['kind'] ?? null) === 'contact'))[0] ?? null;
+        $address = is_array($contact['contact'] ?? null) ? trim((string)($contact['contact']['address'] ?? '')) : '';
+        if ($address !== '') {
+            return [
+                'action' => 'ask',
+                'reply' => $prefix['contact'] . "\nAddress: " . $address,
+                'faq_id' => null,
+                'slots' => $baseSlots,
+                'missing_slots' => [],
+                'quick_replies' => [],
+            ];
+        }
+    }
     $venues = receptionist_knowledge_find_records($records, 'venue', $tokens, $category, $venueId, $roomGroupId, 6);
     if (!$venues && $venueId !== null) $venues = receptionist_knowledge_find_records($records, 'venue', $tokens, $category, $venueId, null, 6);
     $mentionedVenues = array_values(array_filter($records, static function (array $record) use ($lower, $category, $venueId, $roomGroupId): bool {

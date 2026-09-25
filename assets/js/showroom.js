@@ -1160,6 +1160,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const receptionistPanel = receptionistRoot.querySelector(".receptionist-panel");
     const categoryLabels = { "Event Hall": "event", "Hotel Room": "hotel", "Resort Villa": "villa" };
     const guideContext = { intent: null, occasion: null, purpose: null, groupSize: null, groupSizeExact: null, preference: null, startDate: null, endDate: null, activeVenueId: null, activeRoomGroupId: null };
+    let currentPageGuideInteraction = false;
+    const markCurrentPageGuideInteraction = () => { currentPageGuideInteraction = true; };
     const restorableGuideIntents = new Set(["Event Hall", "Hotel Room", "Resort Villa"]);
     const restorableGuideRanges = new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]);
     const restorablePositiveId = value => {
@@ -1827,8 +1829,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     const resetGuideScroll = () => {
-      if (receptionistPanel) receptionistPanel.scrollTop = 0;
-      if (receptionistChoices) receptionistChoices.scrollTop = 0;
+      const chatOpen = receptionistRoot.classList.contains("is-chat-open");
+      if (receptionistPanel && !chatOpen) receptionistPanel.scrollTop = 0;
+      if (receptionistChoices && !chatOpen) receptionistChoices.scrollTop = 0;
+      const chatConversation = document.getElementById("receptionist-chat-conversation");
+      if (chatOpen && chatConversation) chatConversation.scrollTop = chatConversation.scrollHeight;
     };
     const setChoicesGated = gated => {
       guideState.dialogueChoicesRevealed = !gated;
@@ -2070,9 +2075,12 @@ document.addEventListener("DOMContentLoaded", () => {
         error.setAttribute("role", "alert");
         error.hidden = true;
         const continueButton = createChoice("Continue", "receptionist-choice-primary", { "data-receptionist-group-submit": "true" });
-        form.append(inputLabel, input, error, continueButton);
+        const actions = document.createElement("div");
+        actions.className = "receptionist-guest-count-actions";
+        actions.append(createBackChoice(), continueButton);
+        form.append(inputLabel, input, error, actions);
         form.addEventListener("submit", event => { event.preventDefault(); continueButton.click(); });
-        receptionistChoices.append(form, createBackChoice());
+        receptionistChoices.append(form);
         window.setTimeout(() => input.focus(), 0);
         return;
       }
@@ -2596,6 +2604,11 @@ document.addEventListener("DOMContentLoaded", () => {
       guideState.includedPage = 0;
       receptionistState.activeRoomId = room.id;
       const category = receptionistState.activeCategory || room.category;
+      receptionistState.activeCategory = category;
+      guideContext.intent = category;
+      guideContext.activeVenueId = Number(room.venue_id);
+      guideContext.activeRoomGroupId = room.room_group_id ? Number(room.room_group_id) : null;
+      saveGuideContext();
       activeRationale = room.room_group_id && room.reasons?.[0]
         ? `${room.reasons[0].label}: ${room.reasons[0].value}`
         : rationaleFor(room, category, guideContext.groupSize, guideContext.preference, guideContext.occasion || guideContext.purpose);
@@ -2604,8 +2617,15 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistChoices.replaceChildren();
       const showcase = document.createElement("div");
       showcase.className = "receptionist-showcase";
+      showcase.dataset.receptionistVenueCard = "true";
+      showcase.dataset.venueId = String(room.venue_id || "");
+      if (room.room_group_id) showcase.dataset.roomGroupId = String(room.room_group_id);
       const overview = document.createElement("div");
       overview.className = "receptionist-showcase-copy";
+      const title = document.createElement("h3");
+      title.className = "receptionist-showcase-title";
+      title.textContent = room.title || room.venue_name || "Venue details";
+      overview.appendChild(title);
       const description = document.createElement("p");
       description.className = "receptionist-description";
       description.textContent = guideFact(room.description, `Explore this ${categoryLabels[room.category] || "venue"} in the Sevilla360 showroom.`);
@@ -2745,6 +2765,31 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistPhotoIndex = Math.max(0, Math.min(receptionistPhotoIndex, images.length ? images.length - 1 : 0));
       setBackdrop(room, receptionistPhotoIndex);
       renderVenueOverview(room);
+    };
+    const findReceptionistVenue = (venueId, category, roomGroupId = null) => {
+      const requestedVenueId = Number(venueId || 0);
+      const requestedRoomGroupId = Number(roomGroupId || 0);
+      if (!Number.isSafeInteger(requestedVenueId) || requestedVenueId < 1 || !category) return null;
+      return Object.values(dataMap).find(item => Number(item.venue_id) === requestedVenueId
+        && item.category === category
+        && (category === "Hotel Room"
+          ? requestedRoomGroupId > 0 && Number(item.room_group_id) === requestedRoomGroupId
+          : !item.room_group_id)) || null;
+    };
+    const restoreSelectedVenueCard = () => {
+      const category = guideContext.intent;
+      const room = findReceptionistVenue(guideContext.activeVenueId, category, guideContext.activeRoomGroupId);
+      if (!room) {
+        guideContext.activeVenueId = null;
+        guideContext.activeRoomGroupId = null;
+        saveGuideContext();
+        return false;
+      }
+      receptionistState.activeCategory = category;
+      receptionistState.activeRoomId = room.id;
+      activateVenue(room.id);
+      renderVenue(room);
+      return true;
     };
     const renderVenueMenu = room => {
       receptionistRoot.classList.add("is-venue-state");
@@ -2936,6 +2981,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.dispatchEvent(new CustomEvent("SevillaReceptionistOpening"));
       receptionistState.previousFocus = opener instanceof HTMLElement ? opener : receptionistReopen;
       const isInitialGreeting = !receptionistState.hasOpened;
+      const hasRestoredVenue = Boolean(findReceptionistVenue(guideContext.activeVenueId, guideContext.intent, guideContext.activeRoomGroupId));
       receptionistState.isOpen = true; receptionistState.hasOpened = true; receptionistState.entranceSettled = false; receptionistReopen.hidden = true;
       receptionistSoundButtons.filter(button => button !== receptionistRoot.querySelector("[data-receptionist-sound-toggle]")).forEach(button => { button.hidden = true; });
       restoreGuideFocus();
@@ -2945,7 +2991,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!isInitialGreeting) receptionistRoot.classList.add("is-reopening");
       // Build the greeting under the hidden root with its entrance state
       // already active, so stale content never paints before the reveal.
-      renderGreeting({ announce: !isInitialGreeting, requireContinue: isInitialGreeting, entrance: true });
+      renderGreeting({ announce: !isInitialGreeting, requireContinue: isInitialGreeting && !hasRestoredVenue, entrance: true });
+      const restoredVenueCard = restoreSelectedVenueCard();
+      if (restoredVenueCard) {
+        window.clearTimeout(guideState.dialogueRevealTimer);
+        guideState.dialogueRequiresContinue = false;
+        guideState.dialogueRevealComplete = true;
+        if (receptionistContinue) receptionistContinue.hidden = true;
+        revealDialogueChoices();
+      }
       receptionistRoot.hidden = false;
       document.body.classList.add("showroom-receptionist-open"); document.documentElement.classList.add("showroom-receptionist-open"); setBackgroundInert(true);
       focusGuideDialog();
@@ -2999,16 +3053,33 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
     };
+    const selectReceptionistCategory = category => {
+      if (!new Set(["Event Hall", "Hotel Room", "Resort Villa"]).has(category)) return false;
+      markCurrentPageGuideInteraction();
+      resetContext();
+      Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
+      guideContext.intent = category;
+      receptionistState.activeCategory = category;
+      receptionistState.activeRoomId = null;
+      saveGuideContext();
+      renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize");
+      focusFirstChoice();
+      return true;
+    };
     const applyReceptionistChatAction = result => {
       if (result && result.reset_context === true) {
+        currentPageGuideInteraction = false;
         Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
         try { sessionStorage.removeItem("guideContext"); } catch (error) {}
         receptionistState.activeCategory = null;
+        receptionistState.activeRoomId = null;
       }
       const slots = result && result.slots && typeof result.slots === "object" ? result.slots : {};
+      if (restorableGuideIntents.has(slots.intent)) markCurrentPageGuideInteraction();
       const category = slots.intent || receptionistState.activeCategory;
       if (slots.intent && guideContext.intent !== slots.intent) {
         ["occasion", "purpose", "groupSize", "groupSizeExact", "preference", "startDate", "endDate", "activeVenueId", "activeRoomGroupId"].forEach(key => { guideContext[key] = null; });
+        receptionistState.activeRoomId = null;
       }
       if (slots.intent) guideContext.intent = slots.intent;
       ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
@@ -3026,10 +3097,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (category) receptionistState.activeCategory = category;
       saveGuideContext();
       if (result.action === "venue" && slots.active_venue_id) {
-        const room = Object.values(dataMap).find(item => Number(item.venue_id) === Number(slots.active_venue_id)
-          && (!slots.active_room_group_id || Number(item.room_group_id) === Number(slots.active_room_group_id)));
+        const room = findReceptionistVenue(slots.active_venue_id, category, slots.active_room_group_id);
         if (room) { receptionistState.activeRoomId = room.id; activateVenue(room.id); renderVenue(room); return true; }
-        setDialogue("Venue unavailable", "That venue is not available in the current showroom. Please choose another option.");
+        receptionistState.activeRoomId = null;
+        guideContext.activeVenueId = null;
+        guideContext.activeRoomGroupId = null;
+        saveGuideContext();
+        receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue", "is-hotel-results", "is-date-state");
+        setDialogue("Venue not in this showroom", "That selected option has no matching showroom card right now. Browse the available options or start a new search.");
+        receptionistChoices.replaceChildren(
+          createChoice("Browse available options", "receptionist-choice-primary", { "data-receptionist-chat-browse-category": "true" }),
+          createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
+        );
         return true;
       }
       if (result.action === "availability") { checkGuideAvailability(); return true; }
@@ -3071,21 +3150,63 @@ document.addEventListener("DOMContentLoaded", () => {
           const bookingContinuation = data && data.booking_continuation === true;
           applyReceptionistChatAction({ ...(data || {}), action: bookingContinuation ? data.action : "knowledge" });
         },
-        onQuickReply: label => {
-          const category = { Event: "Event Hall", Hotel: "Hotel Room", Villa: "Resort Villa" }[label];
-          if (!category) return false;
-          const choice = receptionistChoices.querySelector(`[data-receptionist-intent="${category}"]`);
-          if (!choice) return false;
-          choice.click();
-          return true;
+        onQuickAction: (actionId, submitPrompt) => {
+          const category = {
+            category_event_hall: "Event Hall",
+            category_hotel_room: "Hotel Room",
+            category_resort_villa: "Resort Villa"
+          }[actionId];
+          if (category) { markCurrentPageGuideInteraction(); return true; }
+          if (actionId === "support_faqs") {
+            if (typeof submitPrompt === "function") submitPrompt("What policies and FAQs can you help with?");
+            return true;
+          }
+          if (actionId === "venue_details") {
+            const room = dataMap[receptionistState.activeRoomId];
+            if (!room) return false;
+            renderVenue(room);
+            return true;
+          }
+          if (actionId === "venue_change" || actionId === "venue_list") {
+            if (!receptionistState.activeCategory) return false;
+            if (receptionistState.activeCategory === "Hotel Room") requestHotelRecommendations();
+            else renderRecommendations();
+            return true;
+          }
+          if (actionId === "start_over") {
+            receptionistRoot.querySelector("[data-receptionist-chat-start-over]")?.click();
+            return true;
+          }
+          return false;
         },
         onStartOver: () => {
+          currentPageGuideInteraction = false;
           Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
           try { sessionStorage.removeItem("guideContext"); } catch (error) {}
           renderGreeting({ announce: true, requireContinue: true });
           focusFirstChoice();
         },
+        onFreshChatOpen: () => {
+          if (currentPageGuideInteraction) return;
+          // A seed greeting has no guide continuation to attach to. Discard
+          // sessionStorage-only search state so unrelated old results and
+          // venue details cannot remain beside this fresh conversation.
+          Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
+          try { sessionStorage.removeItem("guideContext"); } catch (error) {}
+          receptionistState.activeCategory = null;
+          receptionistState.activeRoomId = null;
+          guideState.hotelResults = [];
+          guideState.hotelRecommendationState = "idle";
+          guideState.hotelRecommendationReasonCode = "";
+          guideState.hotelRecommendationMessage = "";
+          renderGreeting({ announce: false });
+          // The chat toggle must remain available while the refreshed welcome
+          // dialogue's normal reveal timer would otherwise keep it gated.
+          completeDialogueReveal();
+          revealDialogueChoices();
+        },
         onInvalidContext: data => {
+          currentPageGuideInteraction = false;
           Object.keys(guideContext).forEach(key => { guideContext[key] = null; });
           try { sessionStorage.removeItem("guideContext"); } catch (error) {}
           renderGreeting({ announce: true });
@@ -3102,11 +3223,13 @@ document.addEventListener("DOMContentLoaded", () => {
         : focusable;
     };
     receptionistRoot.addEventListener("click", event => {
-      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-chat-browse-category], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
       if (!target) return;
+      if (event.isTrusted && target.matches("[data-receptionist-overview], [data-receptionist-menu], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-view-all], [data-receptionist-chat-browse-category], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next]")) markCurrentPageGuideInteraction();
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
       if (target.hasAttribute("data-receptionist-close") || target.hasAttribute("data-receptionist-skip")) { closeGuide(); return; }
       if (target.hasAttribute("data-receptionist-start-over")) {
+        currentPageGuideInteraction = false;
         try { sessionStorage.removeItem("guideContext"); } catch (e) {}
         renderGreeting({ announce: true, reset: true, requireContinue: true });
         focusFirstChoice();
@@ -3116,6 +3239,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.hasAttribute("data-receptionist-overview")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueOverview(room); focusFirstChoice(); } return; }
       if (target.hasAttribute("data-receptionist-hotel-back")) { renderHotelRecommendationList(); focusFirstChoice(); return; }
       if (target.hasAttribute("data-receptionist-hotel-retry")) { requestHotelRecommendations(); return; }
+      if (target.hasAttribute("data-receptionist-chat-browse-category")) {
+        if (receptionistState.activeCategory === "Hotel Room") requestHotelRecommendations();
+        else if (receptionistState.activeCategory) renderRecommendations();
+        else renderGreeting({ announce: true });
+        return;
+      }
       if (target.hasAttribute("data-receptionist-menu")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueMenu(room); focusFirstChoice(); } return; }
       if (target.hasAttribute("data-receptionist-date-later")) {
         guideContext.startDate = null;
@@ -3229,17 +3358,8 @@ document.addEventListener("DOMContentLoaded", () => {
         renderAllPage(); focusFirstChoice(); return;
       }
       if (target.hasAttribute("data-receptionist-intent")) {
-        const category = target.getAttribute("data-receptionist-intent"); resetContext(); receptionistState.activeCategory = category; guideContext.intent = category;
-        if (category === "Hotel Room") {
-          if (!new Set(["1-2", "3-4", "5-6", "7-8", "9-12", "13-16"]).has(guideContext.groupSize)) { guideContext.groupSize = null; guideContext.groupSizeExact = null; }
-          if (!new Set(["save", "best_fit", "comfort"]).has(guideContext.preference)) guideContext.preference = null;
-          if (guideContext.groupSize === null) renderQuestion(category, "groupSize");
-          else if (guideContext.preference === null) renderQuestion(category, "preference");
-          else renderQuestion(category, "checkInDate");
-        } else {
-          renderQuestion(category, category === "Event Hall" ? "occasion" : category === "Resort Villa" ? "purpose" : "groupSize");
-        }
-        focusFirstChoice(); return;
+        selectReceptionistCategory(target.getAttribute("data-receptionist-intent"));
+        return;
       }
       if (target.hasAttribute("data-receptionist-answer")) {
         const key = target.getAttribute("data-answer-key"); const value = target.getAttribute("data-receptionist-answer");

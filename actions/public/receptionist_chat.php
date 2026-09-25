@@ -197,7 +197,7 @@ try {
     // Only a deterministic message shortlist may be selected by the model;
     // the returned answer is then copied from that approved FAQ item.
     try {
-        $normalized = receptionist_ai_normalize_output($result['payload'], $conn, $baseSlots, $shortlist, $language, $venueCatalog);
+        $normalized = receptionist_ai_normalize_helper_output($result['payload'], $conn, $baseSlots, $shortlist, $language, $venueCatalog);
     } catch (Throwable $providerSchemaError) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_schema', 'latency_ms' => $latencyMs, 'prompt_bytes' => $promptBytes]);
         $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);

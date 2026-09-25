@@ -528,9 +528,12 @@ window.process = {
                         <button type="button" class="receptionist-chat-close" data-receptionist-chat-close aria-label="Collapse receptionist chat">Close</button>
                     </div>
                     <p class="receptionist-chat-privacy">Please don’t share payment, account, contact, or personal details. Messages go to an AI service.</p>
-                    <div class="receptionist-chat-transcript" id="receptionist-chat-transcript" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Receptionist conversation"></div>
+                    <div class="receptionist-chat-conversation" id="receptionist-chat-conversation" role="region" aria-label="Receptionist conversation and guided choices" tabindex="0">
+                        <div class="receptionist-chat-transcript" id="receptionist-chat-transcript" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Receptionist messages"></div>
+                        <div class="receptionist-chat-guided-content" id="receptionist-chat-guided-content"></div>
+                    </div>
                     <p class="receptionist-chat-status" id="receptionist-chat-status" role="status" aria-live="polite"></p>
-                    <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Suggested questions"></div>
+                    <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Receptionist actions"></div>
                     <form class="receptionist-chat-form" id="receptionist-chat-form">
                         <label class="sr-only" for="receptionist-chat-input">Ask the receptionist</label>
                         <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask about venues, stays, policies, or dates" autocomplete="off"></textarea>

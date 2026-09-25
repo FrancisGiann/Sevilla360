@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/includes/receptionist_knowledge.php';
 $rows = [
     ['id' => 1, 'category' => 'Event Hall', 'name' => 'Infinity Hall', 'description' => 'Large event space', 'amenities' => 'Free Wifi, Free Parking', 'event_rate' => 15000, 'event_base_capacity' => 50, 'event_max_capacity' => 1000, 'capacity_theater' => 1000, 'capacity_classroom' => 500, 'capacity_banquet' => 350],
     ['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_type' => 'Deluxe', 'room_group_id' => 12, 'bed_count' => 2, 'room_base_capacity' => 2, 'room_max_capacity' => 4, 'nightly_rate' => 3500, 'amenities' => 'Wi-Fi, Breakfast'],
+    ['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_type' => 'Suite', 'room_group_id' => 13, 'bed_count' => 3, 'room_base_capacity' => 2, 'room_max_capacity' => 6, 'nightly_rate' => 5000, 'amenities' => 'Wi-Fi, Breakfast, Ocean view'],
     ['id' => 3, 'category' => 'Resort Villa', 'name' => 'Lagoon Villa', 'description' => 'Private villa', 'amenities' => 'Private pool, Breakfast', 'day_rate' => 8000, 'overnight_rate' => 12000, 'villa_base_capacity' => 4, 'villa_max_capacity' => 6, 'has_private_pool' => 1],
 ];
 $records = receptionist_knowledge_build_records($rows, ['biz_name' => 'Sevilla360', 'biz_address' => 'Lucena', 'biz_policies' => 'Public cancellations are reviewed.'], receptionist_faq_defaults());
@@ -47,6 +48,8 @@ $cases = [
     ['infinity hall', fn(string $m): bool => receptionist_knowledge_booking_venue($records, $m, 'Event Hall')['venue_id'] === 1],
     ['Lagoon Villa', fn(string $m): bool => receptionist_knowledge_booking_venue($records, $m, 'Resort Villa')['venue_id'] === 3],
     ['Stellar Deluxe', fn(string $m): bool => receptionist_knowledge_booking_venue($records, $m, 'Hotel Room')['room_group_id'] === 12],
+    ['Stellar Suite', fn(string $m): bool => receptionist_knowledge_booking_venue($records, $m, 'Hotel Room')['room_group_id'] === 13],
+    ['ambiguous Stellar building name', fn(string $m): bool => receptionist_knowledge_booking_venue($records, $m, 'Hotel Room') === null],
     ['How much for an event?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m)['reply'], '₱15,000')],
     ['how much is event hall prce?', fn(string $m): bool => receptionist_knowledge_reply($records, $m) !== null],
     ['How many can Infinity Hall fit?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m, 'en', ['active_venue_id' => 1, 'intent' => 'Event Hall'])['reply'], '1,000')],
@@ -67,6 +70,20 @@ $cases = [
     ['unknown custom flower arrangement price', fn(string $m): bool => receptionist_knowledge_reply($records, $m) === null],
     ['what is qwasda', fn(string $m): bool => receptionist_faq_find(receptionist_faq_merge_defaults([['question' => $m, 'answer' => 'x']]), receptionist_faq_stable_id($m)) === null],
 ];
+$transcriptContext = [];
+$transcript = [];
+foreach (['a event hall', 'Infinity Hall', 'where'] as $utterance) {
+    $answer = receptionist_knowledge_reply($records, $utterance, 'en', $transcriptContext) ?? [];
+    $transcript[] = ['user' => $utterance, 'assistant' => $answer['reply'] ?? null, 'action' => $answer['action'] ?? null];
+    if (is_array($answer['slots'] ?? null)) $transcriptContext = receptionist_ai_merge_slots($transcriptContext, $answer['slots']);
+}
+$expectedTranscript = [
+    ['user' => 'a event hall', 'assistant' => 'What kind of event is this (for example, a wedding)? I’ll also need the guest count and event date.', 'action' => 'ask'],
+    ['user' => 'Infinity Hall', 'assistant' => 'Infinity Hall selected. I’ll open the venue details for you to review.', 'action' => 'venue'],
+    ['user' => 'where', 'assistant' => 'Here are the details for Infinity Hall.', 'action' => 'venue'],
+];
+$locationAnswer = receptionist_knowledge_reply($records, 'Where is Infinity Hall located?', 'en', ['intent' => 'Event Hall', 'active_venue_id' => 1]);
+$detailAnswer = receptionist_knowledge_reply($records, 'See details', 'en', ['intent' => 'Event Hall', 'active_venue_id' => 1]);
 $passed = 0;
 foreach ($cases as $index => [$utterance, $assert]) {
     try { $ok = $assert($utterance); } catch (Throwable $error) { $ok = false; }
@@ -74,4 +91,10 @@ foreach ($cases as $index => [$utterance, $assert]) {
     if ($ok) $passed++;
 }
 echo "Summary: {$passed}/" . count($cases) . " deterministic cases passed\n";
-exit($passed === count($cases) ? 0 : 1);
+$transcriptPassed = $transcript === $expectedTranscript
+    && ($locationAnswer['action'] ?? null) === 'ask'
+    && str_contains((string)($locationAnswer['reply'] ?? ''), 'Lucena')
+    && ($detailAnswer['action'] ?? null) === 'venue'
+    && ($detailAnswer['slots']['active_venue_id'] ?? null) === 1;
+echo ($transcriptPassed ? 'PASS' : 'FAIL') . " exact receptionist transcript keeps category, venue, and bare-where deterministic\n";
+exit($passed === count($cases) && $transcriptPassed ? 0 : 1);
