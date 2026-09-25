@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/admin_notifications.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+require_once __DIR__ . '/../../includes/sales_report.php';
 $booking_completion_sql = booking_completion_sql('b');
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
@@ -60,13 +61,7 @@ try {
     if ($is_staff) {
         $response['monthlySales'] = null; // Privacy: Hide for Staff
     } else {
-        $res = $conn->query("
-            SELECT COALESCE(SUM(p.amount), 0) as total FROM payments p
-            JOIN bookings b ON p.booking_id = b.id
-            WHERE p.status = 'Success' AND b.booking_status != 'Cancelled'
-            AND MONTH(p.payment_date) = MONTH(CURDATE()) AND YEAR(p.payment_date) = YEAR(CURDATE())
-        ");
-        $response['monthlySales'] = (float)($res->fetch_assoc()['total'] ?? 0);
+        $response['monthlySales'] = sales_report_current_month_received_total($conn) / 100;
     }
 
     $res = $conn->query("SELECT COUNT(*) as count FROM bookings WHERE start_date = CURDATE() AND booking_status IN ('Confirmed', 'Completed')");
