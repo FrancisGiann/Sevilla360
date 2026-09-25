@@ -31,7 +31,7 @@
                 data-description="<?php echo htmlspecialchars((string)($villa['description'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
                 data-amenities="<?php echo htmlspecialchars((string)($villa['amenities'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"
                 data-img="<?php echo htmlspecialchars($villa['image'], ENT_QUOTES, 'UTF-8'); ?>">
-                <?php echo htmlspecialchars($villa['name']); ?> (Day ₱<?php echo number_format((float)$villa['base_rate']); ?> · Overnight ₱<?php echo number_format((float)$villa['overnight_rate']); ?>)
+                <?php echo htmlspecialchars($villa['name']); ?>
             </option>
             <?php endforeach; ?>
         </select>

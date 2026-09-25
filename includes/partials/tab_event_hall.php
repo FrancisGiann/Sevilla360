@@ -61,8 +61,7 @@ $default_event_img = (!empty($event_halls) && !empty($event_halls[0]['image']))
                     data-classroom="<?php echo $hall['capacity_classroom'] ?? 0; ?>"
                     data-banquet="<?php echo $hall['capacity_banquet'] ?? 0; ?>"
                     data-img="<?php echo htmlspecialchars($hall['image']); ?>">
-                    <?php echo htmlspecialchars($hall['name']); ?> (Base Rate:
-                    ₱<?php echo number_format($hall['base_rate']); ?>)
+                    <?php echo htmlspecialchars($hall['name']); ?>
                 </option>
                 <?php endforeach; ?>
             </select>
