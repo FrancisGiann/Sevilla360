@@ -1,15 +1,9 @@
 <!-- ADMIN HOTEL ROOMS TAB -->
-<div class="tab-content" id="tab-hotel">
+<div class="tab-content" id="tab-hotel" role="tabpanel" aria-labelledby="walkin-tab-hotel" aria-hidden="true" tabindex="0">
 
-    <div class="dynamic-img-wrapper">
-        <!-- src set dynamically by JS from data-img on selected option -->
-        <img id="hotel-img" src="assets/img/placeholder.jpg" alt="Hotel Room">
-    </div>
-
-    <!-- 1. WHAT: DYNAMIC DATABASE DROPDOWNS -->
-    <div class="form-row">
-        <div class="form-group">
-            <label>Select Room Category</label>
+    <div class="form-row venue-picker-row">
+        <div class="form-group venue-picker-group">
+            <label for="hotel-room-type">Select room category</label>
             <select id="hotel-room-type">
                 <option value="" disabled selected>Select category...</option>
                 <?php foreach(array_keys($grouped_hotel_rooms) as $type): ?>
@@ -17,8 +11,8 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="form-group">
-            <label>Select Specific Room</label>
+        <div class="form-group venue-picker-group">
+            <label for="hotel-room-name">Select building</label>
             <select id="hotel-room-name" disabled>
                 <option value="" disabled selected>Select category first...</option>
             </select>
@@ -27,7 +21,7 @@
 
     <div class="inclusions-card hotel-information-card">
         <div class="inc-col">
-            <h4>Accommodation Information</h4>
+            <h4>Accommodation information</h4>
             <p id="hotel-description">Select a room to view its description.</p>
         </div>
         <div class="inc-col">
@@ -46,9 +40,13 @@
         </div>
     </div>
 
-    <!-- 2. WHEN: CALENDAR UI (STRICTLY ONE INSTANCE) -->
-    <div style="margin-top: 2rem; margin-bottom: 2rem;">
-        <label class="small-label">SELECT BOOKING DATES</label>
+    <div class="dynamic-img-wrapper venue-image-frame" id="hotel-image-panel" hidden>
+        <img id="hotel-img" alt="" hidden>
+        <p class="venue-image-empty" role="status" hidden>Photo unavailable for this room.</p>
+    </div>
+
+    <div class="walkin-calendar-section">
+        <p class="small-label">Select booking dates</p>
         <?php
         $calendarId = 'cal-ui-hotel';
         include 'includes/partials/booking_calendar.php';
@@ -58,7 +56,7 @@
 
     <!-- 3. WHO: GUESTS -->
     <div class="form-group">
-        <label>Number of Guests</label>
+        <label for="hotel-guests">Number of guests</label>
         <input type="number" id="hotel-guests" min="1" max="1" value="1">
         <small class="capacity-note" id="hotel-capacity-note">Select a room to see its maximum capacity.</small>
         <small class="extra-pax-note">Additional charge per head exceeding base capacity. <span

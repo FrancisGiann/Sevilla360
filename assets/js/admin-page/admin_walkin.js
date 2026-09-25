@@ -81,8 +81,21 @@ class AdminWalkinController {
     }
 
     bindTabs() {
-        document.querySelectorAll(".tab-btn").forEach(btn => {
-            btn.addEventListener("click", (e) => this.handleTabSwitch(e.target));
+        const tabs = Array.from(document.querySelectorAll('.booking-tabs [role="tab"]'));
+        tabs.forEach((btn, index) => {
+            btn.addEventListener("click", (e) => this.handleTabSwitch(e.currentTarget));
+            btn.addEventListener('keydown', async (e) => {
+                let nextIndex = index;
+                if (e.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+                else if (e.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+                else if (e.key === 'Home') nextIndex = 0;
+                else if (e.key === 'End') nextIndex = tabs.length - 1;
+                else return;
+
+                e.preventDefault();
+                const nextTab = tabs[nextIndex];
+                if (await this.handleTabSwitch(nextTab)) nextTab.focus();
+            });
         });
     }
 
@@ -107,12 +120,7 @@ class AdminWalkinController {
                 }
                 const label = document.getElementById("sum-ht-type");
                 if (label) label.innerText = opt.dataset.display || opt.dataset.name || opt.text.split('(')[0].trim();
-                // Update hotel image from data-img (CMS-backed)
-                const hotelImg = this.getEl('hotel-img');
-                if (hotelImg && opt.dataset.img) {
-                    hotelImg.style.opacity = '0';
-                    setTimeout(() => { hotelImg.src = opt.dataset.img; hotelImg.style.opacity = '1'; }, 300);
-                }
+                this.setVenueImage(this.getEl('hotel-room-name'), 'hotel-img', 'hotel-image-panel', opt);
                 // Fetch dates using group info
                 if (opt.dataset.type && opt.dataset.name && this.state.calendars.hotel) {
                     this.state.calendars.hotel.fetchBookedDates(opt.dataset.type, opt.dataset.name);
@@ -126,9 +134,10 @@ class AdminWalkinController {
             await this.resetAddonStayDates({ release: false });
             
             const opt = e.target.options[e.target.selectedIndex];
-            const venueName = opt.text.split('(')[0].trim();
+            const venueName = opt.dataset.name || opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-ev-venue");
             if (label) label.innerText = venueName;
+            this.updateEventInformation(opt);
 
             if (this.state.calendars.event) this.state.calendars.event.fetchBookedDates('Event Hall', venueName);
 
@@ -160,7 +169,7 @@ class AdminWalkinController {
             if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
 
             const opt = e.target.options[e.target.selectedIndex];
-            const villaName = opt.text.split('(')[0].trim();
+            const villaName = opt.dataset.name || opt.text.split('(')[0].trim();
             const label = document.getElementById("sum-vl-type");
             if (label) label.innerText = villaName;
             const extraRateLabel = this.getEl('villa-extra-rate');
@@ -253,11 +262,10 @@ class AdminWalkinController {
         document.getElementById("wi-btn-add-item")?.addEventListener("click", () => {
             const row = document.createElement("div");
             row.className = "wi-row";
-            row.style.cssText = "display:flex; gap:10px; margin-bottom:10px;";
             row.innerHTML = `
-                <input type="text" class="wi-item-name" placeholder="Item Description (e.g. Live Band)" style="flex: 2; padding:10px; border:1px solid #ccc; border-radius:4px;">
-                <input type="number" class="wi-item-cost" step="0.01" placeholder="Amount (₱)" style="flex: 1; padding:10px; border:1px solid #ccc; border-radius:4px;">
-                <button type="button" class="btn-action wi-remove-row" style="flex: 0 0 45px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; padding: 0;"><i class="fa-solid fa-trash"></i></button>
+                <input type="text" class="wi-item-name" aria-label="Custom item description" placeholder="Item description (e.g. Live band)">
+                <input type="number" class="wi-item-cost" aria-label="Custom item amount in pesos" step="0.01" min="0" placeholder="Amount (₱)">
+                <button type="button" class="wi-remove-row" aria-label="Remove custom item"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
             `;
             lineItemsContainer.appendChild(row);
 
@@ -752,18 +760,55 @@ class AdminWalkinController {
     // Image swap: reads data-img attribute from selected option
     setupImageSwap(selectId, imgId) {
         const select = this.getEl(selectId);
-        const img = this.getEl(imgId);
-        if (!select || !img) return;
+        if (!select) return;
 
         select.addEventListener("change", (e) => {
             const opt = e.target.options[e.target.selectedIndex];
-            const imgSrc = opt.dataset.img || 'assets/img/placeholder.jpg';
-            img.style.opacity = "0";
-            setTimeout(() => {
-                img.src = imgSrc;
-                img.style.opacity = "1";
-            }, 300);
+            const panelId = selectId === 'event-venue' ? 'event-image-panel' : 'villa-image-panel';
+            this.setVenueImage(select, imgId, panelId, opt);
         });
+    }
+
+    setVenueImage(select, imageId, panelId, option = null) {
+        const image = this.getEl(imageId);
+        const panel = this.getEl(panelId);
+        const status = panel?.querySelector('.venue-image-empty');
+        if (!image || !panel) return;
+
+        const selectedOption = option || select?.options[select.selectedIndex] || null;
+        const hasSelection = Boolean(selectedOption && !selectedOption.disabled && selectedOption.value !== '');
+        let imageUrl = hasSelection ? String(selectedOption.dataset.img || '').trim() : '';
+        if (imageUrl === 'assets/img/placeholder.jpg') imageUrl = '';
+        image._walkinImageRequestId = (image._walkinImageRequestId || 0) + 1;
+        const requestId = image._walkinImageRequestId;
+        panel.hidden = !hasSelection;
+        image.hidden = true;
+        image.style.opacity = '0';
+        if (status) status.hidden = true;
+
+        if (!hasSelection) {
+            image.removeAttribute('src');
+            return;
+        }
+
+        if (!imageUrl) {
+            if (status) status.hidden = false;
+            return;
+        }
+
+        const venueName = selectedOption.dataset.name || selectedOption.dataset.display || selectedOption.textContent.trim();
+        image.alt = `${venueName} photo`;
+        image.onload = () => {
+            if (image._walkinImageRequestId !== requestId) return;
+            image.hidden = false;
+            image.style.opacity = '1';
+        };
+        image.onerror = () => {
+            if (image._walkinImageRequestId !== requestId) return;
+            image.hidden = true;
+            if (status) status.hidden = false;
+        };
+        image.src = imageUrl;
     }
 
     setupToggle(checkboxId, targetId) {
@@ -785,7 +830,7 @@ class AdminWalkinController {
             opt.dataset.type     = room.room_type;
             opt.dataset.name     = room.building_name;
             opt.dataset.inventory = room.total_inventory;
-            opt.dataset.img      = room.image || 'assets/img/placeholder.jpg';
+            opt.dataset.img      = room.image || '';
             opt.dataset.display  = `${room.building_name}`;
             opt.dataset.baseCap  = room.base_capacity;
             opt.dataset.maxCap   = room.max_capacity;
@@ -800,13 +845,14 @@ class AdminWalkinController {
         });
         nameSelect.disabled = false;
         this.updateHotelInformation(nameSelect.options[nameSelect.selectedIndex]);
+        this.setVenueImage(nameSelect, 'hotel-img', 'hotel-image-panel', nameSelect.options[nameSelect.selectedIndex]);
     }
 
     updateHotelInformation(option) {
         const description = this.getEl('hotel-description');
         const amenities = this.getEl('hotel-amenities');
         if (!description || !amenities || !option) return;
-        const hasSelection = Boolean(option.value);
+        const hasSelection = Boolean(!option.disabled && option.dataset.name);
         const hasDescription = hasSelection && Boolean((option.dataset.description || '').trim());
         description.textContent = hasDescription
             ? option.dataset.description
@@ -851,15 +897,18 @@ class AdminWalkinController {
         const description = this.getEl(descriptionId);
         const amenities = this.getEl(amenitiesId);
         if (!description || !amenities || !option) return;
-        const hasDescription = Boolean((option.dataset.description || '').trim());
-        description.textContent = hasDescription ? option.dataset.description : 'No additional description is available for this venue.';
+        const hasSelection = Boolean(!option.disabled && option.value !== '');
+        const hasDescription = hasSelection && Boolean((option.dataset.description || '').trim());
+        description.textContent = hasDescription
+            ? option.dataset.description
+            : (hasSelection ? 'No additional description is available for this venue.' : 'Select a venue to view its description.');
         description.classList.toggle('venue-description-empty', !hasDescription);
         amenities.replaceChildren();
         const items = (option.dataset.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
         if (!items.length) {
             const empty = document.createElement('li');
             empty.className = 'amenities-empty';
-            empty.textContent = 'No amenities listed.';
+            empty.textContent = hasSelection ? 'No amenities listed.' : 'Select a venue to view its amenities.';
             amenities.appendChild(empty);
             return;
         }
@@ -867,6 +916,23 @@ class AdminWalkinController {
             const li = document.createElement('li');
             li.textContent = item;
             amenities.appendChild(li);
+        });
+    }
+
+    updateEventInformation(option) {
+        this.updateVenueInformation(option, 'event-venue-description', 'event-venue-amenities');
+        const hasSelection = Boolean(option && !option.disabled && option.value !== '');
+        const facts = {
+            'event-base-rate': hasSelection ? this.formatCurrency(option.value) : '—',
+            'event-theater-capacity': hasSelection ? `${parseInt(option.dataset.theater, 10) || 0} guests` : '—',
+            'event-classroom-capacity': hasSelection ? `${parseInt(option.dataset.classroom, 10) || 0} guests` : '—',
+            'event-banquet-capacity': hasSelection ? `${parseInt(option.dataset.banquet, 10) || 0} guests` : '—'
+        };
+        Object.entries(facts).forEach(([id, value]) => {
+            const fact = this.getEl(id);
+            if (!fact) return;
+            fact.textContent = value;
+            fact.classList.toggle('fact-placeholder', !hasSelection);
         });
     }
 
@@ -970,20 +1036,27 @@ class AdminWalkinController {
     }
 
     async handleTabSwitch(btn) {
-        if (btn.classList.contains("active") || this.tabSwitchPromise) return;
+        if (!btn || btn.classList.contains("active") || this.tabSwitchPromise) return false;
         const targetId = btn.getAttribute("data-target");
         this.tabSwitchPromise = (async () => {
-            if (!await this.unlockDatesAPI()) return;
+            if (!await this.unlockDatesAPI()) return false;
             await this.resetAddonStayDates({ release: false });
             if (this.state.calendars.event) this.state.calendars.event.clearSelection();
             if (this.state.calendars.hotel) this.state.calendars.hotel.clearSelection();
             if (this.state.calendars.villa) this.state.calendars.villa.clearSelection();
 
-            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-            document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+            document.querySelectorAll('.booking-tabs [role="tab"]').forEach(tab => {
+                const selected = tab === btn;
+                tab.classList.toggle('active', selected);
+                tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+                tab.tabIndex = selected ? 0 : -1;
+            });
+            document.querySelectorAll(".tab-content[role='tabpanel']").forEach(panel => {
+                const selected = panel.id === targetId;
+                panel.classList.toggle("active", selected);
+                panel.setAttribute('aria-hidden', selected ? 'false' : 'true');
+            });
 
-            btn.classList.add("active");
-            this.getEl(targetId)?.classList.add("active");
             this.state.activeTabId = targetId;
             this.updateAdminNotesVisibility();
 
@@ -992,8 +1065,9 @@ class AdminWalkinController {
             if (targetId === "tab-villa" && this.state.calendars.villa) this.state.calendars.villa.updateDateDisplay();
 
             this.calculateSummary();
+            return true;
         })();
-        try { await this.tabSwitchPromise; }
+        try { return await this.tabSwitchPromise; }
         finally { this.tabSwitchPromise = null; }
     }
 
@@ -1698,15 +1772,33 @@ class AdminWalkinController {
             }
         });
 
-        this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<div class="summary-row"><span>No items selected</span></div>';
-        this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
-
-        if (!this.state.isDatesLocked || !this.state.activeCalendar?.startDate) {
-            this.getEl('summary-due-val').textContent = "₱0.00";
+        const venueSelectId = this.state.activeTabId === 'tab-event'
+            ? 'event-venue'
+            : (this.state.activeTabId === 'tab-hotel' ? 'hotel-room-name' : 'villa-type');
+        const venueSelect = this.getEl(venueSelectId);
+        const selectedVenue = venueSelect?.options[venueSelect.selectedIndex];
+        const isHotelSelection = this.state.activeTabId === 'tab-hotel'
+            && Boolean(selectedVenue?.dataset.name && selectedVenue?.dataset.type);
+        const hasSelectedVenue = Boolean(
+            selectedVenue && !selectedVenue.disabled && selectedVenue.value !== ''
+            && (selectedVenue.dataset.id || selectedVenue.dataset.venueId || isHotelSelection)
+        );
+        const hasConfirmedDates = Boolean(this.state.isDatesLocked && this.state.activeCalendar?.startDate);
+        if (!hasSelectedVenue || !hasConfirmedDates) {
+            const guidance = hasSelectedVenue
+                ? 'Confirm the selected dates to review the price breakdown and amount due.'
+                : 'Select a venue and confirm dates to review the price breakdown and amount due.';
+            this.getEl('summary-breakdown').innerHTML = `<p class="summary-empty-state">${guidance}</p>`;
+            this.getEl('summary-total-val').textContent = '—';
+            this.getEl('summary-due-val').textContent = '—';
+            this.state.summary.amountDue = 0;
             return;
         }
 
-        const schemePct = this.safeFloat(this.getEl("payment-scheme")?.value) || 1;
+        this.getEl('summary-breakdown').innerHTML = this.state.summary.html || '<p class="summary-empty-state">No priced items have been added to this booking.</p>';
+        this.getEl('summary-total-val').textContent = this.formatCurrency(this.state.summary.total);
+
+        const schemePct = this.safeFloat(document.querySelector('input[name="payment-scheme"]:checked')?.value) || 1;
         this.state.summary.amountDue = this.state.summary.total * schemePct;
 
         this.getEl('summary-due-val').textContent = this.formatCurrency(this.state.summary.amountDue);
@@ -1906,7 +1998,7 @@ class AdminWalkinController {
             }
         }
 
-        const schemeVal = this.getEl("payment-scheme")?.value;
+        const schemeVal = document.querySelector('input[name="payment-scheme"]:checked')?.value;
         let schemeEnum = "100% Full";
         if (schemeVal === "0.5") schemeEnum = "50% Downpayment";
         if (schemeVal === "0.2") schemeEnum = "20% Reservation";

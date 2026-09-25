@@ -1,14 +1,8 @@
 <!-- ADMIN RESORT VILLA TAB -->
-<div class="tab-content" id="tab-villa">
-
-    <div class="dynamic-img-wrapper">
-        <img id="villa-img"
-            src="<?php echo htmlspecialchars(!empty($villas) ? $villas[0]['image'] : 'assets/img/placeholder.jpg'); ?>"
-            alt="Resort Villa">
-    </div>
+<div class="tab-content" id="tab-villa" role="tabpanel" aria-labelledby="walkin-tab-villa" aria-hidden="true" tabindex="0">
 
     <div class="form-group">
-        <label>Select Villa</label>
+        <label for="villa-type">Select villa</label>
         <select id="villa-type">
             <option value="" disabled selected>Select a Villa...</option>
             <?php foreach($villas as $villa): ?>
@@ -39,7 +33,7 @@
 
     <div class="inclusions-card venue-information-card" id="villa-venue-information">
         <div class="inc-col">
-            <h4>Villa Information</h4>
+            <h4>Villa information</h4>
             <p id="villa-description">Select a villa to view its description.</p>
         </div>
         <div class="inc-col">
@@ -70,8 +64,13 @@
         </div>
     </div>
 
-    <div style="margin-top: 2rem; margin-bottom: 2rem;">
-        <label class="small-label">SELECT BOOKING DATES</label>
+    <div class="dynamic-img-wrapper venue-image-frame" id="villa-image-panel" hidden>
+        <img id="villa-img" alt="" hidden>
+        <p class="venue-image-empty" role="status" hidden>Photo unavailable for this villa.</p>
+    </div>
+
+    <div class="walkin-calendar-section">
+        <p class="small-label">Select booking dates</p>
         <p class="villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date.</p>
         <?php
         $calendarId = 'cal-ui-villa';
@@ -80,7 +79,7 @@
     </div>
 
     <div class="form-group">
-        <label>Number of Guests</label>
+        <label for="villa-guests">Number of guests</label>
         <input type="number" id="villa-guests" min="1" max="1" value="1">
         <small class="capacity-note" id="villa-capacity-note-guest">Maximum capacity appears after selecting a villa.</small>
         <small class="extra-pax-note">Additional <span id="villa-extra-rate">configured rate</span> per head exceeding base capacity. <span id="villa-extra-fee"></span></small>
