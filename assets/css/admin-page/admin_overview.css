@@ -1937,6 +1937,9 @@
   border-color: rgba(156, 119, 67, .3);
 }
 
+.overview-glance-grid .overview-sales-card { color: inherit; }
+.overview-glance-grid .overview-sales-card:focus-visible { outline: 3px solid rgba(160, 112, 50, .42); outline-offset: 2px; }
+
 .overview-glance-grid .stat-number { font-size: 2.25rem; }
 .overview-glance-grid .dashboard-metric-pending { font-size: 1.15rem; color: #746c65; }
 

@@ -91,6 +91,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const venueFilter = document.getElementById("table-venue-filter");
     const tabFilters = document.querySelectorAll("#bookingFilters .tab-btn");
     const bookingFilterSelect = document.getElementById("bookingFilterSelect");
+    const resetFiltersButton = document.getElementById('btn-reset-booking-filters');
+    const bookingsResultsStatus = document.getElementById('booking-results-status');
     const tbody = document.getElementById("admin-bookings-tbody");
     
     const btnPrev = document.getElementById("btn-prev-page");
@@ -282,6 +284,47 @@ document.addEventListener("DOMContentLoaded", () => {
             || state.search !== currentState.search
             || state.venue !== currentState.venue;
     }
+
+    function setBookingsResultsStatus(message) {
+        if (bookingsResultsStatus) bookingsResultsStatus.textContent = String(message || '');
+    }
+
+    function syncBookingFilterControls(selected = getBookingViewState().activeTab) {
+        tabFilters.forEach(tab => {
+            const isSelected = tab.dataset.filter === selected;
+            tab.classList.toggle('active', isSelected);
+            tab.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+        });
+        if (bookingFilterSelect) bookingFilterSelect.value = selected;
+        if (resetFiltersButton) {
+            const hasFilters = Boolean(searchInput?.value.trim())
+                || (venueFilter?.value || 'All') !== 'All'
+                || selected !== 'all';
+            resetFiltersButton.disabled = !hasFilters;
+        }
+    }
+
+    function renderTableMessage(message, actionLabel = '', actionName = '') {
+        if (!tbody) return;
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.className = 'table-state-cell';
+        const copy = document.createElement('p');
+        copy.className = 'table-state-message';
+        copy.textContent = String(message || 'Bookings are unavailable.');
+        cell.appendChild(copy);
+        if (actionLabel && actionName) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-outline table-state-retry';
+            button.dataset.tableAction = actionName;
+            button.textContent = actionLabel;
+            cell.appendChild(button);
+        }
+        row.appendChild(cell);
+        tbody.replaceChildren(row);
+    }
   
     function loadBookings(options = {}) {
         if (!tbody) return;
@@ -297,10 +340,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const requestSequence = ++bookingsRequestSequence;
         const requestState = getBookingViewState();
 
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px; color: #888;">
-                            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; margin-bottom: 10px; color: var(--color-gold);"></i><br>
-                            Loading Bookings...
-                           </td></tr>`;
+        setBookingsResultsStatus('Loading bookings…');
+        renderTableMessage('Loading bookings…');
   
         fetch('actions/admin/get_bookings_page.php', {
             method: 'POST',
@@ -319,12 +360,34 @@ document.addEventListener("DOMContentLoaded", () => {
             if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
 
             if (!res.success) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Error: ${res.message}</td></tr>`;
+                const detail = typeof res.message === 'string' && res.message.trim() ? ` ${res.message.trim().slice(0, 300)}` : '';
+                const message = `We couldn’t load bookings.${detail}`;
+                setBookingsResultsStatus(`${message} Try again.`);
+                renderTableMessage(message, 'Try again', 'retry');
                 return;
             }
-  
-            renderTableRows(res.data);
-            updatePaginationUI(res.pagination);
+            const rows = Array.isArray(res.data) ? res.data : [];
+            const rawPagination = res.pagination && typeof res.pagination === 'object' ? res.pagination : {};
+            const rawTotalRows = Number(rawPagination.total_rows);
+            const totalRows = Number.isSafeInteger(rawTotalRows) && rawTotalRows >= rows.length ? rawTotalRows : rows.length;
+            const rawTotalPages = Number(rawPagination.total_pages);
+            const totalPages = Number.isSafeInteger(rawTotalPages) && rawTotalPages > 0
+                ? rawTotalPages
+                : Math.max(1, Math.ceil(totalRows / rowsPerPage));
+            const rawCurrentPage = Number(rawPagination.current_page);
+            const page = Number.isSafeInteger(rawCurrentPage) && rawCurrentPage > 0 ? rawCurrentPage : requestState.page;
+            const pagination = { current_page: page, total_pages: totalPages, total_rows: totalRows };
+            renderTableRows(rows);
+            updatePaginationUI(pagination);
+            if (rows.length === 0) {
+                setBookingsResultsStatus('No bookings found. Try changing or clearing the search and filters.');
+            } else {
+                const total = pagination.total_rows;
+                const announcedPage = Math.min(pagination.current_page, pagination.total_pages);
+                const start = total > 0 ? ((announcedPage - 1) * rowsPerPage) + 1 : 0;
+                const end = Math.min(announcedPage * rowsPerPage, total);
+                setBookingsResultsStatus(`Showing ${start}–${end} of ${total} bookings.`);
+            }
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
             // Auto-scroll, highlight, and pop open View Details modal if redirected from Master Calendar / Command Center
@@ -362,7 +425,8 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(err => {
             if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: red;">Network Error occurred.</td></tr>`;
+            setBookingsResultsStatus('We couldn’t load bookings. Check your connection and try again.');
+            renderTableMessage('We couldn’t load bookings. Check your connection, then try again.', 'Try again', 'retry');
         })
         .finally(() => {
             bookingsLoadInFlight = false;
@@ -403,28 +467,39 @@ document.addEventListener("DOMContentLoaded", () => {
   
     function renderTableRows(bookings) {
         if (bookings.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 40px;">No bookings found.</td></tr>`;
+            renderTableMessage('No bookings found for these filters. Try changing or clearing your search and filters.');
             return;
         }
-  
+
         let html = '';
         const attr = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
         bookings.forEach(b => {
-            // Date Formatting
-            const sDate = new Date(b.start_date);
-            const eDate = new Date(b.end_date);
+            const numericId = Number(b?.id);
+            const bookingId = Number.isSafeInteger(numericId) && numericId > 0 ? String(numericId) : '';
+            const referenceNo = String(b?.reference_no ?? '');
+            const venueName = String(b?.venue_name ?? '');
+            const customerName = `${String(b?.first_name ?? '')} ${String(b?.last_name ?? '')}`.trim();
+            const safeDate = value => {
+                const parsed = new Date(value);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            };
+            const sDate = safeDate(b?.start_date);
+            const eDate = safeDate(b?.end_date);
             const opts = { month: "short", day: "numeric", year: "numeric" };
-            const sDateStr = sDate.toLocaleDateString("en-US", opts);
-            const eDateStr = eDate.toLocaleDateString("en-US", opts);
-            const dateStr = (b.start_date === b.end_date) ? sDateStr : `${sDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${eDateStr}`;
-  
-            const customerName = `${b.first_name} ${b.last_name}`;
-            const displayStatus = b.display_booking_status || b.booking_status;
+            const sDateStr = sDate ? sDate.toLocaleDateString("en-US", opts) : 'Date unavailable';
+            const eDateStr = eDate ? eDate.toLocaleDateString("en-US", opts) : 'Date unavailable';
+            const dateStr = b?.start_date === b?.end_date || !sDate || !eDate
+                ? sDateStr
+                : `${sDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${eDateStr}`;
+
+            const displayStatus = String(b?.display_booking_status || b?.booking_status || 'Pending');
             const isCompleted = displayStatus === 'Completed';
             const hasPendingProof = Number(b.pending_payment_submission_id) > 0;
-            const actualRoomType = (b.venue_category === 'Hotel Room') ? b.hotel_room_type : b.venue_category;
-            const totalAmt = parseFloat(b.total_amount) || 0;
-            const amtPaid = parseFloat(b.amount_paid) || 0;
+            const actualRoomType = (b.venue_category === 'Hotel Room') ? String(b.hotel_room_type || '') : String(b.venue_category || '');
+            const rawTotal = Number.parseFloat(b.total_amount);
+            const rawPaid = Number.parseFloat(b.amount_paid);
+            const totalAmt = Number.isFinite(rawTotal) ? rawTotal : 0;
+            const amtPaid = Number.isFinite(rawPaid) ? rawPaid : 0;
             const balanceDue = totalAmt - amtPaid;
   
             const isPendingInquiry = (b.venue_category === 'Event Hall' && displayStatus === 'Pending');
@@ -453,46 +528,60 @@ document.addEventListener("DOMContentLoaded", () => {
   
             const fadeClass = (displayStatus === 'Cancelled') ? 'faded-text' : '';
   
-            // Build Action Buttons
-            let actionBtns = '';
+            // Keep one contextual primary action visible and place remaining
+            // existing actions in the native, keyboard-operable disclosure.
+            let primaryAction = '';
+            const secondaryActions = [];
+            const setPrimary = action => {
+                if (primaryAction) secondaryActions.unshift(primaryAction);
+                primaryAction = action;
+            };
+            const addSecondary = action => secondaryActions.push(action);
+            const rowId = `data-id="${bookingId}"`;
             if (!isCompleted && displayStatus === 'Pending') {
                 if (isPendingInquiry) {
-                    actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
-                                   <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price / Finalize</button>`;
+                    setPrimary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price / Finalize</button>`);
+                    addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
                 } else {
-                    actionBtns += `<button class="btn-action btn-confirm open-approve" data-id="${b.id}">Approve</button>`;
-                    if (!hasPendingProof) actionBtns += `<button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>`;
-                    actionBtns += `<button class="btn-action btn-cancel open-decline" data-id="${b.id}">Decline</button>
-                                   <button class="btn-action open-edit-price" style="background-color: #64748b; color: white;" data-id="${b.id}">Edit Price</button>`;
+                    setPrimary(`<button type="button" class="btn-action btn-confirm open-approve" ${rowId}>Approve</button>`);
+                    if (!hasPendingProof) addSecondary(`<button type="button" class="btn-action btn-confirm open-payment" ${rowId} data-due="${balanceDue}">Collect Pay</button>`);
+                    addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
+                    addSecondary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price</button>`);
                 }
             } 
             else if (!isCompleted && displayStatus === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    actionBtns += `<button type="button" class="btn-action btn-refund open-refund" data-id="${Number(b.id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent === null || b.cancel_fee_percent === '' ? '' : Number(b.cancel_fee_percent)}" data-fee="${b.cancel_fee === null || b.cancel_fee === '' ? '' : Number(b.cancel_fee)}" data-refund="${b.cancel_refund === null || b.cancel_refund === '' ? '' : Number(b.cancel_refund)}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>
-                                   `;
+                    setPrimary(`<button type="button" class="btn-action btn-refund open-refund" ${rowId} data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent === null || b.cancel_fee_percent === '' ? '' : Number(b.cancel_fee_percent)}" data-fee="${b.cancel_fee === null || b.cancel_fee === '' ? '' : Number(b.cancel_fee)}" data-refund="${b.cancel_refund === null || b.cancel_refund === '' ? '' : Number(b.cancel_refund)}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>`);
                 } else if (b.resched_status === 'Pending') {
-                    actionBtns += `<button class="btn-action btn-reschedule open-review-resched" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-old="${dateStr}" data-newstart="${b.new_start_date}" data-newend="${b.new_end_date}" data-reason="${b.resched_reason || ''}" data-conflict="false">Review Resched</button>`;
+                    setPrimary(`<button type="button" class="btn-action btn-reschedule open-review-resched" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-old="${attr(dateStr)}" data-newstart="${attr(b.new_start_date)}" data-newend="${attr(b.new_end_date)}" data-reason="${attr(b.resched_reason)}" data-conflict="false">Review Resched</button>`);
                 } else {
                     if (!hasPendingProof && ['Unpaid', 'Partial'].includes(b.payment_status) && balanceDue > 0) {
-                        actionBtns += `<button class="btn-action btn-confirm open-payment" data-id="${b.id}" data-due="${balanceDue}">Collect Pay</button>`;
+                        setPrimary(`<button type="button" class="btn-action btn-confirm open-payment" ${rowId} data-due="${balanceDue}">Collect Pay</button>`);
                     }
-                    actionBtns += `<button class="btn-action btn-reschedule open-reschedule" data-id="${b.id}" data-customer="${customerName}" data-venue="${b.venue_name}" data-type="${actualRoomType}" data-date="${dateStr}">Reschedule</button>`;
+                    addSecondary(`<button type="button" class="btn-action btn-reschedule open-reschedule" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-type="${attr(actualRoomType)}" data-date="${attr(dateStr)}">Reschedule</button>`);
                 }
             }
-            actionBtns += `<button class="btn-action btn-view" data-id="${b.id}">View Details</button>`;
             if (hasPendingProof) {
-                actionBtns += `<button type="button" class="btn-action btn-confirm open-manual-proof" data-id="${Number(b.id)}" data-submission-id="${Number(b.pending_payment_submission_id)}" data-ref="${attr(b.reference_no)}" data-customer="${attr(customerName)}" data-venue="${attr(b.venue_name)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}">Review Proof</button>`;
+                const submissionIdValue = Number(b.pending_payment_submission_id);
+                const submissionId = Number.isSafeInteger(submissionIdValue) && submissionIdValue > 0 ? submissionIdValue : 0;
+                setPrimary(`<button type="button" class="btn-action btn-confirm open-manual-proof" ${rowId} data-submission-id="${submissionId}" data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}">Review Proof</button>`);
             }
+            const viewAction = `<button type="button" class="btn-action btn-view" ${rowId}>View Details</button>`;
+            if (primaryAction) addSecondary(viewAction);
+            else primaryAction = viewAction;
+            const actionMenu = secondaryActions.length
+                ? `<details class="booking-action-menu"><summary aria-label="More actions for booking ${attr(referenceNo)}"><span>More actions</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary><div class="booking-action-menu-items">${secondaryActions.join('')}</div></details>`
+                : '';
 
             html += `
-            <tr class="${displayStatus === 'Cancelled' ? 'faded-row' : ''}" data-ref="${b.reference_no.toLowerCase()}">
-                <td data-label="Booking ID" style="font-weight: 600; color: var(--color-gold);">${b.reference_no}</td>
-                <td data-label="Venue">${b.venue_name}</td>
-                <td data-label="Customer">${customerName}</td>
-                <td data-label="Date">${dateStr}</td>
+            <tr class="${displayStatus === 'Cancelled' ? 'faded-row' : ''}" data-ref="${attr(referenceNo.toLowerCase())}">
+                <td data-label="Booking ID" style="font-weight: 600; color: var(--color-gold);">${attr(referenceNo)}</td>
+                <td data-label="Venue">${attr(venueName)}</td>
+                <td data-label="Customer">${attr(customerName)}</td>
+                <td data-label="Date">${attr(dateStr)}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
                 <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${!isCompleted && Number(b.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
-                <td data-label="Actions" class="action-cells"><div class="action-buttons">${actionBtns}</div></td>
+                <td data-label="Actions" class="action-cells"><div class="action-buttons">${primaryAction}${actionMenu}</div></td>
             </tr>`;
         });
 
@@ -500,38 +589,55 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   
     function updatePaginationUI(pag) {
-        pagCurrent.innerText = pag.current_page;
-        pagTotalPages.innerText = pag.total_pages;
+        const totalRows = Number.isSafeInteger(Number(pag?.total_rows)) && Number(pag.total_rows) > 0 ? Number(pag.total_rows) : 0;
+        const totalPages = Math.max(1, Number.isSafeInteger(Number(pag?.total_pages)) && Number(pag.total_pages) > 0 ? Number(pag.total_pages) : 1);
+        const current = Math.min(totalPages, Math.max(1, Number.isSafeInteger(Number(pag?.current_page)) ? Number(pag.current_page) : currentPage));
+        currentPage = current;
+        if (pagCurrent) pagCurrent.textContent = String(current);
+        if (pagTotalPages) pagTotalPages.textContent = String(totalPages);
         
         let startItem = 0;
         let endItem = 0;
-        if (pag.total_rows > 0) {
-            startItem = (pag.current_page - 1) * rowsPerPage + 1;
-            endItem = Math.min(pag.current_page * rowsPerPage, pag.total_rows);
+        if (totalRows > 0) {
+            startItem = (current - 1) * rowsPerPage + 1;
+            endItem = Math.min(current * rowsPerPage, totalRows);
         }
         
-        pagTotalRows.innerText = `${startItem}-${endItem} of ${pag.total_rows}`;
+        if (pagTotalRows) pagTotalRows.textContent = `${startItem}-${endItem} of ${totalRows}`;
         
-        btnPrev.disabled = (pag.current_page <= 1);
-        btnNext.disabled = (pag.current_page >= pag.total_pages);
+        if (btnPrev) btnPrev.disabled = current <= 1;
+        if (btnNext) btnNext.disabled = current >= totalPages || totalRows === 0;
     }
   
     // --- Triggers ---
     if (searchInput) {
         searchInput.addEventListener("input", () => {
             clearTimeout(searchTimeout);
+            syncBookingFilterControls();
             searchTimeout = setTimeout(() => { currentPage = 1; updateExportLink(); loadBookings(); }, 400); // 400ms typing delay
         });
     }
-    if (venueFilter) venueFilter.addEventListener("change", () => { currentPage = 1; updateExportLink(); loadBookings(); });
+    if (venueFilter) venueFilter.addEventListener("change", () => { syncBookingFilterControls(); currentPage = 1; updateExportLink(); loadBookings(); });
     if (btnPrev) btnPrev.addEventListener("click", () => { if (currentPage > 1) { currentPage--; loadBookings(); } });
     if (btnNext) btnNext.addEventListener("click", () => { currentPage++; loadBookings(); });
+
+    tbody?.addEventListener('click', event => {
+        if (event.target.closest('[data-table-action="retry"]')) loadBookings();
+    });
+
+    resetFiltersButton?.addEventListener('click', () => {
+        if (searchInput) searchInput.value = '';
+        if (venueFilter) venueFilter.value = 'All';
+        currentPage = 1;
+        syncBookingFilterControls('all');
+        updateExportLink();
+        loadBookings();
+        searchInput?.focus();
+    });
   
     tabFilters.forEach((tab) => {
         tab.addEventListener("click", () => {
-            tabFilters.forEach(t => t.classList.remove("active"));
-            tab.classList.add("active");
-            if (bookingFilterSelect) bookingFilterSelect.value = tab.dataset.filter;
+            syncBookingFilterControls(tab.dataset.filter);
             currentPage = 1;
             updateExportLink();
             loadBookings();
@@ -540,7 +646,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     bookingFilterSelect?.addEventListener("change", () => {
         const selected = bookingFilterSelect.value;
-        tabFilters.forEach(tab => tab.classList.toggle("active", tab.dataset.filter === selected));
+        syncBookingFilterControls(selected);
         currentPage = 1;
         updateExportLink();
         loadBookings();
@@ -554,6 +660,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const params = new URLSearchParams({ search: searchInput?.value.trim() || '', venue: venueFilter?.value || 'All', status: activeTab });
         btnExport.href = 'actions/admin/export_bookings.php?' + params.toString();
     }
+    syncBookingFilterControls();
     updateExportLink();
     if (btnRefresh) {
         btnRefresh.addEventListener("click", () => {
@@ -577,21 +684,22 @@ document.addEventListener("DOMContentLoaded", () => {
     let openPaymentProofId = urlParams.get('open_payment_proof');
 
     if (urlFilter) {
-        const targetTab = document.querySelector(`.tab-btn[data-filter="${urlFilter}"]`);
+        const targetTab = Array.from(tabFilters).find(tab => tab.dataset.filter === urlFilter);
         if (targetTab) {
-            tabFilters.forEach(t => t.classList.remove("active"));
-            targetTab.classList.add("active");
-            if (bookingFilterSelect) bookingFilterSelect.value = urlFilter;
+            syncBookingFilterControls(urlFilter);
         }
     }
 
     if (urlSearch && searchInput) {
         searchInput.value = urlSearch;
     }
+    syncBookingFilterControls();
     updateExportLink();
   
     function highlightRow(refNo) {
-        const row = document.querySelector(`tr[data-ref="${refNo.toLowerCase()}"]`);
+        const normalizedRef = String(refNo || '').toLowerCase();
+        const row = Array.from(document.querySelectorAll('tr[data-ref]'))
+            .find(item => item.dataset.ref === normalizedRef);
         if (row) {
             row.scrollIntoView({ behavior: 'smooth', block: 'center' });
             row.style.transition = "background-color 1s ease";

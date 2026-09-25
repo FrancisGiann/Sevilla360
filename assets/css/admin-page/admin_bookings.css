@@ -1669,6 +1669,140 @@
 #overviewBookingModal .overview-total-value { text-align: right; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 #overviewBookingModal .overview-total-box { padding-inline: 0; }
 
+/* Booking list filters and actions remain clear at desktop and touch sizes. */
+.admin-bookings-container .filter-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-bookings-container .filter-control-group > label {
+  color: #554b41;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.admin-bookings-container .filter-control-group .search-bar,
+.admin-bookings-container .filter-control-group .control-select {
+  min-width: 0;
+}
+
+.admin-bookings-container .booking-filter-reset {
+  min-height: 48px;
+  padding: 10px 14px;
+  color: #51483f;
+  white-space: nowrap;
+}
+
+.admin-bookings-container .booking-filter-reset:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.booking-results-status {
+  min-height: 1.4em;
+  margin: -14px 0 14px;
+  color: #554b41;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.admin-bookings-container :where(button, input, select, textarea, summary, a):focus-visible {
+  outline: 3px solid #80531f !important;
+  outline-offset: 3px;
+  box-shadow: none !important;
+}
+
+.booking-tabs#bookingFilters .tab-btn:focus-visible {
+  outline: 3px solid #80531f !important;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+}
+
+.action-buttons .booking-primary-action {
+  min-height: 40px;
+  background: #60451f;
+  color: #fff;
+  font-weight: 650;
+}
+
+.booking-action-menu {
+  min-width: 0;
+}
+
+.booking-action-menu > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(42, 37, 34, 0.22);
+  border-radius: 4px;
+  color: #51483f;
+  background: var(--color-white);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.booking-action-menu > summary::-webkit-details-marker { display: none; }
+.booking-action-menu > summary::marker { content: ''; }
+.booking-action-menu > summary:hover { border-color: var(--color-gold); background: #faf6f0; }
+.booking-action-menu[open] > summary { border-color: var(--color-gold); }
+.booking-action-menu[open] > summary i { transform: rotate(180deg); }
+.booking-action-menu > summary i { transition: transform 160ms ease; }
+
+.booking-action-menu-items {
+  display: grid;
+  gap: 7px;
+  padding-top: 7px;
+}
+
+.booking-action-menu-items .btn-action {
+  min-height: 40px;
+}
+
+.table-state-cell {
+  padding: 24px !important;
+  color: #554b41;
+  text-align: center !important;
+}
+
+.table-state-message { margin: 0 0 12px; line-height: 1.5; }
+.table-state-retry { min-height: 40px; padding: 8px 14px; }
+
+@media (max-width: 1024px) {
+  .admin-bookings-container .top-controls { align-items: stretch; }
+  .admin-bookings-container .filter-control-group,
+  .admin-bookings-container .booking-filter-reset { width: 100%; }
+  .admin-bookings-container .filter-control-group .search-bar,
+  .admin-bookings-container .filter-control-group .control-select,
+  .admin-bookings-container .filter-control-group .search-bar input { width: 100%; box-sizing: border-box; }
+  .booking-results-status { margin-top: -8px; }
+  .bookings-table td.action-cells .action-buttons { display: flex; }
+  .booking-action-menu > summary { justify-content: space-between; padding-inline: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-bookings-container *,
+  .admin-bookings-container *::before,
+  .admin-bookings-container *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media (max-width: 640px) {
   #viewDetailsModal,
   #overviewBookingModal,

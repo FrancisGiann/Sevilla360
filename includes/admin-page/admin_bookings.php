@@ -4,16 +4,23 @@
     <!-- Page Header & Search Controls -->
     <div class="bookings-page-header">
         <div class="top-controls">
-            <div class="search-bar">
-                <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                <input type="text" id="table-search" placeholder="Search by name, ID, or venue...">
+            <div class="filter-control-group">
+                <label for="table-search">Search bookings</label>
+                <div class="search-bar">
+                    <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
+                    <input type="search" id="table-search" placeholder="Search by name, ID, or venue..." autocomplete="off">
+                </div>
             </div>
-            <select class="control-select" id="table-venue-filter">
-                <option value="All">All Venues</option>
-                <option value="Event Hall">Event Hall</option>
-                <option value="Hotel Room">Hotel Room</option>
-                <option value="Resort Villa">Resort Villa</option>
-            </select>
+            <div class="filter-control-group">
+                <label for="table-venue-filter">Venue</label>
+                <select class="control-select" id="table-venue-filter">
+                    <option value="All">All Venues</option>
+                    <option value="Event Hall">Event Hall</option>
+                    <option value="Hotel Room">Hotel Room</option>
+                    <option value="Resort Villa">Resort Villa</option>
+                </select>
+            </div>
+            <button type="button" id="btn-reset-booking-filters" class="btn btn-outline booking-filter-reset" disabled>Clear filters</button>
         </div>
     </div>
 
@@ -33,14 +40,14 @@
 
         <!-- Booking Status Filter Tabs -->
         <div class="booking-tabs" id="bookingFilters">
-            <button class="tab-btn active" data-filter="all">All</button>
-            <button class="tab-btn" data-filter="awaiting_verification">Awaiting Verification</button>
-            <button class="tab-btn tab-action-req" data-filter="action_req">Action Required</button>
-            <button class="tab-btn" data-filter="partial">Balances Due</button>
-            <button class="tab-btn" data-filter="pending">Pending</button>
-            <button class="tab-btn" data-filter="confirmed">Confirmed</button>
-            <button class="tab-btn" data-filter="completed">Completed</button>
-            <button class="tab-btn" data-filter="cancelled">Cancelled</button>
+            <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="awaiting_verification">Awaiting Verification</button>
+            <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="pending">Pending</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="confirmed">Confirmed</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="completed">Completed</button>
+            <button type="button" class="tab-btn" aria-pressed="false" data-filter="cancelled">Cancelled</button>
         </div>
         <label class="booking-filter-select-label" for="bookingFilterSelect">Booking status</label>
         <select class="booking-filter-select" id="bookingFilterSelect" aria-label="Filter bookings by status">
@@ -53,9 +60,11 @@
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
         </select>
+        <p class="booking-results-status" id="booking-results-status" role="status" aria-live="polite" aria-atomic="true">Loading bookings…</p>
 
         <div class="table-responsive">
-            <table class="bookings-table">
+            <table class="bookings-table" aria-describedby="booking-results-status">
+                <caption class="sr-only">Customer booking history</caption>
                 <thead>
                     <tr>
                         <th>BOOKING ID</th>
