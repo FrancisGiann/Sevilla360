@@ -63,9 +63,10 @@ class BookingController {
             this.syncVenueSelectionDisplays();
             this.calculateSummary();
         });
-        this.preselectFromURL();
-        this.preselectDatesFromURL();
-        this.restoreDraftIfRequested();
+        this.preselectFromURL()
+            .then(() => this.preselectDatesFromURL())
+            .then(() => this.restoreDraftIfRequested())
+            .catch(error => console.error('Booking preselection could not be restored.', error));
         this.calculateSummary();
         this.updateBookingStepUI();
     }
@@ -260,7 +261,7 @@ class BookingController {
 
         const startDate = new Date(`${start}T00:00:00`);
         const endDate = new Date(`${end}T00:00:00`);
-        const nights = Math.round((endDate - startDate) / 86400000);
+        const nights = calendarNightDifference(startDate, endDate);
         this.state.addonConfirmedRange = { start: startDate, end: endDate, nights };
         this.state.calendars.addonHotel?.setSelection(startDate, endDate);
         const display = this.getEl('addon-room-date-display');
@@ -439,7 +440,7 @@ class BookingController {
         }
     }
 
-    preselectFromURL() {
+    async preselectFromURL() {
         const urlParams = new URLSearchParams(window.location.search);
         const category = urlParams.get('category');
         if (!category) return;
@@ -455,7 +456,7 @@ class BookingController {
 
         // Switch to the correct tab
         const tabBtn = document.querySelector(`.tab-btn[data-tab="${targetTabId}"]`);
-        if (tabBtn) this.handleTabSwitch(tabBtn);
+        if (tabBtn) await this.handleTabSwitch(tabBtn);
 
         const venueId = urlParams.get('venue_id');
         const hasVenueId = urlParams.has('venue_id');
@@ -498,6 +499,17 @@ class BookingController {
                 }
             }
         }
+        if (category === 'Resort Villa') {
+            const stayType = urlParams.get('stay_type');
+            if (stayType === 'Day Time Stay' || stayType === 'Overnight') {
+                const radio = document.querySelector(`input[name="villa-stay"][value="${CSS.escape(stayType)}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    await this.configureVillaStayMode(stayType, false);
+                    this.updateVillaStaySelection(stayType);
+                }
+            }
+        }
         if (this.validateBookingStep(1).valid) {
             this.state.currentStep = 2;
             this.updateBookingStepUI();
@@ -509,13 +521,34 @@ class BookingController {
         const start = params.get('check_in') || params.get('start_date');
         const end = params.get('check_out') || params.get('end_date') || start;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) return;
+        if (this.state.activeTabId === 'resort-villa') {
+            const requestedStay = params.get('stay_type');
+            if (requestedStay === 'Day Time Stay' || requestedStay === 'Overnight') {
+                const radio = document.querySelector(`input[name="villa-stay"][value="${CSS.escape(requestedStay)}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    this.updateVillaStaySelection(requestedStay);
+                    await this.configureVillaStayMode(requestedStay, false);
+                }
+            }
+        }
         const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
         const context = this.getTabContextData();
         if (!calendar || (!context.roomName && !context.venueId)) return;
         this.state.activeCalendar = calendar;
         calendar.setSelection(start, end);
+        if (!calendar.startDate || !calendar.endDate) {
+            calendar.clearSelectedRange();
+            this.state.activeCalendar = null;
+            return;
+        }
         await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
-        if (calendar.isDateUnavailable(calendar.startDate) || (calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate)) || (this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate))) {
+        const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay';
+        const invalidVillaRange = this.state.activeTabId === 'resort-villa'
+            && ((stayType === 'Overnight' && calendar.endDate <= calendar.startDate)
+                || (stayType === 'Day Time Stay' && calendar.endDate.getTime() !== calendar.startDate.getTime())
+                || calendar.hasUnavailableDatesInclusive(calendar.startDate, calendar.endDate));
+        if (invalidVillaRange || calendar.isDateUnavailable(calendar.startDate) || (calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate)) || (this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate))) {
             calendar.clearSelectedRange();
             this.state.activeCalendar = null;
             showAlert('Dates changed', 'Those dates are no longer available. Please choose new dates.', 'info');
@@ -856,8 +889,9 @@ class BookingController {
                         this.updateVillaStaySelection(previousRadio.value);
                         const help = this.getEl('villa-calendar-help');
                         if (help) help.textContent = previousRadio.value === 'Overnight'
-                            ? 'Overnight: one night · checkout is the next calendar day.'
+                            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, is reserved.'
                             : 'Day Time Stay: one calendar date.';
+                        this.updateVillaBreakfastSchedule();
                     } else {
                         e.target.checked = true;
                     }
@@ -1545,7 +1579,7 @@ class BookingController {
             ? `${dayRate} total · One calendar date · ${this.formatTime(option.dataset.dayIn)}–${this.formatTime(option.dataset.dayOut)}`
             : 'Select a villa to view rate and hours.';
         if (nightDetails) nightDetails.textContent = hasSelection
-            ? `${overnightRate} total · One night · checkout next day · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`
+            ? `${overnightRate} per night · choose check-in and checkout · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`
             : 'Select a villa to view rate and hours.';
         this.renderVillaInclusions('stay-day-inclusions', option.dataset.dayInclusions, hasSelection);
         this.renderVillaInclusions('stay-night-inclusions', option.dataset.nightInclusions, hasSelection);
@@ -1562,6 +1596,7 @@ class BookingController {
         if (!hasSelection) {
             if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').textContent = '—';
             if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').textContent = '—';
+            this.updateVillaBreakfastSchedule();
             return;
         }
         const overnight = stayType === 'Overnight';
@@ -1569,21 +1604,54 @@ class BookingController {
         const outTime = overnight ? option.dataset.nightOut : option.dataset.dayOut;
         if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = this.formatTime(inTime);
         if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = this.formatTime(outTime);
+        this.updateVillaBreakfastSchedule();
+    }
+
+    updateVillaBreakfastSchedule() {
+        const note = this.getEl('villa-breakfast-schedule');
+        if (!note) return;
+        const calendar = this.state.calendars.villa;
+        const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value;
+        const option = this.getEl('villa-type')?.selectedOptions?.[0];
+        const items = String(option?.dataset.nightInclusions || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
+        const breakfast = items.find(item => /\bbreakfast\b/i.test(item));
+        if (stayType !== 'Overnight' || !calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate || !breakfast) {
+            note.hidden = true;
+            note.textContent = '';
+            return;
+        }
+        const morningCount = calendar.totalNights;
+        const firstMorning = new Date(calendar.startDate);
+        firstMorning.setDate(firstMorning.getDate() + 1);
+        const formatDate = date => date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const morningRange = formatDate(firstMorning) === formatDate(calendar.endDate)
+            ? formatDate(firstMorning)
+            : `${formatDate(firstMorning)} through ${formatDate(calendar.endDate)}`;
+        note.textContent = `${breakfast}, ${morningCount} morning${morningCount === 1 ? '' : 's'}: ${morningRange} (including checkout).`;
+        note.hidden = morningCount < 1;
     }
 
     async configureVillaStayMode(stayType, clearExisting = true) {
         const calendar = this.state.calendars.villa;
         if (!calendar) return true;
-        const duration = stayType === 'Overnight' ? 1 : 0;
+        const duration = stayType === 'Overnight' ? null : 0;
         const previousDuration = calendar.fixedDurationNights;
         const previousGuard = calendar.fixedDurationGuard;
-        const changed = previousDuration !== duration || previousGuard !== true;
+        const previousInclusiveGuard = calendar.inclusiveRangeGuard;
+        const previousMinimumNights = calendar.minimumRangeNights;
+        const changed = previousDuration !== duration || previousGuard !== true
+            || calendar.inclusiveRangeGuard !== (stayType === 'Overnight')
+            || calendar.minimumRangeNights !== (stayType === 'Overnight' ? 1 : 0);
         calendar.fixedDurationNights = duration;
         calendar.fixedDurationGuard = true;
+        calendar.inclusiveRangeGuard = stayType === 'Overnight';
+        calendar.minimumRangeNights = stayType === 'Overnight' ? 1 : 0;
         if (clearExisting && changed && (calendar.startDate || calendar.endDate || this.state.isDatesLocked)) {
             if (this.state.isDatesLocked && !(await this.unlockDatesAPI())) {
                 calendar.fixedDurationNights = previousDuration;
                 calendar.fixedDurationGuard = previousGuard;
+                calendar.inclusiveRangeGuard = previousInclusiveGuard;
+                calendar.minimumRangeNights = previousMinimumNights;
                 return false;
             }
             calendar.clearSelectedRange();
@@ -1591,8 +1659,9 @@ class BookingController {
         }
         const help = this.getEl('villa-calendar-help');
         if (help) help.textContent = stayType === 'Overnight'
-            ? 'Overnight: one night · checkout is the next calendar day.'
+            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, is reserved.'
             : 'Day Time Stay: one calendar date.';
+        this.updateVillaBreakfastSchedule();
         return true;
     }
 
@@ -1926,7 +1995,7 @@ class BookingController {
             ? 'Checking availability only; your event quote remains subject to resort review.'
             : (canHold ? 'Your selection is available now. Confirm to place the server-authoritative 15-minute hold.' : 'Available now — not held. Keep this selection and sign in when you are ready to reserve.');
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
-            ? `${startStr} — ${endStr}`
+            ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date reserved)` : ''}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
         if (this.getEl("selected-date-text")) this.getEl("selected-date-text").innerText = dateLabel;
         if (dateModal) dateModal.classList.add("active");
@@ -2017,7 +2086,7 @@ class BookingController {
         const pending = this.state.pendingDateConfirmation;
         const dateModal = this.getEl('date-confirm-modal');
         if (!pending) return;
-        const nights = Math.round((pending.end - pending.start) / 86400000);
+        const nights = calendarNightDifference(pending.start, pending.end);
         if (nights < 1) return;
         this.state.addonConfirmedRange = { start: new Date(pending.start), end: new Date(pending.end), nights };
         this.state.pendingDateConfirmation = null;
@@ -2474,11 +2543,11 @@ class BookingController {
         this.updateVillaStaySelection(stayText);
         const villa = stayRate * nights;
         this.state.summary.total += villa;
-        if (villa > 0) this.appendSummaryRow(`${stayText} Rate (x${nights} day${nights === 1 ? '' : 's'})`, villa);
+        if (villa > 0) this.appendSummaryRow(stayText === 'Overnight' ? `Overnight Rate (x${nights} night${nights === 1 ? '' : 's'})` : 'Day Time Stay Rate', villa);
         
         // Extra pax rate from villa option data attribute
-        const villaCap = parseInt(villaOpt?.dataset.baseCap) || 4;
-        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
+        const villaCap = parseInt(villaOpt?.dataset.baseCap, 10) || 0;
+        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 0;
 
         const extraFee = this.calcExtraPax(this.getEl('villa-guests'), villaCap, villaExtraPax, this.getEl('villa-extra-fee'), this.getEl('sum-vl-guests'));
         const feeSummary = this.getEl('sum-vl-fee');
@@ -2486,7 +2555,7 @@ class BookingController {
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
-            this.appendSummaryRow('Extra Pax Fee', totalExtra); 
+            this.appendSummaryRow(`Extra Pax Fee (x${nights} night${nights === 1 ? '' : 's'})`, totalExtra);
         }
     }
 

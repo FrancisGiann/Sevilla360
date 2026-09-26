@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_rules.php';
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['error' => 'Unauthorized']);
@@ -15,11 +16,14 @@ try {
     $query_bookings = "
         SELECT b.id, b.reference_no, b.start_date, b.end_date, b.booking_status, 
                v.name as venue_name, v.category, c.last_name,
+               vd.stay_type, vi.overnight_stay_inclusions,
                h.room_number
         FROM bookings b
         JOIN venues v ON b.venue_id = v.id
         JOIN customers c ON b.customer_id = c.id
         LEFT JOIN hotel_rooms h ON v.id = h.venue_id AND v.category = 'Hotel Room'
+        LEFT JOIN booking_villa_details vd ON vd.booking_id = b.id AND v.category = 'Resort Villa'
+        LEFT JOIN villas vi ON vi.venue_id = b.venue_id AND v.category = 'Resort Villa'
         WHERE b.booking_status IN ('Confirmed', 'Pending', 'Completed')
         AND c.last_name != 'MAINTENANCE'
     ";
@@ -43,9 +47,9 @@ try {
         }
 
         $endDateObj = new DateTime($row['end_date']);
-        // FullCalendar's end is exclusive: only inclusive Event Hall ranges
-        // need the extra day; overnight checkouts remain exclusive.
-        if ($cat === 'Event Hall') $endDateObj->modify('+1 day');
+        // FullCalendar uses an exclusive end. Events and Villas reserve their
+        // checkout/service date, so include that date in the displayed block.
+        if (in_array($cat, ['Event Hall', 'Resort Villa'], true)) $endDateObj->modify('+1 day');
 
         // Build a descriptive venue label — include room number for hotel rooms
         $venue_label = $row['venue_name'];
@@ -53,9 +57,21 @@ try {
             $venue_label .= ' Rm. ' . $row['room_number'];
         }
 
+        $villaSummary = '';
+        if ($cat === 'Resort Villa' && !empty($row['stay_type'])) {
+            $villaSummary = villa_booking_detail_summary(
+                (string)$row['stay_type'],
+                (string)$row['start_date'],
+                (string)$row['end_date'],
+                isset($row['overnight_stay_inclusions']) ? (string)$row['overnight_stay_inclusions'] : null
+            );
+        }
+        $event_title = $row['last_name'] . ' - ' . $venue_label;
+        if ($villaSummary !== '') $event_title .= ' · ' . $villaSummary;
+
         $events[] = [
             'id' => 'booking_' . $row['id'],
-            'title' => $row['last_name'] . ' - ' . $venue_label,
+            'title' => $event_title,
             'start' => $row['start_date'],
             'end' => $endDateObj->format('Y-m-d'),
             'backgroundColor' => $color,
@@ -68,7 +84,9 @@ try {
                 'category' => $row['category'],
                 'refNo' => $row['reference_no'],
                 'startDate' => $row['start_date'],
-                'endDate' => $row['end_date']
+                'endDate' => $row['end_date'],
+                'stayType' => $row['stay_type'] ?? null,
+                'villaSummary' => $villaSummary
             ]
         ];
     }

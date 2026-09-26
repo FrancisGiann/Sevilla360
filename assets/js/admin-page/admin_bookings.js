@@ -558,7 +558,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (!hasPendingProof && ['Unpaid', 'Partial'].includes(b.payment_status) && balanceDue > 0) {
                         setPrimary(`<button type="button" class="btn-action btn-confirm open-payment" ${rowId} data-due="${balanceDue}">Collect Pay</button>`);
                     }
-                    addSecondary(`<button type="button" class="btn-action btn-reschedule open-reschedule" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-type="${attr(actualRoomType)}" data-date="${attr(dateStr)}">Reschedule</button>`);
+                    addSecondary(`<button type="button" class="btn-action btn-reschedule open-reschedule" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-type="${attr(actualRoomType)}" data-date="${attr(dateStr)}" data-start="${attr(b.start_date)}" data-end="${attr(b.end_date)}">Reschedule</button>`);
                 }
             }
             if (hasPendingProof) {
@@ -1065,6 +1065,16 @@ document.addEventListener("DOMContentLoaded", () => {
       
             if (rescheduleCalendar) {
                 rescheduleCalendar.clearSelection();
+                const originalStart = new Date(this.getAttribute('data-start'));
+                const originalEnd = new Date(this.getAttribute('data-end'));
+                const durationNights = Number.isNaN(originalStart.getTime()) || Number.isNaN(originalEnd.getTime())
+                    ? 0
+                    : Math.max(0, calendarNightDifference(originalStart, originalEnd));
+                const isVillaReschedule = venueType === 'Resort Villa';
+                rescheduleCalendar.fixedDurationNights = isVillaReschedule ? durationNights : null;
+                rescheduleCalendar.fixedDurationGuard = isVillaReschedule;
+                rescheduleCalendar.inclusiveRangeGuard = isVillaReschedule;
+                rescheduleCalendar.minimumRangeNights = isVillaReschedule && durationNights > 0 ? 1 : 0;
                 rescheduleCalendar.fetchBookedDates(venueType, venueName);
                 setTimeout(() => rescheduleCalendar.render(), 100); 
             }
@@ -1292,8 +1302,8 @@ document.addEventListener("DOMContentLoaded", () => {
                           }
                           specValue.innerHTML = notesHtml;
                       } else if (data.venue_category === 'Resort Villa') {
-                          specLabel.innerText = "Stay Type:";
-                          specValue.innerText = specifics.stay_type;
+                          specLabel.innerText = "Villa stay:";
+                          specValue.innerText = specifics.summary || specifics.stay_type;
                       }
                   } else {
                       specLabel.style.display = 'none';

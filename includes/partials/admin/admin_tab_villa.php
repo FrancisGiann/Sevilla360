@@ -49,7 +49,7 @@
         <div class="villa-stay-panel">
             <div class="villa-stay-heading">
                 <h4>Choose your stay</h4>
-                <p>Day and overnight rates are separate total rates.</p>
+                <p>Overnight rate is charged per night. The checkout date is also reserved for Villa stays.</p>
             </div>
             <div class="villa-stay-options">
                 <label class="villa-stay-card selected">
@@ -71,7 +71,8 @@
 
     <div class="walkin-calendar-section">
         <p class="small-label">Select booking dates</p>
-        <p class="villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date.</p>
+        <p class="villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date. Overnight: choose check-in and checkout dates; the entire range is reserved.</p>
+        <p class="villa-breakfast-schedule" id="villa-breakfast-schedule" hidden></p>
         <?php
         $calendarId = 'cal-ui-villa';
         include 'includes/partials/booking_calendar.php';

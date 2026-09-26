@@ -69,7 +69,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 const bookingRef = props.refNo;
-                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingRef}?\n\nGuest: ${info.event.title}\nDates: ${dateText}\nStatus: ${props.status}`).then(confirmed => {
+                const villaDetails = props.category === 'Resort Villa' && props.villaSummary ? `\nStay: ${props.villaSummary}` : '';
+                showConfirm("Manage Booking", `Do you want to manage Booking #${bookingRef}?\n\nGuest: ${info.event.title}\nDates: ${dateText}${villaDetails}\nStatus: ${props.status}`).then(confirmed => {
                     if (confirmed) window.location.href = `admin_dashboard.php?page=bookings&search=${bookingRef}`;
                 });
             }

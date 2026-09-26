@@ -82,7 +82,8 @@ try {
     if ($booking['category'] === 'Resort Villa') {
         $stay_type = trim((string)($booking['stay_type'] ?? ''));
         validate_villa_stay_dates($booking['category'], $stay_type, $orig_start, $orig_end);
-        $req_end = $stay_type === 'Overnight' ? $req_start->modify('+1 day') : $req_start;
+        $duration = (int)$orig_start->diff($orig_end)->days;
+        $req_end = $duration > 0 ? $req_start->modify("+{$duration} days") : $req_start;
         validate_villa_stay_dates($booking['category'], $stay_type, $req_start, $req_end);
     } else {
         $nights = $orig_start->diff($orig_end)->days;

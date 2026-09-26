@@ -219,14 +219,17 @@ document.addEventListener("DOMContentLoaded", function () {
       ? 'Base rate ' + money(venue.rate) + ' · final quote after consultation'
       : 'Rate on request · final quote after consultation';
   };
-  const bookingUrl = (venue, dates) => {
+  const bookingUrl = (venue, dates, villaStayType = 'Day Time Stay') => {
     const params = new URLSearchParams({ tab: tabFor(venue.category), category: venue.category, venue_name: venue.venue_name });
     if (venue.room_group_id) {
       params.set('room_group_id', String(venue.room_group_id));
     } else if (venue.venue_id) params.set('venue_id', venue.venue_id);
     if (venue.room_type) params.set('room_type', venue.room_type);
-    if (dates && dates.startDate) params.set(venue.room_group_id ? 'check_in' : 'start_date', dates.startDate);
-    if (dates && dates.endDate) params.set(venue.room_group_id ? 'check_out' : 'end_date', dates.endDate);
+    if (dates && dates.startDate && dates.endDate) {
+      params.set(venue.room_group_id ? 'check_in' : 'start_date', dates.startDate);
+      params.set(venue.room_group_id ? 'check_out' : 'end_date', dates.endDate);
+    }
+    if (venue.category === 'Resort Villa') params.set('stay_type', villaStayType);
     return 'booking.php?' + params.toString();
   };
   const makeCard = venue => {
@@ -247,8 +250,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const actions = document.createElement('div'); actions.className = 'idx-catalog-card-actions';
     const details = document.createElement('button'); details.type = 'button'; details.className = 'idx-btn idx-btn-outline-dark'; details.textContent = 'View details';
     details.addEventListener('click', () => openVenueModal(venue, details));
-    const book = document.createElement('a'); book.className = 'idx-btn idx-btn-gold'; book.href = bookingUrl(venue);
-    book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
+    const book = document.createElement(venue.category === 'Resort Villa' ? 'button' : 'a');
+    book.className = 'idx-btn idx-btn-gold';
+    if (venue.category === 'Resort Villa') {
+      book.type = 'button';
+      book.textContent = 'Choose stay & dates';
+      book.addEventListener('click', () => openVenueModal(venue, book));
+    } else {
+      book.href = bookingUrl(venue);
+      book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
+    }
     actions.append(details, book); body.append(title, kind, rate, rating, facts, actions); article.appendChild(body);
     return article;
   };
@@ -469,10 +480,13 @@ document.addEventListener("DOMContentLoaded", function () {
     updateCarousel(section, cards, index);
   });
   const dateValue = date => date ? date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0') : '';
-  const modalDates = () => modalCalendar && modalCalendar.startDate ? { startDate: dateValue(modalCalendar.startDate), endDate: dateValue(modalCalendar.endDate) } : null;
+  const modalDates = () => modalCalendar && modalCalendar.startDate && modalCalendar.endDate
+    ? { startDate: dateValue(modalCalendar.startDate), endDate: dateValue(modalCalendar.endDate) }
+    : null;
+  const selectedVillaStayType = () => modal?.querySelector('input[name="idx-villa-stay"]:checked')?.value || 'Day Time Stay';
   const updateContinue = () => {
     const link = modal?.querySelector('.idx-modal-continue');
-    if (link && activeVenue) link.href = bookingUrl(activeVenue, modalDates());
+    if (link && activeVenue) link.href = bookingUrl(activeVenue, modalDates(), selectedVillaStayType());
   };
   const setModalImage = index => {
     if (!activeVenue) return;
@@ -494,6 +508,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const facts = modal.querySelector('.idx-modal-facts');
     const amenities = modal.querySelector('.idx-modal-amenities');
     const checkoutBoundaryLegend = modal.querySelector('[data-calendar-legend="checkout-boundary"]');
+    const villaStayOptions = modal.querySelector('.idx-modal-villa-stay');
     
     if (title) title.textContent = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
@@ -526,6 +541,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     
     if (checkoutBoundaryLegend) checkoutBoundaryLegend.hidden = venue.category !== 'Hotel Room';
+    if (villaStayOptions) {
+      villaStayOptions.hidden = venue.category !== 'Resort Villa';
+      const dayRate = villaStayOptions.querySelector('[data-villa-day-rate]');
+      const overnightRate = villaStayOptions.querySelector('[data-villa-overnight-rate]');
+      if (dayRate) dayRate.textContent = money(venue.rate) + ' · one calendar date';
+      if (overnightRate) overnightRate.textContent = money(venue.overnight_rate) + ' per night · choose check-in and checkout';
+      const dayRadio = villaStayOptions.querySelector('input[value="Day Time Stay"]');
+      if (dayRadio) dayRadio.checked = true;
+    }
     if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
     if (facts) {
       facts.replaceChildren();
@@ -554,6 +578,8 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.clearSelection();
       modalCalendar.fixedDurationNights = venue.category === 'Resort Villa' ? 0 : null;
       modalCalendar.fixedDurationGuard = venue.category === 'Resort Villa';
+      modalCalendar.inclusiveRangeGuard = false;
+      modalCalendar.minimumRangeNights = 0;
       modalCalendar.requireHotelRules = venue.category === 'Hotel Room';
       modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null, venue.category === 'Hotel Room', venue.room_group_id || null);
     }
@@ -571,6 +597,22 @@ document.addEventListener("DOMContentLoaded", function () {
   modal?.querySelector('.idx-modal-gallery-prev')?.addEventListener('click', () => setModalImage(activeImageIndex - 1));
   modal?.querySelector('.idx-modal-gallery-next')?.addEventListener('click', () => setModalImage(activeImageIndex + 1));
   modal?.querySelector('.idx-modal-calendar .cal-days-grid')?.addEventListener('click', () => window.setTimeout(updateContinue, 0));
+  modal?.querySelectorAll('input[name="idx-villa-stay"]').forEach(radio => {
+    radio.addEventListener('change', event => {
+      if (!modalCalendar) return;
+      modalCalendar.clearSelection();
+      const overnight = event.target.value === 'Overnight';
+      modalCalendar.fixedDurationNights = overnight ? null : 0;
+      modalCalendar.fixedDurationGuard = true;
+      modalCalendar.inclusiveRangeGuard = overnight;
+      modalCalendar.minimumRangeNights = overnight ? 1 : 0;
+      const note = modal?.querySelector('.idx-modal-calendar-note');
+      if (note) note.textContent = overnight
+        ? 'Select check-in and checkout dates. Every date in the range, including checkout, is reserved.'
+        : 'Select one calendar date. No hold is placed until checkout.';
+      updateContinue();
+    });
+  });
   modal?.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); closeVenueModal(); return; }
     if (event.key !== 'Tab') return;

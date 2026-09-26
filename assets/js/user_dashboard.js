@@ -1005,6 +1005,9 @@ document.addEventListener("DOMContentLoaded", () => {
               userReschedCalendar.requireHotelRules = false;
           }
           userReschedCalendar.fixedDurationNights = nights;
+          userReschedCalendar.fixedDurationGuard = venueType === 'Resort Villa';
+          userReschedCalendar.inclusiveRangeGuard = venueType === 'Resort Villa';
+          userReschedCalendar.minimumRangeNights = venueType === 'Resort Villa' && nights > 0 ? 1 : 0;
 
           userReschedCalendar.fetchBookedDates(venueType, venueName);
           setTimeout(() => userReschedCalendar.render(), 100);
@@ -1129,8 +1132,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     notes.append(notesLabel, document.createTextNode(String(specifics.custom_notes || 'None')));
                     specValue.append(eventSummary, document.createElement('br'), notes);
                 } else if (data.venue_category === 'Resort Villa') {
-                    specLabel.textContent = "Stay Type:";
-                    specValue.textContent = String(specifics.stay_type ?? '');
+                    specLabel.textContent = "Villa stay:";
+                    specValue.textContent = String(specifics.summary || specifics.stay_type || '');
                 }
             } else if(specRow) {
                 specRow.style.display = 'none';

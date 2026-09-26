@@ -105,12 +105,13 @@ if ($hotel_group_schema_ready) {
         ];
     }
 }
-$public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time {$event_review_fields} FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
+$public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time, vi.day_stay_inclusions, vi.overnight_stay_inclusions {$event_review_fields} FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
 if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
     $public_venues['Resort Villa'][] = [
         'key' => 'villa-' . (int)$venue['id'], 'review_key' => 'villa-' . (int)$venue['id'], 'category' => 'Resort Villa', 'venue_name' => (string)$venue['name'],
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['day_rate'] ?? null) ? (float)$venue['day_rate'] : null, 'overnight_rate' => is_numeric($venue['overnight_rate'] ?? null) ? (float)$venue['overnight_rate'] : null,
         'facts' => ['Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Day or overnight', 'Pool' => ((int)$venue['has_private_pool'] === 1 ? 'Private pool' : 'Pool access'), 'Day hours' => substr((string)$venue['day_check_in_time'], 0, 5) . '–' . substr((string)$venue['day_check_out_time'], 0, 5), 'Overnight hours' => substr((string)$venue['overnight_check_in_time'], 0, 5) . '–' . substr((string)$venue['overnight_check_out_time'], 0, 5)],
+        'day_stay_inclusions' => (string)($venue['day_stay_inclusions'] ?? ''), 'overnight_stay_inclusions' => (string)($venue['overnight_stay_inclusions'] ?? ''),
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
         'images' => $public_images((string)$venue['name'])
     ];
@@ -312,6 +313,11 @@ include 'includes/header.php';
                 <div class="idx-modal-facts"></div>
                 <p class="idx-modal-description"></p>
                 <ul class="idx-modal-amenities"></ul>
+                <fieldset class="idx-modal-villa-stay" hidden>
+                    <legend>Choose a Villa stay</legend>
+                    <label><input type="radio" name="idx-villa-stay" value="Day Time Stay" checked> Day Time Stay <small data-villa-day-rate></small></label>
+                    <label><input type="radio" name="idx-villa-stay" value="Overnight"> Overnight <small data-villa-overnight-rate></small></label>
+                </fieldset>
                 <div class="idx-modal-availability">
                     <h3>Check availability</h3>
                     <div class="calendar-ui idx-modal-calendar" id="idx-modal-calendar">

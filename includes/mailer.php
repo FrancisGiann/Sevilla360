@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config/env.php'; // Load env variables
 require_once __DIR__ . '/manual_payment.php';
+require_once __DIR__ . '/booking_rules.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -77,15 +78,21 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     // 3. CHECK-IN / CHECK-OUT LOGIC
     $check_in_time = '2:00 PM';
     $check_out_time = '12:00 PM';
+    $villa_summary_row = '';
 
     if ($booking['category'] === 'Resort Villa') {
-        $stmt_villa = $conn->prepare("SELECT stay_type FROM booking_villa_details WHERE booking_id = ?");
+        $stmt_villa = $conn->prepare("SELECT bvd.stay_type, vi.overnight_stay_inclusions FROM booking_villa_details bvd JOIN bookings b ON b.id = bvd.booking_id JOIN villas vi ON vi.venue_id = b.venue_id WHERE bvd.booking_id = ?");
         $stmt_villa->bind_param("i", $booking['id']);
         $stmt_villa->execute();
         $villa_details = $stmt_villa->get_result()->fetch_assoc();
 
-        if ($villa_details && $villa_details['stay_type'] === 'Day Time Stay') {
-            $check_in_time = '7:00 AM'; $check_out_time = '5:00 PM';
+        if ($villa_details) {
+            $villa_stay_type = (string)$villa_details['stay_type'];
+            $villa_summary = villa_booking_detail_summary($villa_stay_type, (string)$booking['start_date'], (string)$booking['end_date'], $villa_details['overnight_stay_inclusions'] ?? null);
+            $villa_summary_row = "<tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Villa stay:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>" . htmlspecialchars($villa_summary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</td></tr>";
+            if ($villa_stay_type === 'Day Time Stay') {
+                $check_in_time = '7:00 AM'; $check_out_time = '5:00 PM';
+            }
         }
     } elseif ($booking['category'] === 'Event Hall') {
         $check_in_time = 'Per Event Schedule'; $check_out_time = 'Per Event Schedule';
@@ -179,6 +186,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$venue_name</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-in:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_in</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-out:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_out</td></tr>
+                        $villa_summary_row
                         <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>$guests Persons</td></tr>
                         $money_block
                         <tr><td style='padding: 12px; border-bottom: none;'><strong>Status:</strong></td><td style='padding: 12px; border-bottom: none; text-align: right;'><strong>$status</strong></td></tr>

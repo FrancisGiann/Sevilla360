@@ -319,6 +319,9 @@ try {
             $stay_row = $stmt_stay->get_result()->fetch_assoc();
             if (!$stay_row) throw new Exception('Villa stay details are missing for this booking.');
             validate_villa_stay_dates($b_info['category'], trim((string)$stay_row['stay_type']), $new_start_dt, $new_end_dt);
+            if ($new_start_dt->diff($new_end_dt)->days !== $original_start_dt->diff($original_end_dt)->days) {
+                throw new Exception('Rescheduling must keep the original booking duration.');
+            }
         } else {
             if ($b_info['category'] === 'Hotel Room' && $new_end_dt <= $new_start_dt) {
                 throw new Exception('Hotel Room stays require checkout after check-in.');
@@ -396,9 +399,24 @@ try {
 
         } else {
             // For Event Halls / Villas, just check the specific unit
+            if ($b_data['category'] === 'Resort Villa') {
+                $villa_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL) AND " . maintenance_overlap_sql() . " LIMIT 1");
+                if (!$villa_maintenance) throw new Exception('Unable to check Villa maintenance.');
+                $villa_maintenance->bind_param('iss', $venue_id, $new_end, $new_start);
+                if (!$villa_maintenance->execute()) throw new Exception('Unable to check Villa maintenance.');
+                if ($villa_maintenance->get_result()->num_rows > 0) throw new Exception('Collision Error: those dates include Villa maintenance.');
+
+                $villa_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() AND " . booking_overlap_sql('Resort Villa') . " LIMIT 1");
+                if (!$villa_lock) throw new Exception('Unable to check Villa date holds.');
+                $villa_lock->bind_param('iss', $venue_id, $new_end, $new_start);
+                if (!$villa_lock->execute()) throw new Exception('Unable to check Villa date holds.');
+                if ($villa_lock->get_result()->num_rows > 0) throw new Exception('Collision Error: another guest is holding those Villa dates.');
+            }
             $reschedule_status_filter = $b_data['category'] === 'Event Hall'
                 ? "IN ('Confirmed', 'Completed')"
-                : "IN ('Pending', 'Confirmed')";
+                : ($b_data['category'] === 'Resort Villa'
+                    ? "IN ('Pending', 'Confirmed', 'Completed')"
+                    : "IN ('Pending', 'Confirmed')");
             $check_overlap = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status $reschedule_status_filter AND source <> 'Maintenance' AND id != ? AND " . booking_overlap_sql($b_data['category']));
             $check_overlap->bind_param("iiss", $venue_id, $booking_id, $new_end, $new_start);
             $check_overlap->execute();

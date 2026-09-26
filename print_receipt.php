@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth_guard.php';
 require_once __DIR__ . '/config/db_connect.php';
 require_once __DIR__ . '/includes/receipt_itemization.php';
 require_once __DIR__ . '/includes/manual_payment.php';
+require_once __DIR__ . '/includes/booking_rules.php';
 
 function receipt_escape(mixed $value): string
 {
@@ -42,6 +43,18 @@ try {
     $is_staff = in_array($session_role, ['admin', 'staff'], true);
     $is_owner = (int)($booking['owner_id'] ?? 0) === $session_user_id;
     if (!$is_staff && !$is_owner) throw new RuntimeException('Receipt unavailable.');
+
+    $villa_summary = '';
+    if ($booking['venue_category'] === 'Resort Villa') {
+        $villa_stmt = $conn->prepare('SELECT bvd.stay_type, vi.overnight_stay_inclusions FROM booking_villa_details bvd INNER JOIN bookings b ON b.id = bvd.booking_id INNER JOIN villas vi ON vi.venue_id = b.venue_id WHERE bvd.booking_id = ? LIMIT 1');
+        if (!$villa_stmt) throw new RuntimeException('Unable to load receipt.');
+        $villa_stmt->bind_param('i', $booking_id);
+        if (!$villa_stmt->execute()) throw new RuntimeException('Unable to load receipt.');
+        $villa_details = $villa_stmt->get_result()->fetch_assoc();
+        if ($villa_details) {
+            $villa_summary = villa_booking_detail_summary((string)$villa_details['stay_type'], (string)$booking['start_date'], (string)$booking['end_date'], $villa_details['overnight_stay_inclusions'] ?? null);
+        }
+    }
 
     $booking_status = (string)($booking['booking_status'] ?? '');
     $payment_scheme = (string)($booking['payment_scheme'] ?? '');
@@ -123,7 +136,8 @@ try {
     $payment_status = (string)($booking['payment_status'] ?? '');
     $itemization = receipt_itemization_plan($line_items, $room_allocations);
 
-    $item_rows = '<tr><td><strong>' . receipt_escape($booking['venue_name'] . ' (' . $booking['venue_category'] . ')') . '</strong><br><small>Dates: ' . receipt_escape($date_str) . ' | Guests: ' . (int)$booking['guests_count'] . '</small></td><td class="amount">' . receipt_money($base_amt) . '</td></tr>';
+    $villa_summary_html = $villa_summary !== '' ? ' | ' . receipt_escape($villa_summary) : '';
+    $item_rows = '<tr><td><strong>' . receipt_escape($booking['venue_name'] . ' (' . $booking['venue_category'] . ')') . '</strong><br><small>Dates: ' . receipt_escape($date_str) . $villa_summary_html . ' | Guests: ' . (int)$booking['guests_count'] . '</small></td><td class="amount">' . receipt_money($base_amt) . '</td></tr>';
     if ($extra_pax > 0) {
         $item_rows .= '<tr><td><strong>Extra Pax Charge</strong></td><td class="amount">' . receipt_money($extra_pax) . '</td></tr>';
     }

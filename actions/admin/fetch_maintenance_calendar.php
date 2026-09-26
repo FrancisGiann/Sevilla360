@@ -38,9 +38,9 @@ try {
         $currentDate = new DateTime($row['start_date']);
         $endDate = new DateTime($row['end_date']);
         
-        // Overnight Hotel/Villa stays use exclusive checkout dates; Event Hall
-        // reservations occupy the inclusive calendar range.
-        $is_hotel = in_array($venue_cat, ['Hotel Room', 'Resort Villa'], true);
+        // Only Hotel Room checkout dates are exclusive. Villas reserve every
+        // calendar date from check-in through checkout, including day stays.
+        $is_hotel = $venue_cat === 'Hotel Room';
         
         while ($is_hotel ? $currentDate < $endDate : $currentDate <= $endDate) {
             $booked_dates[] = [

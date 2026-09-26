@@ -680,6 +680,12 @@
 .idx-modal-copy::-webkit-scrollbar { width: 6px; }
 .idx-modal-copy::-webkit-scrollbar-track { background: var(--idx-sand); }
 .idx-modal-copy::-webkit-scrollbar-thumb { background: var(--idx-gold-deep); border-radius: 999px; }
+.idx-modal-villa-stay { display: grid; gap: .45rem; margin: 1rem 0 0; padding: .75rem; border: 1px solid var(--idx-hairline); border-radius: 8px; }
+.idx-modal-villa-stay legend { padding: 0 .3rem; color: var(--idx-ink); font-size: .78rem; font-weight: 600; }
+.idx-modal-villa-stay label { display: flex; align-items: center; gap: .45rem; color: var(--idx-ink); font-size: .78rem; }
+.idx-modal-villa-stay input { accent-color: var(--idx-gold-deep); }
+.idx-modal-villa-stay small { margin-left: auto; color: #726a60; font-size: .69rem; text-align: right; }
+.idx-modal-villa-stay[hidden] { display: none; }
 .idx-modal-category { margin: 0; color: var(--idx-gold-deep); font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; }
 .idx-modal-copy h2 { margin: .5rem 0 0; color: var(--idx-ink); font: 400 clamp(1.8rem, 3vw, 2.4rem)/1.08 var(--font-heading); }
 .idx-modal-rate { margin: .65rem 0 0; color: var(--idx-ink); font-size: .96rem; font-weight: 600; line-height: 1.5; }
@@ -1051,4 +1057,3 @@
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
-

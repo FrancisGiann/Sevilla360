@@ -26,9 +26,60 @@ function validate_villa_stay_dates(string $category, string $stay_type, DateTime
     if ($days->invert || ($stay_type === 'Day Time Stay' && $days->days !== 0)) {
         throw new InvalidArgumentException('Day Time Stay must use one calendar date.');
     }
-    if ($stay_type === 'Overnight' && $days->days !== 1) {
-        throw new InvalidArgumentException('Overnight stays require checkout on the next calendar day.');
+    if ($stay_type === 'Overnight' && $days->days < 1) {
+        throw new InvalidArgumentException('Overnight stays require checkout after check-in.');
     }
+}
+
+/** Return the number of nights in a validated Villa stay. Day stays count as one service day. */
+function villa_stay_nights(string $stay_type, DateTimeInterface $start, DateTimeInterface $end): int
+{
+    return $stay_type === 'Day Time Stay' ? 1 : max(0, (int)$start->diff($end)->days);
+}
+
+/** Return the configured breakfast inclusion, if the Villa lists one. */
+function villa_breakfast_entitlement(?string $overnight_inclusions): ?string
+{
+    $items = preg_split('/[;,\n]+/', (string)$overnight_inclusions) ?: [];
+    foreach ($items as $item) {
+        $item = trim($item);
+        if ($item !== '' && preg_match('/\bbreakfast\b/i', $item)) return $item;
+    }
+    return null;
+}
+
+/** Return a bounded description of the included breakfast mornings. */
+function villa_breakfast_schedule(string $stay_type, DateTimeInterface $start, DateTimeInterface $end): array
+{
+    $difference = $start->diff($end);
+    if ($stay_type !== 'Overnight' || $difference->invert || $difference->days < 1) {
+        return ['count' => 0, 'first_morning' => null, 'last_morning' => null];
+    }
+    return [
+        'count' => (int)$difference->days,
+        'first_morning' => DateTimeImmutable::createFromInterface($start)->modify('+1 day')->format('Y-m-d'),
+        'last_morning' => DateTimeImmutable::createFromInterface($end)->format('Y-m-d'),
+    ];
+}
+
+/** Build a display summary from current booking dates and configured Villa inclusions without adding a booking column. */
+function villa_booking_detail_summary(string $stay_type, string $start_date, string $end_date, ?string $overnight_inclusions): string
+{
+    $start = DateTimeImmutable::createFromFormat('!Y-m-d', $start_date);
+    $end = DateTimeImmutable::createFromFormat('!Y-m-d', $end_date);
+    if (!$start || !$end || $start->format('Y-m-d') !== $start_date || $end->format('Y-m-d') !== $end_date) return $stay_type;
+    if ($stay_type !== 'Overnight') return 'Day Time Stay';
+    $nights = villa_stay_nights($stay_type, $start, $end);
+    $summary = 'Overnight · ' . $nights . ' night' . ($nights === 1 ? '' : 's');
+    $breakfast = villa_breakfast_entitlement($overnight_inclusions);
+    $schedule = villa_breakfast_schedule($stay_type, $start, $end);
+    if ($breakfast !== null && $schedule['count'] > 0) {
+        $first = (new DateTimeImmutable($schedule['first_morning']))->format('D, M j');
+        $last = (new DateTimeImmutable($schedule['last_morning']))->format('D, M j');
+        $morningRange = $first === $last ? $first : $first . ' through ' . $last;
+        $summary .= ' · ' . $breakfast . ', ' . $schedule['count'] . ' morning' . ($schedule['count'] === 1 ? '' : 's') . ': ' . $morningRange . ' (including checkout)';
+    }
+    return $summary;
 }
 
 /** Maintenance blocks are physical calendar dates, so always inclusive. */

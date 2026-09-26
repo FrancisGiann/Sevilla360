@@ -286,7 +286,7 @@ class AdminWalkinController {
         const start = new Date(range.start);
         const end = new Date(range.end);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
-        return { start, end, nights: Math.round((end - start) / 86400000) };
+        return { start, end, nights: calendarNightDifference(start, end) };
     }
 
     handleAddonRangeSelected(start, end) {
@@ -491,7 +491,7 @@ class AdminWalkinController {
         const start = new Date(range.start);
         const end = new Date(range.end);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return null;
-        return { start, end, nights: Math.round((end - start) / 86400000) };
+        return { start, end, nights: calendarNightDifference(start, end) };
     }
 
     getCommittedAddonSnapshot() {
@@ -993,7 +993,7 @@ class AdminWalkinController {
         const dayDetails = this.getEl('stay-day-details');
         const nightDetails = this.getEl('stay-night-details');
         if (dayDetails) dayDetails.textContent = `${hasSelection ? this.formatCurrency(option.value) : '—'} total · One calendar date · ${this.formatTime(option.dataset.dayIn)}–${this.formatTime(option.dataset.dayOut)}`;
-        if (nightDetails) nightDetails.textContent = `${hasSelection ? this.formatCurrency(option.dataset.overnight) : '—'} total · One night · checkout next day · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`;
+        if (nightDetails) nightDetails.textContent = `${hasSelection ? this.formatCurrency(option.dataset.overnight) : '—'} per night · choose check-in and checkout · ${this.formatTime(option.dataset.nightIn)}–${this.formatTime(option.dataset.nightOut)}`;
         this.renderVillaInclusions('stay-day-inclusions', option.dataset.dayInclusions, hasSelection);
         this.renderVillaInclusions('stay-night-inclusions', option.dataset.nightInclusions, hasSelection);
         this.updateVillaStaySelection(document.querySelector('input[name="villa-stay"]:checked')?.value || 'Day Time Stay');
@@ -1003,26 +1003,53 @@ class AdminWalkinController {
         document.querySelectorAll('.villa-stay-card').forEach(card => card.classList.toggle('selected', card.querySelector('input')?.value === stayType));
         const select = this.getEl('villa-type');
         const option = select?.options[select?.selectedIndex];
-        if (!option || !option.value) return;
+        const note = this.getEl('villa-breakfast-schedule');
+        if (!option || !option.value) {
+            if (note) { note.hidden = true; note.textContent = ''; }
+            return;
+        }
         const overnight = stayType === 'Overnight';
         if (this.getEl('sum-vl-stay')) this.getEl('sum-vl-stay').innerText = overnight ? 'Overnight' : 'Day Time Stay';
         if (this.getEl('sum-vl-in')) this.getEl('sum-vl-in').innerText = this.formatTime(overnight ? option.dataset.nightIn : option.dataset.dayIn);
         if (this.getEl('sum-vl-out')) this.getEl('sum-vl-out').innerText = this.formatTime(overnight ? option.dataset.nightOut : option.dataset.dayOut);
+        const calendar = this.state.calendars.villa;
+        const breakfast = String(option.dataset.nightInclusions || '').split(/[;,\n]+/).map(item => item.trim()).find(item => /\bbreakfast\b/i.test(item));
+        if (!note || !overnight || !calendar?.startDate || !calendar?.endDate || calendar.endDate <= calendar.startDate || !breakfast) {
+            if (note) { note.hidden = true; note.textContent = ''; }
+            return;
+        }
+        const morningCount = calendar.totalNights;
+        const firstMorning = new Date(calendar.startDate);
+        firstMorning.setDate(firstMorning.getDate() + 1);
+        const formatDate = date => date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const morningRange = formatDate(firstMorning) === formatDate(calendar.endDate)
+            ? formatDate(firstMorning)
+            : `${formatDate(firstMorning)} through ${formatDate(calendar.endDate)}`;
+        note.textContent = `${breakfast}, ${morningCount} morning${morningCount === 1 ? '' : 's'}: ${morningRange} (including checkout).`;
+        note.hidden = morningCount < 1;
     }
 
     async configureVillaStayMode(stayType, clearExisting = true) {
         const calendar = this.state.calendars.villa;
         if (!calendar) return true;
-        const duration = stayType === 'Overnight' ? 1 : 0;
+        const duration = stayType === 'Overnight' ? null : 0;
         const previousDuration = calendar.fixedDurationNights;
         const previousGuard = calendar.fixedDurationGuard;
-        const changed = previousDuration !== duration || previousGuard !== true;
+        const previousInclusiveGuard = calendar.inclusiveRangeGuard;
+        const previousMinimumNights = calendar.minimumRangeNights;
+        const changed = previousDuration !== duration || previousGuard !== true
+            || calendar.inclusiveRangeGuard !== (stayType === 'Overnight')
+            || calendar.minimumRangeNights !== (stayType === 'Overnight' ? 1 : 0);
         calendar.fixedDurationNights = duration;
         calendar.fixedDurationGuard = true;
+        calendar.inclusiveRangeGuard = stayType === 'Overnight';
+        calendar.minimumRangeNights = stayType === 'Overnight' ? 1 : 0;
         if (clearExisting && changed && (calendar.startDate || calendar.endDate || this.state.isDatesLocked)) {
             if (this.state.isDatesLocked && !(await this.unlockDatesAPI())) {
                 calendar.fixedDurationNights = previousDuration;
                 calendar.fixedDurationGuard = previousGuard;
+                calendar.inclusiveRangeGuard = previousInclusiveGuard;
+                calendar.minimumRangeNights = previousMinimumNights;
                 return false;
             }
             calendar.clearSelectedRange();
@@ -1030,8 +1057,9 @@ class AdminWalkinController {
         }
         const help = this.getEl('villa-calendar-help');
         if (help) help.textContent = stayType === 'Overnight'
-            ? 'Overnight: one night · checkout is the next calendar day.'
+            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, is reserved.'
             : 'Day Time Stay: one calendar date.';
+        this.updateVillaStaySelection(stayType);
         return true;
     }
 
@@ -1165,7 +1193,7 @@ class AdminWalkinController {
     async confirmAddonDateRange(startDate, endDate, calendarInstance) {
         const previousRange = this.getAddonStayRange();
         const selected = this.captureAddonSelection();
-        const proposed = { start: new Date(startDate), end: new Date(endDate), nights: Math.round((endDate - startDate) / 86400000) };
+        const proposed = { start: new Date(startDate), end: new Date(endDate), nights: calendarNightDifference(startDate, endDate) };
         if (this.fullUnlockPromise || this.addonReleasePromise || this.addonResetPromise) {
             if (previousRange) calendarInstance.setSelection(previousRange.start, previousRange.end);
             else calendarInstance.clearSelectedRange();
@@ -1904,17 +1932,17 @@ class AdminWalkinController {
         this.updateVillaStaySelection(stayText);
         const villa = stayRate * nights;
         this.state.summary.total += villa;
-        if (villa > 0) this.appendSummaryRow(`${stayText} Rate (x${nights} day${nights === 1 ? '' : 's'})`, villa);
+        if (villa > 0) this.appendSummaryRow(stayText === 'Overnight' ? `Overnight Rate (x${nights} night${nights === 1 ? '' : 's'})` : 'Day Time Stay Rate', villa);
         
         // Get extra pax from data attributes
-        const villaCap = parseInt(villaOpt?.dataset.baseCap) || 4;
-        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 1000;
+        const villaCap = parseInt(villaOpt?.dataset.baseCap, 10) || 0;
+        const villaExtraPax = parseFloat(villaOpt?.dataset.extraPax) || 0;
 
         const extraFee = this.calcExtraPax(this.getEl('villa-guests'), villaCap, villaExtraPax, this.getEl('villa-extra-fee'));
         if (extraFee > 0) { 
             const totalExtra = extraFee * nights; 
             this.state.summary.total += totalExtra; 
-            this.appendSummaryRow('Extra Pax Fee', totalExtra); 
+            this.appendSummaryRow(`Extra Pax Fee (x${nights} night${nights === 1 ? '' : 's'})`, totalExtra);
         }
     }
 

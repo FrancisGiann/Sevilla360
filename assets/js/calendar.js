@@ -18,6 +18,13 @@ function normalizeCalendarDate(value) {
   return localDate;
 }
 
+function calendarNightDifference(start, end) {
+  if (!(start instanceof Date) || !(end instanceof Date) || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((endUtc - startUtc) / 86400000);
+}
+
 class SevillaCalendar {
   constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
@@ -36,6 +43,8 @@ class SevillaCalendar {
     this.totalNights = 1;
     this.fixedDurationNights = null;
     this.fixedDurationGuard = options.fixedDurationGuard === true;
+    this.minimumRangeNights = Number.isInteger(options.minimumRangeNights) ? Math.max(0, options.minimumRangeNights) : 0;
+    this.inclusiveRangeGuard = options.inclusiveRangeGuard === true;
     this.requireHotelRules = options.requireHotelRules === true;
     this.allowSelectionWhilePrimaryLocked = options.allowSelectionWhilePrimaryLocked === true;
     this.onRangeSelected = typeof options.onRangeSelected === 'function' ? options.onRangeSelected : null;
@@ -153,6 +162,19 @@ class SevillaCalendar {
     while (current < end) {
       const checkStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
       if (this.bookedDatesList.includes(checkStr)) return true;
+      current.setDate(current.getDate() + 1);
+    }
+    return false;
+  }
+
+  hasUnavailableDatesInclusive(start, end) {
+    if (!(start instanceof Date) || !(end instanceof Date) || end < start) return true;
+    const current = new Date(start);
+    current.setHours(0, 0, 0, 0);
+    const last = new Date(end);
+    last.setHours(0, 0, 0, 0);
+    while (current <= last) {
+      if (this.isDateUnavailable(current)) return true;
       current.setDate(current.getDate() + 1);
     }
     return false;
@@ -301,10 +323,15 @@ class SevillaCalendar {
               this.render();
             } else if (this.requireHotelRules && cellDate.getTime() === this.startDate.getTime()) {
               showAlert("Notice", "You've selected the same check-in and check-out date. Hotel room bookings require a minimum of 1 night — please select a check-out date that is at least 1 day after your check-in.", "info");
+            } else if (this.minimumRangeNights > 0 && calendarNightDifference(this.startDate, cellDate) < this.minimumRangeNights) {
+              showAlert("Notice", `Choose a checkout date at least ${this.minimumRangeNights} night${this.minimumRangeNights === 1 ? '' : 's'} after check-in.`, "info");
             } else {
-              if (this.hasInvalidDaysBetween(this.startDate, cellDate)) {
+              const containsUnavailableDate = this.inclusiveRangeGuard
+                ? this.hasUnavailableDatesInclusive(this.startDate, cellDate)
+                : this.hasInvalidDaysBetween(this.startDate, cellDate);
+              if (containsUnavailableDate) {
                 showAlert("Notice", "Selection contains unavailable or booked dates.");
-                this.startDate = cellDate;
+                if (!this.inclusiveRangeGuard) this.startDate = cellDate;
                 this.render();
               } else {
                 this.endDate = cellDate;
@@ -338,8 +365,7 @@ class SevillaCalendar {
       if (this.endDate && this.startDate.getTime() !== this.endDate.getTime()) {
         const endStr = this.endDate.toLocaleDateString("en-US", opts);
         displayStr = `${startStr} — ${endStr}`;
-        const diffTime = Math.abs(this.endDate - this.startDate);
-        this.totalNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        this.totalNights = Math.max(0, calendarNightDifference(this.startDate, this.endDate));
       } else {
         displayStr = startStr;
         this.totalNights = 1;
@@ -357,6 +383,7 @@ class SevillaCalendar {
   }
 
   notifyRangeSelected() {
+    this.updateDateDisplay();
     if (this.onRangeSelected) this.onRangeSelected(this.startDate, this.endDate, this);
     else if (typeof window.requestDateConfirmation === 'function') window.requestDateConfirmation(this.startDate, this.endDate, this);
   }
@@ -369,6 +396,7 @@ class SevillaCalendar {
       this.currentDate = new Date(this.startDate.getFullYear(), this.startDate.getMonth(), 1);
     }
     this.render();
+    this.updateDateDisplay();
   }
 
   clearSelectedRange() {

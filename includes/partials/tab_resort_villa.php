@@ -80,7 +80,8 @@
         <h3 class="booking-step-heading" id="villa-step-dates" tabindex="-1">Choose your dates</h3>
         <div class="booking-date-control">
             <p class="small-label">SELECT YOUR DATES</p>
-            <p class="booking-inline-note villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date.</p>
+            <p class="booking-inline-note villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date. Overnight: choose check-in and checkout dates; the entire range is reserved.</p>
+            <p class="booking-inline-note villa-breakfast-schedule" id="villa-breakfast-schedule" hidden></p>
             <?php $calendarId = 'cal-ui-villa'; include 'includes/partials/booking_calendar.php'; ?>
         </div>
         <div class="form-group">

@@ -6,6 +6,7 @@ require_once '../../includes/booking_lifecycle.php';
 require_once '../../includes/customer_booking_status.php';
 require_once '../../includes/manual_payment.php';
 require_once '../../includes/refund_helper.php';
+require_once '../../includes/booking_rules.php';
 $booking_completion_sql = booking_completion_sql('b');
 
 // 1. SECURITY: Must be a logged-in customer
@@ -77,10 +78,18 @@ try {
         $stmt_ev->execute();
         $response['data']['specifics'] = $stmt_ev->get_result()->fetch_assoc();
     } elseif ($booking['venue_category'] === 'Resort Villa') {
-        $stmt_vi = $conn->prepare("SELECT stay_type FROM booking_villa_details WHERE booking_id = ?");
+        $stmt_vi = $conn->prepare("SELECT bvd.stay_type, vi.overnight_stay_inclusions FROM booking_villa_details bvd JOIN bookings b ON b.id = bvd.booking_id JOIN villas vi ON vi.venue_id = b.venue_id WHERE bvd.booking_id = ?");
         $stmt_vi->bind_param("i", $booking_id);
         $stmt_vi->execute();
-        $response['data']['specifics'] = $stmt_vi->get_result()->fetch_assoc();
+        $specifics = $stmt_vi->get_result()->fetch_assoc();
+        if ($specifics) {
+            $specifics['nights'] = villa_stay_nights((string)$specifics['stay_type'], new DateTimeImmutable($booking['start_date']), new DateTimeImmutable($booking['end_date']));
+            $specifics['breakfast_entitlement'] = villa_breakfast_entitlement($specifics['overnight_stay_inclusions'] ?? null);
+            $specifics['breakfast_schedule'] = villa_breakfast_schedule((string)$specifics['stay_type'], new DateTimeImmutable($booking['start_date']), new DateTimeImmutable($booking['end_date']));
+            $specifics['summary'] = villa_booking_detail_summary((string)$specifics['stay_type'], (string)$booking['start_date'], (string)$booking['end_date'], $specifics['overnight_stay_inclusions'] ?? null);
+            unset($specifics['overnight_stay_inclusions']);
+        }
+        $response['data']['specifics'] = $specifics;
     }
 
     // 4. Get Add-ons
