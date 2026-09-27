@@ -301,7 +301,8 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 .admin-layout .cms-card:hover { box-shadow: var(--ui-shadow-sm); }
 .admin-layout .maintenance-alert, .admin-layout .walkin-lock-banner { border-left-width: 1px; border-radius: var(--ui-radius-sm); }
 .admin-layout .cms-pill, .admin-layout .um-tab { border-radius: var(--ui-radius-sm); }
-.admin-layout .cms-pill.active, .admin-layout .um-tab.active { background: var(--color-gold); border-color: var(--color-gold); box-shadow: none; }
+.admin-layout .cms-pill.active { background: var(--color-gold); border-color: var(--color-gold); box-shadow: none; }
+.admin-layout .um-tab.active { background: transparent; border-color: transparent; color: var(--color-dark); box-shadow: none; }
 .admin-layout .fc .fc-button-primary { border-radius: var(--ui-radius-sm) !important; transition: background-color var(--ui-fast), color var(--ui-fast), border-color var(--ui-fast) !important; }
 .admin-layout .fc-daygrid-event { border-left-width: 1px !important; border-radius: 4px !important; box-shadow: none !important; }
 

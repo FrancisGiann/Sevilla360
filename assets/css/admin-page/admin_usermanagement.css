@@ -22,35 +22,57 @@
 
 .um-tabs {
   display: flex;
-  gap: 2rem;
+  align-items: center;
+  gap: 1.65rem;
+  min-width: 0;
 }
 
 .um-tab {
-  background: var(--color-white);
-  border: 1px solid rgba(42, 37, 34, .18);
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   font-family: var(--font-body);
-  font-size: 1.05rem;
-  font-weight: 400;
+  font-size: 1rem;
+  font-weight: 500;
   color: var(--color-dark-light);
   cursor: pointer;
-  padding: .65rem 1rem;
+  padding: .6rem 0;
   position: relative;
+  white-space: nowrap;
+}
+
+.um-tab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1rem;
+  left: 0;
+  height: 2px;
+  background: var(--color-gold);
+  opacity: .55;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .um-tab:hover {
   color: var(--color-dark);
 }
 
+.um-tab:hover::after {
+  transform: scaleX(.42);
+}
+
 .um-tab.active {
   font-weight: 600;
-  color: var(--color-white);
-  background: var(--color-gold);
-  border-color: var(--color-gold);
+  color: var(--color-dark);
+  background: transparent;
+  border-color: transparent;
 }
 
 .um-tab.active::after {
-  display: none;
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 .um-tab:focus-visible,
@@ -356,21 +378,25 @@
 .staff-filter-controls {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  padding: 1rem 1.2rem 0;
+  gap: .6rem;
+  padding: 1rem 1.2rem .9rem;
+  border-bottom: 1px solid var(--ui-line-soft);
+  background: #faf7f1;
 }
 
 .staff-filter-label {
-  margin-right: .25rem;
+  margin-right: .5rem;
   color: var(--color-dark-light);
-  font-size: .78rem;
+  font-size: .7rem;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: .12em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .staff-filter-btn {
-  padding: .45rem .8rem;
+  min-height: 36px;
+  padding: .45rem .85rem;
   border: 1px solid rgba(42, 37, 34, .15);
   border-radius: 999px;
   background: var(--color-white);
@@ -379,6 +405,13 @@
   font: inherit;
   font-size: .84rem;
   white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.staff-filter-btn:hover:not(.active) {
+  border-color: rgba(140, 96, 45, .45);
+  background: #fffdf9;
+  color: var(--color-gold);
 }
 
 .staff-filter-btn.active {
@@ -386,6 +419,7 @@
   background: var(--color-gold);
   color: var(--color-white);
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(140, 96, 45, .16);
 }
 
 .um-staff-id {
@@ -575,9 +609,13 @@ body.um-modal-open {
 
   .um-tabs {
     width: 100%;
-    gap: .6rem;
+    gap: 1.25rem;
     overflow: visible;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+  }
+
+  .um-tab::after {
+    bottom: -.55rem;
   }
 
   .um-controls {
@@ -605,7 +643,10 @@ body.um-modal-open {
   }
 
   .staff-filter-controls {
-    padding: 0 0 1rem;
+    margin-bottom: 1rem;
+    padding: .85rem 1rem;
+    border: 1px solid var(--ui-line-soft);
+    border-radius: var(--ui-radius-sm);
     overflow-x: auto;
   }
 
@@ -724,5 +765,25 @@ body.um-modal-open {
     background: var(--color-white);
     color: var(--color-dark);
     font: inherit;
+  }
+}
+
+@media (max-width: 640px) {
+  .um-tabs {
+    gap: 1rem;
+  }
+
+  .um-tab {
+    font-size: .96rem;
+  }
+
+  .staff-filter-controls {
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+
+  .staff-filter-label {
+    flex-basis: 100%;
+    margin: 0 0 .1rem;
   }
 }
