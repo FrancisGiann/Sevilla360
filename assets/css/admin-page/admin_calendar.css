@@ -125,9 +125,7 @@
     transition: transform 180ms var(--ui-ease), box-shadow 180ms ease, filter 180ms ease !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     
-    /* The Magic: A solid dark line on the left side to separate them! */
     border: 1px solid var(--fc-event-border-color) !important;
-    border-left: 5px solid var(--fc-event-border-color) !important;
 }
 
 .fc-daygrid-event:hover {
@@ -145,6 +143,20 @@
 
 .fc-event-label {
     min-width: 0;
+}
+
+/* Keep long booking and seminar labels inside their month grid pills. */
+.fc-dayGridMonth-view .fc-daygrid-event {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.fc-dayGridMonth-view .fc-event-label {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .fc-theme-standard td, .fc-theme-standard th {

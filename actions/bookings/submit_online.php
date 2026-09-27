@@ -5,6 +5,7 @@ require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/hotel_rooms.php';
+require_once '../../includes/seminars.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/manual_payment.php';
@@ -105,6 +106,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception('Hotel Room stays require checkout after check-in.');
         }
         validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
+        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate)) {
+            throw new Exception('These dates are reserved for a seminar. Please choose different dates.');
+        }
 
         if ($venue_category === 'Hotel Room' && $posted_room_group_id !== null) {
             if (!hotel_group_schema_ready($conn)) throw new Exception('Hotel room selection is temporarily unavailable.');
@@ -377,6 +381,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE session_id != ? AND expires_at > NOW()
                             AND (start_date < ? AND end_date > ?)
                       )
+                      AND v.id NOT IN (
+                          SELECT sr.venue_id FROM seminar_reservations sr
+                          JOIN seminars sem ON sem.id=sr.seminar_id
+                          WHERE sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+                            AND sr.start_date < ? AND sr.end_date > ?
+                      )
                     ORDER BY v.id
                     LIMIT ? FOR UPDATE
                 ");
@@ -400,7 +410,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $alloc_rows = $group_allocation_units[(int)$room_group_id] ?? [];
                         } else {
                             $allocation_limit = min(50, $qty + count($used_room_ids));
-                            if (!$stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $allocation_limit) || !$stmt_alloc->execute()) {
+                            if (!$stmt_alloc->bind_param('sssssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $room_end, $room_start, $allocation_limit) || !$stmt_alloc->execute()) {
                                 throw new Exception('Unable to check hotel room availability.');
                             }
                             $alloc_res = $stmt_alloc->get_result();
@@ -443,8 +453,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // 5. Unlock Dates
         $session_id = session_id();
-        $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE venue_id = ? AND session_id = ?");
-        $stmt_unlock->bind_param("is", $venue_id, $session_id);
+        $stmt_unlock = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ? AND (venue_id = ? OR venue_id IN (SELECT venue_id FROM booking_rooms WHERE booking_id = ?))");
+        $stmt_unlock->bind_param("sii", $session_id, $venue_id, $booking_id);
         $stmt_unlock->execute();
         unset($_SESSION['locked_venue_id']);
 

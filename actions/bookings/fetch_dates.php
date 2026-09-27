@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/hotel_rooms.php';
+require_once '../../includes/seminars.php';
 
 try {
     $bookedDates = [];
@@ -48,6 +49,20 @@ try {
                     $date_is_occupied = ($room_type === 'Event Hall' || $room_type === 'Resort Villa') ? ($currentDate <= $endDate) : ($currentDate < $endDate);
                 }
             }
+
+            $stmt_seminars = $conn->prepare("SELECT sr.start_date,sr.end_date,sr.resource_kind FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id=? AND s.status IN ('draft','finalized')");
+            $stmt_seminars->bind_param('i', $venue_id); $stmt_seminars->execute();
+            $seminarRows = $stmt_seminars->get_result();
+            while ($row = $seminarRows->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                $inclusive = $row['resource_kind'] === 'hall';
+                while ($inclusive ? $currentDate <= $endDate : $currentDate < $endDate) {
+                    $bookedDates[] = $currentDate->format('Y-m-d');
+                    $currentDate->modify('+1 day');
+                }
+            }
+            $stmt_seminars->close();
 
             // Maintenance blocks (completed/cancelled records are no longer availability blockers).
             $stmt_maint = $conn->query("SELECT start_date, end_date FROM maintenance WHERE venue_id = $venue_id AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)");
@@ -177,6 +192,20 @@ try {
                 }
             }
             $stmt_locks->close();
+
+            $stmt_seminars = $conn->prepare("SELECT sr.venue_id,sr.start_date,sr.end_date FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id IN ($v_ids_str) AND sr.resource_kind='room' AND s.status IN ('draft','finalized')");
+            $stmt_seminars->execute();
+            $res_seminars = $stmt_seminars->get_result();
+            while ($row = $res_seminars->fetch_assoc()) {
+                $currentDate = new DateTime($row['start_date']);
+                $endDate = new DateTime($row['end_date']);
+                while ($currentDate < $endDate) {
+                    $d = $currentDate->format('Y-m-d');
+                    $date_counts[$d] = ($date_counts[$d] ?? 0) + 1;
+                    $currentDate->modify('+1 day');
+                }
+            }
+            $stmt_seminars->close();
 
             // If count >= total_inventory, that date is fully booked
             foreach ($date_counts as $date_str => $count) {

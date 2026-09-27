@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
+require_once __DIR__ . '/../../includes/seminars.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -84,13 +85,16 @@ try {
           AND NOT EXISTS (SELECT 1 FROM maintenance m WHERE m.venue_id = v.id AND m.is_blocking = 1
             AND (m.status = 'Scheduled' OR m.status IS NULL) AND {$maintOverlap})
           AND NOT EXISTS (SELECT 1 FROM booking_locks bl WHERE bl.venue_id = v.id
-            AND bl.session_id <> ? AND bl.expires_at > NOW() AND {$lockOverlap})";
+            AND bl.session_id <> ? AND bl.expires_at > NOW() AND {$lockOverlap})
+          AND NOT EXISTS (SELECT 1 FROM seminar_reservations sr JOIN seminars sem ON sem.id=sr.seminar_id
+            WHERE sr.venue_id=v.id AND sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+              AND sr.start_date < ? AND sr.end_date > ?)";
     $stmt = $conn->prepare($sql);
     $checkOut = $end->format('Y-m-d');
     $checkIn = $start->format('Y-m-d');
     $session = session_id();
-    $stmt->bind_param('sssssssssss', $building, $roomType, $checkOut, $checkIn, $checkOut, $checkIn,
-        $checkOut, $checkIn, $session, $checkOut, $checkIn);
+    $stmt->bind_param('sssssssssssss', $building, $roomType, $checkOut, $checkIn, $checkOut, $checkIn,
+        $checkOut, $checkIn, $session, $checkOut, $checkIn, $checkOut, $checkIn);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc() ?: [];
     echo json_encode(['success' => true, 'available' => (int)($row['available'] ?? 0),

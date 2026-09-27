@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/request_context.php';
+require_once '../../includes/seminars.php';
 
 // Security check
 if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
@@ -50,6 +51,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         $real_venue_name = $v_row['name'];
         $is_overnight = in_array($v_row['category'], ['Hotel Room', 'Resort Villa'], true);
+
+        if ($is_blocking && seminar_has_maintenance_conflict($conn, $venue_id, $sDate, $eDate)) {
+            throw new Exception('Cannot block these dates. An active seminar has reserved this unit.');
+        }
 
         // Check against existing scheduled maintenance
         $maint_chk = $conn->prepare("

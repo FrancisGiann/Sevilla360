@@ -293,11 +293,17 @@ function hotel_available_group_units(mysqli $conn, string $checkIn, string $chec
             WHERE bl.venue_id = v.id AND bl.session_id <> ? AND bl.expires_at > NOW()
               AND " . booking_overlap_sql('Hotel Room', 'bl.start_date', 'bl.end_date') . "
           )
+          AND NOT EXISTS (
+            SELECT 1 FROM seminar_reservations sr
+            INNER JOIN seminars sem ON sem.id = sr.seminar_id
+            WHERE sr.venue_id = v.id AND sr.resource_kind = 'room' AND sem.status IN ('draft','finalized')
+              AND sr.start_date < ? AND sr.end_date > ?
+          )
         ORDER BY g.sort_order ASC, g.id ASC, v.id ASC" . ($forUpdate ? ' FOR UPDATE' : '');
     $stmt = $conn->prepare($sql);
     if (!$stmt) throw new RuntimeException('Unable to prepare hotel availability query.');
-    $values = [...$ids, $checkOut, $checkIn, $checkOut, $checkIn, $checkOut, $checkIn, $sessionId, $checkOut, $checkIn];
-    $types = str_repeat('i', count($ids)) . str_repeat('s', 9);
+    $values = [...$ids, $checkOut, $checkIn, $checkOut, $checkIn, $checkOut, $checkIn, $sessionId, $checkOut, $checkIn, $checkOut, $checkIn];
+    $types = str_repeat('i', count($ids)) . str_repeat('s', 11);
     hotel_bind_values($stmt, $types, $values);
     if (!$stmt->execute()) throw new RuntimeException('Unable to check hotel availability.');
     $result = $stmt->get_result();

@@ -136,6 +136,12 @@ try {
                 AND bl.expires_at > NOW()
                 AND (bl.start_date < ? AND bl.end_date > ?)
           )
+          AND v.id NOT IN (
+              SELECT sr.venue_id FROM seminar_reservations sr
+              INNER JOIN seminars s ON s.id=sr.seminar_id
+              WHERE sr.resource_kind='room' AND s.status IN ('draft','finalized')
+                AND sr.start_date < ? AND sr.end_date > ?
+          )
         ORDER BY v.id
         LIMIT ? FOR UPDATE
     SQL);
@@ -148,7 +154,7 @@ try {
         $building = $group['building_name'];
         $room_type = $group['room_type'];
         $quantity = $group['quantity'];
-        $stmt_allocate->bind_param('sssssssssssi', $building, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date, $session_id, $end_date, $start_date, $quantity);
+        $stmt_allocate->bind_param('sssssssssssssi', $building, $room_type, $end_date, $start_date, $end_date, $start_date, $end_date, $start_date, $session_id, $end_date, $start_date, $end_date, $start_date, $quantity);
         if (!$stmt_allocate->execute()) throw new RuntimeException('Room availability could not be checked.');
         $result = $stmt_allocate->get_result();
         if ($result->num_rows < $quantity) {

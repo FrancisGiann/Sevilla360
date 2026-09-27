@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/hotel_rooms.php';
+require_once '../../includes/seminars.php';
 
 function lock_dates_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -174,6 +175,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($result->num_rows === 0) throw new Exception("Venue not found.");
             $venue_id = $result->fetch_assoc()['id'];
 
+            if (seminar_has_resource_conflict($conn, (int)$venue_id, $start_date, $end_date)) {
+                throw new Exception('These dates are reserved for a seminar.');
+            }
+
             // 1. Check Maintenance
                 $chk_maint = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL) AND " . maintenance_overlap_sql());
             $chk_maint->bind_param("iss", $venue_id, $end_date, $start_date);
@@ -293,6 +298,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $lk->bind_param("isss", $vid, $session_id, $end_date, $start_date);
                 $lk->execute();
                 if ($lk->get_result()->num_rows > 0) continue;
+
+                if (seminar_has_resource_conflict($conn, (int)$vid, $start_date, $end_date)) continue;
 
                 $assigned_venue_id = $vid;
                 break; // Found an available room!

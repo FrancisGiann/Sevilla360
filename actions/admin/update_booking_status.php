@@ -23,6 +23,7 @@ require_once __DIR__ . '/../../includes/refund_helper.php';
 require_once __DIR__ . '/../../includes/realtime.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
+require_once __DIR__ . '/../../includes/seminars.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -93,12 +94,28 @@ try {
         throw new Exception('This booking is complete and no longer accepts changes.');
     }
 
-    // Serialize inventory decisions for this venue within the transaction.
-    // This protects cooperating paths; a schema-level exclusion constraint is
-    // still unavailable in the current MySQL schema.
-    $stmt_venue_lock = $conn->prepare("SELECT id FROM venues WHERE id = ? FOR UPDATE");
-    $stmt_venue_lock->bind_param('i', $b_info['venue_id']);
-    if (!$stmt_venue_lock->execute() || $stmt_venue_lock->get_result()->num_rows === 0) throw new Exception('Venue not found.');
+    // Serialize inventory decisions for every resource being confirmed. Event
+    // Hall invoice finalization also promotes its attached hotel add-ons from
+    // non-blocking inquiry rows to active bookings, so lock those units in the
+    // same stable order used by seminar reservations before rechecking them.
+    $venueIdsToLock = [(int)$b_info['venue_id']];
+    if ($action === 'finalize_event_invoice' && $b_info['category'] === 'Event Hall') {
+        $stmt_addon_ids = $conn->prepare('SELECT venue_id FROM booking_rooms WHERE booking_id=? ORDER BY venue_id FOR UPDATE');
+        if (!$stmt_addon_ids) throw new Exception('Unable to lock Event Hall room add-ons.');
+        $stmt_addon_ids->bind_param('i', $booking_id);
+        if (!$stmt_addon_ids->execute()) throw new Exception('Unable to lock Event Hall room add-ons.');
+        foreach ($stmt_addon_ids->get_result()->fetch_all(MYSQLI_ASSOC) as $addon) $venueIdsToLock[] = (int)$addon['venue_id'];
+        $stmt_addon_ids->close();
+    }
+    $venueIdsToLock = array_values(array_unique($venueIdsToLock));
+    sort($venueIdsToLock, SORT_NUMERIC);
+    foreach ($venueIdsToLock as $venueIdToLock) {
+        $stmt_venue_lock = $conn->prepare('SELECT id FROM venues WHERE id=? FOR UPDATE');
+        if (!$stmt_venue_lock) throw new Exception('Unable to lock the reserved venue.');
+        $stmt_venue_lock->bind_param('i', $venueIdToLock);
+        if (!$stmt_venue_lock->execute() || $stmt_venue_lock->get_result()->num_rows === 0) throw new Exception('Venue not found.');
+        $stmt_venue_lock->close();
+    }
 
     // ==========================================
     // ACTIONS
@@ -113,6 +130,9 @@ try {
         $stmt_conflict->execute();
         if ($stmt_conflict->get_result()->num_rows > 0) {
             throw new Exception("This venue is already confirmed for the selected dates.");
+        }
+        if (seminar_has_resource_conflict($conn, (int)$b_info['venue_id'], (string)$b_info['start_date'], (string)$b_info['end_date'])) {
+            throw new Exception('This venue is reserved for a seminar on the selected dates.');
         }
         $stmt_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND start_date <= ? AND end_date >= ? LIMIT 1");
         $stmt_maintenance->bind_param("iss", $b_info['venue_id'], $b_info['end_date'], $b_info['start_date']);
@@ -162,6 +182,9 @@ try {
         if ($stmt_event_conflict->get_result()->num_rows > 0) {
             throw new Exception('This Event Hall is already confirmed for the selected dates.');
         }
+        if (seminar_has_resource_conflict($conn, (int)$b_info['venue_id'], (string)$b_info['start_date'], (string)$b_info['end_date'])) {
+            throw new Exception('This Event Hall is reserved for a seminar on the selected dates.');
+        }
 
         $stmt_event_maintenance = $conn->prepare("SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND status = 'Scheduled' AND " . maintenance_overlap_sql() . " LIMIT 1");
         if (!$stmt_event_maintenance) throw new Exception('Unable to validate Event Hall maintenance availability.');
@@ -170,6 +193,23 @@ try {
         if ($stmt_event_maintenance->get_result()->num_rows > 0) {
             throw new Exception('This Event Hall is under maintenance for the selected dates.');
         }
+
+        // Pending Event Hall add-ons are deliberately non-blocking while the
+        // inquiry is being quoted. Once the invoice confirms it, every attached
+        // hotel unit must still be free of bookings, maintenance, locks, and
+        // seminar holds. The venue rows were locked above before these reads.
+        $stmt_addons = $conn->prepare('SELECT id,venue_id,start_date,end_date FROM booking_rooms WHERE booking_id=? ORDER BY venue_id,id FOR UPDATE');
+        if (!$stmt_addons) throw new Exception('Unable to validate hotel room add-ons.');
+        $stmt_addons->bind_param('i', $booking_id);
+        if (!$stmt_addons->execute()) throw new Exception('Unable to validate hotel room add-ons.');
+        foreach ($stmt_addons->get_result()->fetch_all(MYSQLI_ASSOC) as $addon) {
+            try {
+                seminar_assert_hotel_room_available($conn, (int)$addon['venue_id'], (string)$addon['start_date'], (string)$addon['end_date'], $booking_id);
+            } catch (InvalidArgumentException $error) {
+                throw new Exception($error->getMessage());
+            }
+        }
+        $stmt_addons->close();
 
         $guests = intval($data['guests']);
         $event_type = trim((string)($data['event_type'] ?? ''));
@@ -377,6 +417,8 @@ try {
                 if (!$locks->execute()) throw new Exception('Unable to check active room holds.');
                 if ($locks->get_result()->num_rows > 0) continue;
 
+                if (seminar_has_resource_conflict($conn, (int)$vid, $new_start, $new_end)) continue;
+
                 $booking_overlap = booking_overlap_sql('Hotel Room');
                 $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND $booking_overlap");
                 $bk->bind_param('iiss', $vid, $booking_id, $new_end, $new_start);
@@ -423,6 +465,9 @@ try {
 
             if ($check_overlap->get_result()->num_rows > 0) {
                 throw new Exception("Collision Error: Those dates were just taken by another customer. Cannot reschedule.");
+            }
+            if (seminar_has_resource_conflict($conn, (int)$venue_id, $new_start, $new_end)) {
+                throw new Exception('The new dates are reserved for a seminar. Cannot reschedule.');
             }
         }
 
@@ -493,6 +538,8 @@ try {
                 $locks->bind_param('iss', $vid, $addon_new_end, $addon_new_start);
                 if (!$locks->execute()) throw new Exception('Unable to check active add-on room holds.');
                 if ($locks->get_result()->num_rows > 0) continue;
+
+                if (seminar_has_resource_conflict($conn, (int)$vid, $addon_new_start, $addon_new_end)) continue;
 
                 $bk = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed') AND source <> 'Maintenance' AND id != ? AND " . booking_overlap_sql('Hotel Room'));
                 $bk->bind_param('iiss', $vid, $booking_id, $addon_new_end, $addon_new_start);

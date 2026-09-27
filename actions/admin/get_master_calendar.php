@@ -136,6 +136,56 @@ try {
         ];
     }
 
+    // 3. Active seminar reservations use the same resource-specific end-date
+    // convention as customer inventory: hall dates are inclusive; hotel
+    // checkout remains exclusive. Aggregate rooms for the same seminar and
+    // interval so a large seminar stays a single calendar event.
+    $query_seminars = "SELECT s.id AS seminar_id,s.name AS seminar_name,s.status,
+            sr.id AS reservation_id,sr.resource_kind,sr.start_date,sr.end_date,
+            v.name AS venue_name,0 AS room_count
+        FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id
+        JOIN venues v ON v.id=sr.venue_id
+        WHERE s.status IN ('draft','finalized') AND sr.resource_kind='hall'
+        UNION ALL
+        SELECT s.id AS seminar_id,s.name AS seminar_name,s.status,
+            NULL AS reservation_id,'room' AS resource_kind,sr.start_date,sr.end_date,
+            NULL AS venue_name,COUNT(*) AS room_count
+        FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id
+        WHERE s.status IN ('draft','finalized') AND sr.resource_kind='room'
+        GROUP BY s.id,s.name,s.status,sr.start_date,sr.end_date";
+    $res_seminars = $conn->query($query_seminars);
+    while ($row = $res_seminars->fetch_assoc()) {
+        $eventEnd = new DateTime($row['end_date']);
+        if ($row['resource_kind'] === 'hall') $eventEnd->modify('+1 day');
+        $isRoomHold = $row['resource_kind'] === 'room';
+        $roomCount = (int)$row['room_count'];
+        $title = $isRoomHold
+            ? 'SEMINAR · ' . $row['seminar_name'] . ' — ' . $roomCount . ' ' . ($roomCount === 1 ? 'room' : 'rooms')
+            : 'SEMINAR · ' . $row['seminar_name'] . ' — ' . $row['venue_name'];
+        $eventId = $isRoomHold
+            ? 'seminar_' . (int)$row['seminar_id'] . '_rooms_' . $row['start_date'] . '_' . $row['end_date']
+            : 'seminar_' . (int)$row['seminar_id'] . '_hall_' . (int)$row['reservation_id'];
+        $events[] = [
+            'id' => $eventId,
+            'title' => $title,
+            'start' => $row['start_date'],
+            'end' => $eventEnd->format('Y-m-d'),
+            'backgroundColor' => '#75628e',
+            'borderColor' => '#554269',
+            'textColor' => '#ffffff',
+            'display' => 'block',
+            'extendedProps' => [
+                'type' => 'seminar_hold',
+                'seminarId' => (int)$row['seminar_id'],
+                'status' => $row['status'],
+                'resourceKind' => $row['resource_kind'],
+                'roomCount' => $isRoomHold ? $roomCount : null,
+                'startDate' => $row['start_date'],
+                'endDate' => $row['end_date']
+            ]
+        ];
+    }
+
     echo json_encode($events);
 } catch (Exception $e) {
     echo json_encode(['error' => 'Database error']);

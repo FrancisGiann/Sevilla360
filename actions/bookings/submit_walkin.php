@@ -6,6 +6,7 @@ require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/event_bundle.php';
+require_once '../../includes/seminars.php';
 
 function submit_walkin_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -98,6 +99,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception('Hotel Room stays require checkout after check-in.');
         }
         validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
+        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate)) {
+            throw new Exception('These dates are reserved for a seminar. Please choose different dates.');
+        }
 
         $is_hotel_context = !($room_type === 'Event Hall' || $room_type === 'Resort Villa');
         $venue_matches_context = $is_hotel_context
@@ -354,11 +358,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                           WHERE session_id != ? AND expires_at > NOW()
                             AND (start_date < ? AND end_date > ?)
                       )
+                      AND v.id NOT IN (
+                          SELECT sr.venue_id FROM seminar_reservations sr
+                          JOIN seminars sem ON sem.id=sr.seminar_id
+                          WHERE sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+                            AND sr.start_date < ? AND sr.end_date > ?
+                      )
                     ORDER BY v.id
                     LIMIT ? FOR UPDATE
                 ");
 
-                $stmt_alloc->bind_param('sssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $qty);
+                $stmt_alloc->bind_param('sssssssssssssi', $building, $type, $room_end, $room_start, $room_end, $room_start, $room_end, $room_start, $sid, $room_end, $room_start, $room_end, $room_start, $qty);
                 $stmt_alloc->execute();
                 $alloc_res = $stmt_alloc->get_result();
                 if ($alloc_res->num_rows < $qty) {

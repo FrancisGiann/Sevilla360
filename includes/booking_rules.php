@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/seminars.php';
 
 /**
  * Returns the overlap predicate used for customer inventory.
@@ -218,6 +219,8 @@ function reallocate_event_hall_addons(mysqli $conn, int $booking_id): float
         while ($room = $candidate_result->fetch_assoc()) {
             if (count($allocations[$allocation_group_key] ?? []) >= $quantity) break;
             $venue_id = (int)$room['id'];
+
+            if (seminar_has_resource_conflict($conn, $venue_id, $start_date, $end_date)) continue;
 
             $stmt_direct->bind_param('iss', $venue_id, $end_date, $start_date);
             if (!$stmt_direct->execute()) throw new RuntimeException('Hotel direct-booking availability could not be checked.');

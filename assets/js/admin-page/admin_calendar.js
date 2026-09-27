@@ -29,6 +29,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 right: viewButtons
             },
             height: 'auto',
+            views: {
+                dayGridMonth: {
+                    dayMaxEvents: 3
+                }
+            },
             events: 'actions/admin/get_master_calendar.php',
 
             buttonText: {
@@ -65,6 +70,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (props.type === 'maintenance') {
                     showAlert("Maintenance Block", `Venue: ${info.event.title}\nDates: ${dateText}\nType: ${props.task || 'N/A'}\nCategory: ${props.category}`);
+                    return;
+                }
+
+                if (props.type === 'seminar_hold') {
+                    showConfirm("Seminar Reservation", `${info.event.title}\nDates: ${dateText}\nStatus: ${props.status}`).then(confirmed => {
+                        if (confirmed) window.location.href = `admin_dashboard.php?page=seminars&seminar_id=${encodeURIComponent(props.seminarId)}`;
+                    });
                     return;
                 }
 
