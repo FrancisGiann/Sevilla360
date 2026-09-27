@@ -839,6 +839,10 @@ textarea:focus {
   border-radius: 4px;
 }
 
+.booking-hold-timer {
+  margin: -0.5rem 0 1rem;
+}
+
 .timer-box.running {
   color: #c0392b;
   background: rgba(192, 57, 43, 0.1);

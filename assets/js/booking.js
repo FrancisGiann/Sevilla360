@@ -1753,6 +1753,11 @@ class BookingController {
         button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
     }
 
+    updateHoldTimerVisibility() {
+        const timerBox = this.getEl('timer-box');
+        if (timerBox) timerBox.hidden = !this.state.isDatesLocked || this.state.activeTabId === 'event-hall';
+    }
+
     startTimer(expiresAt) {
         if (this.state.timerInterval) return;
         const expiry = Number(expiresAt || this.state.lockExpiresAt);
@@ -1765,7 +1770,7 @@ class BookingController {
         this.state.lockExpiresAt = expiry;
         const timerBox = this.getEl("timer-box");
         const countdownEl = this.getEl("countdown");
-        
+        this.updateHoldTimerVisibility();
         timerBox?.classList.add("running");
         this.getEl("timer-text").style.display = "none";
         this.getEl("countdown-wrapper").style.display = "inline";
@@ -1799,6 +1804,7 @@ class BookingController {
 
         const timerBox = this.getEl("timer-box");
         timerBox?.classList.remove("running");
+        this.updateHoldTimerVisibility();
         if(this.getEl("timer-text")) this.getEl("timer-text").style.display = "inline";
         if(this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
         if(this.getEl("terms-check")) this.getEl("terms-check").checked = false;
@@ -1829,6 +1835,7 @@ class BookingController {
         if (!this.auth.isCustomer) {
             this.state.isDatesLocked = false;
             window.isDatesLocked = false;
+            this.updateHoldTimerVisibility();
             return true;
         }
         try {
@@ -1848,6 +1855,7 @@ class BookingController {
             this.state.lockExpiresAt = null;
             this.state.confirmedSelectionKey = '';
             this.getEl("timer-box")?.classList.remove("running");
+            this.updateHoldTimerVisibility();
             if (this.getEl("timer-text")) this.getEl("timer-text").style.display = "inline";
             if (this.getEl("countdown-wrapper")) this.getEl("countdown-wrapper").style.display = "none";
             this.state.addonConfirmedRange = null;
@@ -1957,6 +1965,7 @@ class BookingController {
             clearInterval(this.state.timerInterval);
             this.state.timerInterval = null;
             this.getEl('timer-box')?.classList.remove('running');
+            this.updateHoldTimerVisibility();
             const proceed = this.getEl('btn-proceed');
             if (proceed) { proceed.disabled = true; proceed.style.opacity = '0.5'; }
             if (err.sessionExpired || err.status === 403) {
@@ -2351,12 +2360,10 @@ class BookingController {
             summaryTextId = 'sum-ev-payment';
             schemeText = 'To Be Arranged'; 
             schemePct = 0; 
-            if (this.getEl("timer-box")) this.getEl("timer-box").style.display = "none";
+            this.updateHoldTimerVisibility();
 
         } else {
-            if (this.getEl("timer-box")) {
-                this.getEl("timer-box").style.display = this.state.isDatesLocked ? "block" : "none";
-            }
+            this.updateHoldTimerVisibility();
             if (this.state.activeTabId === 'resort-villa') {
                 activeRadioName = 'villa-payment';
                 summaryTextId = 'sum-vl-payment';

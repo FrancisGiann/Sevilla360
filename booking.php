@@ -169,6 +169,10 @@ unset($villa);
                     <?php endforeach; ?>
                 </ol>
             </nav>
+            <div class="timer-box booking-hold-timer" id="timer-box" hidden>
+                <span id="timer-text">Select your dates to book.</span>
+                <span id="countdown-wrapper" style="display: none;">Session expires in: <span id="countdown">15:00</span></span>
+            </div>
             <p class="booking-step-error" data-booking-step-error role="alert" aria-live="assertive" hidden></p>
 
             <!-- INJECT THE TAB COMPONENTS -->
@@ -279,13 +283,6 @@ unset($villa);
                         <textarea id="booking-notes" rows="3"
                             placeholder="Allergies, early check-in requests, or specific event instructions..."
                             style="width:100%; padding:10px; border-radius:4px; border:1px solid rgba(0,0,0,0.15); font-family:var(--font-body); resize:vertical;"></textarea>
-                    </div>
-
-                    <!-- Lock Timer -->
-                    <div class="timer-box" id="timer-box">
-                        <span id="timer-text">Select your dates to book.</span>
-                        <span id="countdown-wrapper" style="display: none;">Session expires in: <span
-                                id="countdown">15:00</span></span>
                     </div>
 
                     <div class="terms-group">
