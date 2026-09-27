@@ -32,6 +32,44 @@ $assert(str_contains($settings, "? '{$readyFields}'")
     && !str_starts_with($readyFields, ',')
     && !str_starts_with($legacyFields, ','), 'schema-ready and fallback venue select fragments have no leading delimiter');
 
+$venueSave = $read('actions/admin/save_venue.php');
+$floorMigration = $read('migrations/029_hotel_room_floors.sql');
+$settingsClient = $read('assets/js/admin-page/admin_settings.js');
+$assert(str_contains($settings, 'hr.room_number, hr.floor_label, hr.bed_count')
+    && str_contains($settings, 'json_encode([(string)$v[\'name\'], $floor_label]')
+    && str_contains($settings, '$floor_search_label = $floor_label !== \'\' ? $floor_label : \'Floor not recorded\'')
+    && str_contains($settings, 'data-search="<?php echo htmlspecialchars($venue_search')
+    && str_contains($settings, 'placeholder="Search hotel, floor, or room..."'), 'Manage Venues groups hotel inventory by floor, retains each room row and identity, and searches hotel, floor, type, and room number.');
+$assert(str_contains($settings, 'name="floor_label"') && str_contains($settings, 'maxlength="80"')
+    && str_contains($settings, 'Applied to every room in this batch.')
+    && str_contains($settingsClient, 'vm-hr-floor') && str_contains($settingsClient, 'venueData.floor_label'), 'the optional floor control supports editing and one shared label per bulk-created batch.');
+$assert(str_contains($settings, '$hotel_building_names')
+    && str_contains($settings, 'id="vm-hotel-name-options"')
+    && str_contains($settings, 'Reuse the same hotel or building name for every room in this property.')
+    && str_contains($settings, 'Rooms group by building name and floor.')
+    && str_contains($settings, 'Optional room details'), 'hotel names can be reused from suggestions, floor grouping is explicit, and optional room details are disclosed separately.');
+$assert(preg_match('/id="vm-hr-floor"[^>]*data-required="false"/', $settings) === 1
+    && str_contains($settings, '<label for="vm-hr-floor">Floor label (optional)</label>')
+    && !str_contains($settings, '<label for="vm-hr-floor">Floor label <span class="field-help">Optional</span></label>')
+    && preg_match('/id="vm-hr-media-slot"[^>]*data-required="false"/', $settings) === 1
+    && preg_match('/id="vm-hr-check-in"[^>]*data-required="false"/', $settings) === 1
+    && preg_match('/id="vm-hr-check-out"[^>]*data-required="false"/', $settings) === 1
+    && str_contains($settingsClient, 'field.required = enabled && field.dataset.required !== "false"')
+    && str_contains($settingsClient, 'floorField.setAttribute("aria-describedby", bulkEnabled ? "vm-hr-floor-bulk-help" : "vm-hr-floor-help")'), 'optional floor, timing, and media fields stay optional when hotel fields are enabled, with batch-specific accessible help.');
+$assert(str_contains($settingsClient, 'venueData.floor_label')
+    && str_contains($settingsClient, 'hotelAdvancedDetails.open = isHotelRoom && isEditMode')
+    && str_contains($settingsClient, 'venueSaveButton.textContent = enabled ? "Create Rooms" : "Add Room"')
+    && str_contains($settingsClient, 'openVenueModal(this)'), 'hotel edit values remain available, optional details open for edits, and single/bulk add actions stay distinct.');
+$assert(str_contains($venueSave, "venue_text('floor_label', 80)")
+    && str_contains($venueSave, 'floor_label = ?')
+    && str_contains($venueSave, 'floor_label, bed_count')
+    && str_contains($floorMigration, 'ADD COLUMN IF NOT EXISTS floor_label VARCHAR(80) NULL')
+    && !preg_match('/\b(?:DROP|DELETE)\s+/i', $floorMigration), 'server validation caps UTF-8 floor labels at 80 characters and the schema migration is additive.');
+$assert(str_contains($settingsClient, 'const manuallyCollapsedGroups = new Set();')
+    && str_contains($settingsClient, '!manuallyCollapsedGroups.has(groupId)')
+    && str_contains($settingsClient, 'manuallyCollapsedGroups.add(groupId)')
+    && !str_contains($settingsClient, "children.forEach(row => row.classList.toggle('room-row-collapsed', expanded))"), 'search respects a manual group collapse and filters rows from the same aria-expanded state.');
+
 $queryBoundary = 'hr.check_in_time, hr.check_out_time,' . "\n        {\$hotel_group_select},\n        eh.base_capacity";
 $assert(str_contains($settings, $queryBoundary), 'the shared venue SELECT owns exactly one delimiter before and after the optional hotel-group fields');
 
@@ -43,7 +81,6 @@ foreach ([$readyFields, $legacyFields] as $fields) {
 $paymentSettingsSave = $read('actions/admin/save_manual_payment_settings.php');
 $preferencesSave = $read('actions/admin/save_preferences.php');
 $eventBundle = $read('includes/event_bundle.php');
-$settingsClient = $read('assets/js/admin-page/admin_settings.js');
 $manualPaymentHelper = $read('includes/manual_payment.php');
 $paymentDetails = $read('actions/user/get_manual_payment_details.php');
 $paymentSubmission = $read('actions/user/submit_manual_payment.php');
@@ -101,4 +138,4 @@ $assert(event_bundle_discount_rate('20.25') === 0.2025
     && normalize_event_bundle_discount_percent('malformed') === 20.0
     && normalize_event_bundle_discount_percent(INF) === 20.0, 'bundle rate, dynamic label, and malformed stored-value fallback remain consistent.');
 
-echo "Admin Settings contract checks passed (14 assertions)\n";
+echo "Admin Settings contract checks passed\n";

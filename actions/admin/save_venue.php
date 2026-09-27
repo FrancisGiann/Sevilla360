@@ -13,9 +13,12 @@ function venue_response(bool $success, string $message, int $status = 200): neve
 
 function venue_text(string $key, int $max, bool $required = false): string
 {
-    $value = trim((string)($_POST[$key] ?? ''));
+    $raw = $_POST[$key] ?? '';
+    if (!is_string($raw) && !is_numeric($raw)) throw new InvalidArgumentException("{$key} must be text.");
+    $value = trim((string)$raw);
+    if (!mb_check_encoding($value, 'UTF-8')) throw new InvalidArgumentException("{$key} must use UTF-8 text.");
     if ($required && $value === '') throw new InvalidArgumentException("{$key} is required.");
-    if (mb_strlen($value) > $max) throw new InvalidArgumentException("{$key} is too long.");
+    if (mb_strlen($value, 'UTF-8') > $max) throw new InvalidArgumentException("{$key} is too long.");
     return $value;
 }
 
@@ -101,6 +104,7 @@ try {
             if ($number + $quantity - 1 > 999999) throw new InvalidArgumentException('Bulk room range is too large.');
             $room_type_code = hotel_validate_active_room_type_code($conn, $_POST['room_type_code'] ?? null);
             $room_type = hotel_room_type_label($room_type_code);
+            $floor_label = venue_text('floor_label', 80);
             $bed_count = venue_int('bed_count', 1, $max_capacity);
             $nightly_rate = venue_money('nightly_rate');
             $extra_pax_rate = venue_money('extra_pax_rate');
@@ -121,17 +125,17 @@ try {
                     'check_in_time' => $check_in,
                     'check_out_time' => $check_out,
                 ], $media_slot_key, $description, $amenities);
-                $room_stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_type_code, room_group_id, room_number, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $room_stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_type_code, room_group_id, room_number, floor_label, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             } else {
-                $room_stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_number, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $room_stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_number, floor_label, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             }
             for ($offset = 0; $offset < $quantity; $offset++) {
                 $new_id = $insert_venue();
                 $formatted = $prefix . str_pad((string)($number + $offset), strlen($parts[2]), '0', STR_PAD_LEFT);
                 if ($group_ready) {
-                    $room_stmt->bind_param('issisiiiddss', $new_id, $room_type, $room_type_code, $room_group_id, $formatted, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
+                    $room_stmt->bind_param('ississiiiddss', $new_id, $room_type, $room_type_code, $room_group_id, $formatted, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
                 } else {
-                    $room_stmt->bind_param('issiiiddss', $new_id, $room_type, $formatted, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
+                    $room_stmt->bind_param('isssiiiddss', $new_id, $room_type, $formatted, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
                 }
                 $room_stmt->execute();
             }
@@ -153,6 +157,7 @@ try {
                 $room_type_code = hotel_validate_active_room_type_code($conn, $_POST['room_type_code'] ?? null);
                 $room_type = hotel_room_type_label($room_type_code);
                 $room_number = venue_text('room_number', 20, true);
+                $floor_label = venue_text('floor_label', 80);
                 if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9 -]{0,19}\z/D', $room_number)) throw new InvalidArgumentException('Room number contains unsupported characters.');
                 $bed_count = venue_int('bed_count', 1, $max_capacity);
                 $nightly_rate = venue_money('nightly_rate');
@@ -172,11 +177,11 @@ try {
                         'check_in_time' => $check_in,
                         'check_out_time' => $check_out,
                     ], $media_slot_key, $description, $amenities);
-                    $stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_type_code, room_group_id, room_number, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    $stmt->bind_param('issisiiiddss', $new_id, $room_type, $room_type_code, $room_group_id, $room_number, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
+                    $stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_type_code, room_group_id, room_number, floor_label, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                    $stmt->bind_param('ississiiiddss', $new_id, $room_type, $room_type_code, $room_group_id, $room_number, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
                 } else {
-                    $stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_number, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    $stmt->bind_param('issiiiddss', $new_id, $room_type, $room_number, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
+                    $stmt = $conn->prepare('INSERT INTO hotel_rooms (venue_id, room_type, room_number, floor_label, bed_count, base_capacity, max_capacity, nightly_rate, extra_pax_rate, check_in_time, check_out_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                    $stmt->bind_param('isssiiiddss', $new_id, $room_type, $room_number, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
                 }
                 venue_exec($stmt);
             } else {
@@ -219,6 +224,7 @@ try {
             $room_type_code = hotel_validate_active_room_type_code($conn, $_POST['room_type_code'] ?? null);
             $room_type = hotel_room_type_label($room_type_code);
             $room_number = venue_text('room_number', 20, true);
+            $floor_label = venue_text('floor_label', 80);
             if (!preg_match('/\A[A-Za-z0-9][A-Za-z0-9 -]{0,19}\z/D', $room_number)) throw new InvalidArgumentException('Room number contains unsupported characters.');
             $bed_count = venue_int('bed_count', 1, $max_capacity);
             $nightly_rate = venue_money('nightly_rate');
@@ -238,11 +244,11 @@ try {
                     'check_in_time' => $check_in,
                     'check_out_time' => $check_out,
                 ], $media_slot_key, $description, $amenities);
-                $stmt = $conn->prepare('UPDATE hotel_rooms SET room_type = ?, room_type_code = ?, room_group_id = ?, room_number = ?, bed_count = ?, base_capacity = ?, max_capacity = ?, nightly_rate = ?, extra_pax_rate = ?, check_in_time = ?, check_out_time = ? WHERE venue_id = ?');
-                $stmt->bind_param('ssisiiiddssi', $room_type, $room_type_code, $room_group_id, $room_number, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out, $venue_id);
+                $stmt = $conn->prepare('UPDATE hotel_rooms SET room_type = ?, room_type_code = ?, room_group_id = ?, room_number = ?, floor_label = ?, bed_count = ?, base_capacity = ?, max_capacity = ?, nightly_rate = ?, extra_pax_rate = ?, check_in_time = ?, check_out_time = ? WHERE venue_id = ?');
+                $stmt->bind_param('ssissiiiddssi', $room_type, $room_type_code, $room_group_id, $room_number, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out, $venue_id);
             } else {
-                $stmt = $conn->prepare('UPDATE hotel_rooms SET room_type = ?, room_number = ?, bed_count = ?, base_capacity = ?, max_capacity = ?, nightly_rate = ?, extra_pax_rate = ?, check_in_time = ?, check_out_time = ? WHERE venue_id = ?');
-                $stmt->bind_param('ssiiiddssi', $room_type, $room_number, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out, $venue_id);
+                $stmt = $conn->prepare('UPDATE hotel_rooms SET room_type = ?, room_number = ?, floor_label = ?, bed_count = ?, base_capacity = ?, max_capacity = ?, nightly_rate = ?, extra_pax_rate = ?, check_in_time = ?, check_out_time = ? WHERE venue_id = ?');
+                $stmt->bind_param('sssiiiddssi', $room_type, $room_number, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out, $venue_id);
             }
             venue_exec($stmt);
         } else {

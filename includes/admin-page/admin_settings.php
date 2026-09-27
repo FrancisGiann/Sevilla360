@@ -51,7 +51,7 @@ $hotel_group_join = $hotel_group_ready ? ' LEFT JOIN hotel_room_groups hg ON hg.
 $venues_query = $conn->query("
     SELECT 
         v.*, 
-        hr.room_type, hr.room_number, hr.bed_count, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
+        hr.room_type, hr.room_number, hr.floor_label, hr.bed_count, hr.base_capacity as hr_base, hr.max_capacity as hr_max, hr.nightly_rate, hr.extra_pax_rate as hr_extra,
         hr.check_in_time, hr.check_out_time,
         {$hotel_group_select},
         eh.base_capacity as eh_base, eh.max_capacity as eh_max, eh.base_rate, eh.capacity_theater, eh.capacity_classroom, eh.capacity_banquet,
@@ -63,13 +63,20 @@ $venues_query = $conn->query("
     {$hotel_group_join}
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
-    ORDER BY v.category, v.name
+    ORDER BY v.category, v.name, hr.floor_label, hr.room_type, hr.room_number, v.id
 ");
 
 $all_venues = [];
 if ($venues_query && $venues_query->num_rows > 0) {
     while($row = $venues_query->fetch_assoc()) {
         $all_venues[] = $row;
+    }
+}
+$hotel_building_names = [];
+foreach ($all_venues as $venue) {
+    $building_name = trim((string)($venue['name'] ?? ''));
+    if (($venue['category'] ?? '') === 'Hotel Room' && $building_name !== '') {
+        $hotel_building_names[$building_name] = $building_name;
     }
 }
 ?>
@@ -196,7 +203,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <button class="venue-filter-btn" data-filter="Resort Villa">Resort Villas</button>
                     </div>
                     <div>
-                        <input type="text" id="venue-search-input" class="form-control" placeholder="Search venues..." style="max-width: 250px; border-radius: 20px; padding: 6px 15px; border: 1px solid var(--gray-border);">
+                        <input type="search" id="venue-search-input" class="form-control" placeholder="Search hotel, floor, or room..." style="max-width: 280px; border-radius: 20px; padding: 6px 15px; border: 1px solid var(--gray-border);">
                     </div>
                 </div>
                 <div class="venues-table-wrapper">
@@ -210,18 +217,21 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </tr>
                         </thead>
                         <tbody>
-                            <?php $rendered_hotel_groups = []; foreach ($all_venues as $v): $group_attr = ''; $group_key = ''; ?>
+                            <?php $rendered_hotel_groups = []; foreach ($all_venues as $v): $group_attr = ''; $group_key = ''; $group_id_attr = ''; $floor_label = ''; ?>
                                 <?php if ($v['category'] === 'Hotel Room'):
-                                    $group_key = $v['name'] . '|' . ($v['room_type'] ?? 'Hotel Room');
-                                    $group_attr = htmlspecialchars($group_key, ENT_QUOTES, 'UTF-8');
+                                    $floor_label = trim((string)($v['floor_label'] ?? ''));
+                                    $floor_search_label = $floor_label !== '' ? $floor_label : 'Floor not recorded';
+                                    $group_key = json_encode([(string)$v['name'], $floor_label], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: (string)$v['name'] . '|' . $floor_label;
+                                    $group_attr = htmlspecialchars($group_key, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                                    $group_id_attr = md5($group_key);
                                     if (!isset($rendered_hotel_groups[$group_key])):
                                         $rendered_hotel_groups[$group_key] = true;
                                 ?>
-                                    <tr class="venue-group-row" data-category="Hotel Room" data-group="<?php echo $group_attr; ?>">
+                                    <tr class="venue-group-row" data-category="Hotel Room" data-group="<?php echo $group_attr; ?>" data-search="<?php echo htmlspecialchars((string)$v['name'] . ' ' . $floor_search_label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
                                         <td colspan="4">
-                                            <button type="button" class="venue-group-toggle" aria-expanded="false" aria-controls="hotel-group-<?php echo md5($group_key); ?>">
+                                            <button type="button" class="venue-group-toggle" aria-expanded="false" aria-controls="hotel-group-<?php echo $group_id_attr; ?>">
                                                 <span class="venue-group-arrow" aria-hidden="true">▸</span>
-                                                <span><?php echo htmlspecialchars($v['name'] . ' — ' . ($v['room_type'] ?: 'Hotel Room')); ?></span>
+                                                <span><?php echo htmlspecialchars((string)$v['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?> <span aria-hidden="true">·</span> <?php echo htmlspecialchars($floor_search_label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
                                                 <span class="venue-group-count">Rooms are collapsed</span>
                                             </button>
                                         </td>
@@ -229,16 +239,17 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                                 <?php endif; endif; ?>
 
                                 <?php
-                                    $display_name = htmlspecialchars($v['name']);
+                                    $display_name = htmlspecialchars((string)$v['name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                                     if ($v['category'] === 'Hotel Room') {
-                                        $display_name = 'Room ' . htmlspecialchars($v['room_number'] ?: '—');
+                                        $display_name = 'Room ' . htmlspecialchars((string)($v['room_number'] ?: '—'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                                     }
                                     $badge_class = 'v-badge-inactive';
                                     if ($v['status'] === 'Available') $badge_class = 'v-badge-available';
                                     if ($v['status'] === 'Maintenance') $badge_class = 'v-badge-maintenance';
                                     $group_id_attr = $v['category'] === 'Hotel Room' ? md5($group_key) : '';
+                                    $venue_search = implode(' ', [(string)$v['name'], $floor_label !== '' ? $floor_label : 'Floor not recorded', (string)($v['room_type'] ?? ''), (string)($v['room_number'] ?? '')]);
                                 ?>
-                                <tr class="venue-row<?php echo $v['category'] === 'Hotel Room' ? ' room-row room-row-collapsed' : ''; ?>" data-category="<?php echo htmlspecialchars($v['category'], ENT_QUOTES, 'UTF-8'); ?>" data-group="<?php echo $group_attr; ?>" data-group-id="<?php echo $group_id_attr; ?>">
+                                <tr class="venue-row<?php echo $v['category'] === 'Hotel Room' ? ' room-row room-row-collapsed' : ''; ?>" data-category="<?php echo htmlspecialchars((string)$v['category'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" data-group="<?php echo $group_attr; ?>" data-group-id="<?php echo $group_id_attr; ?>" data-search="<?php echo htmlspecialchars($venue_search, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
                                     <td data-label="Venue Name" style="font-weight: 500;">
                                         <?php echo $display_name; ?>
                                         <span class="venue-id-text">ID: #<?php echo $v['id']; ?></span>
@@ -538,7 +549,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 </div>
 
 <!-- ADD/EDIT VENUE MODAL -->
-<div class="modal-overlay" id="venueModal">
+<div class="modal-overlay" id="venueModal" role="dialog" aria-modal="true" aria-labelledby="vm-title">
     <div class="modal-content venue-modal-content">
         <h3 class="modal-title" id="vm-title">Add New Venue</h3>
 
@@ -547,12 +558,18 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 
             <div class="form-grid venue-modal-grid" style="margin-bottom: 15px;">
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label>Venue Name</label>
-                    <input type="text" id="vm-name" name="name" class="form-control" placeholder="e.g. Infinity Hall"
+                    <label for="vm-name" id="vm-name-label">Venue Name</label>
+                    <input type="text" id="vm-name" name="name" class="form-control" placeholder="e.g. Infinity Hall" list="vm-hotel-name-options"
                         required>
+                    <datalist id="vm-hotel-name-options">
+                        <?php foreach ($hotel_building_names as $hotel_building_name): ?>
+                            <option value="<?php echo htmlspecialchars($hotel_building_name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"></option>
+                        <?php endforeach; ?>
+                    </datalist>
+                    <span id="vm-hotel-name-help" class="field-help venue-hotel-name-help" hidden>Reuse the same hotel or building name for every room in this property.</span>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label>Category</label>
+                    <label for="vm-category">Category</label>
                     <select id="vm-category" name="category" class="form-control" required>
                         <option value="" disabled selected>Select...</option>
                         <option value="Event Hall">Event Hall</option>
@@ -563,7 +580,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             </div>
 
             <div class="form-group" style="margin-bottom: 15px;">
-                <label>Status</label>
+                <label for="vm-status">Status</label>
                 <select id="vm-status" name="status" class="form-control" required>
                     <option value="Available">Available</option>
                     <option value="Maintenance">Maintenance</option>
@@ -572,28 +589,64 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             </div>
 
             <div class="form-group" style="margin-bottom: 15px;">
-                <label>Description (Showroom + Online/Admin booking)</label>
+                <label for="vm-desc">Description (Showroom + Online/Admin booking)</label>
                 <textarea id="vm-desc" name="description" class="form-control" rows="3"
                     placeholder="Experience ultimate luxury..."></textarea>
             </div>
 
             <div class="form-group" style="margin-bottom: 25px;">
-                <label>Amenities (Online/Admin booking; comma or newline separated)</label>
+                <label for="vm-amenities">Amenities (Online/Admin booking; comma or newline separated)</label>
                 <textarea id="vm-amenities" name="amenities" class="form-control" rows="3"
                     placeholder="Free Wi-Fi, Pool, Smart TV"></textarea>
             </div>
 
             <!-- DYNAMIC SECTIONS: These hide/show based on category -->
             <div class="venue-pricing-section" style="padding: 15px; background: #faf9f7; border-radius: 8px; border: 1px solid #eee;">
-                <h4 style="font-size: 1rem; margin-bottom: 15px; color: var(--color-dark);">Pricing & Capacities</h4>
+                <h4 id="vm-pricing-title" style="font-size: 1rem; margin-bottom: 15px; color: var(--color-dark);">Pricing & Capacities</h4>
 
                 <div class="form-grid venue-pricing-grid">
+                    <div class="form-group vm-dynamic vm-hotel venue-hotel-subsection" style="display:none; margin-bottom: 0;">
+                        <h5>Room identity</h5>
+                        <p>Room numbers stay distinct. Reuse the building name and choose a floor to group rooms by level.</p>
+                    </div>
+                    <!-- Hotel Room Specific -->
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label for="vm-hr-type">Room Type</label>
+                        <select id="vm-hr-type" name="room_type_code" class="form-control" required>
+                            <option value="">Choose a room type</option>
+                            <option value="standard_room">Standard Room</option>
+                            <option value="dormitory_room">Dormitory Room</option>
+                            <option value="family_room_superior">Family Room / Superior</option>
+                            <option value="deluxe">Deluxe</option>
+                            <option value="vip_suite">VIP Suite</option>
+                        </select>
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label for="vm-hr-room-number">Room Number</label>
+                        <input type="text" id="vm-hr-room-number" name="room_number" class="form-control"
+                            placeholder="e.g. 101 or A-101" data-required="true">
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel venue-floor-field" style="display:none; margin-bottom: 0;">
+                        <label for="vm-hr-floor">Floor label (optional)</label>
+                        <input type="text" id="vm-hr-floor" name="floor_label" class="form-control" maxlength="80" autocomplete="off" placeholder="e.g. 2 or Mezzanine" data-required="false" aria-describedby="vm-hr-floor-help">
+                        <span id="vm-hr-floor-help" class="field-help">Rooms group by building name and floor.</span>
+                        <span id="vm-hr-floor-bulk-help" class="field-help" hidden>Applied to every room in this batch.</span>
+                    </div>
+                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
+                        <label for="vm-hr-bed-count">Beds</label>
+                        <input type="number" id="vm-hr-bed-count" name="bed_count" class="form-control" min="1" step="1" value="1">
+                    </div>
+
+                    <div class="form-group vm-dynamic vm-hotel venue-hotel-subsection" style="display:none; margin-bottom: 0;">
+                        <h5>Room capacity &amp; rates</h5>
+                        <p>Set the number of guests and the room’s nightly price.</p>
+                    </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label>Base Capacity (Pax)</label>
+                        <label for="vm-base-cap">Base Capacity (Pax)</label>
                         <input type="number" id="vm-base-cap" name="base_capacity" class="form-control" required>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
-                        <label>Max Capacity (Pax)</label>
+                        <label for="vm-max-cap">Max Capacity (Pax)</label>
                         <input type="number" id="vm-max-cap" name="max_capacity" class="form-control" required>
                     </div>
 
@@ -615,64 +668,30 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <input type="number" id="vm-eh-banquet" name="capacity_banquet" class="form-control">
                     </div>
 
-                    <!-- Hotel Room Specific -->
                     <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Room Type</label>
-                        <select id="vm-hr-type" name="room_type_code" class="form-control" required>
-                            <option value="">Choose a room type</option>
-                            <option value="standard_room">Standard Room</option>
-                            <option value="dormitory_room">Dormitory Room</option>
-                            <option value="family_room_superior">Family Room / Superior</option>
-                            <option value="deluxe">Deluxe</option>
-                            <option value="vip_suite">VIP Suite</option>
-                        </select>
-                    </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Nightly Rate (₱)</label>
+                        <label for="vm-hr-rate">Nightly Rate (₱)</label>
                         <input type="number" id="vm-hr-rate" name="nightly_rate" class="form-control" step="0.01">
                     </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Room Number</label>
-                        <input type="text" id="vm-hr-room-number" name="room_number" class="form-control"
-                            placeholder="e.g. 101 or A-101">
-                    </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Beds</label>
-                        <input type="number" id="vm-hr-bed-count" name="bed_count" class="form-control" min="1" step="1" value="1">
-                    </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Check-in</label>
-                        <input type="time" id="vm-hr-check-in" name="check_in_time" class="form-control" value="14:00">
-                    </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Check-out</label>
-                        <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00">
-                    </div>
-                    <div class="form-group vm-dynamic vm-hotel" style="display:none; margin-bottom: 0;">
-                        <label>Optional media slot key</label>
-                        <input type="text" id="vm-hr-media-slot" name="media_slot_key" class="form-control" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" title="Use letters, numbers, underscores, or hyphens.">
-                    </div>
-                    <p class="form-hint vm-dynamic vm-hotel" style="display:none;">A media slot is optional. The same explicit slot may intentionally be shared by room groups.</p>
 
                     <!-- BULK HOTEL ROOM CREATION (Only shown on add) -->
-                    <div class="form-group vm-dynamic vm-hotel vm-bulk-section venue-bulk-section" style="display:none; margin-bottom: 0; padding: 10px; background: #eef2ff; border-radius: 6px; border: 1px dashed #a5b4fc;">
+                    <div class="form-group vm-dynamic vm-hotel vm-bulk-section venue-bulk-section" style="display:none; margin-bottom: 0;">
                         <div class="venue-bulk-header">
                             <div class="venue-bulk-copy">
-                                <label style="margin: 0; color: #4338ca; font-weight: 600;">Bulk Create Rooms?</label>
-                                <p style="margin: 0; font-size: 0.8rem; color: #4f46e5;">Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
+                                <span class="venue-bulk-title">Create rooms in bulk</span>
+                                <p>Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
                             </div>
                             <label class="toggle-switch">
-                                <input type="checkbox" id="vm-hr-bulk-toggle" data-required="false">
+                                <input type="checkbox" id="vm-hr-bulk-toggle" data-required="false" aria-label="Create rooms in bulk">
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>
                         <div id="vm-hr-bulk-fields" class="venue-bulk-fields" style="display: none; margin-top: 15px;">
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="color: #4338ca;">Quantity to Create</label>
+                                <label for="vm-hr-bulk-qty">Quantity to Create</label>
                                 <input type="number" id="vm-hr-bulk-qty" name="bulk_quantity" class="form-control" min="1" max="100" placeholder="e.g. 5">
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
-                                <label style="color: #4338ca;">Starting Room Number</label>
+                                <label for="vm-hr-bulk-start">Starting Room Number</label>
                                 <input type="text" id="vm-hr-bulk-start" name="bulk_start_number" class="form-control" placeholder="e.g. 101 or A-101">
                             </div>
                         </div>
@@ -721,8 +740,29 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     <!-- Shared Hotel/Villa -->
                     <div class="form-group vm-dynamic vm-hotel vm-villa venue-extra-pax"
                         style="display:none; margin-bottom: 0;">
-                        <label>Extra Pax Rate (₱/head)</label>
+                        <label for="vm-extra-pax">Extra Pax Rate (₱/head)</label>
                         <input type="number" id="vm-extra-pax" name="extra_pax_rate" class="form-control" step="0.01">
+                    </div>
+
+                    <div class="form-group vm-dynamic vm-hotel venue-hotel-advanced" style="display:none; margin-bottom: 0;">
+                        <details id="vm-hr-advanced">
+                            <summary>Optional room details</summary>
+                            <div class="venue-hotel-advanced-grid">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="vm-hr-check-in">Check-in</label>
+                                    <input type="time" id="vm-hr-check-in" name="check_in_time" class="form-control" value="14:00" data-required="false">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="vm-hr-check-out">Check-out</label>
+                                    <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00" data-required="false">
+                                </div>
+                                <div class="form-group venue-hotel-media-field" style="margin-bottom: 0;">
+                                    <label for="vm-hr-media-slot">Optional media slot key</label>
+                                    <input type="text" id="vm-hr-media-slot" name="media_slot_key" class="form-control" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" title="Use letters, numbers, underscores, or hyphens." data-required="false">
+                                    <span class="field-help">The same explicit slot may be shared by room groups.</span>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>

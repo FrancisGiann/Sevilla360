@@ -486,6 +486,56 @@ document.addEventListener("DOMContentLoaded", () => {
   const venueModal = document.getElementById("venueModal");
   const formVenue = document.getElementById("form-venue");
   const catSelect = document.getElementById("vm-category");
+  const venueNameInput = document.getElementById("vm-name");
+  const venueNameLabel = document.getElementById("vm-name-label");
+  const venueNameHelp = document.getElementById("vm-hotel-name-help");
+  const venuePricingSection = document.querySelector("#venueModal .venue-pricing-section");
+  const venuePricingTitle = document.getElementById("vm-pricing-title");
+  const venueModalTitle = document.getElementById("vm-title");
+  const venueSaveButton = document.getElementById("btn-save-venue");
+  const floorField = document.getElementById("vm-hr-floor");
+  const floorHelp = document.getElementById("vm-hr-floor-help");
+  const floorBulkHelp = document.getElementById("vm-hr-floor-bulk-help");
+  const hotelAdvancedDetails = document.getElementById("vm-hr-advanced");
+  let venueModalTrigger = null;
+
+  function updateFloorHelp(bulkEnabled) {
+    if (floorHelp) floorHelp.hidden = bulkEnabled;
+    if (floorBulkHelp) floorBulkHelp.hidden = !bulkEnabled;
+    if (floorField) floorField.setAttribute("aria-describedby", bulkEnabled ? "vm-hr-floor-bulk-help" : "vm-hr-floor-help");
+  }
+
+  function openVenueModal(trigger) {
+    venueModalTrigger = trigger || document.activeElement;
+    venueModal.classList.add("active");
+    venueNameInput?.focus();
+  }
+
+  function closeVenueModal() {
+    venueModal.classList.remove("active");
+    venueModalTrigger?.focus?.();
+    venueModalTrigger = null;
+  }
+
+  function trapVenueModalFocus(event) {
+    if (event.key !== "Tab") return;
+    const focusable = [...venueModal.querySelectorAll("button:not(:disabled), input:not(:disabled):not([type='hidden']), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex='-1'])")]
+      .filter((element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !venueModal.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !venueModal.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   function setVenueFieldsState(container, enabled) {
     container?.querySelectorAll("input, select, textarea").forEach((field) => {
@@ -506,6 +556,21 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (category === "Resort Villa") targetClass = ".vm-villa";
 
     const isEditMode = document.getElementById("vm-id").value !== "";
+    const isHotelRoom = category === "Hotel Room";
+    if (venueNameLabel) venueNameLabel.textContent = isHotelRoom ? "Hotel or Building Name" : "Venue Name";
+    if (venueNameInput) {
+      venueNameInput.placeholder = isHotelRoom ? "e.g. Sevilla Resort" : "e.g. Infinity Hall";
+      if (isHotelRoom) venueNameInput.setAttribute("list", "vm-hotel-name-options");
+      else venueNameInput.removeAttribute("list");
+    }
+    if (venueNameHelp) venueNameHelp.hidden = !isHotelRoom;
+    venuePricingSection?.classList.toggle("is-hotel", isHotelRoom);
+    if (venuePricingTitle) venuePricingTitle.textContent = isHotelRoom ? "Room Setup" : "Pricing & Capacities";
+    if (venueModalTitle && venueSaveButton) {
+      venueModalTitle.textContent = isHotelRoom ? (isEditMode ? "Edit Hotel Room" : "Add Hotel Room") : (isEditMode ? "Edit Venue" : "Add New Venue");
+      venueSaveButton.textContent = isHotelRoom ? (isEditMode ? "Save Room" : (bulkToggle?.checked ? "Create Rooms" : "Add Room")) : "Save Venue";
+    }
+    if (hotelAdvancedDetails) hotelAdvancedDetails.open = isHotelRoom && isEditMode;
     if (!targetClass) return;
 
     document.querySelectorAll(targetClass).forEach((el) => {
@@ -524,6 +589,7 @@ document.addEventListener("DOMContentLoaded", () => {
         roomNumberField.disabled = bulkEnabled;
         roomNumberField.required = !bulkEnabled;
       }
+      updateFloorHelp(bulkEnabled);
     }
   }
 
@@ -542,6 +608,10 @@ document.addEventListener("DOMContentLoaded", () => {
           roomNumberField.disabled = enabled;
           roomNumberField.required = !enabled;
           roomNumberField.parentElement.style.display = enabled ? "none" : "block";
+          updateFloorHelp(enabled);
+          if (catSelect.value === "Hotel Room" && document.getElementById("vm-id").value === "") {
+            venueSaveButton.textContent = enabled ? "Create Rooms" : "Add Room";
+          }
       });
   }
 
@@ -549,7 +619,7 @@ document.addEventListener("DOMContentLoaded", () => {
     catSelect.addEventListener("change", function () { toggleDynamicFields(this.value); });
   }
 
-  document.getElementById("btn-add-venue")?.addEventListener("click", () => {
+  document.getElementById("btn-add-venue")?.addEventListener("click", (event) => {
     formVenue.reset();
     document.getElementById("vm-id").value = "";
     document.getElementById("vm-title").innerText = "Add New Venue";
@@ -562,7 +632,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     toggleDynamicFields("");
-    venueModal.classList.add("active");
+    openVenueModal(event.currentTarget);
   });
 
   document.querySelectorAll(".btn-edit-venue").forEach((btn) => {
@@ -601,6 +671,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-hr-type").value = venueData.room_type_code || "";
         document.getElementById("vm-hr-rate").value = venueData.nightly_rate;
         document.getElementById("vm-hr-room-number").value = venueData.room_number || "";
+        document.getElementById("vm-hr-floor").value = venueData.floor_label || "";
         document.getElementById("vm-hr-bed-count").value = venueData.bed_count || 1;
         document.getElementById("vm-hr-check-in").value = (venueData.check_in_time || "14:00:00").slice(0, 5);
         document.getElementById("vm-hr-check-out").value = (venueData.check_out_time || "12:00:00").slice(0, 5);
@@ -622,12 +693,17 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("vm-extra-pax").value = venueData.vi_extra;
       }
 
-      venueModal.classList.add("active");
+      openVenueModal(this);
     });
   });
 
-  document.getElementById("btn-close-vmodal")?.addEventListener("click", () => venueModal.classList.remove("active"));
-  window.addEventListener('click', (e) => { if (e.target === venueModal) venueModal.classList.remove('active'); });
+  document.getElementById("btn-close-vmodal")?.addEventListener("click", closeVenueModal);
+  window.addEventListener("click", (e) => { if (e.target === venueModal) closeVenueModal(); });
+  venueModal?.addEventListener("keydown", (e) => {
+    if (!venueModal.classList.contains("active")) return;
+    if (e.key === "Escape") closeVenueModal();
+    else trapVenueModalFocus(e);
+  });
 
   if (formVenue) {
     formVenue.addEventListener("submit", function (e) {
@@ -691,22 +767,59 @@ document.addEventListener("DOMContentLoaded", () => {
   if (venueFilters.length > 0) {
       const searchInput = document.getElementById('venue-search-input');
       let currentFilter = 'all';
+      const autoExpandedGroups = new Set();
+      const manuallyCollapsedGroups = new Set();
 
       function applyFilters() {
-          const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+          const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+          if (!searchTerm && autoExpandedGroups.size) {
+              autoExpandedGroups.forEach(groupId => {
+                  const group = document.querySelector(`.venue-group-toggle[aria-controls="hotel-group-${groupId}"]`);
+                  if (group?.getAttribute('aria-expanded') === 'true') {
+                      group.setAttribute('aria-expanded', 'false');
+                      const arrow = group.querySelector('.venue-group-arrow');
+                      if (arrow) arrow.textContent = '▸';
+                      const countLabel = group.querySelector('.venue-group-count');
+                      if (countLabel) countLabel.textContent = 'Rooms are collapsed';
+                  }
+              });
+              autoExpandedGroups.clear();
+          }
+          if (!searchTerm) manuallyCollapsedGroups.clear();
+          if (searchTerm) {
+              venueGroups.forEach(group => {
+                  if (currentFilter !== 'all' && currentFilter !== 'Hotel Room') return;
+                  const groupSearch = (group.dataset.search || group.textContent).toLowerCase();
+                  const groupId = group.querySelector('.venue-group-toggle')?.getAttribute('aria-controls')?.replace('hotel-group-', '');
+                  const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
+                  const matchesChild = children.some(row => (row.dataset.search || row.querySelector('td').textContent).toLowerCase().includes(searchTerm));
+                  const matchesGroup = groupSearch.includes(searchTerm);
+                  const toggle = group.querySelector('.venue-group-toggle');
+                  if ((matchesGroup || matchesChild) && toggle?.getAttribute('aria-expanded') !== 'true' && !manuallyCollapsedGroups.has(groupId)) {
+                      toggle.setAttribute('aria-expanded', 'true');
+                      const arrow = toggle.querySelector('.venue-group-arrow');
+                      if (arrow) arrow.textContent = '▾';
+                      const countLabel = toggle.querySelector('.venue-group-count');
+                      if (countLabel) countLabel.textContent = `${children.length} room${children.length === 1 ? '' : 's'}`;
+                      if (groupId) autoExpandedGroups.add(groupId);
+                  }
+              });
+          }
           venueRows.forEach(row => {
               const matchesCategory = currentFilter === 'all' || row.getAttribute('data-category') === currentFilter;
               const rowText = row.querySelector('td').textContent.toLowerCase();
+              const rowSearch = (row.dataset.search || rowText).toLowerCase();
               const matchesSearch = searchTerm === '' || rowText.includes(searchTerm);
               const isRoom = row.classList.contains('room-row');
               const groupId = row.getAttribute('data-group-id');
               const group = groupId ? document.querySelector(`.venue-group-toggle[aria-controls="hotel-group-${groupId}"]`) : null;
               const groupText = group ? group.textContent.toLowerCase() : '';
-              const matchesGroupSearch = groupText.includes(searchTerm);
+              const groupSearch = group?.closest('.venue-group-row')?.dataset.search?.toLowerCase() || groupText;
+              const matchesGroupSearch = groupSearch.includes(searchTerm);
               const expanded = group?.getAttribute('aria-expanded') === 'true';
 
               if (isRoom) {
-                  row.classList.toggle('room-row-collapsed', !(matchesCategory && expanded && (matchesSearch || matchesGroupSearch)));
+                  row.classList.toggle('room-row-collapsed', !(matchesCategory && expanded && (matchesSearch || rowSearch.includes(searchTerm) || matchesGroupSearch)));
               } else {
                   row.style.display = matchesCategory && matchesSearch ? '' : 'none';
               }
@@ -716,8 +829,9 @@ document.addEventListener("DOMContentLoaded", () => {
               const groupId = group.querySelector('.venue-group-toggle')?.getAttribute('aria-controls')?.replace('hotel-group-', '');
               const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
               const groupText = group.textContent.toLowerCase();
-              const hasMatchingChild = children.some(row => row.querySelector('td').textContent.toLowerCase().includes(searchTerm));
-              const matchesSearch = searchTerm === '' || groupText.includes(searchTerm) || hasMatchingChild;
+              const hasMatchingChild = children.some(row => (row.dataset.search || row.querySelector('td').textContent).toLowerCase().includes(searchTerm));
+              const groupSearch = (group.dataset.search || groupText).toLowerCase();
+              const matchesSearch = searchTerm === '' || groupSearch.includes(searchTerm) || hasMatchingChild;
               group.style.display = currentFilter === 'all' || currentFilter === 'Hotel Room' ? (matchesSearch ? '' : 'none') : 'none';
           });
       }
@@ -729,11 +843,15 @@ document.addEventListener("DOMContentLoaded", () => {
               toggle.setAttribute('aria-expanded', String(!expanded));
               toggle.querySelector('.venue-group-arrow').textContent = expanded ? '▸' : '▾';
               const groupId = toggle.getAttribute('aria-controls')?.replace('hotel-group-', '');
+              autoExpandedGroups.delete(groupId);
+              if (groupId) {
+                  if (expanded && searchInput?.value.trim()) manuallyCollapsedGroups.add(groupId);
+                  else manuallyCollapsedGroups.delete(groupId);
+              }
               const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
               const countLabel = toggle.querySelector('.venue-group-count');
               if (countLabel) countLabel.textContent = expanded ? 'Rooms are collapsed' : `${children.length} room${children.length === 1 ? '' : 's'}`;
               applyFilters();
-              children.forEach(row => row.classList.toggle('room-row-collapsed', expanded));
           });
       });
 
