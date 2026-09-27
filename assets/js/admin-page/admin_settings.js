@@ -600,6 +600,63 @@ document.addEventListener("DOMContentLoaded", () => {
   const bulkStart = document.getElementById("vm-hr-bulk-start");
   const roomNumberField = document.getElementById("vm-hr-room-number");
 
+  function validateBulkRoomNumbers(start, quantity) {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      return "Choose a quantity from 1 to 100 rooms.";
+    }
+    if (start.length === 0 || start.length > 20) {
+      return "Starting room number must be 20 characters or fewer.";
+    }
+
+    const roomNumbers = [];
+    if (/^[A-Za-z]+$/.test(start)) {
+      let current = start;
+      for (let offset = 0; offset < quantity; offset += 1) {
+        if (current.length > 20) {
+          return "Every generated room number must be 20 characters or fewer.";
+        }
+        roomNumbers.push(current);
+        if (offset + 1 < quantity) {
+          const letters = current.split("");
+          for (let index = letters.length - 1; index >= 0; index -= 1) {
+            const code = letters[index].charCodeAt(0);
+            const isUppercase = code >= 65 && code <= 90;
+            const lastLetter = isUppercase ? 90 : 122;
+            if (code !== lastLetter) {
+              letters[index] = String.fromCharCode(code + 1);
+              break;
+            }
+            letters[index] = isUppercase ? "A" : "a";
+            if (index === 0) {
+              letters.unshift(isUppercase ? "A" : "a");
+            }
+          }
+          current = letters.join("");
+        }
+      }
+      return null;
+    }
+
+    const match = start.match(/^([A-Za-z]+-)?(\d{1,6})$/);
+    if (!match) {
+      return "Use letters only (e.g. A), digits (e.g. 101), or a letter prefix and digits (e.g. A-101).";
+    }
+    const prefix = match[1] || "";
+    const numberText = match[2];
+    const finalNumber = Number(numberText) + quantity - 1;
+    if (finalNumber > 999999) {
+      return "The numeric room range cannot exceed 999999.";
+    }
+    for (let offset = 0; offset < quantity; offset += 1) {
+      const roomNumber = prefix + String(Number(numberText) + offset).padStart(numberText.length, "0");
+      if (roomNumber.length > 20) {
+        return "Every generated room number must be 20 characters or fewer.";
+      }
+      roomNumbers.push(roomNumber);
+    }
+    return null;
+  }
+
   if (bulkToggle) {
       bulkToggle.addEventListener("change", function() {
           const enabled = this.checked;
@@ -709,12 +766,13 @@ document.addEventListener("DOMContentLoaded", () => {
     formVenue.addEventListener("submit", function (e) {
       e.preventDefault();
 
-      // Client-side validation for bulk room start number format
+      // Validate the full generated range before submitting the bulk request.
       if (bulkToggle && bulkToggle.checked) {
           const startNum = bulkStart.value.trim();
-          const match = startNum.match(/^([A-Za-z]+-)?(\d+)$/);
-          if (!match) {
-              showAlert("Notice", "Starting room number must be numeric (e.g. 101) or have a prefix (e.g. A-101).");
+          const bulkError = validateBulkRoomNumbers(startNum, Number(bulkQty.value));
+          if (bulkError) {
+              showAlert("Notice", bulkError);
+              bulkStart.focus();
               return;
           }
       }

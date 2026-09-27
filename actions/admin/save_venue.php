@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
+require_once __DIR__ . '/../../includes/hotel_room_number_sequence.php';
 
 function venue_response(bool $success, string $message, int $status = 200): never
 {
@@ -97,11 +98,8 @@ try {
 
         if ($is_bulk) {
             $quantity = venue_int('bulk_quantity', 1, 100);
-            $start = trim((string)($_POST['bulk_start_number'] ?? ''));
-            if (!preg_match('/\A([A-Za-z]+-)?(\d{1,6})\z/D', $start, $parts)) throw new InvalidArgumentException('Starting room number must be numeric or use a letter prefix.');
-            $prefix = $parts[1] ?? '';
-            $number = (int)$parts[2];
-            if ($number + $quantity - 1 > 999999) throw new InvalidArgumentException('Bulk room range is too large.');
+            $start = venue_text('bulk_start_number', 20, true);
+            $room_numbers = hotel_bulk_room_numbers($start, $quantity);
             $room_type_code = hotel_validate_active_room_type_code($conn, $_POST['room_type_code'] ?? null);
             $room_type = hotel_room_type_label($room_type_code);
             $floor_label = venue_text('floor_label', 80);
@@ -131,7 +129,7 @@ try {
             }
             for ($offset = 0; $offset < $quantity; $offset++) {
                 $new_id = $insert_venue();
-                $formatted = $prefix . str_pad((string)($number + $offset), strlen($parts[2]), '0', STR_PAD_LEFT);
+                $formatted = $room_numbers[$offset];
                 if ($group_ready) {
                     $room_stmt->bind_param('ississiiiddss', $new_id, $room_type, $room_type_code, $room_group_id, $formatted, $floor_label, $bed_count, $base_capacity, $max_capacity, $nightly_rate, $extra_pax_rate, $check_in, $check_out);
                 } else {

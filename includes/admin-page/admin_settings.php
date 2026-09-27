@@ -678,7 +678,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <div class="venue-bulk-header">
                             <div class="venue-bulk-copy">
                                 <span class="venue-bulk-title">Create rooms in bulk</span>
-                                <p>Creates multiple identical rooms sequentially (e.g. 101 to 105).</p>
+                                <p>Creates identical rooms in sequence (A to C, 101 to 105, or A-101 to A-103). Set the floor separately above.</p>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="vm-hr-bulk-toggle" data-required="false" aria-label="Create rooms in bulk">
@@ -692,7 +692,8 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </div>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="vm-hr-bulk-start">Starting Room Number</label>
-                                <input type="text" id="vm-hr-bulk-start" name="bulk_start_number" class="form-control" placeholder="e.g. 101 or A-101">
+                                <input type="text" id="vm-hr-bulk-start" name="bulk_start_number" class="form-control" maxlength="20" placeholder="e.g. A, 101, or A-101" aria-describedby="vm-hr-bulk-start-help">
+                                <span id="vm-hr-bulk-start-help" class="field-help">Letters continue from Z to AA. Each generated room number is limited to 20 characters.</span>
                             </div>
                         </div>
                     </div>
@@ -746,7 +747,13 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 
                     <div class="form-group vm-dynamic vm-hotel venue-hotel-advanced" style="display:none; margin-bottom: 0;">
                         <details id="vm-hr-advanced">
-                            <summary>Optional room details</summary>
+                            <summary>
+                                <span class="venue-hotel-advanced-copy">
+                                    <span class="venue-hotel-advanced-title">Stay times (optional)</span>
+                                    <span class="venue-hotel-advanced-description">Set the check-in and check-out times for this room type.</span>
+                                </span>
+                                <span class="venue-hotel-advanced-chevron" aria-hidden="true"></span>
+                            </summary>
                             <div class="venue-hotel-advanced-grid">
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="vm-hr-check-in">Check-in</label>
@@ -756,13 +763,9 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                                     <label for="vm-hr-check-out">Check-out</label>
                                     <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00" data-required="false">
                                 </div>
-                                <div class="form-group venue-hotel-media-field" style="margin-bottom: 0;">
-                                    <label for="vm-hr-media-slot">Optional media slot key</label>
-                                    <input type="text" id="vm-hr-media-slot" name="media_slot_key" class="form-control" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" title="Use letters, numbers, underscores, or hyphens." data-required="false">
-                                    <span class="field-help">The same explicit slot may be shared by room groups.</span>
-                                </div>
                             </div>
                         </details>
+                        <input type="hidden" id="vm-hr-media-slot" name="media_slot_key" value="" data-required="false">
                     </div>
                 </div>
             </div>

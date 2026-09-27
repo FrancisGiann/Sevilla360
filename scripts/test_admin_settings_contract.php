@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 require_once $root . '/includes/event_bundle.php';
+require_once $root . '/includes/hotel_room_number_sequence.php';
 $read = static function (string $path) use ($root): string {
     $contents = file_get_contents($root . '/' . $path);
     if ($contents === false) {
@@ -18,6 +19,28 @@ $assert = static function (bool $condition, string $message): void {
         exit(1);
     }
 };
+$assertThrows = static function (callable $operation, string $message) use ($assert): void {
+    try {
+        $operation();
+    } catch (InvalidArgumentException) {
+        $assert(true, $message);
+        return;
+    }
+    $assert(false, $message);
+};
+
+$assert(hotel_bulk_room_numbers('A', 3) === ['A', 'B', 'C']
+    && hotel_bulk_room_numbers('a', 3) === ['a', 'b', 'c']
+    && hotel_bulk_room_numbers('z', 3) === ['z', 'aa', 'ab']
+    && hotel_bulk_room_numbers('Z', 3) === ['Z', 'AA', 'AB']
+    && hotel_bulk_room_numbers('AZ', 3) === ['AZ', 'BA', 'BB'], 'letter-only bulk room numbers preserve case and roll over from Z to AA.');
+$assert(hotel_bulk_room_numbers('101', 3) === ['101', '102', '103']
+    && hotel_bulk_room_numbers('0099', 3) === ['0099', '0100', '0101']
+    && hotel_bulk_room_numbers('A-101', 3) === ['A-101', 'A-102', 'A-103'], 'numeric and prefixed-numeric bulk room number formats retain their existing sequencing and padding.');
+$assertThrows(static fn() => hotel_bulk_room_numbers('A-101', 0), 'bulk room sequence rejects a quantity below one.');
+$assertThrows(static fn() => hotel_bulk_room_numbers('room 1', 2), 'bulk room sequence rejects unsupported starting identifiers.');
+$assertThrows(static fn() => hotel_bulk_room_numbers('999999', 2), 'bulk room sequence rejects numeric overflow.');
+$assertThrows(static fn() => hotel_bulk_room_numbers(str_repeat('Z', 20), 2), 'bulk room sequence rejects an alphabetic rollover beyond the 20-character room limit.');
 
 $shell = $read('admin_dashboard.php');
 $settings = $read('includes/admin-page/admin_settings.php');
@@ -35,6 +58,8 @@ $assert(str_contains($settings, "? '{$readyFields}'")
 $venueSave = $read('actions/admin/save_venue.php');
 $floorMigration = $read('migrations/029_hotel_room_floors.sql');
 $settingsClient = $read('assets/js/admin-page/admin_settings.js');
+$settingsStyles = $read('assets/css/admin-page/admin_settings.css');
+$mediaHelper = $read('includes/media_helper.php');
 $assert(str_contains($settings, 'hr.room_number, hr.floor_label, hr.bed_count')
     && str_contains($settings, 'json_encode([(string)$v[\'name\'], $floor_label]')
     && str_contains($settings, '$floor_search_label = $floor_label !== \'\' ? $floor_label : \'Floor not recorded\'')
@@ -47,19 +72,46 @@ $assert(str_contains($settings, '$hotel_building_names')
     && str_contains($settings, 'id="vm-hotel-name-options"')
     && str_contains($settings, 'Reuse the same hotel or building name for every room in this property.')
     && str_contains($settings, 'Rooms group by building name and floor.')
-    && str_contains($settings, 'Optional room details'), 'hotel names can be reused from suggestions, floor grouping is explicit, and optional room details are disclosed separately.');
+    && str_contains($settings, 'Stay times (optional)')
+    && str_contains($settings, 'Set the check-in and check-out times for this room type.')
+    && str_contains($settings, 'class="venue-hotel-advanced-chevron" aria-hidden="true"')
+    && str_contains($settingsStyles, '#venueModal .venue-hotel-advanced summary:hover')
+    && str_contains($settingsStyles, '#venueModal .venue-hotel-advanced details[open] .venue-hotel-advanced-chevron')
+    && str_contains($settingsStyles, '#venueModal :is(input, select, textarea, button, summary):focus-visible'), 'hotel names can be reused from suggestions, floor grouping is explicit, and the full native disclosure row has explanatory copy, a visible stateful chevron, and keyboard focus styling.');
 $assert(preg_match('/id="vm-hr-floor"[^>]*data-required="false"/', $settings) === 1
     && str_contains($settings, '<label for="vm-hr-floor">Floor label (optional)</label>')
     && !str_contains($settings, '<label for="vm-hr-floor">Floor label <span class="field-help">Optional</span></label>')
-    && preg_match('/id="vm-hr-media-slot"[^>]*data-required="false"/', $settings) === 1
+    && preg_match('/<\/details>\s*<input type="hidden" id="vm-hr-media-slot" name="media_slot_key" value="" data-required="false">/', $settings) === 1
+    && !str_contains($settings, '<label for="vm-hr-media-slot">')
+    && !str_contains($settings, 'Media CMS slot key')
+    && !str_contains($settings, 'Room photos link')
+    && !str_contains($settings, 'venue-hotel-media-field')
     && preg_match('/id="vm-hr-check-in"[^>]*data-required="false"/', $settings) === 1
     && preg_match('/id="vm-hr-check-out"[^>]*data-required="false"/', $settings) === 1
     && str_contains($settingsClient, 'field.required = enabled && field.dataset.required !== "false"')
-    && str_contains($settingsClient, 'floorField.setAttribute("aria-describedby", bulkEnabled ? "vm-hr-floor-bulk-help" : "vm-hr-floor-help")'), 'optional floor, timing, and media fields stay optional when hotel fields are enabled, with batch-specific accessible help.');
+    && str_contains($settingsClient, 'field.disabled = !enabled')
+    && str_contains($settingsClient, 'else if (category === "Hotel Room") targetClass = ".vm-hotel";')
+    && str_contains($settingsClient, 'setVenueFieldsState(el, true);')
+    && str_contains($settingsClient, 'floorField.setAttribute("aria-describedby", bulkEnabled ? "vm-hr-floor-bulk-help" : "vm-hr-floor-help")'), 'optional floor and timing fields retain their hotel-enabled state, while the hidden mapping remains optional and enabled for hotel edits.');
+$assert(str_contains($settings, 'type="hidden" id="vm-hr-media-slot" name="media_slot_key"')
+    && str_contains($settingsClient, 'mediaSlotField.value = venueData.media_slot_key || ""')
+    && str_contains($settingsClient, 'formVenue.reset()')
+    && str_contains($venueSave, "hotel_normalize_media_slot_key(\$_POST['media_slot_key'] ?? null)")
+    && str_contains($venueSave, 'hotel_room_group_upsert($conn, [')
+    && str_contains($mediaHelper, 'trim((string)($group[\'media_slot_key\'] ?? \'\'))')
+    && str_contains($mediaHelper, 'return media_cms_venue_slot_key($building . \' - \' . $roomType);')
+    && str_contains($mediaHelper, 'return $images ?: [\'assets/img/placeholder.jpg\'];'), 'room edits retain their existing media group mapping through a hidden optional value, while new groups use the default CMS match.');
 $assert(str_contains($settingsClient, 'venueData.floor_label')
     && str_contains($settingsClient, 'hotelAdvancedDetails.open = isHotelRoom && isEditMode')
     && str_contains($settingsClient, 'venueSaveButton.textContent = enabled ? "Create Rooms" : "Add Room"')
     && str_contains($settingsClient, 'openVenueModal(this)'), 'hotel edit values remain available, optional details open for edits, and single/bulk add actions stay distinct.');
+$assert(str_contains($venueSave, "require_once __DIR__ . '/../../includes/hotel_room_number_sequence.php';")
+    && str_contains($venueSave, 'hotel_bulk_room_numbers($start, $quantity)')
+    && str_contains($venueSave, '$formatted = $room_numbers[$offset];')
+    && str_contains($settingsClient, 'function validateBulkRoomNumbers(start, quantity)')
+    && str_contains($settings, 'Letters continue from Z to AA.')
+    && str_contains($settings, 'placeholder="e.g. A, 101, or A-101"')
+    && str_contains($settings, 'Set the floor separately above.'), 'bulk creation validates letter, numeric, and prefixed-numeric room sequences, explains rollover and length limits, and keeps floor selection separate.');
 $assert(str_contains($venueSave, "venue_text('floor_label', 80)")
     && str_contains($venueSave, 'floor_label = ?')
     && str_contains($venueSave, 'floor_label, bed_count')
