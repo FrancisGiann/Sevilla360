@@ -134,7 +134,7 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
             <p><?= $salesCurrency($salesReport['refunded_cents']) ?></p>
         </article>
         <article class="sales-summary-item sales-summary-net">
-            <h3>Net</h3>
+            <h3>Total</h3>
             <p class="<?= $salesNetClass($salesReport['net_cents']) ?>"><?= $salesCurrency($salesReport['net_cents']) ?></p>
         </article>
     </div>
@@ -146,7 +146,7 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
             <div class="sales-section-heading"><h3 id="sales-methods-title">Method breakdown</h3></div>
             <div class="sales-table-scroll">
                 <table class="sales-table sales-compact-table">
-                    <thead><tr><th scope="col">Method</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Net</th></tr></thead>
+                    <thead><tr><th scope="col">Method</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Total</th></tr></thead>
                     <tbody>
                     <?php if (!$salesReport['method_totals']): ?>
                         <tr><td class="sales-empty-cell" colspan="4">No recorded activity for these filters.</td></tr>
@@ -155,7 +155,7 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
                             <th scope="row" data-label="Method"><?= $salesEscape($methodTotal['method']) ?></th>
                             <td data-label="Received"><?= $salesCurrency($methodTotal['received_cents']) ?></td>
                             <td data-label="Refunded"><?= $salesCurrency($methodTotal['refunded_cents']) ?></td>
-                            <td data-label="Net" class="<?= $salesNetClass($methodTotal['net_cents']) ?>"><?= $salesCurrency($methodTotal['net_cents']) ?></td>
+                            <td data-label="Total" class="<?= $salesNetClass($methodTotal['net_cents']) ?>"><?= $salesCurrency($methodTotal['net_cents']) ?></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
@@ -167,7 +167,7 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
             <div class="sales-section-heading"><h3 id="sales-venues-title">Revenue by venue</h3></div>
             <div class="sales-table-scroll">
                 <table class="sales-table sales-compact-table">
-                    <thead><tr><th scope="col">Venue group</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Net</th></tr></thead>
+                    <thead><tr><th scope="col">Venue group</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Total</th></tr></thead>
                     <tbody>
                     <?php if (!$salesReport['venue_totals']): ?>
                         <tr><td class="sales-empty-cell" colspan="4">No venue revenue for these filters.</td></tr>
@@ -176,7 +176,7 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
                             <th scope="row" data-label="Venue group"><?= $salesEscape($venueTotal['label']) ?></th>
                             <td data-label="Received"><?= $salesCurrency($venueTotal['received_cents']) ?></td>
                             <td data-label="Refunded"><?= $salesCurrency($venueTotal['refunded_cents']) ?></td>
-                            <td data-label="Net" class="<?= $salesNetClass($venueTotal['net_cents']) ?>"><?= $salesCurrency($venueTotal['net_cents']) ?></td>
+                            <td data-label="Total" class="<?= $salesNetClass($venueTotal['net_cents']) ?>"><?= $salesCurrency($venueTotal['net_cents']) ?></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>

@@ -44,7 +44,7 @@ try {
     if ($output === false) throw new RuntimeException('Unable to create the export.');
 
     if ($exportType === 'transactions') {
-        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer', 'Booking', 'Venue', 'Reference', 'Received (PHP)', 'Refunded (PHP)', 'Net (PHP)']);
+        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer', 'Booking', 'Venue', 'Reference', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
         sales_report_build($conn, $filters, 1, 50, static function (array $transaction) use ($output): void {
             $received = $transaction['type'] === 'received' ? $transaction['amount_cents'] / 100 : 0;
             $refunded = $transaction['type'] === 'refunded' ? $transaction['amount_cents'] / 100 : 0;
@@ -65,7 +65,7 @@ try {
         $filename = 'sevilla360-sales-transactions-' . $filters['from'] . '-to-' . $filters['to'] . '.csv';
     } else {
         $report = sales_report_build($conn, $filters);
-        sales_report_csv_line($output, ['Venue group', 'Received (PHP)', 'Refunded (PHP)', 'Net (PHP)']);
+        sales_report_csv_line($output, ['Venue group', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
         foreach ($report['venue_totals'] as $venueTotal) {
             sales_report_csv_line($output, [
                 $venueTotal['label'],
