@@ -2368,7 +2368,7 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue");
       setDialogue("Date check unavailable", "The current calendar could not be checked, so I won’t guess at availability. No hold was created.");
       receptionistChoices.replaceChildren(
-        createChoice("Retry", "receptionist-choice-primary", { "data-receptionist-date-submit": "true" }),
+        createChoice("Retry", "receptionist-choice-primary", { "data-receptionist-availability-retry": "true" }),
         createChoice("Choose date later", "receptionist-choice-secondary", { "data-receptionist-date-later": "true" }),
         createChoice("Just look around", "receptionist-choice-secondary", { "data-receptionist-close": "true" })
       );
@@ -2391,12 +2391,15 @@ document.addEventListener("DOMContentLoaded", () => {
         start_date: startDate,
         end_date: endDate
       });
+      if (isHotel && Number(room.room_group_id) > 0) params.set("room_group_id", String(room.room_group_id));
+      else if (!isHotel && Number(room.venue_id) > 0) params.set("venue_id", String(room.venue_id));
       const endpoint = isHotel ? "actions/bookings/get_room_availability.php" : "actions/bookings/fetch_dates.php";
       const url = isHotel ? `${endpoint}?${params.toString()}` : endpoint;
       const response = await fetch(url, { method: "POST", body: params, headers: { "X-Sevilla-Background": "true" } });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success) throw new Error(data?.message || "Availability check failed");
       if (isHotel) return Number(data.available) > 0;
+      if (data.venue_available === false) return false;
       const booked = new Set([...(Array.isArray(data.booked_dates) ? data.booked_dates : []), ...(Array.isArray(data.hard_blocked_dates) ? data.hard_blocked_dates : [])].map(String));
       return !booked.has(startDate);
     };
@@ -2544,9 +2547,23 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const checkGuideAvailability = async () => {
       const startDate = guideContext.startDate;
+      const activeVenueId = Number(guideContext.activeVenueId || 0);
       if (receptionistState.activeCategory === "Hotel Room") {
         if (!isCanonicalDate(startDate) || !isCanonicalDate(guideContext.endDate) || guideContext.endDate <= startDate) {
           renderQuestion("Hotel Room", !isCanonicalDate(startDate) ? "checkInDate" : "checkOutDate");
+          return;
+        }
+        if (activeVenueId > 0) {
+          const room = findReceptionistVenue(activeVenueId, "Hotel Room", guideContext.activeRoomGroupId);
+          if (!room) {
+            guideState.availabilityStatus = "error";
+            guideState.availabilityChecked = false;
+            guideState.availabilityConfirmedIds = [];
+            renderAvailabilityError();
+            focusFirstChoice();
+            return;
+          }
+          await checkSelectedVenueAvailability(room, startDate, guideContext.endDate);
           return;
         }
         await requestHotelRecommendations();
@@ -2554,13 +2571,30 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       if (!isCanonicalDate(startDate)) { renderQuestion(receptionistState.activeCategory, dateStepFor(receptionistState.activeCategory)); return; }
       guideContext.endDate = startDate;
+      if (activeVenueId > 0) {
+        const room = findReceptionistVenue(activeVenueId, receptionistState.activeCategory, guideContext.activeRoomGroupId);
+        if (!room) {
+          guideState.availabilityStatus = "error";
+          guideState.availabilityChecked = false;
+          guideState.availabilityConfirmedIds = [];
+          renderAvailabilityError();
+          focusFirstChoice();
+          return;
+        }
+        await checkSelectedVenueAvailability(room, startDate, startDate);
+        return;
+      }
       const token = ++guideState.availabilityRequestToken;
+      const category = receptionistState.activeCategory;
       guideState.availabilityStatus = "loading";
+      guideState.availabilityChecked = false;
+      guideState.availabilityConfirmedIds = [];
       setDialogue("Checking the current calendar", "I’m checking the selected date across the media-ready options. This creates no hold.");
       const candidates = venuesForCategory(receptionistState.activeCategory);
       receptionistChoices.replaceChildren(createChoice("Checking…", "receptionist-choice-secondary", { disabled: "true" }));
       const results = await Promise.allSettled(candidates.map(room => requestVenueAvailability(room, startDate, guideContext.endDate).then(available => ({ room, available }))));
-      if (token !== guideState.availabilityRequestToken) return;
+      if (token !== guideState.availabilityRequestToken || category !== receptionistState.activeCategory
+        || startDate !== guideContext.startDate || guideContext.endDate !== startDate || guideContext.activeVenueId) return;
       if (results.some(result => result.status === "rejected")) {
         guideState.availabilityStatus = "error";
         guideState.availabilityConfirmedIds = [];
@@ -2573,6 +2607,54 @@ document.addEventListener("DOMContentLoaded", () => {
       if (guideState.availabilityStatus === "none") { renderNoAvailability(); focusFirstChoice(); return; }
       renderRecommendations();
       focusFirstChoice();
+    };
+    const checkSelectedVenueAvailability = async (room, startDate, endDate) => {
+      const token = ++guideState.availabilityRequestToken;
+      const snapshot = {
+        category: room.category,
+        venueId: Number(room.venue_id),
+        roomGroupId: Number(room.room_group_id || 0),
+        startDate,
+        endDate
+      };
+      const isCurrent = () => token === guideState.availabilityRequestToken
+        && receptionistState.activeCategory === snapshot.category
+        && Number(guideContext.activeVenueId || 0) === snapshot.venueId
+        && Number(guideContext.activeRoomGroupId || 0) === snapshot.roomGroupId
+        && guideContext.startDate === snapshot.startDate
+        && guideContext.endDate === snapshot.endDate;
+      guideState.availabilityStatus = "loading";
+      guideState.availabilityChecked = false;
+      guideState.availabilityConfirmedIds = [];
+      setDialogue("Checking this venue", `I’m checking ${room.title || room.venue_name || "this venue"} for the selected date${room.category === "Hotel Room" ? "s" : ""}. This creates no hold.`);
+      receptionistChoices.replaceChildren(createChoice("Checking…", "receptionist-choice-secondary", { disabled: "true" }));
+      try {
+        const available = await requestVenueAvailability(room, startDate, endDate);
+        if (!isCurrent()) return;
+        guideState.availabilityStatus = available ? "confirmed" : "none";
+        guideState.availabilityChecked = true;
+        guideState.availabilityConfirmedIds = available ? [room.id] : [];
+        receptionistRoot.classList.remove("is-date-state", "is-venue-state", "is-venue-overview", "is-venue-dialogue", "is-hotel-results");
+        setDialogue(available ? "This venue is available" : "This venue is unavailable",
+          available
+            ? `${room.title || room.venue_name} is available for ${room.category === "Hotel Room" ? `${formatCalendarDate(startDate)} through ${formatCalendarDate(endDate)}` : formatCalendarDate(startDate)} according to the current calendar. No booking or hold was made.`
+            : `${room.title || room.venue_name} is not available for ${room.category === "Hotel Room" ? `${formatCalendarDate(startDate)} through ${formatCalendarDate(endDate)}` : formatCalendarDate(startDate)} according to the current calendar. No booking or hold was made.`);
+        receptionistChoices.replaceChildren(
+          createChoice("View venue details", "receptionist-choice-primary", { "data-receptionist-room": room.id }),
+          createChoice(room.category === "Hotel Room" ? "Change dates" : "Choose another date", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" }),
+          createChoice("Browse other options", "receptionist-choice-secondary", { "data-receptionist-chat-browse-category": "true" }),
+          createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
+        );
+        if (available) playSuccessChime();
+        focusFirstChoice();
+      } catch (error) {
+        if (!isCurrent()) return;
+        guideState.availabilityStatus = "error";
+        guideState.availabilityChecked = false;
+        guideState.availabilityConfirmedIds = [];
+        renderAvailabilityError();
+        focusFirstChoice();
+      }
     };
     const appendFact = (facts, label, value) => {
       if (!value) return;
@@ -3223,7 +3305,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : focusable;
     };
     receptionistRoot.addEventListener("click", event => {
-      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-chat-browse-category], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
+      const target = event.target instanceof Element ? event.target.closest("[data-receptionist-close], [data-receptionist-skip], [data-receptionist-back], [data-receptionist-overview], [data-receptionist-menu], [data-receptionist-intent], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-availability-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-start-over], [data-receptionist-view-all], [data-receptionist-chat-browse-category], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next], [data-receptionist-continue]") : null;
       if (!target) return;
       if (event.isTrusted && target.matches("[data-receptionist-overview], [data-receptionist-menu], [data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-room], [data-receptionist-hotel-back], [data-receptionist-hotel-retry], [data-receptionist-tour], [data-receptionist-change], [data-receptionist-change-search], [data-receptionist-change-group], [data-receptionist-change-primary], [data-receptionist-change-date], [data-receptionist-view-all], [data-receptionist-chat-browse-category], [data-receptionist-date-submit], [data-receptionist-date-later], [data-receptionist-all-prev], [data-receptionist-all-next], [data-receptionist-compare], [data-receptionist-why], [data-receptionist-included], [data-receptionist-included-prev], [data-receptionist-included-next], [data-receptionist-photo-prev], [data-receptionist-photo-next]")) markCurrentPageGuideInteraction();
       if (target.hasAttribute("data-receptionist-continue")) { revealDialogueChoices(); return; }
@@ -3239,7 +3321,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.hasAttribute("data-receptionist-overview")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueOverview(room); focusFirstChoice(); } return; }
       if (target.hasAttribute("data-receptionist-hotel-back")) { renderHotelRecommendationList(); focusFirstChoice(); return; }
       if (target.hasAttribute("data-receptionist-hotel-retry")) { requestHotelRecommendations(); return; }
+      if (target.hasAttribute("data-receptionist-availability-retry")) { checkGuideAvailability(); return; }
       if (target.hasAttribute("data-receptionist-chat-browse-category")) {
+        guideContext.activeVenueId = null;
+        guideContext.activeRoomGroupId = null;
+        saveGuideContext();
+        guideState.availabilityStatus = "idle";
+        guideState.availabilityChecked = false;
+        guideState.availabilityConfirmedIds = [];
+        guideState.availabilityRequestToken += 1;
         if (receptionistState.activeCategory === "Hotel Room") requestHotelRecommendations();
         else if (receptionistState.activeCategory) renderRecommendations();
         else renderGreeting({ announce: true });

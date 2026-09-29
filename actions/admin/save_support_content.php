@@ -32,7 +32,7 @@ foreach ($faq_items as $faq) {
     if (!$hasContent) continue;
     $clean = receptionist_faq_normalize_item($faq);
     if ($clean === null) {
-        echo json_encode(['success' => false, 'message' => 'Each FAQ needs a valid question, answer, category, and phrase set.']);
+        echo json_encode(['success' => false, 'message' => 'Each FAQ needs a valid question, answer, and category.']);
         exit;
     }
     $idKey = strtolower($clean['id']);

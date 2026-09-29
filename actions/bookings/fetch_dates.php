@@ -12,28 +12,44 @@ try {
     $current_session = session_id();
     $room_type = $_REQUEST['room_type'] ?? '';
     $room_name = $_REQUEST['room_name'] ?? ''; // This is venue name or building name
+    $venue_id_raw = $_REQUEST['venue_id'] ?? '';
+    $venue_id = $venue_id_raw === '' ? null : filter_var($venue_id_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $room_group_raw = $_REQUEST['room_group_id'] ?? '';
     $room_group_id = $room_group_raw === '' ? null : filter_var($room_group_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-    if ($room_group_id === false) {
+    if ($room_group_id === false || $venue_id === false || ($venue_id !== null && !in_array($room_type, ['Event Hall', 'Resort Villa'], true))) {
         http_response_code(422);
         echo json_encode(['success' => false, 'booked_dates' => [], 'hard_blocked_dates' => [], 'message' => 'Invalid room selection.']);
         exit;
     }
 
-    if (empty($room_type) || (empty($room_name) && $room_group_id === null)) {
+    if (empty($room_type) || (empty($room_name) && $room_group_id === null && $venue_id === null)) {
         echo json_encode(['success' => true, 'booked_dates' => [], 'hard_blocked_dates' => []]);
         exit;
     }
 
+    $selectedVenueAvailable = null;
     if ($room_type === 'Event Hall' || $room_type === 'Resort Villa') {
-        // Find single venue ID
-        $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1");
-        $stmt->bind_param("ss", $room_type, $room_name);
+        // A selected showroom result carries its ID so duplicate venue names cannot cross-match.
+        if ($venue_id !== null) {
+            $stmt = $conn->prepare("SELECT id, status FROM venues WHERE id = ? AND category = ? LIMIT 1");
+            $stmt->bind_param("is", $venue_id, $room_type);
+        } else {
+            $stmt = $conn->prepare("SELECT id, status FROM venues WHERE category = ? AND name = ? LIMIT 1");
+            $stmt->bind_param("ss", $room_type, $room_name);
+        }
         $stmt->execute();
         $result = $stmt->get_result();
 
         if ($result->num_rows > 0) {
-            $venue_id = (int)$result->fetch_assoc()['id'];
+            $selectedVenue = $result->fetch_assoc();
+            $venue_id = (int)$selectedVenue['id'];
+            if ($venue_id_raw !== '') {
+                $selectedVenueAvailable = ($selectedVenue['status'] ?? '') === 'Available';
+                if (!$selectedVenueAvailable) {
+                    echo json_encode(['success' => true, 'booked_dates' => [], 'hard_blocked_dates' => [], 'venue_available' => false]);
+                    exit;
+                }
+            }
 
             // Event Halls only block Confirmed. Villas block Pending & Confirmed.
             $status_filter = ($room_type === 'Event Hall') ? "IN ('Confirmed', 'Completed')" : "IN ('Pending', 'Confirmed', 'Completed')";
@@ -93,6 +109,10 @@ try {
                 }
                 $stmt_locks->close();
             }
+        } elseif ($venue_id_raw !== '') {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'booked_dates' => [], 'hard_blocked_dates' => [], 'message' => 'Selected venue is no longer available.']);
+            exit;
         }
     } else {
         // HOTEL ROOMS (Auto-assign logic)
@@ -221,11 +241,13 @@ try {
         }
     }
 
-    echo json_encode([
+    $response = [
         'success' => true,
         'booked_dates' => array_values(array_unique($bookedDates)),
         'hard_blocked_dates' => array_values(array_unique($hardBlockedDates))
-    ]);
+    ];
+    if ($selectedVenueAvailable !== null) $response['venue_available'] = $selectedVenueAvailable;
+    echo json_encode($response);
 
 } catch (Exception $e) {
     http_response_code(500);

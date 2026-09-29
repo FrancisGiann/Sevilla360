@@ -56,7 +56,7 @@ $cases = [
     ['What amenities are included?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m)['reply'], 'Free Wifi')],
     ['May private pool ba?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m, 'fil')['reply'], 'pool')],
     ['How does payment and cancellation work?', fn(string $m): bool => receptionist_knowledge_reply($records, $m) !== null],
-    ['is Infinity Hall available?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m)['reply'], 'selected venue')],
+    ['is Infinity Hall available?', fn(string $m): bool => (receptionist_knowledge_reply($records, $m)['missing_slots'] ?? []) === ['start_date'] && (receptionist_knowledge_reply($records, $m)['slots']['active_venue_id'] ?? null) === 1],
     ['what are the resort rules?', fn(string $m): bool => receptionist_knowledge_reply($records, $m) !== null],
     ['Magkano ang event hall?', fn(string $m): bool => str_contains((string)receptionist_knowledge_reply($records, $m, 'fil')['reply'], 'starting')],
     ['Magkano ang event hall?', fn(string $m): bool => receptionist_knowledge_reply($records, $m, 'taglish') !== null],
@@ -84,6 +84,11 @@ $expectedTranscript = [
 ];
 $locationAnswer = receptionist_knowledge_reply($records, 'Where is Infinity Hall located?', 'en', ['intent' => 'Event Hall', 'active_venue_id' => 1]);
 $detailAnswer = receptionist_knowledge_reply($records, 'See details', 'en', ['intent' => 'Event Hall', 'active_venue_id' => 1]);
+$contextPriceAnswer = receptionist_knowledge_reply($records, 'what about its price?', 'en', ['intent' => 'Hotel Room', 'active_venue_id' => 2, 'active_room_group_id' => 12]);
+$explicitAmenityAnswer = receptionist_knowledge_reply($records, 'parking for Infinity', 'en');
+$unsupportedAmenityAnswer = receptionist_knowledge_reply($records, 'does Infinity Hall have a pool?', 'en');
+$outsideCateringAnswer = receptionist_knowledge_unconfirmed_reply('outside catering allowed', 'en');
+$petPolicyAnswer = receptionist_knowledge_reply($records, 'pet policy', 'en');
 $passed = 0;
 foreach ($cases as $index => [$utterance, $assert]) {
     try { $ok = $assert($utterance); } catch (Throwable $error) { $ok = false; }
@@ -97,4 +102,15 @@ $transcriptPassed = $transcript === $expectedTranscript
     && ($detailAnswer['action'] ?? null) === 'venue'
     && ($detailAnswer['slots']['active_venue_id'] ?? null) === 1;
 echo ($transcriptPassed ? 'PASS' : 'FAIL') . " exact receptionist transcript keeps category, venue, and bare-where deterministic\n";
-exit($passed === count($cases) && $transcriptPassed ? 0 : 1);
+$contextFollowupPassed = ($contextPriceAnswer['slots']['active_room_group_id'] ?? null) === 12
+    && str_contains($contextPriceAnswer['reply'] ?? '', 'Stellar — Deluxe')
+    && str_contains($contextPriceAnswer['reply'] ?? '', '₱3,500/night')
+    && !str_contains($contextPriceAnswer['reply'] ?? '', 'Suite')
+    && str_contains(strtolower($explicitAmenityAnswer['reply'] ?? ''), 'parking is listed for infinity')
+    && !str_contains(strtolower($unsupportedAmenityAnswer['reply'] ?? ''), 'villa')
+    && str_contains(strtolower($unsupportedAmenityAnswer['reply'] ?? ''), 'can’t confirm')
+    && str_contains(strtolower($petPolicyAnswer['reply'] ?? ''), 'can’t confirm')
+    && ($petPolicyAnswer['show_support_contact_cta'] ?? false) === true
+    && ($outsideCateringAnswer['show_support_contact_cta'] ?? false) === true;
+echo ($contextFollowupPassed ? 'PASS' : 'FAIL') . " contextual and unpunctuated venue facts remain scoped to published identity\n";
+exit($passed === count($cases) && $transcriptPassed && $contextFollowupPassed ? 0 : 1);

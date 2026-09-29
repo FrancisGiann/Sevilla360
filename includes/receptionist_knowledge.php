@@ -498,7 +498,19 @@ function receptionist_knowledge_faq_matches(array $records, array $tokens, int $
     $matches = [];
     foreach ($records as $record) {
         if (!in_array($record['kind'] ?? null, ['faq', 'policy'], true)) continue;
-        $score = receptionist_knowledge_record_score($record, $tokens);
+        // The published FAQ question and answer are the canonical retrieval
+        // source. Staff phrases remain useful aliases, but never have to be
+        // maintained for an FAQ to be discoverable.
+        $withoutAliases = $record;
+        $withoutAliases['phrases'] = [];
+        $score = receptionist_knowledge_record_score($withoutAliases, $tokens);
+        if ($score === 0 && !empty($record['phrases'])) {
+            $aliasesOnly = $record;
+            $aliasesOnly['question'] = '';
+            $aliasesOnly['answer'] = '';
+            $aliasScore = receptionist_knowledge_record_score($aliasesOnly, $tokens);
+            $score = (int)floor($aliasScore / 2);
+        }
         if ($score > 0) $matches[] = ['score' => $score, 'record' => $record];
     }
     usort($matches, static function (array $left, array $right): int {
@@ -790,8 +802,26 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         elseif (preg_match('/\b(?:private|privacy)\b/i', $lower)) $patch['purpose'] = 'private';
     }
     if ($groupSize !== null && $groupSize > 0) $patch['group_size'] = $groupSize;
-    if ($startDate !== null) $patch['start_date'] = $startDate;
-    if (isset($bookingDates[1]) && $bookingDates[1] > $startDate) $patch['end_date'] = $bookingDates[1];
+    if (count($bookingDates) > 1) {
+        $patch['start_date'] = $bookingDates[0];
+        if ($bookingDates[1] > $bookingDates[0]) $patch['end_date'] = $bookingDates[1];
+    } elseif ($startDate !== null) {
+        $dateBase = $intentChanged ? [] : $baseSlots;
+        $explicitCheckOut = preg_match('/\b(?:check[ -]?out|checkout|departure)\b/i', $lower) === 1;
+        $explicitCheckIn = preg_match('/\b(?:check[ -]?in|checkin|arrival)\b/i', $lower) === 1;
+        if ($intent === 'Hotel Room' && $explicitCheckOut) {
+            $patch['end_date'] = $startDate;
+        } elseif ($intent === 'Hotel Room' && !$explicitCheckIn && !empty($dateBase['start_date']) && empty($dateBase['end_date'])) {
+            // Guests often answer the requested dates in separate messages.
+            // Once check-in is known, an unlabeled next date is check-out.
+            $patch['end_date'] = $startDate;
+        } else {
+            $patch['start_date'] = $startDate;
+            if ($intent === 'Hotel Room' && !empty($dateBase['end_date']) && $dateBase['end_date'] <= $startDate) {
+                $patch['end_date'] = null;
+            }
+        }
+    }
     if ($venueBookingSignal) {
         $patch['active_venue_id'] = (int)($venue['venue_id'] ?? 0);
         if (($venue['room_group_id'] ?? null) !== null) $patch['active_room_group_id'] = (int)$venue['room_group_id'];
@@ -801,7 +831,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     // This prevents an old event occasion/date/venue from leaking into a new
     // hotel or villa request.
     $mergeBase = $intentChanged ? [] : $baseSlots;
-    $slots = receptionist_ai_merge_slots($mergeBase, $patch);
+    $slots = receptionist_ai_merge_slots($mergeBase, $patch, isset($patch['end_date']) && $patch['end_date'] === null ? ['end_date'] : []);
     if (($slots['intent'] ?? null) === null) {
         return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $language === 'fil' ? 'Anong venue ang gusto mong i-book — event hall, hotel room, o resort villa?' : 'Which venue would you like to book — an event hall, hotel room, or resort villa?', 'faq_id' => null, 'slots' => $patch, 'missing_slots' => ['intent'], 'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs']];
     }
@@ -863,6 +893,432 @@ function receptionist_knowledge_select(array $records, string $message, int $lim
         return $score !== 0 ? $score : strcmp((string)($left['record']['id'] ?? ''), (string)($right['record']['id'] ?? ''));
     });
     return array_map(static fn(array $entry): array => $entry['record'], array_slice($matches, 0, max(1, min($limit, 8))));
+}
+
+function receptionist_knowledge_model_candidate_properties(array $record): array
+{
+    $kind = (string)($record['kind'] ?? '');
+    if ($kind === 'venue') {
+        $properties = [];
+        if (isset($record['base_rate'])) $properties[] = 'price';
+        if (isset($record['overnight_rate'])) $properties[] = 'overnight_price';
+        if (isset($record['capacity_max']) || isset($record['capacity_styles']) || isset($record['bed_count_min'])) $properties[] = 'capacity';
+        if (!empty($record['amenities']) || !empty($record['inclusions'])) $properties[] = 'amenities';
+        if (!empty($record['description'])) $properties[] = 'description';
+        $properties[] = 'location';
+        return $properties;
+    }
+    return match ($kind) {
+        'faq' => ['faq_answer'],
+        'policy' => ['policy'],
+        'contact' => ['contact', 'location'],
+        'event_pricing' => ['event_options'],
+        default => [],
+    };
+}
+
+function receptionist_knowledge_faq_specific_topic_matches(array $faq, string $message): bool
+{
+    $rules = [
+        '/\b(?:pets?|dogs?|cats?)\b/i' => '/\b(?:pets?|dogs?|cats?)\b/i',
+        '/\b(?:children|child|kids?)\b/i' => '/\b(?:children|child|kids?)\b/i',
+        '/\b(?:outside\s+catering|catering)\b/i' => '/\b(?:outside\s+catering|catering)\b/i',
+    ];
+    $faqText = (string)($faq['question'] ?? '') . ' ' . implode(' ', is_array($faq['phrases'] ?? null) ? $faq['phrases'] : []);
+    foreach ($rules as $messagePattern => $faqPattern) {
+        if (preg_match($messagePattern, $message) === 1 && preg_match($faqPattern, $faqText) !== 1) return false;
+    }
+    return true;
+}
+
+function receptionist_knowledge_has_specific_policy_faq(array $records, string $message): bool
+{
+    foreach ($records as $record) {
+        if (($record['kind'] ?? null) !== 'faq' || !receptionist_knowledge_faq_specific_topic_matches($record, $message)) continue;
+        return true;
+    }
+    return false;
+}
+
+function receptionist_knowledge_explicit_venue_matches(array $records, string $message, ?string $category = null): array
+{
+    $messageText = ' ' . receptionist_knowledge_normalized_phrase($message) . ' ';
+    if ($messageText === '  ') return [];
+    $matches = [];
+    foreach ($records as $record) {
+        if (($record['kind'] ?? null) !== 'venue' || ($category !== null && ($record['category'] ?? null) !== $category)) continue;
+        $name = receptionist_knowledge_normalized_phrase((string)($record['name'] ?? ''));
+        $coreName = trim((string)preg_replace('/\b(?:event hall|function hall|hall|hotel room|hotel|room|villa)\b/', '', $name));
+        $roomType = receptionist_knowledge_normalized_phrase((string)($record['room_type'] ?? ''));
+        $fullNameMatch = $name !== '' && str_contains($messageText, ' ' . $name . ' ');
+        $coreNameMatch = strlen($coreName) >= 4 && str_contains($messageText, ' ' . $coreName . ' ');
+        $roomTypeMatch = $roomType !== '' && str_contains($messageText, ' ' . $roomType . ' ');
+        $hotelMatch = ($record['category'] ?? null) === 'Hotel Room'
+            ? (($fullNameMatch || $coreNameMatch) && ($roomTypeMatch || empty($record['room_group_id'])))
+            : ($fullNameMatch || $coreNameMatch);
+        if (!$hotelMatch) continue;
+        $key = implode('|', [(string)($record['category'] ?? ''), (int)($record['venue_id'] ?? 0), (int)($record['room_group_id'] ?? 0)]);
+        $matches[$key] = $record;
+    }
+    return array_values($matches);
+}
+
+/**
+ * Select a small model-facing candidate set. Exact active venue and hotel
+ * room-group context is inserted first; lexical retrieval and a bounded FAQ
+ * set follow so paraphrases still have usable choices.
+ */
+function receptionist_knowledge_model_candidates(array $records, string $message, array $context = [], int $limit = 8, ?string $focusedFaqId = null): array
+{
+    $limit = max(1, min(8, $limit));
+    $selected = [];
+    $add = static function ($record) use (&$selected, $limit): void {
+        if (!is_array($record) || !is_string($record['id'] ?? null) || count($selected) >= $limit) return;
+        $properties = receptionist_knowledge_model_candidate_properties($record);
+        if (!$properties || isset($selected[$record['id']])) return;
+        $selected[$record['id']] = $record;
+    };
+
+    $intent = in_array($context['intent'] ?? null, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true) ? $context['intent'] : null;
+    $activeVenueId = receptionist_knowledge_positive_int($context['active_venue_id'] ?? null);
+    $activeRoomGroupId = receptionist_knowledge_positive_int($context['active_room_group_id'] ?? null);
+    if ($activeVenueId === null && $focusedFaqId !== null && receptionist_knowledge_is_contextual_followup($message)
+        && receptionist_knowledge_property_from_message($message) === null) {
+        foreach ($records as $record) {
+            if (($record['kind'] ?? null) === 'faq' && ($record['id'] ?? null) === $focusedFaqId) {
+                $add($record);
+                return array_values($selected);
+            }
+        }
+    }
+    if ($activeVenueId !== null) {
+        $active = array_values(array_filter($records, static function (array $record) use ($activeVenueId, $activeRoomGroupId, $intent): bool {
+            if (($record['kind'] ?? null) !== 'venue' || (int)($record['venue_id'] ?? 0) !== $activeVenueId) return false;
+            if ($intent !== null && ($record['category'] ?? null) !== $intent) return false;
+            if ($activeRoomGroupId !== null) return (int)($record['room_group_id'] ?? 0) === $activeRoomGroupId;
+            // Never let a selected hotel building fan out to an arbitrary
+            // commercial room group when the exact group was not validated.
+            return empty($record['room_group_id']);
+        }));
+        foreach ($active as $record) $add($record);
+    }
+
+
+    $lower = receptionist_knowledge_normalize_message($message);
+    $explicitVenues = receptionist_knowledge_explicit_venue_matches($records, $message);
+    $hotelNamesWithoutRoomType = [];
+    foreach ($records as $record) {
+        if (($record['kind'] ?? null) !== 'venue' || ($record['category'] ?? null) !== 'Hotel Room') continue;
+        $name = receptionist_knowledge_normalized_phrase((string)($record['name'] ?? ''));
+        $coreName = trim((string)preg_replace('/\b(?:hotel room|hotel|room)\b/', '', $name));
+        $roomType = receptionist_knowledge_normalized_phrase((string)($record['room_type'] ?? ''));
+        $nameMentioned = ($name !== '' && str_contains(' ' . receptionist_knowledge_normalized_phrase($message) . ' ', ' ' . $name . ' '))
+            || (strlen($coreName) >= 4 && str_contains(' ' . receptionist_knowledge_normalized_phrase($message) . ' ', ' ' . $coreName . ' '));
+        $roomMentioned = $roomType !== '' && str_contains(' ' . receptionist_knowledge_normalized_phrase($message) . ' ', ' ' . $roomType . ' ');
+        if ($nameMentioned && !$roomMentioned) $hotelNamesWithoutRoomType[(int)($record['venue_id'] ?? 0)][] = $record;
+    }
+    $ambiguousHotelVenueIds = [];
+    foreach ($hotelNamesWithoutRoomType as $venueId => $rows) if (count($rows) > 1) $ambiguousHotelVenueIds[(int)$venueId] = true;
+    if ($explicitVenues) {
+        $explicitGroups = [];
+        foreach ($explicitVenues as $record) {
+            $roomType = receptionist_knowledge_normalize_message((string)($record['room_type'] ?? ''));
+            if ($roomType !== '' && preg_match('/\b' . preg_quote($roomType, '/') . '\b/u', $lower)) $explicitGroups[] = $record;
+        }
+        $venueChoices = $explicitGroups ?: $explicitVenues;
+        $hotelIdentityCount = count(array_filter($venueChoices, static fn(array $record): bool => ($record['category'] ?? null) === 'Hotel Room'));
+        $hasRoomIdentity = $activeRoomGroupId !== null || (bool)$explicitGroups;
+        foreach ($venueChoices as $record) {
+            if (($record['category'] ?? null) === 'Hotel Room' && $hotelIdentityCount > 1 && !$hasRoomIdentity) continue;
+            if ($activeVenueId !== null && (int)($record['venue_id'] ?? 0) !== $activeVenueId) continue;
+            $add($record);
+        }
+    }
+
+    if (preg_match('/\b(?:catering|a\/?v|audio|wedding|birthday|event\s+fee|setup\s+fee)\b/i', $lower)) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'event_pricing') { $add($record); break; }
+    }
+    if (preg_match('/\b(?:where|address|location|directions?|contact|phone|email|saan|nasaan|lokasyon)\b/i', $lower)) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'contact') { $add($record); break; }
+    }
+
+    $explicitHotelGroups = [];
+    foreach ($explicitGroups ?? [] as $record) if (($record['category'] ?? null) === 'Hotel Room') {
+        $explicitHotelGroups[(int)($record['venue_id'] ?? 0)] = (int)($record['room_group_id'] ?? 0);
+    }
+    foreach (receptionist_knowledge_select($records, $message, 6) as $record) {
+        if (($record['kind'] ?? null) === 'venue') {
+            $candidateVenueId = (int)($record['venue_id'] ?? 0);
+            if ($activeVenueId !== null && $candidateVenueId !== $activeVenueId) continue;
+            if ($activeRoomGroupId !== null && (int)($record['room_group_id'] ?? 0) !== $activeRoomGroupId) continue;
+            if (($record['category'] ?? null) === 'Hotel Room') {
+                if ($activeVenueId !== null && $activeRoomGroupId === null && !empty($record['room_group_id'])) continue;
+                if (isset($explicitHotelGroups[$candidateVenueId]) && (int)($record['room_group_id'] ?? 0) !== $explicitHotelGroups[$candidateVenueId]) continue;
+                if (isset($ambiguousHotelVenueIds[$candidateVenueId])) continue;
+            }
+        }
+        $add($record);
+    }
+    $tokens = receptionist_knowledge_tokens($message);
+    foreach (receptionist_knowledge_faq_matches($records, $tokens, 4) as $record) $add($record);
+
+    // Keep a small FAQ set available to the model for semantic paraphrases
+    // that share no obvious lexical tokens with the published question.
+    $faqPriority = [];
+    if (preg_match('/\b(?:payment|pay|paid|proof|receipt|screenshot|bayad|bayaran)\b/i', $lower)) $faqPriority[] = 'faq-payment-proof';
+    if (preg_match('/\b(?:cancel|cancellation|refund|refunds|resched)\b/i', $lower)) $faqPriority[] = 'faq-refund-policy';
+    if (preg_match('/\b(?:hotel|room|overnight|nightly)\b/i', $lower)) $faqPriority[] = 'faq-hotel-nightly';
+    if (preg_match('/\b(?:event|wedding|inquiry)\b/i', $lower)) $faqPriority[] = 'faq-event-inquiry';
+    if (preg_match('/\b(?:date|dates|hold|reserve)\b/i', $lower)) $faqPriority[] = 'faq-booking-window';
+    $faqFallbackLimit = $activeVenueId !== null ? 3 : 4;
+    foreach ($faqPriority as $faqId) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'faq' && ($record['id'] ?? null) === $faqId) { $add($record); break; }
+    }
+    foreach ($records as $record) {
+        if (count($selected) >= $limit) break;
+        if (($record['kind'] ?? null) !== 'faq') continue;
+        if (count(array_filter($selected, static fn(array $item): bool => ($item['kind'] ?? null) === 'faq')) >= $faqFallbackLimit) break;
+        $add($record);
+    }
+
+    if (!$selected && preg_match('/\b(?:faq|faqs|support|policy|policies|rules|terms|question|tanong)\b/i', $lower)) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'faq') $add($record);
+    }
+
+    return array_values(array_slice($selected, 0, $limit, true));
+}
+
+function receptionist_knowledge_candidate_projection(array $records): array
+{
+    $projected = [];
+    foreach (array_slice($records, 0, 8) as $record) {
+        if (!is_array($record) || !is_string($record['id'] ?? null)) continue;
+        $item = [
+            'id' => $record['id'],
+            'kind' => (string)($record['kind'] ?? ''),
+            'properties' => receptionist_knowledge_model_candidate_properties($record),
+        ];
+        foreach (['category', 'name', 'room_type', 'venue_id', 'room_group_id', 'question', 'phrases'] as $key) {
+            if (array_key_exists($key, $record)) $item[$key] = $record[$key];
+        }
+        if (($record['kind'] ?? null) === 'venue') {
+            foreach (['base_rate', 'rate_unit', 'overnight_rate', 'capacity_base', 'capacity_max', 'capacity_styles', 'bed_count_min', 'bed_count_max', 'amenities', 'inclusions', 'description'] as $key) {
+                if (array_key_exists($key, $record)) $item[$key] = $record[$key];
+            }
+        } elseif (($record['kind'] ?? null) === 'faq') {
+            $item['answer_excerpt'] = receptionist_knowledge_excerpt((string)($record['answer'] ?? ''), 360);
+        } elseif (($record['kind'] ?? null) === 'policy') {
+            $item['text_excerpt'] = receptionist_knowledge_excerpt((string)($record['text'] ?? ''), 360);
+        } elseif (($record['kind'] ?? null) === 'contact') {
+            $item['available_fields'] = array_values(array_intersect(['name', 'address', 'phone', 'email'], array_keys($record['contact'] ?? [])));
+        } elseif (($record['kind'] ?? null) === 'event_pricing') {
+            $item['modifiers'] = array_slice($record['modifiers'] ?? [], 0, 6);
+        }
+        $projected[] = $item;
+    }
+    return $projected;
+}
+
+function receptionist_knowledge_is_social_input(string $message): bool
+{
+    $text = trim(receptionist_knowledge_normalize_message($message));
+    $text = trim((string)preg_replace('/[.!?,;:]+\s*$/u', '', $text));
+    if ($text === '') return false;
+    return preg_match('/\A(?:hi|hello|hey|good\s+(?:morning|afternoon|evening)|kumusta|kamusta)(?:\s+there|\s+po)?\z/iu', $text) === 1
+        || preg_match('/\A(?:thanks?|thank\s+you|many\s+thanks|salamat|maraming\s+salamat)(?:\s+(?:so\s+much|po))?\z/iu', $text) === 1
+        || preg_match('/\A(?:who\s+are\s+you|what\s+are\s+you|are\s+you\s+(?:a\s+)?(?:bot|virtual\s+receptionist)|sino\s+ka|ano\s+ka)\z/iu', $text) === 1
+        || preg_match('/\A(?:how\s+are\s+you|how\s+is\s+it\s+going|how\s+is\s+everything|what\s+is\s+up|kumusta\s+ka|kamusta\s+ka)\z/iu', $text) === 1;
+}
+
+function receptionist_knowledge_is_question(string $message): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    return str_contains($message, '?') || preg_match('/\A\s*(?:what|which|when|where|who|why|how|is|are|am|do|does|did|can|could|will|would|may|any|ano|alin|kailan|saan|sino|bakit|paano|ilan|gaano|may|pwede|puwede|meron|meron\s+bang)\b/i', $lower) === 1;
+}
+
+function receptionist_knowledge_is_active_venue_property_question(string $message, array $context): bool
+{
+    if (receptionist_knowledge_positive_int($context['active_venue_id'] ?? null) === null || !receptionist_knowledge_is_question($message)) return false;
+    if (receptionist_knowledge_is_social_input($message)) return false;
+    // Keep explicitly policy/booking FAQs available in a venue conversation.
+    if (preg_match('/\b(?:payment|pay|paid|proof|receipt|cancel\w*|refund|policy|policies|rules|terms|check[- ]?in|check[- ]?out|booking\s+process|booking\s+status|reservation\s+status|dates?\s+held|hold\s+dates?)\b/i', $message) === 1) return false;
+    return true;
+}
+
+function receptionist_knowledge_is_fact_request(string $message, array $context = []): bool
+{
+    if (receptionist_knowledge_is_social_input($message)) return false;
+    $lower = receptionist_knowledge_normalize_message($message);
+    $question = receptionist_knowledge_is_question($message);
+    $factSignal = preg_match('/\b(?:price|prices|rate|rates|cost|much|capacity|fit|guests?|pax|amenit\w*|include\w*|pool|wifi|parking|aircon|breakfast|address|location|where|located|directions?|availability|available|vacant|check[- ]?in|check[- ]?out|policy|policies|cancel\w*|refund|payment|pay|pets?|children|kids|rules|allowed|permitted|walk.?in|magkano|presyo|bayad|ilan|kasya|amenidad|kasama|saan|nasaan|bakante|patakaran|aso|pusa|catering|outside)\b/i', $lower) === 1;
+    $activeVenue = receptionist_knowledge_positive_int($context['active_venue_id'] ?? null) !== null;
+    $resortSubject = preg_match('/\b(?:resort|venue|hall|hotel|room|villa|stay|booking|reservation|event|your|our|we|you|reception|receptionist|sevilla)\b/i', $lower) === 1;
+    $specificSubject = preg_match('/\b(?:outside|catering|pets?|children|kids|parking|pool|wifi|aircon|check[- ]?in|walk.?in|villa|hotel|room|hall|venue|event|resort)\b/i', $lower) === 1;
+    $yesNoFactQuestion = $question && preg_match('/\b(?:do\s+you|does\s+it|does\s+this|does\s+that|does\s+the|does\s+your|is\s+there|are\s+there|can\s+i|can\s+we)\b/i', $lower) === 1;
+    return ($factSignal && ($question || $resortSubject || $activeVenue || $specificSubject))
+        || ($question && ($activeVenue || $resortSubject || $yesNoFactQuestion));
+}
+
+function receptionist_knowledge_property_from_message(string $message): ?string
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    if (preg_match('/\b(?:available|availability|vacancy|vacant|bakante|may\s+slot|may\s+bakante)\b/i', $lower)) return 'availability';
+    if (preg_match('/\b(?:price|prices|rates?|cost|how\s+much|magkano|presyo|bayad|fee|rent|per\s+day|per\s+night|singil|halaga|bayarin|mahal|mura|pinakamura)\b/i', $lower)) return 'price';
+    if (preg_match('/\b(?:capacity|fit|guests?|pax|ilang|kasya|maximum|how\s+many|ilang\s+tao|pwedeng\s+tao|ilan\s+kaya|ilan)\b/i', $lower)) return 'capacity';
+    if (preg_match('/\b(?:address|location|located|directions?|saan|nasaan|paano\s+pumunta|direksyon|lokasyon|where\s+(?:is|are|can\s+i\s+find))\b/i', $lower)) return 'location';
+    if (preg_match('/\b(?:amenit\w*|included|inclusion|facilit\w*|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed|breakfast|aircon|tv|kitchen|meron\s+ba|may\s+ba|available\s+ba)\b/i', $lower)) return 'amenities';
+    if (preg_match('/\b(?:tell\s+me\s+more|more\s+details?|describe|what\s+is\s+(?:it|this|that)|ano\s+ito)\b/i', $lower)) return 'description';
+    if (preg_match('/\b(?:cancel\w*|refund|payment|pay|policy|policies|rules|terms|check[- ]?in|check[- ]?out|walk.?in|children|kids|pets?)\b/i', $lower)) return 'faq_answer';
+    return null;
+}
+
+function receptionist_knowledge_is_contextual_followup(string $message): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    return preg_match('/\b(?:what\s+about|how\s+about|is\s+it|are\s+they|does\s+it|do\s+they|can\s+it|what\s+if)\b|\b(?:it|its|this|that|there|those|them|same)\b/i', $lower) === 1;
+}
+
+function receptionist_knowledge_unconfirmed_reply(string $message, string $language = 'en', array $context = []): ?array
+{
+    if (!receptionist_knowledge_is_fact_request($message, $context)) return null;
+    $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
+    $reply = match ($language) {
+        'fil' => 'Wala akong kumpirmadong sagot mula sa kasalukuyang naka-publish na venue at FAQ information. Makipag-ugnayan sa reception para makuha ang tamang detalye.',
+        'taglish' => 'I can’t confirm that from the published venue and FAQ information. Please contact reception para makuha ang tamang detalye.',
+        default => 'I can’t confirm that from the published venue and FAQ information. Please contact reception for the accurate details.',
+    };
+    return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $context, 'missing_slots' => [], 'quick_replies' => ['Support FAQs'], 'show_support_contact_cta' => true];
+}
+
+function receptionist_knowledge_local_fallback(array $records, string $message, string $language = 'en', array $context = [], array $history = [], ?string $focusedFaqId = null): ?array
+{
+    return receptionist_knowledge_reply($records, $message, $language, $context, $history, $focusedFaqId)
+        ?? receptionist_knowledge_unconfirmed_reply($message, $language, $context);
+}
+
+/** Compose a factual answer only from a currently published, allowed record. */
+function receptionist_knowledge_compose_selection(array $records, array $candidates, $id, $property, string $language = 'en', array $context = [], string $message = ''): ?array
+{
+    if (!is_string($id) || $id === '' || !is_string($property)) return null;
+    $allowed = ['price', 'overnight_price', 'capacity', 'amenities', 'description', 'faq_answer', 'policy', 'contact', 'location', 'event_options', 'availability', 'unknown'];
+    if (!in_array($property, $allowed, true)) return null;
+    $candidateIds = array_fill_keys(array_values(array_filter(array_map(static fn(array $row): ?string => is_string($row['id'] ?? null) ? $row['id'] : null, $candidates))), true);
+    if (!isset($candidateIds[$id])) return null;
+    $record = null;
+    foreach ($records as $item) if (is_array($item) && ($item['id'] ?? null) === $id) { $record = $item; break; }
+    if ($record === null) return null;
+    $candidateRecord = null;
+    foreach ($candidates as $item) if (is_array($item) && ($item['id'] ?? null) === $id) { $candidateRecord = $item; break; }
+    if ($candidateRecord === null || (!in_array($property, receptionist_knowledge_model_candidate_properties($candidateRecord), true) && !in_array($property, ['availability', 'unknown'], true))) return null;
+    if (($record['kind'] ?? null) === 'venue') {
+        $activeId = receptionist_knowledge_positive_int($context['active_venue_id'] ?? null);
+        $activeGroup = receptionist_knowledge_positive_int($context['active_room_group_id'] ?? null);
+        if ($activeId !== null && (int)($record['venue_id'] ?? 0) !== $activeId) return null;
+        if ($activeGroup !== null && (int)($record['room_group_id'] ?? 0) !== $activeGroup) return null;
+        if (($record['category'] ?? null) === 'Hotel Room' && $activeId !== null && $activeGroup === null && !empty($record['room_group_id'])) return null;
+    }
+    $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
+    if (($record['kind'] ?? null) === 'faq' && $property === 'faq_answer' && $message !== '') {
+        if (!receptionist_knowledge_faq_specific_topic_matches($record, $message)) return null;
+        if (receptionist_knowledge_is_active_venue_property_question($message, $context)) return null;
+    }
+    $answerContext = $context;
+    if (($record['kind'] ?? null) === 'venue' && receptionist_knowledge_positive_int($context['active_venue_id'] ?? null) === null) {
+        $normalizedMessage = receptionist_knowledge_normalize_message($message);
+        $name = receptionist_knowledge_normalize_message((string)($record['name'] ?? ''));
+        $firstNamePart = strtok($name, ' ') ?: '';
+        $roomType = receptionist_knowledge_normalize_message((string)($record['room_type'] ?? ''));
+        $venueMentioned = ($name !== '' && preg_match('/\b' . preg_quote($name, '/') . '\b/u', $normalizedMessage) === 1)
+            || (strlen($firstNamePart) >= 4 && preg_match('/\b' . preg_quote($firstNamePart, '/') . '\b/u', $normalizedMessage) === 1);
+        $roomGroupMentioned = $roomType !== '' && preg_match('/\b' . preg_quote($roomType, '/') . '\b/u', $normalizedMessage) === 1;
+        $sameVenueRows = array_values(array_filter($records, static fn(array $item): bool => ($item['kind'] ?? null) === 'venue' && (int)($item['venue_id'] ?? 0) === (int)($record['venue_id'] ?? 0)));
+        if ($venueMentioned && (($record['category'] ?? null) !== 'Hotel Room' || $roomGroupMentioned || count($sameVenueRows) === 1)) {
+            $answerContext['intent'] = $record['category'];
+            $answerContext['active_venue_id'] = (int)$record['venue_id'];
+            if (!empty($record['room_group_id'])) $answerContext['active_room_group_id'] = (int)$record['room_group_id'];
+        }
+    }
+    $label = trim((string)($record['name'] ?? '') . (isset($record['room_type']) ? ' — ' . $record['room_type'] : ''));
+    $reply = null;
+    $contactCta = false;
+    if (($record['kind'] ?? null) === 'faq' && $property === 'faq_answer') {
+        $reply = receptionist_faq_text($record['answer'] ?? '', 3000);
+    } elseif (($record['kind'] ?? null) === 'policy' && $property === 'policy') {
+        $reply = receptionist_knowledge_excerpt((string)($record['text'] ?? ''), 1500);
+    } elseif (($record['kind'] ?? null) === 'event_pricing' && $property === 'event_options') {
+        $lines = [];
+        foreach (array_slice($record['modifiers'] ?? [], 0, 6) as $modifier) {
+            if (!is_array($modifier) || !is_numeric($modifier['amount'] ?? null)) continue;
+            $lines[] = (string)($modifier['label'] ?? 'Option') . ': ' . receptionist_knowledge_money((float)$modifier['amount']) . ' ' . (string)($modifier['unit'] ?? '');
+        }
+        if ($lines) $reply = implode("\n", $lines) . "\n" . (string)($record['qualifier'] ?? 'Staff confirms the final quotation.');
+    } elseif (($record['kind'] ?? null) === 'contact' && in_array($property, ['contact', 'location'], true)) {
+        $contact = is_array($record['contact'] ?? null) ? $record['contact'] : [];
+        $fields = $property === 'location' ? ['address' => 'Address'] : ['name' => 'Name', 'address' => 'Address', 'phone' => 'Phone', 'email' => 'Email'];
+        $lines = [];
+        foreach ($fields as $key => $fieldLabel) if (is_string($contact[$key] ?? null) && trim($contact[$key]) !== '') $lines[] = $fieldLabel . ': ' . trim($contact[$key]);
+        if ($lines) $reply = ($language === 'fil' ? 'Narito kung paano kami maabot:' : 'Here’s how to reach us:') . "\n" . implode("\n", $lines);
+    } elseif (($record['kind'] ?? null) === 'venue') {
+        if ($property === 'location') {
+            foreach ($records as $item) if (($item['kind'] ?? null) === 'contact' && !empty($item['contact']['address'])) {
+                $reply = ($language === 'fil' ? 'Matatagpuan ang resort sa ' : 'The resort is located at ') . $item['contact']['address'] . ($language === 'fil' ? '. ' : '. ') . ($language === 'fil' ? 'Walang hiwalay na venue address na naka-publish.' : 'A separate venue address is not published.');
+                break;
+            }
+        } elseif ($property === 'price' && isset($record['base_rate'])) {
+            $unit = (string)($record['rate_unit'] ?? '');
+            $reply = ($language === 'fil' ? 'Starting rate para sa ' : 'Starting rate for ') . $label . ': ' . receptionist_knowledge_money((float)$record['base_rate']) . ($unit === 'per night' ? '/night' : ($unit === 'per day' ? '/day' : '')) . '. ' . ($record['category'] === 'Event Hall' ? ($language === 'fil' ? 'Maaaring mag-iba ang final quote; kukumpirmahin ito ng staff.' : 'The final event quote may vary and is confirmed by staff.') : '');
+            if (isset($record['overnight_rate'])) $reply .= ($language === 'fil' ? "\nOvernight rate: " : "\nOvernight rate: ") . receptionist_knowledge_money((float)$record['overnight_rate']) . '/night.';
+        } elseif ($property === 'overnight_price' && isset($record['overnight_rate'])) {
+            $reply = 'Overnight starting rate for ' . $label . ': ' . receptionist_knowledge_money((float)$record['overnight_rate']) . '/night.';
+        } elseif ($property === 'capacity' && (isset($record['capacity_max']) || !empty($record['capacity_styles']) || isset($record['bed_count_min']))) {
+            $parts = [];
+            if (isset($record['capacity_max'])) $parts[] = 'up to ' . number_format((int)$record['capacity_max']) . ' guests';
+            foreach (($record['capacity_styles'] ?? []) as $style => $count) if (is_numeric($count)) $parts[] = $style . ' setup: ' . number_format((int)$count);
+            if (isset($record['bed_count_min'])) $parts[] = number_format((int)$record['bed_count_min']) . (isset($record['bed_count_max']) && $record['bed_count_max'] !== $record['bed_count_min'] ? '–' . number_format((int)$record['bed_count_max']) : '') . ' beds';
+            if ($parts) $reply = $label . ' capacity: ' . implode('; ', $parts) . '.';
+        } elseif ($property === 'amenities' && (!empty($record['amenities']) || !empty($record['inclusions']))) {
+            $items = array_values(array_unique(array_merge($record['amenities'] ?? [], $record['inclusions'] ?? [])));
+            $featureAliases = [
+                'pool' => ['pool', 'swim'], 'parking' => ['parking', 'park', 'car park'], 'wifi' => ['wifi', 'wi-fi', 'internet'],
+                'breakfast' => ['breakfast', 'almusal'], 'air conditioning' => ['aircon', 'air condition'],
+                'tv' => ['tv', 'television'], 'kitchen' => ['kitchen', 'kusina'],
+            ];
+            $requestedFeature = null;
+            foreach ($featureAliases as $feature => $aliases) foreach ($aliases as $alias) {
+                if (preg_match('/\b' . preg_quote($alias, '/') . '\b/i', receptionist_knowledge_normalize_message($message))) { $requestedFeature = $feature; break 2; }
+            }
+            if ($requestedFeature === null && preg_match('/\b(?:have|has|offer(?:s)?|include(?:s)?|got)\s+(?:a|an|the\s+)?([\p{L}][\p{L}\p{N}-]*(?:\s+[\p{L}][\p{L}\p{N}-]*){0,2})/iu', $message, $featureMatch) === 1) {
+                $requestedFeature = receptionist_knowledge_normalize_message(trim($featureMatch[1]));
+            }
+            if ($requestedFeature === null && preg_match('/\b(?:is|are)\s+there\s+(?:a|an|the\s+)?([\p{L}][\p{L}\p{N}-]*(?:\s+[\p{L}][\p{L}\p{N}-]*){0,2})/iu', $message, $featureMatch) === 1) {
+                $requestedFeature = receptionist_knowledge_normalize_message(trim($featureMatch[1]));
+            }
+            if ($requestedFeature !== null) {
+                $requestedAliases = $featureAliases[$requestedFeature] ?? [$requestedFeature];
+                foreach ($items as $item) if (preg_match('/' . implode('|', array_map(static fn(string $alias): string => preg_quote($alias, '/'), $requestedAliases)) . '/i', (string)$item)) {
+                    $reply = $requestedFeature . ' is listed for ' . $label . '.';
+                    break;
+                }
+                if ($reply === null) {
+                    $reply = 'I don’t see ' . $requestedFeature . ' listed for ' . $label . ', so I can’t confirm whether it is offered. Please contact reception.';
+                    $contactCta = true;
+                }
+            } elseif ($items) {
+                $reply = $label . ' published amenities and inclusions: ' . implode(', ', array_slice($items, 0, 12)) . '.';
+            }
+        } elseif ($property === 'description' && !empty($record['description'])) {
+            $reply = receptionist_knowledge_excerpt((string)$record['description'], 800);
+        }
+    }
+    if (!is_string($reply) || trim($reply) === '') {
+        $reply = match ($language) {
+            'fil' => 'Wala akong kumpirmadong detalye tungkol dito sa kasalukuyang naka-publish na impormasyon. Makipag-ugnayan sa reception para matiyak ang tamang sagot.',
+            'taglish' => 'Wala akong confirmed published detail tungkol diyan. Please contact reception para makuha ang tamang sagot.',
+            default => 'That detail is not confirmed in the published venue information. Please contact reception for the accurate answer.',
+        };
+        $contactCta = true;
+    }
+    return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reply, 'faq_id' => ($record['kind'] ?? null) === 'faq' ? $record['id'] : null, 'slots' => $answerContext, 'missing_slots' => [], 'quick_replies' => [], 'show_support_contact_cta' => $contactCta];
 }
 
 function receptionist_knowledge_category_hint(string $message): ?string
@@ -953,16 +1409,107 @@ function receptionist_knowledge_walk_in_reply(string $message, string $language,
     ];
 }
 
-function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = [], array $history = []): ?array
+function receptionist_knowledge_availability_reply(array $records, string $message, string $language, array $baseSlots, ?string $category): ?array
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    $availabilityIntent = preg_match('/\b(?:available|availability|vacancy|vacant|bakante|may\s+slot|may\s+bakante)\b/i', $lower) === 1;
+    $amenityIntent = preg_match('/\b(?:amenit|included|inclusion|facilit|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed|meron\s+ba|may\s+ba|available\s+ba|meron\s+bang|may\s+bang)\b/i', $lower) === 1;
+    if (!$availabilityIntent || $amenityIntent) return null;
+
+    $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
+    $currentIntent = $baseSlots['intent'] ?? null;
+    $intent = in_array($category, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true) ? $category : $currentIntent;
+    $messageDates = receptionist_knowledge_booking_dates($message);
+    $patch = $intent !== null ? ['intent' => $intent] : [];
+    $clearKeys = [];
+    if ($currentIntent !== null && $intent !== null && $currentIntent !== $intent) {
+        $baseSlots = [];
+        $clearKeys = ['occasion', 'purpose', 'preference', 'group_size', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'];
+    }
+    if (count($messageDates) > 1) {
+        $patch['start_date'] = $messageDates[0];
+        if ($messageDates[1] > $messageDates[0]) $patch['end_date'] = $messageDates[1];
+    } elseif ($messageDates) {
+        $date = $messageDates[0];
+        $explicitCheckOut = preg_match('/\b(?:check[ -]?out|checkout|departure)\b/i', $lower) === 1;
+        $explicitCheckIn = preg_match('/\b(?:check[ -]?in|checkin|arrival)\b/i', $lower) === 1;
+        if ($intent === 'Hotel Room' && $explicitCheckOut) {
+            $patch['end_date'] = $date;
+        } elseif ($intent === 'Hotel Room' && !$explicitCheckIn && !empty($baseSlots['start_date']) && empty($baseSlots['end_date'])) {
+            $patch['end_date'] = $date;
+        } else {
+            $patch['start_date'] = $date;
+            if ($intent === 'Hotel Room' && !empty($baseSlots['end_date']) && $baseSlots['end_date'] <= $date) {
+                $patch['end_date'] = null;
+                $clearKeys[] = 'end_date';
+            }
+        }
+    }
+    $explicitVenues = receptionist_knowledge_explicit_venue_matches($records, $message, $intent);
+    if (count($explicitVenues) === 1) {
+        $explicitVenue = $explicitVenues[0];
+        $patch['intent'] = $explicitVenue['category'];
+        $patch['active_venue_id'] = (int)($explicitVenue['venue_id'] ?? 0);
+        if (!empty($explicitVenue['room_group_id'])) $patch['active_room_group_id'] = (int)$explicitVenue['room_group_id'];
+    }
+    $slots = receptionist_ai_merge_slots($baseSlots, $patch, $clearKeys);
+    $missing = [];
+    if (!in_array($slots['intent'] ?? null, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true)) {
+        $missing = ['intent'];
+    } else {
+        if (($slots['intent'] ?? null) === 'Hotel Room') {
+            if (!isset($slots['group_size'])) $missing[] = 'group_size';
+            if (!isset($slots['preference'])) $missing[] = 'preference';
+        }
+        if (empty($slots['start_date'])) $missing[] = 'start_date';
+        if (($slots['intent'] ?? null) === 'Hotel Room' && empty($slots['end_date'])) $missing[] = 'end_date';
+    }
+
+    if ($missing) {
+        $reply = match ($missing[0]) {
+            'intent' => $language === 'fil' ? 'Event hall, hotel room, o resort villa ba ang gusto mong i-check?' : 'Would you like to check an event hall, hotel room, or resort villa?',
+            'group_size' => $language === 'fil' ? 'Ilang bisita ang kasama sa hotel stay?' : 'How many guests are included in the hotel stay?',
+            'preference' => $language === 'fil' ? 'Ano ang mas mahalaga sa room search mo — best fit, pinakamababang presyo, o comfort?' : 'What matters most for your room search — best fit, lowest price, or comfort?',
+            'start_date' => ($slots['intent'] ?? null) === 'Hotel Room'
+                ? ($language === 'fil' ? 'Ano ang check-in date?' : 'What is the check-in date?')
+                : ($language === 'fil' ? 'Ano ang petsa ng event o stay?' : 'What is the event or stay date?'),
+            default => $language === 'fil' ? 'Ano ang check-out date? Kailangan itong mas huli sa check-in date.' : 'What is the check-out date? It must be after check-in.',
+        };
+        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => [], 'quick_actions' => ['start_over']];
+    }
+
+    $reply = match ($language) {
+        'fil' => 'Iche-check ko ang kasalukuyang availability para sa mga date na ito. Wala pang nare-reserve o na-ho-hold sa hakbang na ito.',
+        'taglish' => 'I’ll check the current options for these dates. Wala pang room or date na nare-reserve o na-ho-hold.',
+        default => 'I’ll check the current options for these dates. This does not reserve or hold a room or date.',
+    };
+    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'availability', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['start_over']];
+}
+
+function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = [], array $history = [], ?string $focusedFaqId = null): ?array
 {
     $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
     $memoryReply = receptionist_knowledge_memory_reply($message, $language, $baseSlots, $history);
     if ($memoryReply !== null) return $memoryReply;
+    if (receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null) === null
+        && $focusedFaqId !== null && receptionist_knowledge_is_contextual_followup($message)
+        && receptionist_knowledge_property_from_message($message) === null) {
+        foreach ($records as $record) {
+            if (($record['kind'] ?? null) !== 'faq' || ($record['id'] ?? null) !== $focusedFaqId) continue;
+            $focusedAnswer = receptionist_knowledge_compose_selection($records, [$record], $focusedFaqId, 'faq_answer', $language, $baseSlots, $message);
+            if ($focusedAnswer !== null) return $focusedAnswer;
+            break;
+        }
+    }
     $tokens = receptionist_knowledge_tokens($message);
     if (!$tokens) return null;
     $lower = receptionist_knowledge_normalize_message($message);
     $route = receptionist_knowledge_intent($message);
-    $category = $route['category'] ?? (receptionist_knowledge_category_hint($message) ?? (($baseSlots['intent'] ?? null) ?: null));
+    $routeCategory = in_array($route['kind'] ?? null, ['booking', 'booking_process'], true) ? ($route['category'] ?? null) : null;
+    $explicitCategory = receptionist_knowledge_explicit_category_switch($message);
+    $category = $routeCategory ?? $explicitCategory ?? (($baseSlots['intent'] ?? null) ?: receptionist_knowledge_category_hint($message));
+    $availabilityAnswer = receptionist_knowledge_availability_reply($records, $message, $language, $baseSlots, $category);
+    if ($availabilityAnswer !== null) return $availabilityAnswer;
     $prefix = [
         'en' => ['price' => 'Here are our starting rates:', 'capacity' => 'Here\'s the capacity info:', 'amenities' => 'Here\'s what\'s included:', 'faq' => 'Here\'s what I found:', 'contact' => 'Here\'s how to reach us:', 'booking' => 'I can help you start a booking!'],
         'fil' => ['price' => 'Narito ang aming mga starting rates:', 'capacity' => 'Narito ang capacity info:', 'amenities' => 'Narito ang mga kasama:', 'faq' => 'Narito ang nakita ko:', 'contact' => 'Narito kung paano kami maabot:', 'booking' => 'Matutulungan kitang magsimula ng booking!'],
@@ -1139,22 +1686,53 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     $priceIntent = preg_match('/\b(prices?|rates?|cost|how\s+much|magkano|presyo|bayad|fee|rent|per\s+day|per\s+night|singil|bili|halaga|bayarin|mahal|mura|pinakamura)\b/i', $lower) === 1;
     $capacityIntent = preg_match('/\b(capacity|fit|guests?|pax|ilang|kasya|maximum|how\s+many|ilang\s+tao|pwedeng\s+tao|ilan\s+kaya|ilan|pwede(?!\s+(?:po\s+)?ba\b))\b/i', $lower) === 1;
     $amenityIntent = preg_match('/\b(amenit|included|inclusion|facilit|what.*(?:include|have)|ano.*(?:kasama|meron)|wifi|pool|parking|bed|meron\s+ba|may\s+ba|available\s+ba|meron\s+bang|may\s+bang)\b/i', $lower) === 1;
-    $availabilityIntent = preg_match('/\b(available|availability|vacancy|vacant|bakante|may\s+slot|may\s+bakante)\b/i', $lower) === 1;
     $policyIntent = ($route['kind'] ?? null) === 'policy' || preg_match('/\b(payment|pay|cancel|cancellation|refund|resched|policy|policies|rules|proof|receipt|status|hold|check[- ]?in|check[- ]?out|contact|address|location|where|hours|pwede\s+ba|bawal\s+ba|patakaran|tuntunin|pano|paano|walk.?in|pasok|saan|nasaan|pano\s+pumunta|paano\s+pumunta|direksyon|lokasyon|san\s+kayo)\b/i', $lower) === 1;
 
-    if ($availabilityIntent && !$amenityIntent) {
-        return [
-            'action' => 'ask',
-            'reply' => match ($language) {
-                'fil' => 'Ang availability ay chine-check para sa napiling venue at dates. Pumili ng venue at sabihin ang event date o hotel check-in at check-out dates.',
-                'taglish' => 'Availability is checked for a selected venue and dates. Choose a venue and share the event date or hotel check-in and check-out dates.',
-                default => 'Availability is checked for a selected venue and dates. Choose a venue and share the event date or hotel check-in and check-out dates.',
-            },
-            'faq_id' => null,
-            'slots' => [],
-            'missing_slots' => ['active_venue_id', 'start_date'],
-            'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs'],
-        ];
+    // A selected venue is the subject of short follow-ups such as “what
+    // about its price?”, “may pool ba?”, or “where?”. Resolve those against
+    // that exact public record before category-wide matches can take over.
+    $contextProperty = receptionist_knowledge_property_from_message($message);
+    if (count($selectedContextVenue) === 1 && $contextProperty !== null) {
+        $selectedAnswer = receptionist_knowledge_compose_selection(
+            $records,
+            $selectedContextVenue,
+            $selectedContextVenue[0]['id'] ?? null,
+            $contextProperty,
+            $language,
+            $baseSlots,
+            $message
+        );
+        if ($selectedAnswer !== null) return $selectedAnswer;
+    }
+    if ($contextProperty !== null) {
+        $explicitMatches = receptionist_knowledge_explicit_venue_matches($records, $message, $category);
+        $explicitVenue = count($explicitMatches) === 1 ? $explicitMatches[0] : null;
+        if ($explicitVenue !== null) {
+            $explicitContext = $baseSlots;
+            if ((int)($explicitContext['active_venue_id'] ?? 0) !== (int)($explicitVenue['venue_id'] ?? 0)) {
+                unset($explicitContext['active_venue_id'], $explicitContext['active_room_group_id']);
+            }
+            $explicitContext['intent'] = $explicitVenue['category'];
+            $explicitAnswer = receptionist_knowledge_compose_selection($records, [$explicitVenue], $explicitVenue['id'] ?? null, $contextProperty, $language, $explicitContext, $message);
+            if ($explicitAnswer !== null) return $explicitAnswer;
+        }
+    }
+    if ($venueId !== null && $category === 'Hotel Room' && $roomGroupId === null && in_array($contextProperty, ['price', 'overnight_price', 'capacity', 'amenities'], true)) {
+        $roomOptions = receptionist_knowledge_find_records($records, 'venue', [], 'Hotel Room', $venueId, null, 6);
+        $roomLabels = [];
+        foreach ($roomOptions as $roomOption) {
+            $roomType = trim((string)($roomOption['room_type'] ?? ''));
+            if ($roomType !== '') $roomLabels[] = $roomType;
+        }
+        $reply = $language === 'fil'
+            ? 'Aling eksaktong room type ang tinutukoy mo? Kailangan ang room-group na ito para maibigay ang tamang detalye.'
+            : 'Which exact room type do you mean? I need that room selection to give you the correct details.';
+        return ['action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $baseSlots, 'missing_slots' => ['active_room_group_id'], 'quick_replies' => array_slice($roomLabels, 0, 4), 'show_support_contact_cta' => false];
+    }
+
+    if (preg_match('/\b(?:pets?|dogs?|cats?|children|child|kids?|outside\s+catering|catering)\b/i', $lower) === 1
+        && !receptionist_knowledge_has_specific_policy_faq($records, $message)) {
+        return receptionist_knowledge_unconfirmed_reply($message, $language, $baseSlots);
     }
 
     if ($priceIntent) {

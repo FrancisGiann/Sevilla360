@@ -75,6 +75,28 @@ function receptionist_chat_store_turn(array $slots, string $message, string $rep
     $_SESSION['receptionist_ai_owner'] = receptionist_ai_session_owner();
 }
 
+function receptionist_chat_update_faq_focus(array $answer, array $knowledgeRecords, string $message): void
+{
+    $route = receptionist_knowledge_intent($message);
+    $property = receptionist_knowledge_property_from_message($message);
+    $clear = ($answer['reset_context'] ?? false) === true
+        || receptionist_knowledge_explicit_category_switch($message) !== null
+        || receptionist_knowledge_is_generic_booking_start($message)
+        || in_array($route['kind'] ?? null, ['booking', 'booking_process'], true)
+        || ($property !== null && $property !== 'faq_answer');
+    if ($clear) {
+        unset($_SESSION['receptionist_ai_focus']);
+        return;
+    }
+    $id = $answer['faq_id'] ?? null;
+    if (!is_string($id)) return;
+    foreach ($knowledgeRecords as $record) if (($record['kind'] ?? null) === 'faq' && ($record['id'] ?? null) === $id) {
+        $_SESSION['receptionist_ai_focus'] = $id;
+        return;
+    }
+    unset($_SESSION['receptionist_ai_focus']);
+}
+
 $requestId = receptionist_chat_request_id();
 $GLOBALS['receptionist_chat_request_id'] = $requestId;
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') receptionist_chat_response(['success' => false, 'message' => 'POST is required.'], 405);
@@ -132,10 +154,22 @@ try {
     }
 
     $history = receptionist_ai_public_history(is_array($_SESSION['receptionist_ai_history'] ?? null) ? $_SESSION['receptionist_ai_history'] : []);
-    $shortlist = receptionist_ai_shortlist_faq($faqs, $message);
     $knowledgeRecords = receptionist_public_knowledge_records($conn, $faqs);
+    $storedFocus = $_SESSION['receptionist_ai_focus'] ?? null;
+    $focusedFaqId = null;
+    $currentRoute = receptionist_knowledge_intent($message);
+    $currentProperty = receptionist_knowledge_property_from_message($message);
+    $focusSwitch = receptionist_knowledge_explicit_category_switch($message) !== null
+        || receptionist_knowledge_is_generic_booking_start($message)
+        || in_array($currentRoute['kind'] ?? null, ['booking', 'booking_process'], true)
+        || ($currentProperty !== null && $currentProperty !== 'faq_answer');
+    if ($focusSwitch) unset($_SESSION['receptionist_ai_focus']);
+    elseif (is_string($storedFocus)) foreach ($knowledgeRecords as $record) {
+        if (($record['kind'] ?? null) === 'faq' && ($record['id'] ?? null) === $storedFocus) { $focusedFaqId = $storedFocus; break; }
+    }
+    if ($focusedFaqId === null && is_string($storedFocus)) unset($_SESSION['receptionist_ai_focus']);
     $showSupportFaqCta = receptionist_knowledge_is_support_faq_request($message);
-    $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta): never {
+    $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta, $knowledgeRecords): never {
         $prepared = receptionist_chat_prepare_knowledge($conn, $answer, $baseSlots, $venueCatalog);
         $prepared['show_support_faq_cta'] = $showSupportFaqCta || ($prepared['show_support_faq_cta'] ?? false) === true;
         $prepared['show_support_contact_cta'] = ($prepared['show_support_contact_cta'] ?? false) === true;
@@ -145,14 +179,21 @@ try {
             $prepared['retryable'] = $metadata['retryable'];
         }
         receptionist_chat_store_turn($prepared['slots'], $message, (string)$prepared['reply'], $count, $history, ($prepared['reset_context'] ?? false) === true);
+        receptionist_chat_update_faq_focus($prepared, $knowledgeRecords, $message);
         receptionist_chat_response(['success' => true, 'mode' => 'knowledge', 'validated_slots' => $prepared['slots']] + $prepared);
     };
-    $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
+    $respondUnconfirmed = static function (string $fallbackClass) use ($message, $language, $baseSlots, $knowledgeRecords, $history, $focusedFaqId, $respondDeterministic, $requestId): never {
+        $answer = receptionist_knowledge_local_fallback($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
+        if ($answer !== null) $respondDeterministic($answer, $fallbackClass);
+        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, $fallbackClass), $fallbackClass, $requestId);
+    };
+    $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
     if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);
+    $knowledgeCandidates = receptionist_knowledge_model_candidates($knowledgeRecords, $message, $baseSlots, 8, $focusedFaqId);
     $provider = receptionist_ai_provider();
     if (!$provider) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_unavailable']);
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_unavailable'), 'provider_unavailable', $requestId);
+        $respondUnconfirmed('provider_unavailable');
     }
     // Protect only provider requests from bursts, immediately before the
     // external call path. Deterministic booking and approved FAQ turns above
@@ -160,19 +201,15 @@ try {
     try {
         if (!check_rate_limit($conn, 'receptionist_chat_provider', 30, 10)) {
             receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'busy']);
-            receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'busy'), 'busy', $requestId);
+            $respondUnconfirmed('busy');
         }
     } catch (Throwable $rateError) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'server_error']);
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'server_error'), 'server_error', $requestId);
+        $respondUnconfirmed('server_error');
     }
     $limits = receptionist_ai_limits();
-    $safeContext = array_intersect_key($baseSlots, array_flip(['intent', 'occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id']));
-    $knowledgeSelection = receptionist_knowledge_select($knowledgeRecords, $message, 8);
-    $messages = [['role' => 'system', 'content' => receptionist_ai_system_prompt($shortlist, $safeContext, $language, $venueCatalog, $knowledgeSelection, $message)]];
-    foreach (array_slice($history, -16) as $turn) {
-        if (is_array($turn) && in_array($turn['role'] ?? '', ['user', 'assistant'], true) && is_string($turn['content'] ?? null)) $messages[] = ['role' => $turn['role'], 'content' => $turn['content']];
-    }
+    $safeContext = receptionist_ai_model_context_summary($baseSlots, $history, $knowledgeRecords, $focusedFaqId);
+    $messages = [['role' => 'system', 'content' => receptionist_ai_system_prompt($faqs, $safeContext, $language, [], $knowledgeCandidates, $message)]];
     $messages[] = ['role' => 'user', 'content' => $message];
     $promptBytes = strlen((string)json_encode($messages, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     $started = microtime(true);
@@ -181,32 +218,35 @@ try {
     } catch (Throwable $providerError) {
         $latencyMs = (int)round((microtime(true) - $started) * 1000);
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_unavailable', 'latency_ms' => $latencyMs, 'prompt_bytes' => $promptBytes]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, 'provider_unavailable');
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_unavailable'), 'provider_unavailable', $requestId);
+        $respondUnconfirmed('provider_unavailable');
     }
     $latencyMs = (int)round((microtime(true) - $started) * 1000);
     if (empty($result['success']) || !is_array($result['payload'] ?? null)) {
         $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
         $fallbackClass = (string)($result['error_class'] ?? 'provider_unavailable');
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => $fallbackClass, 'latency_ms' => $latencyMs, 'attempt_count' => $diagnostic['attempt_count'] ?? null, 'prompt_bytes' => $promptBytes, 'response_bytes' => $diagnostic['response_bytes'] ?? null, 'http_status' => $diagnostic['http_status'] ?? null, 'curl_errno_category' => $diagnostic['curl_errno_category'] ?? null, 'finish_reason' => $diagnostic['finish_reason'] ?? null, 'truncated' => $diagnostic['truncated'] ?? null, 'blocked' => $diagnostic['blocked'] ?? null]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, $fallbackClass);
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, $fallbackClass), $fallbackClass, $requestId);
+        $respondUnconfirmed($fallbackClass);
     }
-    // Only a deterministic message shortlist may be selected by the model;
-    // the returned answer is then copied from that approved FAQ item.
+    // The model may select a candidate and fact property only. The factual
+    // reply is composed from the currently published server record.
     try {
-        $normalized = receptionist_ai_normalize_helper_output($result['payload'], $conn, $baseSlots, $shortlist, $language, $venueCatalog);
+        $normalized = receptionist_ai_normalize_helper_output($result['payload'], $conn, $baseSlots, $faqs, $language, $venueCatalog, $knowledgeRecords, $knowledgeCandidates, $message);
+        if (is_array($normalized['knowledge_answer'] ?? null)) $respondDeterministic($normalized['knowledge_answer']);
     } catch (Throwable $providerSchemaError) {
         receptionist_chat_log('fallback', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'fallback_class' => 'provider_schema', 'latency_ms' => $latencyMs, 'prompt_bytes' => $promptBytes]);
-        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);
+        $deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
         if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, 'provider_schema');
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'provider_schema'), 'provider_schema', $requestId);
+        $respondUnconfirmed('provider_schema');
     }
+    if (receptionist_knowledge_is_fact_request($message, $baseSlots) || ($focusedFaqId !== null && receptionist_knowledge_is_contextual_followup($message))) $respondUnconfirmed('provider_schema');
     $normalized['show_support_faq_cta'] = $showSupportFaqCta;
     $normalized['show_support_contact_cta'] = false;
     receptionist_chat_store_turn($normalized['slots'], $message, (string)$normalized['reply'], $count, $history);
+    receptionist_chat_update_faq_focus($normalized, $knowledgeRecords, $message);
     $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
     receptionist_chat_log('success', ['request_id' => $requestId, 'provider' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_PROVIDER', 'openrouter')) ?? 'unknown', 'model' => receptionist_ai_sanitize_provider_error_code(receptionist_ai_env('AI_MODEL')) ?? 'unknown', 'latency_ms' => $latencyMs, 'action' => $normalized['action'], 'attempt_count' => $diagnostic['attempt_count'] ?? null, 'prompt_bytes' => $promptBytes, 'response_bytes' => $diagnostic['response_bytes'] ?? null, 'finish_reason' => $diagnostic['finish_reason'] ?? null, 'truncated' => $diagnostic['truncated'] ?? null, 'blocked' => $diagnostic['blocked'] ?? null]);
     receptionist_chat_response(['success' => true, 'mode' => 'ai', 'validated_slots' => $normalized['slots']] + $normalized);

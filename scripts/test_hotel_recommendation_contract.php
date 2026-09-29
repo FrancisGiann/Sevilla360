@@ -401,7 +401,7 @@ $checks['Hotel details preserve aligned cards and reuse the Event Hall and Villa
     && !preg_match('/\.showroom-receptionist\.is-hotel-results \.receptionist-portrait-wrap\s*\{[^}]*display:\s*none;/s', $showroomCss)
     && !preg_match('/\.showroom-receptionist\.is-hotel-results \.receptionist-panel\s*\{[^}]*height:\s*auto;/s', $showroomCss)
     && !preg_match('/@media \(min-width: 701px\)[\s\S]*?\.showroom-receptionist\.is-hotel-results \.receptionist-panel h2\s*\{/s', substr($showroomCss, strpos($showroomCss, 'Keep Hotel recommendations'), strpos($showroomCss, 'A short or zoomed landscape') - strpos($showroomCss, 'Keep Hotel recommendations')))
-    && str_contains($showroomCss, '.showroom-receptionist.is-hotel-results.is-hotel-explanation-open .receptionist-panel')
+    && str_contains($showroomCss, '.showroom-receptionist.is-hotel-results.is-hotel-explanation-open:not(.is-chat-open) .receptionist-panel')
     && !str_contains($showroomCss, '.showroom-receptionist.is-hotel-results.is-hotel-explanation-open .receptionist-hotel-results-grid')
     && str_contains($showroomCss, '@media (min-width: 701px) and (max-height: 620px)')
     && str_contains($showroomCss, '@media (max-width: 700px)')

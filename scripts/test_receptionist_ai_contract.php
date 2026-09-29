@@ -187,6 +187,7 @@ $legacy = receptionist_faq_normalize_item(['q' => 'Legacy question', 'a' => 'Leg
 $checks['legacy FAQ q/a values normalize to stable General entries'] = $legacy === null
     ? false
     : $legacy['category'] === 'General' && $legacy['phrases'] === [] && str_starts_with($legacy['id'], 'faq-');
+$checks['FAQ question and answer work without phrase aliases'] = receptionist_faq_normalize_item(['question' => 'Can children visit?', 'answer' => 'Yes, include them in the guest count.'])['phrases'] === [];
 $uniqueFaqs = array_map(static fn(int $index): array => ['question' => 'Q ' . $index, 'answer' => 'A'], range(1, 60));
 $checks['FAQ limits are enforced'] = count(receptionist_faq_normalize_items($uniqueFaqs)) === 50
     && receptionist_faq_normalize_item(['question' => str_repeat('q', 241), 'answer' => 'A']) === null;
@@ -291,7 +292,7 @@ $helperVenueAttempt = receptionist_ai_normalize_helper_output([
 $helperClaimAttempt = receptionist_ai_normalize_helper_output([
     'language' => 'en', 'action' => 'social', 'reply' => 'We have a pool and free Wi-Fi.', 'faq_id' => null,
     'slots' => [], 'quick_replies' => [],
-], $db, [], $defaults);
+], $db, [], $defaults, 'en', null, [], [], 'hello');
 $checks['optional AI helper cannot change venue navigation or invent resort facts'] = ($helperVenueAttempt['action'] ?? null) === 'ask'
     && ($helperVenueAttempt['slots'] ?? null) === $helperBaseSlots
     && ($helperVenueAttempt['quick_replies'] ?? null) === []
@@ -316,19 +317,19 @@ $checks['endpoint is JSON-only POST, CSRF-protected, bounded, and provider-neutr
     && str_contains($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 120, 10)")
     && str_contains($endpoint, "check_rate_limit(\$conn, 'receptionist_chat_provider', 30, 10)")
     && str_contains($endpoint, 'receptionist_ai_message_count')
-    && str_contains($endpoint, 'array_slice($history, -16)')
-    && str_contains($endpoint, 'receptionist_ai_shortlist_faq')
-    && str_contains($endpoint, 'normalize_helper_output($result[\'payload\'], $conn, $baseSlots, $shortlist')
+    && str_contains($endpoint, 'receptionist_ai_append_history')
+    && str_contains($endpoint, 'receptionist_knowledge_model_candidates')
+    && str_contains($endpoint, 'normalize_helper_output($result[\'payload\'], $conn, $baseSlots, $faqs, $language, $venueCatalog, $knowledgeRecords, $knowledgeCandidates, $message)')
     && str_contains($endpoint, "'validated_slots'");
 $checks['endpoint answers bounded public knowledge before provider use and passes only a shortlist to prompts'] = str_contains($endpoint, 'receptionist_public_knowledge_records')
     && str_contains($endpoint, 'receptionist_knowledge_reply')
     && str_contains($endpoint, "'mode' => 'knowledge'")
     && str_contains($endpoint, "'validated_slots' => \$prepared['slots']")
-    && str_contains($endpoint, 'receptionist_knowledge_select')
+    && str_contains($endpoint, 'receptionist_knowledge_model_candidates')
     && str_contains($endpoint, 'receptionist_chat_prepare_knowledge')
     && str_contains($aiSource, 'function receptionist_ai_prepare_knowledge')
     && str_contains($aiSource, '$knowledgePatch')
-    && str_contains($aiSource, 'Bounded approved public knowledge')
+    && str_contains($aiSource, 'Candidate records:')
     && str_contains($chatJs, 'data.mode === "knowledge"')
     && str_contains($chatJs, 'options.onKnowledge')
     && str_contains($knowledgeSource, 'booking_continuation')
@@ -336,12 +337,12 @@ $checks['endpoint answers bounded public knowledge before provider use and passe
     && str_contains($knowledgeSource, 'RECEPTIONIST_KNOWLEDGE_MAX_RECORDS')
     && str_contains($knowledgeSource, "v.status = 'Available'");
 $providerFailureFallback = strpos($endpoint, 'catch (Throwable $providerError)') ?: false;
-$deterministicFailureReply = strpos($endpoint, '$deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history);', $providerFailureFallback ?: 0) ?: false;
+$deterministicFailureReply = strpos($endpoint, '$deterministicAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);', $providerFailureFallback ?: 0) ?: false;
 $providerFailureBranch = $providerFailureFallback !== false ? substr($endpoint, $providerFailureFallback, 2500) : '';
 $checks['known deterministic flow remains available after provider timeout'] = $providerFailureFallback !== false
     && $deterministicFailureReply !== false
-    && str_contains($providerFailureBranch, 'if ($deterministicAnswer !== null) $respondDeterministic($deterministicAnswer, \'provider_unavailable\');')
-    && str_contains($providerFailureBranch, 'receptionist_chat_guided($language, receptionist_chat_guided_copy($language, \'provider_unavailable\')');
+    && str_contains($endpoint, 'receptionist_knowledge_local_fallback($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId)')
+    && str_contains($providerFailureBranch, '$respondUnconfirmed(\'provider_unavailable\')');
 $knowledgeDispatchPosition = strpos($endpoint, 'if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);');
 $providerPosition = strpos($endpoint, '$provider = receptionist_ai_provider();');
 $cheapRateLimitPosition = strpos($endpoint, "check_rate_limit(\$conn, 'receptionist_chat', 120, 10)");
@@ -389,6 +390,7 @@ $checks['history restore is same-origin CSRF-protected, no-store, owner-bound, a
     && str_contains($historyEndpoint, 'receptionist_ai_public_history');
 $checks['server reset clears AI session state and is CSRF-protected'] = str_contains($resetEndpoint, "unset(\$_SESSION['receptionist_ai_message_count']")
     && str_contains($resetEndpoint, "receptionist_ai_history")
+    && str_contains($resetEndpoint, "receptionist_ai_focus")
     && str_contains($resetEndpoint, 'HTTP_X_CSRF_TOKEN')
     && str_contains($resetEndpoint, "'POST'");
 $checks['model cannot author arbitrary URLs or factual recommendation copy'] = str_contains($aiSource, "preg_match('/(?:https?:\\/\\/|www\\.)/i'")
@@ -412,13 +414,12 @@ $checks['provider uses strict schema options and retries only compatible 4xx err
 $schema = receptionist_ai_response_schema();
 $checks['receptionist response schema is strict and matches the normalized contract'] = $schema['type'] === 'object'
     && $schema['additionalProperties'] === false
-    && $schema['required'] === ['language', 'action', 'reply', 'faq_id', 'slots', 'quick_replies']
+    && $schema['required'] === ['language', 'action', 'reply', 'knowledge_id', 'knowledge_property']
     && $schema['properties']['language']['enum'] === ['en', 'fil', 'taglish']
-    && $schema['properties']['action']['enum'] === ['ask', 'social', 'faq', 'recommend', 'venue', 'availability', 'contact', 'unsupported']
-    && $schema['properties']['faq_id']['type'] === ['string', 'null']
-    && $schema['properties']['slots']['additionalProperties'] === false
-    && $schema['properties']['slots']['required'] === ['intent', 'occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id']
-    && $schema['properties']['quick_replies']['maxItems'] === 4;
+    && $schema['properties']['action']['enum'] === ['ask', 'social']
+    && $schema['properties']['knowledge_id']['type'] === ['string', 'null']
+    && $schema['properties']['knowledge_property']['enum'] === ['price', 'overnight_price', 'capacity', 'amenities', 'description', 'faq_answer', 'policy', 'contact', 'location', 'event_options', 'availability', 'unknown', null]
+    && !array_key_exists('slots', $schema['properties']);
 $checks['structured-output retry policy excludes non-format, rate-limit, and server failures'] = receptionist_ai_should_retry_without_response_format(true, 400, 'invalid_request_error', 'json schema is unsupported')
     && !receptionist_ai_should_retry_without_response_format(true, 400, 'invalid_request_error', 'model is unavailable')
     && !receptionist_ai_should_retry_without_response_format(true, 429, 'json_schema', 'json schema is unsupported')
@@ -507,7 +508,11 @@ $checks['chat panel is compact, dark, bounded, touch-safe, and responsive'] = st
     && str_contains($showroomCss, '@media (max-width: 700px)');
 $checks['unified panel keeps chat, guided choices, and venue details visible together'] = str_contains($showroomCss, '.showroom-receptionist.is-chat-open .receptionist-panel {')
     && str_contains($showroomCss, 'height: min(88svh, 48rem)')
-    && str_contains($showroomCss, 'left: clamp(27rem, 34vw, 40rem)')
+    && str_contains($showroomCss, 'inset: 50% auto auto clamp(18rem, 34vw, 40rem)')
+    && str_contains($showroomCss, 'width: min(62rem, calc(100vw - clamp(18rem, 34vw, 40rem) - clamp(1.25rem, 3vw, 3.5rem)))')
+    && str_contains($showroomCss, 'height: 100dvh;')
+    && str_contains($showroomCss, '.showroom-receptionist.is-chat-open .receptionist-chat-shell')
+    && str_contains($showroomCss, 'flex: 1 1 auto;')
     && str_contains($showroomCss, '.receptionist-chat-conversation #receptionist-choices')
     && str_contains($showroomPhp, 'id="receptionist-chat-guided-content"')
     && str_contains($chatJs, 'guidedContent.appendChild(choices)')
@@ -580,8 +585,13 @@ $checks['Support and admin use the same normalized FAQ helper'] = str_contains($
     && str_contains($adminPhp, 'receptionist_faq_load($conn)')
     && str_contains($adminPhp, 'support-faq-category')
     && str_contains($adminPhp, 'support-faq-phrases')
+    && str_contains($adminPhp, 'type="hidden" class="support-faq-phrases"')
+    && !str_contains($adminPhp, '<label>Phrases')
     && str_contains($savePhp, 'receptionist_faq_normalize_item')
     && str_contains($savePhp, 'receptionist_faq_json')
+    && !str_contains($savePhp, 'phrase set')
+    && str_contains($adminJs, 'type="hidden" class="support-faq-phrases"')
+    && str_contains($adminJs, 'phrases: (row.querySelector(\'.support-faq-phrases\')?.value')
     && str_contains($adminJs, 'id: row.dataset.faqId');
 $checks['locale is enforced server-side and venue catalog identity is authoritative'] = str_contains($aiSource, 'requested response language')
     && str_contains($aiSource, 'receptionist_ai_public_venue_catalog')
@@ -616,7 +626,7 @@ $captureRequest = static function (string $model, string $providerId): array {
         static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$capturedRequest): array {
             $decoded = json_decode($body, true);
             $capturedRequest = is_array($decoded) ? $decoded : [];
-            return ['status' => 200, 'raw' => json_encode(['choices' => [['message' => ['content' => json_encode(['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'faq_id' => null, 'slots' => [], 'quick_replies' => []])], 'finish_reason' => 'stop']]])];
+            return ['status' => 200, 'raw' => json_encode(['choices' => [['message' => ['content' => json_encode(['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'knowledge_id' => null, 'knowledge_property' => null])], 'finish_reason' => 'stop']]])];
         }, static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
     $provider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
     return $capturedRequest;
@@ -624,10 +634,11 @@ $captureRequest = static function (string $model, string $providerId): array {
 $googleBareRequest = $captureRequest('gemini-3.6-flash', 'google');
 $googlePrefixedRequest = $captureRequest('models/gemini-3.6-flash', 'google');
 $openRouterRequest = $captureRequest('custom/model-id', 'openrouter');
-$checks['Google request model IDs use one models prefix while other providers stay unchanged'] = ($googleBareRequest['model'] ?? null) === 'models/gemini-3.6-flash'
-    && ($googlePrefixedRequest['model'] ?? null) === 'models/gemini-3.6-flash'
+$checks['Google request model IDs use the documented bare form while other providers stay unchanged'] = ($googleBareRequest['model'] ?? null) === 'gemini-3.6-flash'
+    && ($googlePrefixedRequest['model'] ?? null) === 'gemini-3.6-flash'
     && ($openRouterRequest['model'] ?? null) === 'custom/model-id';
-$checks['Google requests omit unsupported structured-output options while OpenRouter retains strict schema'] = !array_key_exists('response_format', $googleBareRequest)
+$checks['Google and OpenRouter requests use the bounded JSON schema without provider-specific options'] = is_array($googleBareRequest['response_format'] ?? null)
+    && ($googleBareRequest['response_format']['type'] ?? null) === 'json_schema'
     && !array_key_exists('provider', $googleBareRequest)
     && !array_key_exists('plugins', $googleBareRequest)
     && is_array($openRouterRequest['response_format'] ?? null)
@@ -692,6 +703,7 @@ $_SESSION = [
     'receptionist_ai_history' => [['role' => 'user', 'content' => 'legacy guest turn']],
     'receptionist_ai_context' => ['intent' => 'Hotel Room'],
     'receptionist_ai_message_count' => 3,
+    'receptionist_ai_focus' => 'faq-payment-proof',
 ];
 receptionist_ai_enforce_session_owner();
 $guestHistoryPreserved = ($_SESSION['receptionist_ai_owner'] ?? null) === 'guest'
@@ -703,10 +715,11 @@ $_SESSION = [
     'receptionist_ai_history' => [['role' => 'user', 'content' => 'previous owner turn']],
     'receptionist_ai_context' => ['intent' => 'Hotel Room'],
     'receptionist_ai_message_count' => 3,
+    'receptionist_ai_focus' => 'faq-payment-proof',
 ];
 receptionist_ai_enforce_session_owner();
 $authenticatedHistoryCleared = str_starts_with((string)($_SESSION['receptionist_ai_owner'] ?? ''), 'authenticated:')
-    && !isset($_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_message_count']);
+    && !isset($_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_focus']);
 $_SESSION = $priorSession;
 $checks['legacy guest history survives owner-marker introduction while unowned authenticated history is cleared'] = $guestHistoryPreserved && $authenticatedHistoryCleared;
 $faqMerged = receptionist_faq_merge_defaults([
@@ -808,7 +821,7 @@ $startOverSession = [
     'receptionist_ai_history' => $oldWeddingHistory,
     'receptionist_ai_message_count' => 12,
 ];
-unset($startOverSession['receptionist_ai_context'], $startOverSession['receptionist_ai_history'], $startOverSession['receptionist_ai_message_count']);
+unset($startOverSession['receptionist_ai_context'], $startOverSession['receptionist_ai_history'], $startOverSession['receptionist_ai_message_count'], $startOverSession['receptionist_ai_focus']);
 $freshAfterStartOver = receptionist_ai_validate_slots($db, $freshHotelRequestContext, $startOverSession['receptionist_ai_context'] ?? [], $genericBookingCatalog);
 $resetHistory = receptionist_ai_append_history($oldWeddingHistory, 'i want to book', 'Which venue would you like to book?', true);
 $continuedHistory = receptionist_ai_append_history($resetHistory, 'Hotel', 'How many guests?', false);
@@ -822,6 +835,7 @@ $checks['generic reset replaces the session flow and the next valid client conte
 $checks['Start over clears the session flow before accepting a new booking context'] = !array_key_exists('receptionist_ai_context', $startOverSession)
     && !array_key_exists('receptionist_ai_history', $startOverSession)
     && !array_key_exists('receptionist_ai_message_count', $startOverSession)
+    && !array_key_exists('receptionist_ai_focus', $startOverSession)
     && $freshAfterStartOver['intent'] === 'Hotel Room'
     && $freshAfterStartOver['group_size'] === 4
     && !array_key_exists('occasion', $freshAfterStartOver);

@@ -22,6 +22,6 @@ if (!is_string($sessionCsrf) || $sessionCsrf === '' || !is_string($clientCsrf) |
     receptionist_chat_reset_response(['success' => false, 'message' => 'CSRF validation failed.'], 403);
 }
 
-unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context']);
+unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_focus']);
 $_SESSION['receptionist_ai_owner'] = receptionist_ai_session_owner();
 receptionist_chat_reset_response(['success' => true]);
