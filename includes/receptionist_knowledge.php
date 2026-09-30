@@ -831,13 +831,16 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     // This prevents an old event occasion/date/venue from leaking into a new
     // hotel or villa request.
     $mergeBase = $intentChanged ? [] : $baseSlots;
-    $slots = receptionist_ai_merge_slots($mergeBase, $patch, isset($patch['end_date']) && $patch['end_date'] === null ? ['end_date'] : []);
+    $clearSlots = array_key_exists('end_date', $patch) && $patch['end_date'] === null ? ['end_date'] : [];
+    $slots = receptionist_ai_merge_slots($mergeBase, $patch, $clearSlots);
+    $responseSlots = $slots;
+    foreach ($clearSlots as $key) $responseSlots[$key] = null;
     if (($slots['intent'] ?? null) === null) {
-        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $language === 'fil' ? 'Anong venue ang gusto mong i-book — event hall, hotel room, o resort villa?' : 'Which venue would you like to book — an event hall, hotel room, or resort villa?', 'faq_id' => null, 'slots' => $patch, 'missing_slots' => ['intent'], 'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs']];
+        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $language === 'fil' ? 'Anong venue ang gusto mong i-book — event hall, hotel room, o resort villa?' : 'Which venue would you like to book — an event hall, hotel room, or resort villa?', 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => ['intent'], 'quick_replies' => ['Event', 'Hotel', 'Villa', 'Support FAQs']];
     }
     if ($venueBookingSignal) {
         $name = (string)($venue['name'] ?? 'That venue');
-        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'venue', 'reply' => $language === 'fil' ? "Pinili mo ang {$name}. Bubuksan ko ang venue details para ma-review mo." : "{$name} selected. I’ll open the venue details for you to review.", 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['venue_details', 'venue_change', 'start_over']];
+        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'venue', 'reply' => $language === 'fil' ? "Pinili mo ang {$name}. Bubuksan ko ang venue details para ma-review mo." : "{$name} selected. I’ll open the venue details for you to review.", 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['venue_details', 'venue_change', 'start_over']];
     }
     $missing = [];
     if (($slots['intent'] ?? null) === 'Event Hall' && !array_key_exists('occasion', $slots)) $missing[] = 'occasion';
@@ -874,7 +877,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         $venueLabel = ($slots['intent'] ?? null) === 'Hotel Room' ? 'hotel room' : (($slots['intent'] ?? null) === 'Resort Villa' ? 'resort villa' : 'event hall');
         $reply = $language === 'fil' ? "Kumpleto na ang pangunahing details. Pumili ng {$venueLabel} o sabihin ang pangalan nito para makita." : "I have the main details. Choose a {$venueLabel}, or tell me its name to view it.";
     }
-    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => $next === 'active_venue_id' ? [] : [$nextLabel], 'quick_actions' => $next === 'active_venue_id' ? ['venue_list', 'start_over'] : ['start_over']];
+    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => $missing, 'quick_replies' => $next === 'active_venue_id' ? [] : [$nextLabel], 'quick_actions' => $next === 'active_venue_id' ? ['venue_list', 'start_over'] : ['start_over']];
 }
 
 function receptionist_knowledge_select(array $records, string $message, int $limit = 8): array
@@ -1130,6 +1133,38 @@ function receptionist_knowledge_is_social_input(string $message): bool
         || preg_match('/\A(?:how\s+are\s+you|how\s+is\s+it\s+going|how\s+is\s+everything|what\s+is\s+up|kumusta\s+ka|kamusta\s+ka)\z/iu', $text) === 1;
 }
 
+function receptionist_knowledge_is_capability_request(string $message): bool
+{
+    $text = trim(receptionist_knowledge_normalize_message($message));
+    $text = trim((string)preg_replace('/[.!?,;:]+\s*$/u', '', $text));
+    return preg_match('/\A(?:what\s+(?:can|do)\s+you\s+(?:help|assist)(?:\s+me)?(?:\s+with)?|how\s+can\s+you\s+(?:help|assist)(?:\s+me)?|what\s+do\s+you\s+do|what\s+are\s+you\s+able\s+to\s+do|ano\s+ang\s+(?:maitutulong|tulong)\s+mo(?:\s+sa\s+akin)?|paano\s+mo\s+ako\s+matutulungan)\z/iu', $text) === 1;
+}
+
+function receptionist_knowledge_social_reply(string $message, string $language): string
+{
+    $text = trim(receptionist_knowledge_normalize_message($message));
+    $text = trim((string)preg_replace('/[.!?,;:]+\s*$/u', '', $text));
+    $thanks = preg_match('/\A(?:thanks?|thank\s+you|many\s+thanks|salamat|maraming\s+salamat)(?:\s+(?:so\s+much|po))?\z/iu', $text) === 1;
+    $identity = preg_match('/\A(?:who\s+are\s+you|what\s+are\s+you|are\s+you\s+(?:a\s+)?(?:bot|virtual\s+receptionist)|sino\s+ka|ano\s+ka)\z/iu', $text) === 1;
+    $status = preg_match('/\A(?:how\s+are\s+you|how\s+is\s+it\s+going|how\s+is\s+everything|what\s+is\s+up|kumusta\s+ka|kamusta\s+ka)\z/iu', $text) === 1;
+    if ($language === 'fil') {
+        if ($thanks) return 'Walang anuman! Matutulungan kita sa venue details, FAQs, at booking guidance.';
+        if ($identity) return 'Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. Matutulungan kita sa venue details, stays, FAQs, at booking guidance.';
+        if ($status) return 'Handa akong tumulong sa venue details, stays, at mga tanong tungkol sa resort.';
+        return 'Kumusta! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. Paano kita matutulungan?';
+    }
+    if ($language === 'taglish') {
+        if ($thanks) return 'You’re welcome! I can help with venue details, resort FAQs, and booking guidance.';
+        if ($identity) return 'I’m the virtual receptionist for M.I. Sevilla Resort & Events Place. I can help with venue details, stays, resort FAQs, and booking guidance.';
+        if ($status) return 'I can help with venue details, stays, and resort questions. What would you like to know?';
+        return 'Hello! Ako ang virtual receptionist ng M.I. Sevilla Resort & Events Place. How can I help you?';
+    }
+    if ($thanks) return 'You’re welcome! I can help with venue details, resort FAQs, and booking guidance.';
+    if ($identity) return 'I’m the virtual receptionist for M.I. Sevilla Resort & Events Place. I can help with venue details, stays, resort FAQs, and booking guidance.';
+    if ($status) return 'I can help with venue details, stays, and resort questions. What would you like to know?';
+    return 'Hello! I’m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?';
+}
+
 function receptionist_knowledge_is_question(string $message): bool
 {
     $lower = receptionist_knowledge_normalize_message($message);
@@ -1335,7 +1370,7 @@ function receptionist_knowledge_explicit_category_switch(string $message): ?stri
     $lower = receptionist_knowledge_normalize_message($message);
     $matches = [];
     if (preg_match('/\b(?:villa|staycation)\b/i', $lower)) $matches[] = 'Resort Villa';
-    if (preg_match('/\b(?:hotel|rooms?|accommodations?|check[- ]?in|check[- ]?out|overnight stay)\b/i', $lower)) $matches[] = 'Hotel Room';
+    if (preg_match('/\b(?:hotel|rooms?|accommodations?|overnight stay)\b/i', $lower)) $matches[] = 'Hotel Room';
     if (preg_match('/\b(?:event halls?|function halls?|event spaces?|weddings?|birthdays?|corporate events?|receptions?|parties|party venue)\b/i', $lower)) $matches[] = 'Event Hall';
     $matches = array_values(array_unique($matches));
     return count($matches) === 1 ? $matches[0] : null;
@@ -1453,6 +1488,9 @@ function receptionist_knowledge_availability_reply(array $records, string $messa
         if (!empty($explicitVenue['room_group_id'])) $patch['active_room_group_id'] = (int)$explicitVenue['room_group_id'];
     }
     $slots = receptionist_ai_merge_slots($baseSlots, $patch, $clearKeys);
+    $clearSlots = array_key_exists('end_date', $patch) && $patch['end_date'] === null ? ['end_date'] : [];
+    $responseSlots = $slots;
+    foreach ($clearSlots as $key) $responseSlots[$key] = null;
     $missing = [];
     if (!in_array($slots['intent'] ?? null, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true)) {
         $missing = ['intent'];
@@ -1475,7 +1513,7 @@ function receptionist_knowledge_availability_reply(array $records, string $messa
                 : ($language === 'fil' ? 'Ano ang petsa ng event o stay?' : 'What is the event or stay date?'),
             default => $language === 'fil' ? 'Ano ang check-out date? Kailangan itong mas huli sa check-in date.' : 'What is the check-out date? It must be after check-in.',
         };
-        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => $missing, 'quick_replies' => [], 'quick_actions' => ['start_over']];
+        return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => $missing, 'quick_replies' => [], 'quick_actions' => ['start_over']];
     }
 
     $reply = match ($language) {
@@ -1483,12 +1521,23 @@ function receptionist_knowledge_availability_reply(array $records, string $messa
         'taglish' => 'I’ll check the current options for these dates. Wala pang room or date na nare-reserve o na-ho-hold.',
         default => 'I’ll check the current options for these dates. This does not reserve or hold a room or date.',
     };
-    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'availability', 'reply' => $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['start_over']];
+    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'availability', 'reply' => $reply, 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => [], 'quick_replies' => [], 'quick_actions' => ['start_over']];
 }
 
 function receptionist_knowledge_reply(array $records, string $message, string $language = 'en', array $baseSlots = [], array $history = [], ?string $focusedFaqId = null): ?array
 {
     $language = in_array($language, ['en', 'fil', 'taglish'], true) ? $language : 'en';
+    if (receptionist_knowledge_is_capability_request($message)) {
+        $reply = match ($language) {
+            'fil' => 'Matutulungan kitang mag-explore ng event halls, hotel rooms, at villas; magbahagi ng naka-publish na rates at amenities; sumagot ng resort policy questions; at gumabay sa pag-check ng dates o booking inquiry.',
+            'taglish' => 'I can help you explore event halls, hotel rooms, and villas; share published rates and amenities; answer resort policy questions; and guide you through a date availability check or booking inquiry.',
+            default => 'I can help you explore event halls, hotel rooms, and villas; share published rates and amenities; answer resort policy questions; and guide you through a date availability check or booking inquiry.',
+        };
+        return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $baseSlots, 'missing_slots' => [], 'quick_replies' => []];
+    }
+    if (receptionist_knowledge_is_social_input($message)) {
+        return ['mode' => 'knowledge', 'action' => 'social', 'reply' => receptionist_knowledge_social_reply($message, $language), 'faq_id' => null, 'slots' => $baseSlots, 'missing_slots' => [], 'quick_replies' => []];
+    }
     $memoryReply = receptionist_knowledge_memory_reply($message, $language, $baseSlots, $history);
     if ($memoryReply !== null) return $memoryReply;
     if (receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null) === null

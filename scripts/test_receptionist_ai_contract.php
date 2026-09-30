@@ -44,6 +44,11 @@ $knowledgePolicy = receptionist_knowledge_reply($knowledgeRecords, 'How does pay
 $supportFaqPrompt = 'What policies and FAQs can you help with?';
 $supportFaqIntent = receptionist_knowledge_intent($supportFaqPrompt);
 $supportFaqReply = receptionist_knowledge_reply($knowledgeRecords, $supportFaqPrompt, 'en');
+$localGreeting = receptionist_knowledge_reply($knowledgeRecords, 'Hi', 'en');
+$localCapability = receptionist_knowledge_reply($knowledgeRecords, 'What can you help me with?', 'en');
+$timeQuestionContext = ['intent' => 'Event Hall', 'occasion' => 'wedding', 'start_date' => '2037-11-14'];
+$timeQuestionSwitch = receptionist_knowledge_explicit_category_switch('What time is check-in?');
+$timeQuestionContextResult = receptionist_ai_resolve_context($timeQuestionContext, [], $timeQuestionSwitch);
 $knowledgeSelected = receptionist_knowledge_reply($knowledgeRecords, 'What is the capacity?', 'en', ['active_venue_id' => 1, 'intent' => 'Event Hall']);
 $knowledgeUnknownQuote = receptionist_knowledge_reply($knowledgeRecords, 'How much for a custom flower arrangement?', 'en');
 $knowledgeSafePolicy = array_values(array_filter($knowledgeRecords, static fn(array $record): bool => ($record['id'] ?? null) === 'public-policies'))[0] ?? null;
@@ -150,6 +155,14 @@ $checks['informational booking process uses a dedicated intent route'] = ($hotel
     && ($eventBookingProcessIntent['category'] ?? null) === 'Event Hall'
     && ($genericBookingProcessIntent['kind'] ?? null) === 'booking_process'
     && ($genericBookingProcessIntent['category'] ?? null) === null;
+$checks['greetings and capability questions receive bounded local replies'] = ($localGreeting['mode'] ?? null) === 'knowledge'
+    && ($localGreeting['action'] ?? null) === 'social'
+    && str_contains(strtolower((string)($localGreeting['reply'] ?? '')), 'virtual receptionist')
+    && ($localCapability['action'] ?? null) === 'ask'
+    && str_contains(strtolower((string)($localCapability['reply'] ?? '')), 'event halls')
+    && str_contains(strtolower((string)($localCapability['reply'] ?? '')), 'booking inquiry');
+$checks['a factual check-in time question preserves the current Event Hall booking context'] = $timeQuestionSwitch === null
+    && ($timeQuestionContextResult['base_slots'] ?? []) === $timeQuestionContext;
 $checks['hotel booking process is concise and follows the real room flow'] = ($hotelBookingProcessReply['mode'] ?? null) === 'knowledge'
     && ($hotelBookingProcessReply['action'] ?? null) === 'ask'
     && str_contains(strtolower($hotelBookingProcessReply['reply'] ?? ''), 'guest count')
@@ -774,6 +787,25 @@ $checks['knowledge preparation preserves same-turn switch patch after clearing s
     && !array_key_exists('occasion', $preparedSwitch['slots'] ?? [])
     && !array_key_exists('active_venue_id', $preparedSwitch['slots'] ?? [])
     && ($preparedSwitch['slots']['start_date'] ?? null) !== '2036-01-01';
+$hotelDateContext = [
+    'intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'comfort',
+    'start_date' => '2037-11-14', 'end_date' => '2037-11-16', 'active_venue_id' => 2, 'active_room_group_id' => 12,
+];
+$hotelDateCatalog = [['id' => 2, 'category' => 'Hotel Room', 'name' => 'Stellar', 'room_group_id' => 12]];
+$checkInCorrection = receptionist_knowledge_reply($knowledgeRecords, 'check-in November 17, 2037', 'en', $hotelDateContext);
+$preparedCheckInCorrection = receptionist_ai_prepare_knowledge($db, $checkInCorrection ?? [], $hotelDateContext, $hotelDateCatalog);
+$availabilityCheckInCorrection = receptionist_knowledge_reply($knowledgeRecords, 'Is this hotel available for check-in November 17, 2037?', 'en', $hotelDateContext);
+$preparedAvailabilityCorrection = receptionist_ai_prepare_knowledge($db, $availabilityCheckInCorrection ?? [], $hotelDateContext, $hotelDateCatalog);
+$checks['full knowledge preparation clears a stale hotel checkout after a later check-in date'] = is_array($checkInCorrection)
+    && array_key_exists('end_date', $checkInCorrection['slots'] ?? [])
+    && $checkInCorrection['slots']['end_date'] === null
+    && ($preparedCheckInCorrection['slots']['start_date'] ?? null) === '2037-11-17'
+    && !array_key_exists('end_date', $preparedCheckInCorrection['slots'] ?? [])
+    && ($preparedCheckInCorrection['clear_slots'] ?? []) === ['end_date']
+    && ($preparedAvailabilityCorrection['slots']['start_date'] ?? null) === '2037-11-17'
+    && !array_key_exists('end_date', $preparedAvailabilityCorrection['slots'] ?? [])
+    && ($preparedAvailabilityCorrection['clear_slots'] ?? []) === ['end_date']
+    && str_contains($source('assets/js/showroom.js'), 'result.clear_slots.includes("end_date")');
 $staleBookingContext = [
     'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100,
     'start_date' => '2036-01-01', 'active_venue_id' => 1,

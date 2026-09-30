@@ -522,22 +522,34 @@ window.process = {
                                  alt="" width="36" height="36" aria-hidden="true">
                             <div>
                                 <h3 id="receptionist-chat-title">Sevilla Receptionist</h3>
-                                <span class="receptionist-chat-online">Online</span>
+                                <span class="receptionist-chat-capabilities">Venues, stays, and resort FAQs</span>
                             </div>
                         </div>
                         <button type="button" class="receptionist-chat-close" data-receptionist-chat-close aria-label="Collapse receptionist chat">Close</button>
                     </div>
                     <p class="receptionist-chat-privacy">Please don’t share payment, account, contact, or personal details. Messages go to an AI service.</p>
-                    <div class="receptionist-chat-conversation" id="receptionist-chat-conversation" role="region" aria-label="Receptionist conversation and guided choices" tabindex="0">
+                    <div class="receptionist-chat-conversation" id="receptionist-chat-conversation" role="region" aria-label="Receptionist conversation" tabindex="0">
                         <div class="receptionist-chat-transcript" id="receptionist-chat-transcript" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Receptionist messages"></div>
                         <div class="receptionist-chat-guided-content" id="receptionist-chat-guided-content"></div>
                     </div>
                     <p class="receptionist-chat-status" id="receptionist-chat-status" role="status" aria-live="polite"></p>
-                    <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Receptionist actions"></div>
+                    <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Suggested questions"></div>
                     <form class="receptionist-chat-form" id="receptionist-chat-form">
                         <label class="sr-only" for="receptionist-chat-input">Ask the receptionist</label>
-                        <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask about venues, stays, policies, or dates" autocomplete="off"></textarea>
+                        <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask a question" autocomplete="off"></textarea>
                         <div class="receptionist-chat-form-actions">
+                            <button type="submit" class="receptionist-choice receptionist-choice-primary" id="receptionist-chat-send">Send</button>
+                        </div>
+                    </form>
+                    <details class="receptionist-chat-tools">
+                        <summary>More options</summary>
+                        <div class="receptionist-chat-tools-menu">
+                            <div class="receptionist-chat-tool-group" role="group" aria-label="Explore venue categories">
+                                <button type="button" data-receptionist-chat-category="category_event_hall">Event halls</button>
+                                <button type="button" data-receptionist-chat-category="category_hotel_room">Hotel rooms</button>
+                                <button type="button" data-receptionist-chat-category="category_resort_villa">Resort villas</button>
+                            </div>
+                            <button type="button" data-receptionist-chat-prompt="What policies and FAQs can you help with?">Support FAQs</button>
                             <label class="receptionist-chat-locale-label" for="receptionist-chat-locale">Language
                                 <select id="receptionist-chat-locale" name="locale">
                                     <option value="auto">Auto</option>
@@ -546,10 +558,9 @@ window.process = {
                                     <option value="taglish">Taglish</option>
                                 </select>
                             </label>
-                            <button type="submit" class="receptionist-choice receptionist-choice-primary" id="receptionist-chat-send">Send</button>
-                            <button type="button" class="receptionist-choice receptionist-choice-secondary" data-receptionist-chat-start-over>Start over</button>
+                            <button type="button" data-receptionist-chat-start-over>Start over</button>
                         </div>
-                    </form>
+                    </details>
                 </section>
             </div>
             <button type="button" class="receptionist-sound" data-receptionist-sound-toggle

@@ -171,6 +171,7 @@ try {
     $showSupportFaqCta = receptionist_knowledge_is_support_faq_request($message);
     $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta, $knowledgeRecords): never {
         $prepared = receptionist_chat_prepare_knowledge($conn, $answer, $baseSlots, $venueCatalog);
+        $prepared['local_reply'] = true;
         $prepared['show_support_faq_cta'] = $showSupportFaqCta || ($prepared['show_support_faq_cta'] ?? false) === true;
         $prepared['show_support_contact_cta'] = ($prepared['show_support_contact_cta'] ?? false) === true;
         if ($fallbackClass !== null) {

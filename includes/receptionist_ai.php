@@ -735,10 +735,10 @@ function receptionist_ai_capacity_max(mysqli $conn, string $category): ?int
     return $max !== false && $max > 0 ? $max : null;
 }
 
-function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?array $catalog = null): array
+function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?array $catalog = null, array $resetKeys = []): array
 {
     if (!is_array($raw)) throw new InvalidArgumentException('Invalid receptionist slots.');
-    $source = receptionist_ai_merge_slots($base, $raw);
+    $source = receptionist_ai_merge_slots($base, $raw, $resetKeys);
     $slots = [];
     $intent = $source['intent'] ?? null;
     if ($intent !== null && !in_array($intent, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) throw new InvalidArgumentException('Invalid receptionist venue category.');
@@ -788,6 +788,13 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
 function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $baseSlots, array $venueCatalog): array
 {
     $knowledgePatch = is_array($answer['slots'] ?? null) ? $answer['slots'] : [];
+    $requestedClears = is_array($answer['clear_slots'] ?? null) ? $answer['clear_slots'] : [];
+    $clearSlots = array_values(array_unique(array_filter(
+        $requestedClears,
+        static fn($key): bool => is_string($key) && $key === 'end_date'
+            && array_key_exists($key, $knowledgePatch)
+            && ($knowledgePatch[$key] === null || $knowledgePatch[$key] === '')
+    )));
     // Deterministic reset answers are replacements, not empty patches. This
     // prevents the validator's normal context merge from restoring stale
     // occasion/date/venue details from the previous flow.
@@ -795,7 +802,8 @@ function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $b
     if (isset($knowledgePatch['intent'], $knowledgeValidationBase['intent']) && $knowledgePatch['intent'] !== $knowledgeValidationBase['intent']) {
         foreach (['occasion', 'purpose', 'preference', 'group_size', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'] as $key) unset($knowledgeValidationBase[$key]);
     }
-    $answer['slots'] = receptionist_ai_validate_slots($conn, $knowledgePatch, $knowledgeValidationBase, $venueCatalog);
+    $answer['slots'] = receptionist_ai_validate_slots($conn, $knowledgePatch, $knowledgeValidationBase, $venueCatalog, $clearSlots);
+    $answer['clear_slots'] = $clearSlots;
     $answer['missing_slots'] = is_array($answer['missing_slots'] ?? null) ? $answer['missing_slots'] : [];
     $answer['quick_replies'] = array_slice(array_values(array_filter($answer['quick_replies'] ?? [], 'is_string')), 0, 4);
     $allowedQuickActions = ['category_event_hall', 'category_hotel_room', 'category_resort_villa', 'support_faqs', 'venue_details', 'venue_change', 'venue_list', 'start_over'];

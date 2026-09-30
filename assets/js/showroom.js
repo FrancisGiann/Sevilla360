@@ -3167,6 +3167,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
         if (slots[key] !== undefined && slots[key] !== null && slots[key] !== "") guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];
       });
+      if (Array.isArray(result.clear_slots) && result.clear_slots.includes("end_date")) guideContext.endDate = null;
       if (slots.group_size !== undefined && slots.group_size !== null && slots.group_size !== "") {
         const exactCount = Number(slots.group_size);
         guideContext.groupSizeExact = Number.isSafeInteger(exactCount) && exactCount > 0 ? exactCount : null;

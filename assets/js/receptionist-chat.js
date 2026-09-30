@@ -46,7 +46,7 @@
     const scrollConversationToEnd = () => {
       const scrollArea = chatConversation || transcript;
       if (!scrollArea) return;
-      if (preferGuidedContent && choices && guidedContent?.contains(choices)) {
+      if (preferGuidedContent && root.classList.contains("has-chat-guided-content") && choices && guidedContent?.contains(choices)) {
         const choicesTop = choices.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop;
         scrollArea.scrollTop = Math.max(0, choicesTop);
         return;
@@ -112,6 +112,7 @@
       if (!next) preferGuidedContent = false;
       if (next) moveChoicesIntoChat();
       else restoreChoicesHome();
+      syncGuidedContent();
       setNonChatMode(next);
       if (chatShell) {
         chatShell.hidden = !next;
@@ -336,11 +337,16 @@
     suggestedReplies.setAttribute("aria-label", "Suggested questions");
     quickReplies.replaceChildren(suggestedReplies);
     const hasActiveGuidedContent = () => Boolean(choices?.querySelector(
-      "[data-receptionist-answer], [data-receptionist-group-submit], [data-receptionist-date-submit], .receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card]"
+      ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-room]"
     ));
     const removeRedundantPromptChips = () => {
       if (!hasActiveGuidedContent()) return;
       suggestedReplies.querySelectorAll("[data-receptionist-chat-prompt]").forEach(button => button.remove());
+    };
+    const syncGuidedContent = () => {
+      const visibleGuidance = hasActiveGuidedContent();
+      root.classList.toggle("has-chat-guided-content", visibleGuidance);
+      if (visibleGuidance) removeRedundantPromptChips();
     };
     const legacyQuickActionIds = {
       event: "category_event_hall",
@@ -358,7 +364,7 @@
       suggestedReplies.replaceChildren();
       const addedActionIds = new Set();
       const addAction = id => {
-        if (!["support_faqs", "retry_provider"].includes(id)
+        if (id !== "retry_provider"
           || !Object.prototype.hasOwnProperty.call(quickActionLabels, id) || addedActionIds.has(id) || suggestedReplies.children.length >= 4) return;
         const button = document.createElement("button");
         button.type = "button";
@@ -379,7 +385,7 @@
         suggestedReplies.appendChild(button);
       };
       (Array.isArray(actionIds) ? actionIds : []).forEach(addAction);
-      (Array.isArray(items) ? items : []).slice(0, 4).forEach(item => {
+      (Array.isArray(items) ? items : []).slice(0, 2).forEach(item => {
         const label = typeof item === "string" ? item.trim() : "";
         if (!label) return;
         const actionId = legacyQuickActionIds[label.toLowerCase()];
@@ -388,9 +394,10 @@
       removeRedundantPromptChips();
     };
     if (choices && typeof MutationObserver === "function") {
-      const guidedContentObserver = new MutationObserver(removeRedundantPromptChips);
+      const guidedContentObserver = new MutationObserver(syncGuidedContent);
       guidedContentObserver.observe(choices, { childList: true, subtree: true });
     }
+    syncGuidedContent();
     let typingShownAt = 0;
     const TYPING_MIN_MS = 800;
     const showTypingIndicator = () => {
@@ -405,9 +412,9 @@
       transcript.appendChild(indicator);
       scrollConversationToEnd();
     };
-    const waitForTypingMin = () => {
+    const waitForTypingMin = (minimumMs = TYPING_MIN_MS) => {
       const elapsed = Date.now() - typingShownAt;
-      const remaining = TYPING_MIN_MS - elapsed;
+      const remaining = minimumMs - elapsed;
       return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve();
     };
     const removeTypingIndicator = () => {
@@ -516,7 +523,7 @@
         }
         input.value = "";
         pendingMessage = "";
-        await waitForTypingMin();
+        await waitForTypingMin(data.local_reply === true ? 120 : TYPING_MIN_MS);
         if (requestGeneration !== conversationGeneration) return;
         removeTypingIndicator();
         let keptGuidedStatus = false;
@@ -540,7 +547,7 @@
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
           appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true, true, data.show_support_contact_cta === true);
-          renderQuickReplies(data.quick_replies, data.quick_actions);
+          renderQuickReplies(data.booking_continuation === true ? [] : data.quick_replies, []);
         }
         if (!keptGuidedStatus) setStatus("");
       } catch (error) {
@@ -648,8 +655,26 @@
       }
       const close = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-close]") : null;
       if (close) { setChatOpen(false); return; }
+      const categoryTool = event.target instanceof Element ? event.target.closest(".receptionist-chat-tools [data-receptionist-chat-category]") : null;
+      if (categoryTool) {
+        categoryTool.closest("details")?.removeAttribute("open");
+        const actionId = categoryTool.dataset.receptionistChatCategory;
+        suppressDialogueEvents++;
+        submitCategoryAction(actionId);
+        window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
+        input.focus();
+        return;
+      }
+      const promptTool = event.target instanceof Element ? event.target.closest(".receptionist-chat-tools [data-receptionist-chat-prompt]") : null;
+      if (promptTool) {
+        promptTool.closest("details")?.removeAttribute("open");
+        submit(promptTool.dataset.receptionistChatPrompt || "");
+        input.focus();
+        return;
+      }
       const target = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-start-over]") : null;
       if (target) {
+        target.closest("details")?.removeAttribute("open");
         chatOpenGeneration++;
         conversationGeneration++;
         preferGuidedContent = false;
