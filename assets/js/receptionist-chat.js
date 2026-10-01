@@ -7,6 +7,42 @@
   const SUPPORT_CONTACT_HREF = "support.php#contact";
   let initializedRoot = null;
 
+  const resolveBookingSuggestions = data => {
+    const missing = Array.isArray(data?.missing_slots) ? data.missing_slots : [];
+    const step = missing.find(value => typeof value === "string") || "";
+    if (step === "active_room_group_id") {
+      return { items: Array.isArray(data.quick_replies) ? data.quick_replies.slice(0, 4) : [], actions: [], contextual: true };
+    }
+    if (data?.booking_continuation !== true) return null;
+    const choices = {
+      occasion: ["Wedding", "Birthday", "Corporate", "Other"],
+      purpose: ["Family", "Private", "Relaxation"],
+      preference: ["Best fit", "Lowest price", "Comfort"]
+    };
+    if (step === "intent") {
+      const categoryActions = ["category_event_hall", "category_hotel_room", "category_resort_villa"];
+      const serverActions = Array.isArray(data.quick_actions) ? data.quick_actions : [];
+      const actions = categoryActions.filter(action => serverActions.includes(action));
+      return { items: [], actions: actions.length ? actions : categoryActions, contextual: true };
+    }
+    if (Object.prototype.hasOwnProperty.call(choices, step)) {
+      return { items: choices[step], actions: [], contextual: true };
+    }
+    return { items: [], actions: [], contextual: true };
+  };
+
+  const applyDateSlotPatch = (context, slots, clearSlots) => {
+    if (!context || typeof context !== "object") return context;
+    const source = slots && typeof slots === "object" ? slots : {};
+    if (source.start_date !== undefined && source.start_date !== null && source.start_date !== "") context.startDate = source.start_date;
+    if (source.end_date !== undefined && source.end_date !== null && source.end_date !== "") context.endDate = source.end_date;
+    if (Array.isArray(clearSlots)) {
+      if (clearSlots.includes("start_date")) context.startDate = null;
+      if (clearSlots.includes("end_date")) context.endDate = null;
+    }
+    return context;
+  };
+
   function init(options) {
     options = options || {};
     const root = options.root || document.getElementById("showroom-receptionist");
@@ -18,6 +54,7 @@
     const status = document.getElementById("receptionist-chat-status");
     const quickReplies = document.getElementById("receptionist-chat-quick-replies");
     const chatShell = document.getElementById("receptionist-chat-shell");
+    const categorySelect = root.querySelector("[data-receptionist-chat-category-select]");
     const chatToggle = root.querySelector("[data-receptionist-chat-toggle]");
     const choices = options.choices || document.getElementById("receptionist-choices");
     const chatConversation = document.getElementById("receptionist-chat-conversation");
@@ -46,6 +83,12 @@
     const scrollConversationToEnd = () => {
       const scrollArea = chatConversation || transcript;
       if (!scrollArea) return;
+      const activeCalendar = chatOpen ? choices?.querySelector(".receptionist-calendar") : null;
+      if (activeCalendar && chatConversation) {
+        const calendarTop = activeCalendar.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop;
+        scrollArea.scrollTop = Math.max(0, calendarTop - 8);
+        return;
+      }
       if (preferGuidedContent && root.classList.contains("has-chat-guided-content") && choices && guidedContent?.contains(choices)) {
         const choicesTop = choices.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top + scrollArea.scrollTop;
         scrollArea.scrollTop = Math.max(0, choicesTop);
@@ -321,9 +364,9 @@
       } catch (error) {}
     };
     const quickActionLabels = {
-      category_event_hall: "Event",
-      category_hotel_room: "Hotel",
-      category_resort_villa: "Villa",
+      category_event_hall: "Event halls",
+      category_hotel_room: "Hotel rooms",
+      category_resort_villa: "Resort villas",
       support_faqs: "Support FAQs",
       venue_details: "See details",
       venue_change: "Change venue",
@@ -334,14 +377,14 @@
     const suggestedReplies = document.createElement("div");
     suggestedReplies.className = "receptionist-chat-quick-reply-group receptionist-chat-suggested-actions";
     suggestedReplies.setAttribute("role", "group");
-    suggestedReplies.setAttribute("aria-label", "Suggested questions");
+    suggestedReplies.setAttribute("aria-label", "Suggested replies");
     quickReplies.replaceChildren(suggestedReplies);
     const hasActiveGuidedContent = () => Boolean(choices?.querySelector(
       ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-room]"
     ));
     const removeRedundantPromptChips = () => {
       if (!hasActiveGuidedContent()) return;
-      suggestedReplies.querySelectorAll("[data-receptionist-chat-prompt]").forEach(button => button.remove());
+      suggestedReplies.querySelectorAll('[data-receptionist-chat-prompt]:not([data-receptionist-contextual-choice="true"])').forEach(button => button.remove());
     };
     const syncGuidedContent = () => {
       const visibleGuidance = hasActiveGuidedContent();
@@ -360,12 +403,12 @@
       "browse venues": "venue_list",
       "start over": "start_over"
     };
-    const renderQuickReplies = (items, actionIds = []) => {
+    const renderQuickReplies = (items, actionIds = [], contextualChoices = false) => {
       suggestedReplies.replaceChildren();
       const addedActionIds = new Set();
       const addAction = id => {
-        if (id !== "retry_provider"
-          || !Object.prototype.hasOwnProperty.call(quickActionLabels, id) || addedActionIds.has(id) || suggestedReplies.children.length >= 4) return;
+        const safeSuggestionAction = ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs", "retry_provider"].includes(id);
+        if (!safeSuggestionAction || addedActionIds.has(id) || suggestedReplies.children.length >= 4) return;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
@@ -374,22 +417,24 @@
         suggestedReplies.appendChild(button);
         addedActionIds.add(id);
       };
-      const addPrompt = prompt => {
+      const addPrompt = (prompt, contextual = false) => {
         const label = typeof prompt === "string" ? prompt.trim() : "";
-        if (!label || hasActiveGuidedContent() || suggestedReplies.children.length >= 4) return;
+        if (!label || (hasActiveGuidedContent() && !contextual) || suggestedReplies.children.length >= 4) return;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
         button.dataset.receptionistChatPrompt = label;
+        if (contextual) button.dataset.receptionistContextualChoice = "true";
         button.textContent = label;
         suggestedReplies.appendChild(button);
       };
       (Array.isArray(actionIds) ? actionIds : []).forEach(addAction);
-      (Array.isArray(items) ? items : []).slice(0, 2).forEach(item => {
+      (Array.isArray(items) ? items : []).slice(0, 4).forEach(item => {
         const label = typeof item === "string" ? item.trim() : "";
         if (!label) return;
         const actionId = legacyQuickActionIds[label.toLowerCase()];
-        if (actionId) addAction(actionId); else addPrompt(label);
+        if (actionId === "support_faqs") addAction(actionId);
+        else addPrompt(label, contextualChoices);
       });
       removeRedundantPromptChips();
     };
@@ -434,7 +479,11 @@
     };
     const guidedFallback = (data, message, retryable = false) => {
       appendMessage("assistant", message || "I’ll keep the chat open while you choose a venue path below.");
-      renderQuickReplies(Array.isArray(data?.quick_replies) ? data.quick_replies : [], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
+      const hasBookingContext = Boolean(safeContext().intent);
+      const recoveryActions = hasBookingContext
+        ? ["support_faqs"]
+        : ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"];
+      renderQuickReplies([], recoveryActions);
       if (retryable) {
         if (suggestedReplies.children.length >= 4) suggestedReplies.lastElementChild.remove();
         const retry = document.createElement("button");
@@ -547,7 +596,9 @@
           else if (typeof options.onAction === "function") options.onAction(data);
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
           appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true, true, data.show_support_contact_cta === true);
-          renderQuickReplies(data.booking_continuation === true ? [] : data.quick_replies, []);
+          const bookingSuggestions = resolveBookingSuggestions(data);
+          if (bookingSuggestions) renderQuickReplies(bookingSuggestions.items, bookingSuggestions.actions, bookingSuggestions.contextual);
+          else renderQuickReplies(data.quick_replies, []);
         }
         if (!keptGuidedStatus) setStatus("");
       } catch (error) {
@@ -596,9 +647,22 @@
       return true;
     };
 
+    categorySelect?.addEventListener("change", () => {
+      const actionId = categorySelect.value;
+      categorySelect.value = "";
+      if (!categoryActionCommands[actionId]) return;
+      categorySelect.closest("details")?.removeAttribute("open");
+      suppressDialogueEvents++;
+      try { submitCategoryAction(actionId); }
+      finally {
+        window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
+        input.focus();
+      }
+    });
+
     serverHistoryPromise = restoreServerHistory();
     setChatOpen(false, false);
-    renderQuickReplies([], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
+    renderQuickReplies([], []);
     save();
     form.addEventListener("submit", event => { event.preventDefault(); submit(input.value); });
     input.addEventListener("keydown", event => {
@@ -684,7 +748,7 @@
         removeTypingIndicator();
         stored = { messages: [], context: {} };
         transcript.replaceChildren();
-        renderQuickReplies([], ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs"]);
+        renderQuickReplies([], []);
         form.dataset.resetting = "true";
         serverResetPromise = resetServerSession().finally(() => { delete form.dataset.resetting; });
         if (typeof options.onStartOver === "function") {
@@ -733,5 +797,5 @@
     root.classList.add("has-receptionist-chat");
   }
 
-  window.SevillaReceptionistChat = { init };
+  window.SevillaReceptionistChat = { init, resolveBookingSuggestions, applyDateSlotPatch };
 }(window, document));

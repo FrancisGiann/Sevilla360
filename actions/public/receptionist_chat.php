@@ -135,12 +135,12 @@ try {
     }
     $venueCatalog = receptionist_ai_public_venue_catalog($conn);
     $sessionSlots = [];
-    if (is_array($_SESSION['receptionist_ai_context'] ?? null)) {
-        try {
-            $sessionSlots = receptionist_ai_validate_slots($conn, $_SESSION['receptionist_ai_context'], [], $venueCatalog);
-        } catch (Throwable $sessionContextError) {
-            unset($_SESSION['receptionist_ai_context']);
-        }
+    $rawSessionSlots = is_array($_SESSION['receptionist_ai_context'] ?? null) ? $_SESSION['receptionist_ai_context'] : [];
+    $recoveredDateClears = [];
+    if ($rawSessionSlots !== []) {
+        $sessionSlots = receptionist_ai_recover_session_slots($conn, $rawSessionSlots, $venueCatalog);
+        $recoveredDateClears = receptionist_ai_recovered_session_date_clears($rawSessionSlots, $sessionSlots);
+        $requestContext = receptionist_ai_filter_recovered_session_dates($requestContext, $rawSessionSlots, $sessionSlots);
     }
     $contextResolution = receptionist_ai_resolve_context($sessionSlots, $requestContext, receptionist_knowledge_explicit_category_switch($message));
     $requestSlots = receptionist_ai_validate_slots($conn, $contextResolution['request_slots'], [], $venueCatalog);
@@ -148,10 +148,6 @@ try {
     $faqs = receptionist_faq_load($conn);
 
     $count = (int)($_SESSION['receptionist_ai_message_count'] ?? 0);
-    if ($count >= 25) {
-        receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'visit_limit']);
-        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'visit_limit'), 'visit_limit', $requestId);
-    }
 
     $history = receptionist_ai_public_history(is_array($_SESSION['receptionist_ai_history'] ?? null) ? $_SESSION['receptionist_ai_history'] : []);
     $knowledgeRecords = receptionist_public_knowledge_records($conn, $faqs);
@@ -169,8 +165,10 @@ try {
     }
     if ($focusedFaqId === null && is_string($storedFocus)) unset($_SESSION['receptionist_ai_focus']);
     $showSupportFaqCta = receptionist_knowledge_is_support_faq_request($message);
-    $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta, $knowledgeRecords): never {
+    $respondDeterministic = static function (array $answer, ?string $fallbackClass = null) use ($conn, $baseSlots, $venueCatalog, $message, $count, $history, $language, $showSupportFaqCta, $knowledgeRecords, $recoveredDateClears): never {
         $prepared = receptionist_chat_prepare_knowledge($conn, $answer, $baseSlots, $venueCatalog);
+        $dateClears = array_values(array_filter($recoveredDateClears, static fn(string $key): bool => !array_key_exists($key, $prepared['slots'] ?? [])));
+        $prepared['clear_slots'] = array_values(array_unique(array_merge(is_array($prepared['clear_slots'] ?? null) ? $prepared['clear_slots'] : [], $dateClears)));
         $prepared['local_reply'] = true;
         $prepared['show_support_faq_cta'] = $showSupportFaqCta || ($prepared['show_support_faq_cta'] ?? false) === true;
         $prepared['show_support_contact_cta'] = ($prepared['show_support_contact_cta'] ?? false) === true;
@@ -190,6 +188,12 @@ try {
     };
     $knowledgeAnswer = receptionist_knowledge_reply($knowledgeRecords, $message, $language, $baseSlots, $history, $focusedFaqId);
     if ($knowledgeAnswer !== null) $respondDeterministic($knowledgeAnswer);
+    // Keep the visit cap on model-assisted turns. Local booking steps and
+    // approved knowledge replies remain available through a long conversation.
+    if ($count >= 25) {
+        receptionist_chat_log('fallback', ['request_id' => $requestId, 'fallback_class' => 'visit_limit']);
+        receptionist_chat_guided($language, receptionist_chat_guided_copy($language, 'visit_limit'), 'visit_limit', $requestId);
+    }
     $knowledgeCandidates = receptionist_knowledge_model_candidates($knowledgeRecords, $message, $baseSlots, 8, $focusedFaqId);
     $provider = receptionist_ai_provider();
     if (!$provider) {
@@ -246,6 +250,7 @@ try {
     if (receptionist_knowledge_is_fact_request($message, $baseSlots) || ($focusedFaqId !== null && receptionist_knowledge_is_contextual_followup($message))) $respondUnconfirmed('provider_schema');
     $normalized['show_support_faq_cta'] = $showSupportFaqCta;
     $normalized['show_support_contact_cta'] = false;
+    $normalized['clear_slots'] = array_values(array_filter($recoveredDateClears, static fn(string $key): bool => !array_key_exists($key, $normalized['slots'] ?? [])));
     receptionist_chat_store_turn($normalized['slots'], $message, (string)$normalized['reply'], $count, $history);
     receptionist_chat_update_faq_focus($normalized, $knowledgeRecords, $message);
     $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];

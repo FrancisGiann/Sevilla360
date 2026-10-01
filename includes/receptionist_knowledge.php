@@ -588,6 +588,91 @@ function receptionist_knowledge_booking_group_size(string $message): ?int
     return null;
 }
 
+/** Identify the latest unanswered booking prompt from validated state + chat history. */
+function receptionist_knowledge_pending_booking_step(array $slots, array $history): ?string
+{
+    $intent = $slots['intent'] ?? null;
+    $hasIntent = in_array($intent, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true);
+
+    for ($index = count($history) - 1; $index >= 0; $index--) {
+        $turn = $history[$index] ?? null;
+        if (!is_array($turn) || ($turn['role'] ?? null) !== 'assistant' || !is_string($turn['content'] ?? null)) continue;
+        $prompt = strtolower($turn['content']);
+        if (!$hasIntent && preg_match('/\b(?:which venue would you like to book|event hall, hotel room|event, hotel, or villa|venue type)\b/i', $prompt)) return 'intent';
+        if ($intent === 'Event Hall' && preg_match('/\b(?:what kind of event|what type of event|event occasion|occasion)\b/i', $prompt)) return 'occasion';
+        if ($intent === 'Resort Villa' && preg_match('/\b(?:purpose of your stay|purpose of (?:the )?stay|what.*purpose)\b/i', $prompt)) return 'purpose';
+        if ($hasIntent && preg_match('/\b(?:how many guests?|guest count|number of guests|ilang bisita|bilang ng bisita)\b/i', $prompt)) return 'group_size';
+        if ($intent === 'Hotel Room' && preg_match('/\b(?:what matters most.*room search|room preference|best fit,? lowest price|pinakamababang presyo.*comfort)\b/i', $prompt)) return 'preference';
+        if ($intent === 'Hotel Room' && !empty($slots['start_date']) && preg_match('/\b(?:check[ -]?out date|date of checkout)\b/i', $prompt)) return 'end_date';
+        if ($hasIntent && preg_match('/\b(?:check[ -]?in date|event date|event or stay date|what date.*(?:villa|booking|stay)|booking date)\b/i', $prompt)) return 'start_date';
+
+        $previousUser = null;
+        for ($userIndex = $index - 1; $userIndex >= 0; $userIndex--) {
+            if (($history[$userIndex]['role'] ?? null) === 'user' && is_string($history[$userIndex]['content'] ?? null)) {
+                $previousUser = $history[$userIndex]['content'];
+                break;
+            }
+        }
+        if (is_string($previousUser) && (receptionist_knowledge_is_social_input($previousUser)
+            || receptionist_knowledge_property_from_message($previousUser) !== null
+            || receptionist_knowledge_is_fact_request($previousUser, $slots))) continue;
+        return null;
+    }
+    return null;
+}
+
+function receptionist_knowledge_pending_preference(string $message): ?string
+{
+    $text = receptionist_knowledge_normalize_message($message);
+    if (preg_match('/\b(?:best\s*fit|most suitable|better fit|fits? (?:us|our group)|works? for us|match(?:es)? our group|recommend(?:ed|ation)?)\b/i', $text)) return 'best_fit';
+    if (preg_match('/\b(?:cheap(?:est)?|low(?:est)?(?: price| cost)?|budget|affordab\w*|less expensive|save(?: money)?|mura|pinakamura)\b/i', $text)) return 'save';
+    if (preg_match('/\b(?:comfort(?:able)?|luxur\w*|upscale|premium|higher[- ]end|deluxe|more comfortable)\b/i', $text)) return 'comfort';
+    return null;
+}
+
+function receptionist_knowledge_pending_booking_clarification(string $step, string $language, array $slots): array
+{
+    $fil = $language === 'fil';
+    $copy = [
+        'intent' => [$fil ? 'Anong venue ang gusto mong i-book — event hall, hotel room, o resort villa?' : 'Which venue would you like to book — an event hall, hotel room, or resort villa?', ['Event', 'Hotel', 'Villa']],
+        'occasion' => [$fil ? 'Anong uri ng event ito, halimbawa wedding, birthday, corporate event, o iba pa?' : 'What kind of event is it — a wedding, birthday, corporate event, or something else?', ['Wedding', 'Birthday', 'Corporate', 'Other']],
+        'purpose' => [$fil ? 'Ano ang layunin ng villa stay — family, private, o relaxation?' : 'What is the purpose of your villa stay — family, private, or relaxation?', ['Family', 'Private', 'Relaxation']],
+        'group_size' => [$fil ? 'Ilang bisita ang kasama? Pakisagot gamit ang buong bilang, halimbawa 2.' : 'How many guests are included? Please reply with a whole number, such as 2.', []],
+        'preference' => [$fil ? 'Ano ang mas mahalaga sa room search mo — best fit, pinakamababang presyo, o comfort?' : 'What matters most for your room search — best fit, lowest price, or comfort?', ['Best fit', 'Lowest price', 'Comfort']],
+        'start_date' => [($slots['intent'] ?? null) === 'Hotel Room'
+            ? ($fil ? 'Ano ang check-in date?' : 'What is the check-in date?')
+            : (($slots['intent'] ?? null) === 'Resort Villa'
+                ? ($fil ? 'Anong petsa ang gusto mo para sa villa stay?' : 'What date would you like for the villa stay?')
+                : ($fil ? 'Ano ang petsa ng event?' : 'What is the event date?')), []],
+        'end_date' => [$fil ? 'Ano ang check-out date? Dapat mas huli ito sa check-in.' : 'What is the check-out date? It must be after check-in.', []],
+    ];
+    [$reply, $quickReplies] = $copy[$step] ?? $copy['group_size'];
+    return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply,
+        'faq_id' => null, 'slots' => $slots, 'missing_slots' => [$step], 'quick_replies' => $quickReplies,
+        'quick_actions' => ['start_over']];
+}
+
+/** Recognize a bare count only as an answer to the active guest-count prompt. */
+function receptionist_knowledge_pending_bare_guest_count(string $message, array $baseSlots, array $history): ?array
+{
+    $pendingStep = receptionist_knowledge_pending_booking_step($baseSlots, $history);
+    if (!in_array($pendingStep, ['group_size', 'preference'], true)) return null;
+    $number = '(?:-?\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?|thirty(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?|forty(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?|fifty(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?|dalawa|tatlo|apat|lima|anim|pito|walo|siyam|sampu)';
+    $text = strtolower(trim(receptionist_knowledge_normalize_message($message)));
+    $text = trim((string)preg_replace('/[.!?,;:]+$/u', '', $text));
+    $correctionPrefix = '(?:(?:actually|really|it is|we are|about)\s+)';
+    $labeledGuest = '\s+(?:guests?|people|persons?|pax|tao|bisita)';
+    $pattern = $pendingStep === 'group_size'
+        ? '/\A(?:' . $correctionPrefix . ')?(' . $number . ')(?:' . $labeledGuest . ')?\z/u'
+        : '/\A' . $correctionPrefix . '(' . $number . ')(?:' . $labeledGuest . ')?\z/u';
+    if (!preg_match($pattern, $text, $match)) return null;
+    $raw = $match[1];
+    $count = preg_match('/\A-?\d+(?:\.\d+)?\z/', $raw) === 1
+        ? filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 10000]])
+        : receptionist_knowledge_number_word($raw);
+    return ['valid' => is_int($count) && $count > 0 && $count <= 10000, 'count' => is_int($count) && $count > 0 && $count <= 10000 ? $count : null];
+}
+
 function receptionist_knowledge_parse_month_date(string $value, DateTimeImmutable $today): ?string
 {
     $months = ['january' => 1, 'jan' => 1, 'february' => 2, 'feb' => 2, 'march' => 3, 'mar' => 3, 'april' => 4, 'apr' => 4, 'may' => 5, 'june' => 6, 'jun' => 6, 'july' => 7, 'jul' => 7, 'august' => 8, 'aug' => 8, 'september' => 9, 'sep' => 9, 'sept' => 9, 'october' => 10, 'oct' => 10, 'november' => 11, 'nov' => 11, 'december' => 12, 'dec' => 12];
@@ -738,12 +823,13 @@ function receptionist_knowledge_booking_venue(array $records, string $message, ?
     return count($bestMatches) === 1 ? reset($bestMatches) : null;
 }
 
-function receptionist_knowledge_booking_continuation(array $records, string $message, string $language, array $baseSlots, array $route, ?string $category): ?array
+function receptionist_knowledge_booking_continuation(array $records, string $message, string $language, array $baseSlots, array $route, ?string $category, ?int $pendingGuestCount = null, ?string $pendingStep = null): ?array
 {
     $lower = receptionist_knowledge_normalize_message($message);
-    $groupSize = receptionist_knowledge_booking_group_size($message);
+    $groupSize = receptionist_knowledge_booking_group_size($message) ?? $pendingGuestCount;
     $bookingDates = receptionist_knowledge_booking_dates($message);
     $startDate = $bookingDates[0] ?? null;
+    $pendingPreference = receptionist_knowledge_pending_preference($message);
     $venue = receptionist_knowledge_booking_venue($records, $message, $category ?? ($baseSlots['intent'] ?? null));
     if (($route['kind'] ?? null) === 'booking' && $venue === null && receptionist_knowledge_is_generic_booking_start($message)) {
         return [
@@ -775,7 +861,8 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         || preg_match('/(?:\b(?:hotel|room)\b[^.!?\n]{0,24}\b(?:budget|cheap|cheapest|mura|save)\b|\b(?:budget|cheap|cheapest|mura|save)\b[^.!?\n]{0,24}\b(?:hotel|room)\b)/i', $lower) === 1
         || preg_match('/(?:\bvilla\b[^.!?\n]{0,24}\b(?:family|private|relax)\b|\b(?:family|private|relax)\b[^.!?\n]{0,24}\bvilla\b)/i', $lower) === 1
         || (($baseSlots['intent'] ?? null) === 'Event Hall' && preg_match('/\bother\b/i', $lower) === 1)
-        || (($baseSlots['intent'] ?? null) === 'Hotel Room' && preg_match('/\b(?:best\s*fit|fit|match|comfort|higher|premium|deluxe)\b/i', $lower) === 1)
+        || (($baseSlots['intent'] ?? null) === 'Hotel Room' && $pendingPreference !== null)
+        || ($pendingStep === 'preference' && $pendingPreference !== null)
         || (($baseSlots['intent'] ?? null) === 'Resort Villa' && preg_match('/\b(?:relax|relaxation|rest|family|kids|children|private|privacy)\b/i', $lower) === 1)
         || preg_match('/\b(?:i|we|want|need|gusto|looking)\b[^.!?\n]{0,32}\b(?:wedding|birthday|corporate|celebration|kasal|marriage)\b/i', $lower) === 1
         || (($baseSlots['intent'] ?? null) !== null && preg_match('/\b(?:wedding|birthday|corporate|celebration|kasal|marriage)\b/i', $lower) === 1);
@@ -785,6 +872,7 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     $intentChanged = $category !== null && $intent !== null && $category !== $intent;
     if ($category !== null && (($route['kind'] ?? null) === 'booking' || $intent === null || $shortLabel || $venue !== null)) $intent = $category;
     if ($intent === null && $venueBookingSignal) $intent = is_string($venue['category'] ?? null) ? $venue['category'] : null;
+    $preferenceCorrection = ($baseSlots['intent'] ?? null) === 'Hotel Room' && $pendingPreference !== null;
     $patch = [];
     if ($intent !== null) $patch['intent'] = $intent;
     if ($intent === 'Event Hall') {
@@ -793,23 +881,49 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
         elseif (preg_match('/\b(?:corporate|company|seminar|conference)\b/i', $lower)) $patch['occasion'] = 'corporate';
         elseif (preg_match('/\bother\b/i', $lower)) $patch['occasion'] = 'other';
     } elseif ($intent === 'Hotel Room') {
-        if (preg_match('/\b(?:lowest|low|save|cheapest|budget|mura)\b/i', $lower)) $patch['preference'] = 'save';
-        elseif (preg_match('/\b(?:best\s*fit|fit|match)\b/i', $lower)) $patch['preference'] = 'best_fit';
-        elseif (preg_match('/\b(?:comfort|higher|premium|deluxe)\b/i', $lower)) $patch['preference'] = 'comfort';
+        $preference = $pendingPreference ?? (preg_match('/\b(?:lowest|low|save|cheapest|budget|mura)\b/i', $lower) ? 'save'
+            : (preg_match('/\b(?:best\s*fit|fit|match)\b/i', $lower) ? 'best_fit'
+                : (preg_match('/\b(?:comfort|higher|premium|deluxe)\b/i', $lower) ? 'comfort' : null)));
+        if ($preference !== null) $patch['preference'] = $preference;
     } elseif ($intent === 'Resort Villa') {
         if (preg_match('/\b(?:relax|relaxation|rest)\b/i', $lower)) $patch['purpose'] = 'relaxation';
         elseif (preg_match('/\b(?:family|kids|children)\b/i', $lower)) $patch['purpose'] = 'family';
         elseif (preg_match('/\b(?:private|privacy)\b/i', $lower)) $patch['purpose'] = 'private';
     }
-    if ($groupSize !== null && $groupSize > 0) $patch['group_size'] = $groupSize;
+    if ($groupSize !== null && $groupSize > 0) {
+        $categoryCapacity = 0;
+        foreach ($records as $record) {
+            if (($record['kind'] ?? null) === 'venue' && ($record['category'] ?? null) === $intent) {
+                $categoryCapacity = max($categoryCapacity, (int)($record['capacity_max'] ?? 0));
+            }
+        }
+        if ($categoryCapacity > 0 && $groupSize > $categoryCapacity) {
+            return [
+                'mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask',
+                'reply' => $language === 'fil'
+                    ? "Lampas ito sa pinakamataas na naka-publish na capacity na {$categoryCapacity} bisita. Pakilagay ang mas maliit na bilang."
+                    : "That is above the largest published capacity of {$categoryCapacity} guests. Please enter a smaller guest count.",
+                'faq_id' => null, 'slots' => $baseSlots, 'missing_slots' => ['group_size'],
+                'quick_replies' => [], 'quick_actions' => ['start_over'],
+            ];
+        }
+        $patch['group_size'] = $groupSize;
+    }
     if (count($bookingDates) > 1) {
-        $patch['start_date'] = $bookingDates[0];
-        if ($bookingDates[1] > $bookingDates[0]) $patch['end_date'] = $bookingDates[1];
+        if ($bookingDates[1] > $bookingDates[0]) {
+            $patch['start_date'] = $bookingDates[0];
+            $patch['end_date'] = $bookingDates[1];
+        } else {
+            return receptionist_knowledge_pending_booking_clarification('end_date', $language, $baseSlots);
+        }
     } elseif ($startDate !== null) {
         $dateBase = $intentChanged ? [] : $baseSlots;
         $explicitCheckOut = preg_match('/\b(?:check[ -]?out|checkout|departure)\b/i', $lower) === 1;
         $explicitCheckIn = preg_match('/\b(?:check[ -]?in|checkin|arrival)\b/i', $lower) === 1;
-        if ($intent === 'Hotel Room' && $explicitCheckOut) {
+        if ($intent === 'Hotel Room' && ($pendingStep === 'end_date' || $explicitCheckOut)) {
+            if (!empty($dateBase['start_date']) && $startDate <= $dateBase['start_date']) {
+                return receptionist_knowledge_pending_booking_clarification('end_date', $language, $baseSlots);
+            }
             $patch['end_date'] = $startDate;
         } elseif ($intent === 'Hotel Room' && !$explicitCheckIn && !empty($dateBase['start_date']) && empty($dateBase['end_date'])) {
             // Guests often answer the requested dates in separate messages.
@@ -876,6 +990,21 @@ function receptionist_knowledge_booking_continuation(array $records, string $mes
     if ($next === 'active_venue_id') {
         $venueLabel = ($slots['intent'] ?? null) === 'Hotel Room' ? 'hotel room' : (($slots['intent'] ?? null) === 'Resort Villa' ? 'resort villa' : 'event hall');
         $reply = $language === 'fil' ? "Kumpleto na ang pangunahing details. Pumili ng {$venueLabel} o sabihin ang pangalan nito para makita." : "I have the main details. Choose a {$venueLabel}, or tell me its name to view it.";
+    }
+    if ($preferenceCorrection) {
+        $preferenceLabel = $slots['preference'] ?? $pendingPreference;
+        $acknowledgment = match ($preferenceLabel) {
+            'save' => $language === 'fil'
+                ? 'Sige — uunahin ko ang pinakamababang nakalistang presyo sa room search mo. '
+                : 'Got it — I’ll prioritize the lowest listed price for your room search. ',
+            'best_fit' => $language === 'fil'
+                ? 'Sige — uunahin ko ang pinakabagay sa grupo mo sa room search. '
+                : 'Got it — I’ll prioritize the best fit for your group. ',
+            default => $language === 'fil'
+                ? 'Sige — uunahin ko ang comfort at mas mataas na room category sa room search mo. '
+                : 'Got it — I’ll prioritize comfort and a higher room category. ',
+        };
+        $reply = $acknowledgment . $reply;
     }
     return ['mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $responseSlots, 'clear_slots' => $clearSlots, 'missing_slots' => $missing, 'quick_replies' => $next === 'active_venue_id' ? [] : [$nextLabel], 'quick_actions' => $next === 'active_venue_id' ? ['venue_list', 'start_over'] : ['start_over']];
 }
@@ -964,6 +1093,37 @@ function receptionist_knowledge_explicit_venue_matches(array $records, string $m
         $matches[$key] = $record;
     }
     return array_values($matches);
+}
+
+/** Return all current room groups for explicitly named hotel buildings. */
+function receptionist_knowledge_hotel_parent_matches(array $records, string $message): array
+{
+    $messageText = ' ' . receptionist_knowledge_normalized_phrase($message) . ' ';
+    if ($messageText === '  ') return [];
+    $matches = [];
+    $longestMatch = 0;
+    foreach ($records as $record) {
+        if (($record['kind'] ?? null) !== 'venue' || ($record['category'] ?? null) !== 'Hotel Room') continue;
+        $name = receptionist_knowledge_normalized_phrase((string)($record['name'] ?? ''));
+        $coreName = trim((string)preg_replace('/\b(?:hotel room|hotel|room|villa|event hall|hall)\b/', '', $name));
+        $matchedLength = 0;
+        if ($name !== '' && str_contains($messageText, ' ' . $name . ' ')) $matchedLength = strlen($name);
+        if (strlen($coreName) >= 4 && str_contains($messageText, ' ' . $coreName . ' ')) $matchedLength = max($matchedLength, strlen($coreName));
+        if ($matchedLength === 0) continue;
+        if ($matchedLength > $longestMatch) { $matches = []; $longestMatch = $matchedLength; }
+        if ($matchedLength === $longestMatch) $matches[(string)($record['id'] ?? '')] = $record;
+    }
+    return array_values($matches);
+}
+
+function receptionist_knowledge_hotel_room_type_matches(string $message, array $record): bool
+{
+    $roomType = receptionist_knowledge_normalized_phrase((string)($record['room_type'] ?? ''));
+    if ($roomType === '') return false;
+    $messageText = ' ' . receptionist_knowledge_normalized_phrase($message) . ' ';
+    if (str_contains($messageText, ' ' . $roomType . ' ')) return true;
+    $specificRoomType = trim((string)preg_replace('/\broom\b/', '', $roomType));
+    return strlen($specificRoomType) >= 4 && str_contains($messageText, ' ' . $specificRoomType . ' ');
 }
 
 /**
@@ -1180,6 +1340,54 @@ function receptionist_knowledge_is_active_venue_property_question(string $messag
     return true;
 }
 
+function receptionist_knowledge_is_room_details_request(string $message, array $context = []): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    if (preg_match('/\b(?:details?|description)\b/i', $lower) !== 1) return false;
+    if (($context['intent'] ?? null) === 'Hotel Room') return true;
+    if (in_array($context['intent'] ?? null, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true)) return false;
+    return preg_match('/\b(?:hotel|room|it|its|this|that|those|their)\b/i', $lower) === 1;
+}
+
+function receptionist_knowledge_is_comparison_request(string $message): bool
+{
+    $lower = receptionist_knowledge_normalize_message($message);
+    return preg_match('/\b(?:why\b.{0,100}\b(?:better|best|recommended|recommendation|fit)|what\s+makes\b.{0,100}\b(?:better|best|recommended)|compare\b|difference\s+between\b)\b/i', $lower) === 1;
+}
+
+function receptionist_knowledge_pending_room_followup(array $history): ?string
+{
+    $lastAssistantIndex = null;
+    for ($index = count($history) - 1; $index >= 0; $index--) {
+        if (($history[$index]['role'] ?? null) === 'assistant') { $lastAssistantIndex = $index; break; }
+    }
+    if ($lastAssistantIndex === null || !is_string($history[$lastAssistantIndex]['content'] ?? null)) return null;
+    $clarification = receptionist_knowledge_normalize_message($history[$lastAssistantIndex]['content']);
+    if (preg_match('/\b(?:which exact room type|aling eksaktong room type)\b/i', $clarification) !== 1) return null;
+    for ($index = $lastAssistantIndex - 1; $index >= 0; $index--) {
+        if (($history[$index]['role'] ?? null) !== 'user' || !is_string($history[$index]['content'] ?? null)) continue;
+        if (receptionist_knowledge_is_comparison_request($history[$index]['content'])) return 'comparison';
+        if (receptionist_knowledge_is_room_details_request($history[$index]['content'])) return 'details';
+        return null;
+    }
+    return null;
+}
+
+function receptionist_knowledge_pending_room_parent_message(array $history): ?string
+{
+    $lastAssistantIndex = null;
+    for ($index = count($history) - 1; $index >= 0; $index--) {
+        if (($history[$index]['role'] ?? null) === 'assistant') { $lastAssistantIndex = $index; break; }
+    }
+    if ($lastAssistantIndex === null || !is_string($history[$lastAssistantIndex]['content'] ?? null)) return null;
+    $clarification = receptionist_knowledge_normalize_message($history[$lastAssistantIndex]['content']);
+    if (preg_match('/\b(?:which exact room type|aling eksaktong room type)\b/i', $clarification) !== 1) return null;
+    for ($index = $lastAssistantIndex - 1; $index >= 0; $index--) {
+        if (($history[$index]['role'] ?? null) === 'user' && is_string($history[$index]['content'] ?? null)) return $history[$index]['content'];
+    }
+    return null;
+}
+
 function receptionist_knowledge_is_fact_request(string $message, array $context = []): bool
 {
     if (receptionist_knowledge_is_social_input($message)) return false;
@@ -1190,7 +1398,11 @@ function receptionist_knowledge_is_fact_request(string $message, array $context 
     $resortSubject = preg_match('/\b(?:resort|venue|hall|hotel|room|villa|stay|booking|reservation|event|your|our|we|you|reception|receptionist|sevilla)\b/i', $lower) === 1;
     $specificSubject = preg_match('/\b(?:outside|catering|pets?|children|kids|parking|pool|wifi|aircon|check[- ]?in|walk.?in|villa|hotel|room|hall|venue|event|resort)\b/i', $lower) === 1;
     $yesNoFactQuestion = $question && preg_match('/\b(?:do\s+you|does\s+it|does\s+this|does\s+that|does\s+the|does\s+your|is\s+there|are\s+there|can\s+i|can\s+we)\b/i', $lower) === 1;
-    return ($factSignal && ($question || $resortSubject || $activeVenue || $specificSubject))
+    $roomDetails = receptionist_knowledge_is_room_details_request($message, $context);
+    $comparison = receptionist_knowledge_is_comparison_request($message);
+    return $roomDetails
+        || ($comparison && ($question || $activeVenue || $resortSubject || $specificSubject))
+        || ($factSignal && ($question || $resortSubject || $activeVenue || $specificSubject))
         || ($question && ($activeVenue || $resortSubject || $yesNoFactQuestion));
 }
 
@@ -1270,7 +1482,9 @@ function receptionist_knowledge_compose_selection(array $records, array $candida
         if ($venueMentioned && (($record['category'] ?? null) !== 'Hotel Room' || $roomGroupMentioned || count($sameVenueRows) === 1)) {
             $answerContext['intent'] = $record['category'];
             $answerContext['active_venue_id'] = (int)$record['venue_id'];
-            if (!empty($record['room_group_id'])) $answerContext['active_room_group_id'] = (int)$record['room_group_id'];
+            if (!empty($record['room_group_id']) && ($roomGroupMentioned || count($sameVenueRows) === 1)) {
+                $answerContext['active_room_group_id'] = (int)$record['room_group_id'];
+            }
         }
     }
     $label = trim((string)($record['name'] ?? '') . (isset($record['room_type']) ? ' — ' . $record['room_type'] : ''));
@@ -1550,8 +1764,25 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
             break;
         }
     }
+    $pendingStep = receptionist_knowledge_pending_booking_step($baseSlots, $history);
+    $currentCategorySwitch = receptionist_knowledge_explicit_category_switch($message);
+    if (($currentCategorySwitch !== null && $currentCategorySwitch !== ($baseSlots['intent'] ?? null))
+        || receptionist_knowledge_is_generic_booking_start($message)) $pendingStep = null;
+    $pendingBareGuestCount = receptionist_knowledge_pending_bare_guest_count($message, $baseSlots, $history);
+    if ($pendingBareGuestCount !== null && !$pendingBareGuestCount['valid']) {
+        $clarification = receptionist_knowledge_pending_booking_clarification('group_size', $language, $baseSlots);
+        $clarification['reply'] = $language === 'fil'
+            ? 'Kailangan ko ng buong bilang mula 1 pataas para sa guest count. Ilang bisita ang kasama?'
+            : 'Please enter a whole guest count from 1 to 10,000. How many guests are included?';
+        return $clarification;
+    }
     $tokens = receptionist_knowledge_tokens($message);
-    if (!$tokens) return null;
+    if (!$tokens && $pendingBareGuestCount === null) {
+        if ($pendingStep !== null && !receptionist_knowledge_is_fact_request($message, $baseSlots)) {
+            return receptionist_knowledge_pending_booking_clarification($pendingStep, $language, $baseSlots);
+        }
+        return null;
+    }
     $lower = receptionist_knowledge_normalize_message($message);
     $route = receptionist_knowledge_intent($message);
     $routeCategory = in_array($route['kind'] ?? null, ['booking', 'booking_process'], true) ? ($route['category'] ?? null) : null;
@@ -1587,7 +1818,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     }
     $walkInReply = receptionist_knowledge_walk_in_reply($message, $language, $baseSlots);
     if ($walkInReply !== null) return $walkInReply;
-    $bookingContinuation = receptionist_knowledge_booking_continuation($records, $message, $language, $baseSlots, $route, $category);
+    $bookingContinuation = receptionist_knowledge_booking_continuation($records, $message, $language, $baseSlots, $route, $category, $pendingBareGuestCount['count'] ?? null, $pendingStep);
     if ($bookingContinuation !== null) return $bookingContinuation;
     if (($route['kind'] ?? null) === 'booking' && empty($baseSlots['intent'])) {
         $bookingCategory = $category;
@@ -1672,6 +1903,116 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         };
         return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $prefix['booking'] . ' ' . $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => $quickReplies];
     }
+    $roomDetailsIntent = receptionist_knowledge_is_room_details_request($message, $baseSlots);
+    $roomComparisonIntent = receptionist_knowledge_is_comparison_request($message);
+    $pendingRoomFollowup = receptionist_knowledge_pending_room_followup($history);
+    if ($pendingRoomFollowup === 'details') $roomDetailsIntent = true;
+    if ($pendingRoomFollowup === 'comparison') $roomComparisonIntent = true;
+    $activeVenueId = receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null);
+    $activeRoomGroupId = receptionist_knowledge_positive_int($baseSlots['active_room_group_id'] ?? null);
+    $sessionVenueId = $activeVenueId;
+    $namedParentRows = receptionist_knowledge_hotel_parent_matches($records, $message);
+    $namedExactRows = receptionist_knowledge_explicit_venue_matches($records, $message, 'Hotel Room');
+    $pendingParentMessage = receptionist_knowledge_pending_room_parent_message($history);
+    if (!$namedParentRows && $pendingParentMessage !== null) {
+        $namedParentRows = receptionist_knowledge_hotel_parent_matches($records, $pendingParentMessage);
+    }
+    $activeHotelRows = [];
+    if (($baseSlots['intent'] ?? null) === 'Hotel Room' && $activeVenueId !== null && $activeRoomGroupId === null) {
+        foreach ($records as $record) {
+            if (($record['kind'] ?? null) === 'venue' && ($record['category'] ?? null) === 'Hotel Room'
+                && (int)($record['venue_id'] ?? 0) === $activeVenueId) $activeHotelRows[] = $record;
+        }
+    }
+    $roomSelectionRows = $namedParentRows ?: $activeHotelRows;
+    $typedActiveRows = array_values(array_filter($roomSelectionRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($message, $record)));
+    $messagePhrase = receptionist_knowledge_normalized_phrase($message);
+    $isRoomTypeSelection = count($typedActiveRows) === 1 && strlen($messagePhrase) <= 32;
+    if ($isRoomTypeSelection) {
+        $selectedType = receptionist_knowledge_normalized_phrase((string)($typedActiveRows[0]['room_type'] ?? ''));
+        $selectedType = trim((string)preg_replace('/\broom\b/', '', $selectedType));
+        $isRoomTypeSelection = in_array($messagePhrase, [$selectedType, receptionist_knowledge_normalized_phrase((string)($typedActiveRows[0]['room_type'] ?? ''))], true);
+    }
+    $knownIntent = $baseSlots['intent'] ?? null;
+    $hasHotelReference = (bool)$namedParentRows || (bool)$namedExactRows
+        || $knownIntent === 'Hotel Room'
+        || ($knownIntent === null && preg_match('/\b(?:hotel|room)\b/i', $lower) === 1);
+    $unscopedPronounDetails = $roomDetailsIntent && $activeVenueId === null && !$namedParentRows
+        && !in_array($baseSlots['intent'] ?? null, RECEPTIONIST_KNOWLEDGE_CATEGORIES, true);
+    if ((($roomDetailsIntent || $roomComparisonIntent || $isRoomTypeSelection) && $hasHotelReference) || $unscopedPronounDetails) {
+        $namedVenueIds = array_values(array_unique(array_map(static fn(array $record): int => (int)($record['venue_id'] ?? 0), $namedParentRows)));
+        if (count($namedVenueIds) === 1 && $namedVenueIds[0] > 0 && $namedVenueIds[0] !== $activeVenueId) {
+            $activeVenueId = $namedVenueIds[0];
+            $activeRoomGroupId = null;
+        }
+        $candidateRows = [];
+        if (count($namedExactRows) > 1) {
+            $candidateRows = $namedExactRows;
+        } elseif ($namedParentRows) {
+            $candidateRows = $namedParentRows;
+        } elseif ($activeVenueId !== null) {
+            foreach ($records as $record) {
+                if (($record['kind'] ?? null) !== 'venue' || ($record['category'] ?? null) !== 'Hotel Room'
+                    || (int)($record['venue_id'] ?? 0) !== $activeVenueId) continue;
+                $candidateRows[] = $record;
+            }
+        }
+        if ($namedExactRows) {
+            $namedIds = array_fill_keys(array_map(static fn(array $record): string => (string)($record['id'] ?? ''), $namedExactRows), true);
+            $candidateRows = array_values(array_filter($candidateRows, static fn(array $record): bool => isset($namedIds[(string)($record['id'] ?? '')])));
+        } elseif ($activeRoomGroupId !== null) {
+            $candidateRows = array_values(array_filter($candidateRows, static fn(array $record): bool => (int)($record['room_group_id'] ?? 0) === $activeRoomGroupId));
+        } else {
+            $typedRows = array_values(array_filter($candidateRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($message, $record)));
+            if ($typedRows) $candidateRows = $typedRows;
+        }
+
+        $followupSlots = $baseSlots;
+        $targetVenueIds = array_values(array_unique(array_map(static fn(array $record): int => (int)($record['venue_id'] ?? 0), $candidateRows)));
+        if (count($candidateRows) === 1 && count($targetVenueIds) === 1 && $targetVenueIds[0] > 0) {
+            if ($sessionVenueId !== $targetVenueIds[0]) unset($followupSlots['active_room_group_id']);
+            $followupSlots['intent'] = 'Hotel Room';
+            $followupSlots['active_venue_id'] = $targetVenueIds[0];
+            $followupSlots['active_room_group_id'] = (int)$candidateRows[0]['room_group_id'];
+        }
+
+        if (count($candidateRows) === 1) {
+            $room = $candidateRows[0];
+            $followupSlots['intent'] = 'Hotel Room';
+            $followupSlots['active_venue_id'] = (int)$room['venue_id'];
+            $followupSlots['active_room_group_id'] = (int)$room['room_group_id'];
+            $name = trim((string)($room['name'] ?? 'Room') . ' — ' . (string)($room['room_type'] ?? ''));
+            if ($roomDetailsIntent || (!$roomComparisonIntent && $isRoomTypeSelection)) {
+                return [
+                    'mode' => 'knowledge', 'booking_continuation' => true, 'action' => 'venue',
+                    'reply' => $language === 'fil' ? "Narito ang detalye ng {$name}." : "Here are the details for {$name}.",
+                    'faq_id' => null, 'slots' => $followupSlots, 'missing_slots' => [],
+                    'quick_replies' => [], 'quick_actions' => ['venue_details', 'venue_change', 'start_over'],
+                ];
+            }
+
+            $capacity = isset($room['capacity_max']) ? 'It lists capacity up to ' . number_format((int)$room['capacity_max']) . ' guests' : 'Its guest capacity is not listed';
+            $beds = isset($room['bed_count_min']) ? ' and ' . number_format((int)$room['bed_count_min']) . ' bed' . ((int)$room['bed_count_min'] === 1 ? '' : 's') : '';
+            $reason = $capacity . $beds . '. ';
+            if (($followupSlots['preference'] ?? null) === 'best_fit') {
+                $estimatedTotal = !empty($followupSlots['start_date']) && !empty($followupSlots['end_date']);
+                $reason .= 'Your best-fit search ranks by capacity fit, then listed bed count and ' . ($estimatedTotal ? 'estimated stay total' : 'estimated nightly amount') . '. ';
+            }
+            $reason .= 'Those factors explain the fit; the published room facts alone do not establish that it is better overall.';
+            return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reason, 'faq_id' => null, 'slots' => $followupSlots, 'missing_slots' => [], 'quick_replies' => [], 'show_support_contact_cta' => false];
+        }
+
+        $roomLabels = [];
+        foreach ($candidateRows as $record) {
+            $roomType = trim((string)($record['room_type'] ?? ''));
+            if ($roomType !== '' && !in_array($roomType, $roomLabels, true)) $roomLabels[] = $roomType;
+        }
+        $reply = $candidateRows
+            ? ($language === 'fil' ? 'Aling eksaktong room type ang tinutukoy mo?' : 'Which exact room type do you mean?')
+            : ($language === 'fil' ? 'Aling venue o hotel room ang gusto mong pag-usapan? Para sa hotel stay, ilagay din ang room type.' : 'Which venue or hotel room do you mean? For a hotel stay, include the room type too.');
+        return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reply, 'faq_id' => null, 'slots' => $followupSlots, 'missing_slots' => ['active_room_group_id'], 'quick_replies' => array_slice($roomLabels, 0, 4), 'show_support_contact_cta' => false];
+    }
+
     $venueId = receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null);
     $roomGroupId = receptionist_knowledge_positive_int($baseSlots['active_room_group_id'] ?? null);
     $selectedContextVenue = $venueId !== null
@@ -2062,6 +2403,10 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 if ($parts) return ['action' => 'ask', 'reply' => $prefix['contact'] . "\n" . implode("\n", $parts), 'faq_id' => null, 'quick_replies' => ['Booking', 'Payment', 'Support FAQs']];
             }
         }
+    }
+    if ($pendingStep !== null && !receptionist_knowledge_is_fact_request($message, $baseSlots)
+        && count(receptionist_knowledge_tokens($message)) <= 8) {
+        return receptionist_knowledge_pending_booking_clarification($pendingStep, $language, $baseSlots);
     }
     return null;
 }

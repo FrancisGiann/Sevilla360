@@ -4,6 +4,29 @@
  * Handles 360 Panolens Viewer, Dynamic Galleries, and Mobile Touch Events
  * ==========================================================================
  */
+const showroomResortDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Manila",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+const showroomResortToday = (instant = new Date()) => {
+  const parts = Object.fromEntries(showroomResortDateFormatter.formatToParts(instant).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const showroomIsCanonicalDate = (value, instant = new Date()) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.toISOString().slice(0, 10) === value && value >= showroomResortToday(instant);
+};
+const showroomIsSelectableDate = (value, category, step, checkInDate, instant = new Date()) => {
+  if (!showroomIsCanonicalDate(value, instant)) return false;
+  if (category !== "Hotel Room" || step !== "checkOutDate") return true;
+  return showroomIsCanonicalDate(checkInDate, instant) && value > checkInDate;
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   if (window.__sevilla360ShowroomInitialized === true) return;
   window.__sevilla360ShowroomInitialized = true;
@@ -1323,13 +1346,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     };
-    const todayLocal = () => localDateString(new Date());
-    const isCanonicalDate = value => {
-      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const [year, month, day] = value.split("-").map(Number);
-      const date = new Date(year, month - 1, day);
-      return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day && value >= todayLocal();
-    };
+    const todayAtResort = () => showroomResortToday();
+    const isCanonicalDate = value => showroomIsCanonicalDate(value);
     const addLocalDays = (value, days) => {
       const [year, month, day] = value.split("-").map(Number);
       const date = new Date(year, month - 1, day);
@@ -1365,6 +1383,34 @@ document.addEventListener("DOMContentLoaded", () => {
     const monthStart = date => new Date(date.getFullYear(), date.getMonth(), 1);
     const monthDays = date => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
     const calendarMonthLabel = date => date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    let receptionistCalendarRefreshTimer = null;
+    const activeDateQuestion = () => receptionistChoices?.querySelector(".receptionist-date-question") || null;
+    const refreshActiveDateQuestion = () => activeDateQuestion()?.refreshDateEligibility?.();
+    const stopReceptionistCalendarRefresh = () => {
+      if (receptionistCalendarRefreshTimer !== null) window.clearTimeout(receptionistCalendarRefreshTimer);
+      receptionistCalendarRefreshTimer = null;
+    };
+    const scheduleReceptionistCalendarRefresh = () => {
+      stopReceptionistCalendarRefresh();
+      if (!activeDateQuestion()) return;
+      const [year, month, day] = todayAtResort().split("-").map(Number);
+      // Asia/Manila stays at UTC+08:00, so this is the next resort-local midnight.
+      const nextMidnight = Date.UTC(year, month - 1, day + 1) - 8 * 60 * 60 * 1000;
+      receptionistCalendarRefreshTimer = window.setTimeout(() => {
+        receptionistCalendarRefreshTimer = null;
+        refreshActiveDateQuestion();
+        if (activeDateQuestion()) scheduleReceptionistCalendarRefresh();
+      }, Math.max(1, nextMidnight - Date.now() + 100));
+    };
+    const refreshCalendarOnResume = () => {
+      refreshActiveDateQuestion();
+      scheduleReceptionistCalendarRefresh();
+    };
+    window.addEventListener("focus", refreshCalendarOnResume);
+    window.addEventListener("pageshow", refreshCalendarOnResume);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refreshCalendarOnResume();
+    });
     const availabilityDateSummary = category => {
       if (guideState.availabilityStatus !== "confirmed" || !guideContext.startDate) return "";
       const start = formatLocalDate(guideContext.startDate);
@@ -1452,9 +1498,9 @@ document.addEventListener("DOMContentLoaded", () => {
         ? guideContext.endDate || guideState.dateDraft
         : guideContext.startDate || guideState.dateDraft;
       const selectedLocal = localDateFromCanonical(selectedDate);
-      const currentMonth = monthStart(new Date());
+      const currentMonth = monthStart(localDateFromCanonical(todayAtResort()));
       if (!guideState.dateMonth || guideState.dateQuestionCategory !== category || guideState.dateQuestionStep !== step) {
-        guideState.dateMonth = monthStart(selectedLocal || new Date());
+        guideState.dateMonth = monthStart(selectedLocal || localDateFromCanonical(todayAtResort()));
         guideState.dateQuestionCategory = category;
         guideState.dateQuestionStep = step;
       }
@@ -1465,8 +1511,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       guideState.dateDraft = selectedDate || null;
 
-      const isSelectable = value => isCanonicalDate(value)
-        && !(category === "Hotel Room" && step === "checkOutDate" && guideContext.startDate && value <= guideContext.startDate);
+      const isSelectable = value => showroomIsSelectableDate(value, category, step, guideContext.startDate);
+      if (guideState.dateDraft && !isSelectable(guideState.dateDraft)) {
+        guideState.dateDraft = null;
+        if (guideState.dateFocus && !isSelectable(guideState.dateFocus)) guideState.dateFocus = null;
+        if (category === "Hotel Room" && step === "checkOutDate") guideContext.endDate = null;
+        else guideContext.startDate = null;
+      }
       const firstSelectableInMonth = () => {
         const total = monthDays(guideState.dateMonth);
         for (let day = 1; day <= total; day += 1) {
@@ -1484,11 +1535,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       };
       const renderCalendar = (focusValue = null) => {
-        const month = guideState.dateMonth;
-        monthYear.textContent = calendarMonthLabel(month);
+        const today = todayAtResort();
+        const currentMonth = monthStart(localDateFromCanonical(today));
         const minimumMonth = category === "Hotel Room" && step === "checkOutDate" && guideContext.startDate
           ? monthStart(localDateFromCanonical(guideContext.startDate))
           : currentMonth;
+        if (guideState.dateMonth < minimumMonth) guideState.dateMonth = minimumMonth;
+        const month = guideState.dateMonth;
+        monthYear.textContent = calendarMonthLabel(month);
         previousMonth.disabled = month.getFullYear() === minimumMonth.getFullYear() && month.getMonth() === minimumMonth.getMonth();
         grid.replaceChildren();
         const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
@@ -1499,7 +1553,6 @@ document.addEventListener("DOMContentLoaded", () => {
           grid.appendChild(blank);
         }
         const selected = guideState.dateDraft;
-        const today = todayLocal();
         const total = monthDays(month);
         const targetFocus = focusValue || guideState.dateFocus || selected || firstSelectableInMonth();
         for (let day = 1; day <= total; day += 1) {
@@ -1525,6 +1578,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           if (!unavailable) {
             dayButton.addEventListener("click", () => {
+              if (!isSelectable(value)) { wrap.refreshDateEligibility(); return; }
               guideState.dateDraft = value;
               guideState.dateFocus = value;
               input.value = value;
@@ -1561,7 +1615,7 @@ document.addEventListener("DOMContentLoaded", () => {
               event.preventDefault();
               const targetValue = canonicalFromLocalDate(target);
               if (!isSelectable(targetValue)) {
-                if (targetValue < todayLocal()) return;
+                if (targetValue < todayAtResort()) return;
                 guideState.dateMonth = monthStart(target);
                 const nextValue = isSelectable(targetValue) ? targetValue : firstSelectableInMonth();
                 guideState.dateFocus = nextValue;
@@ -1584,6 +1638,30 @@ document.addEventListener("DOMContentLoaded", () => {
         input.value = guideState.dateDraft || "";
         selectedText.textContent = guideState.dateDraft ? `Selected: ${formatCalendarDate(guideState.dateDraft)}` : "Choose a date from the calendar.";
         check.disabled = !isSelectable(guideState.dateDraft);
+      };
+      wrap.refreshDateEligibility = () => {
+        if (!wrap.isConnected) return;
+        const hadCalendarFocus = wrap.contains(document.activeElement);
+        const focusedDate = hadCalendarFocus ? document.activeElement.getAttribute("data-calendar-date") : null;
+        if (category === "Hotel Room" && step === "checkOutDate" && !isCanonicalDate(guideContext.startDate)) {
+          guideContext.startDate = null;
+          guideContext.endDate = null;
+          guideState.dateDraft = null;
+          guideState.dateMonth = null;
+          renderQuestion("Hotel Room", "checkInDate");
+          if (hadCalendarFocus) focusFirstChoice();
+          return;
+        }
+        if (guideState.dateDraft && !isSelectable(guideState.dateDraft)) {
+          guideState.dateDraft = null;
+          if (guideState.dateFocus && !isSelectable(guideState.dateFocus)) guideState.dateFocus = null;
+          if (category === "Hotel Room" && step === "checkOutDate") guideContext.endDate = null;
+          else guideContext.startDate = null;
+        }
+        const safeFocusedDate = focusedDate && isSelectable(focusedDate) ? focusedDate : null;
+        if (focusedDate && !safeFocusedDate) guideState.dateFocus = null;
+        renderCalendar(safeFocusedDate);
+        if (focusedDate) requestAnimationFrame(() => focusDay(safeFocusedDate));
       };
       previousMonth.addEventListener("click", () => {
         if (previousMonth.disabled) return;
@@ -2085,6 +2163,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (key === "eventDate" || key === "checkInDate" || key === "checkOutDate" || key === "visitDate") {
+        if (category === "Hotel Room" && key === "checkOutDate" && !isCanonicalDate(guideContext.startDate)) {
+          guideContext.startDate = null;
+          guideContext.endDate = null;
+          guideState.dateDraft = null;
+          guideState.dateMonth = null;
+          key = "checkInDate";
+        }
         receptionistRoot.classList.add("is-date-state");
         receptionistRoot.classList.remove("is-venue-state", "is-venue-overview", "is-venue-dialogue");
         guideState.dateQuestionStep = key;
@@ -2094,6 +2179,7 @@ document.addEventListener("DOMContentLoaded", () => {
           createChoice(category === "Hotel Room" ? "Choose dates later" : "Choose date later", "receptionist-choice-secondary", { "data-receptionist-date-later": "true" }),
           createBackChoice()
         );
+        scheduleReceptionistCalendarRefresh();
         return;
       }
       receptionistRoot.classList.remove("is-date-state");
@@ -3164,10 +3250,10 @@ document.addEventListener("DOMContentLoaded", () => {
         receptionistState.activeRoomId = null;
       }
       if (slots.intent) guideContext.intent = slots.intent;
-      ["occasion", "purpose", "preference", "start_date", "end_date"].forEach(key => {
-        if (slots[key] !== undefined && slots[key] !== null && slots[key] !== "") guideContext[{ start_date: "startDate", end_date: "endDate" }[key] || key] = slots[key];
+      ["occasion", "purpose", "preference"].forEach(key => {
+        if (slots[key] !== undefined && slots[key] !== null && slots[key] !== "") guideContext[key] = slots[key];
       });
-      if (Array.isArray(result.clear_slots) && result.clear_slots.includes("end_date")) guideContext.endDate = null;
+      window.SevillaReceptionistChat.applyDateSlotPatch(guideContext, slots, result.clear_slots);
       if (slots.group_size !== undefined && slots.group_size !== null && slots.group_size !== "") {
         const exactCount = Number(slots.group_size);
         guideContext.groupSizeExact = Number.isSafeInteger(exactCount) && exactCount > 0 ? exactCount : null;
@@ -3376,7 +3462,22 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target.hasAttribute("data-receptionist-date-submit")) {
         const input = receptionistRoot.querySelector("[data-receptionist-date-input]");
         const value = guideState.dateDraft || input?.value || (guideState.dateQuestionStep === "checkOutDate" ? guideContext.endDate : guideContext.startDate);
-        if (!isCanonicalDate(value)) {
+        if (receptionistState.activeCategory === "Hotel Room" && guideState.dateQuestionStep === "checkOutDate" && !isCanonicalDate(guideContext.startDate)) {
+          guideContext.startDate = null;
+          guideContext.endDate = null;
+          guideState.dateDraft = null;
+          guideState.dateMonth = null;
+          renderQuestion("Hotel Room", "checkInDate");
+          focusFirstChoice();
+          return;
+        }
+        if (!showroomIsSelectableDate(value, receptionistState.activeCategory, guideState.dateQuestionStep, guideContext.startDate)) {
+          activeDateQuestion()?.refreshDateEligibility?.();
+          if (receptionistState.activeCategory === "Hotel Room" && guideState.dateQuestionStep === "checkOutDate") {
+            setDialogue("Choose a later checkout", "Checkout must be after check-in so the stay includes at least one night.");
+            focusFirstChoice();
+            return;
+          }
           setDialogue(dateQuestionTitle(receptionistState.activeCategory, guideState.dateQuestionStep), `Choose a valid ${dateAvailabilityLabel(receptionistState.activeCategory, guideState.dateQuestionStep).toLowerCase()} from today onward.`);
           focusFirstChoice();
           return;
@@ -3390,11 +3491,6 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         if (receptionistState.activeCategory === "Hotel Room" && guideState.dateQuestionStep === "checkOutDate") {
-          if (!isCanonicalDate(guideContext.startDate) || value <= guideContext.startDate) {
-            setDialogue("Choose a later checkout", "Checkout must be after check-in so the stay includes at least one night.");
-            focusFirstChoice();
-            return;
-          }
           guideContext.endDate = value;
         } else {
           guideContext.startDate = value;

@@ -26,6 +26,45 @@ $knowledgeSettings = [
     'biz_policies' => "Public cancellations are reviewed by the resort team.\nAdmin-initiated force cancellations receive a 100% refund; processing fee percentage is snapshotted internally.",
 ];
 $knowledgeRecords = receptionist_knowledge_build_records($knowledgeRows, $knowledgeSettings, $defaults);
+$roomFollowupRecords = receptionist_knowledge_build_records([
+    ['id' => 80, 'category' => 'Hotel Room', 'name' => 'Rafael', 'room_type' => 'Dormitory Room', 'room_group_id' => 31, 'bed_count' => 2, 'room_base_capacity' => 2, 'room_max_capacity' => 4, 'nightly_rate' => 1800, 'amenities' => 'Wi-Fi'],
+    ['id' => 80, 'category' => 'Hotel Room', 'name' => 'Rafael', 'room_type' => 'Down VIP Room', 'room_group_id' => 32, 'bed_count' => 1, 'room_base_capacity' => 1, 'room_max_capacity' => 2, 'nightly_rate' => 3200, 'amenities' => 'Wi-Fi, Breakfast'],
+    ['id' => 81, 'category' => 'Hotel Room', 'name' => 'Rafael Down', 'room_type' => 'VIP Suite', 'room_group_id' => 33, 'bed_count' => 1, 'room_base_capacity' => 1, 'room_max_capacity' => 2, 'nightly_rate' => 4200, 'amenities' => 'Wi-Fi'],
+    ['id' => 81, 'category' => 'Hotel Room', 'name' => 'Rafael Down', 'room_type' => 'Standard Room', 'room_group_id' => 34, 'bed_count' => 2, 'room_base_capacity' => 2, 'room_max_capacity' => 3, 'nightly_rate' => 2500, 'amenities' => 'Wi-Fi'],
+], $knowledgeSettings, $defaults);
+$roomFollowupContext = [
+    'intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'best_fit',
+    'start_date' => '2037-11-14', 'end_date' => '2037-11-15',
+];
+$ambiguousRafaelReason = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael better?', 'en', $roomFollowupContext);
+$unnamedRoomDetails = receptionist_knowledge_reply($roomFollowupRecords, 'what are its details?', 'en');
+$checks['ambiguous hotel comparison asks which room type without choosing one'] = ($ambiguousRafaelReason['action'] ?? null) === 'ask'
+    && ($ambiguousRafaelReason['missing_slots'] ?? []) === ['active_room_group_id']
+    && ($ambiguousRafaelReason['quick_replies'] ?? []) === ['Dormitory Room', 'Down VIP Room']
+    && !isset($ambiguousRafaelReason['slots']['active_venue_id'])
+    && !isset($ambiguousRafaelReason['slots']['active_room_group_id'])
+    && !str_contains(strtolower((string)($ambiguousRafaelReason['reply'] ?? '')), 'capacity up to');
+$checks['unnamed pronoun details without room context ask a focused clarification'] = ($unnamedRoomDetails['action'] ?? null) === 'ask'
+    && str_contains(strtolower((string)($unnamedRoomDetails['reply'] ?? '')), 'which venue or hotel room')
+    && !str_contains(strtolower((string)($unnamedRoomDetails['reply'] ?? '')), 'hello')
+    && receptionist_knowledge_is_fact_request('what are its details?');
+$ambiguousRafaelWithContext = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael better?', 'en', $roomFollowupContext);
+$selectedRafaelDormitory = receptionist_knowledge_reply(
+    $roomFollowupRecords,
+    'Dormitory Room',
+    'en',
+    $ambiguousRafaelWithContext['slots'] ?? [],
+    receptionist_ai_append_history([['role' => 'user', 'content' => 'why is Rafael better?']], 'why is Rafael better?', (string)($ambiguousRafaelWithContext['reply'] ?? ''))
+);
+$checks['clarification room type answer resolves the pending comparison to one exact group'] = ($selectedRafaelDormitory['action'] ?? null) === 'ask'
+    && ($selectedRafaelDormitory['slots']['active_venue_id'] ?? null) === 80
+    && ($selectedRafaelDormitory['slots']['active_room_group_id'] ?? null) === 31
+    && str_contains((string)($selectedRafaelDormitory['reply'] ?? ''), 'up to 4 guests')
+    && str_contains(strtolower((string)($selectedRafaelDormitory['reply'] ?? '')), 'not establish');
+$rwdPrefixMatch = receptionist_knowledge_hotel_parent_matches($roomFollowupRecords, 'Why is Rafael Down better?');
+$checks['hotel parent matching prefers the longest explicitly named building'] = count($rwdPrefixMatch) === 2
+    && count(array_unique(array_column($rwdPrefixMatch, 'venue_id'))) === 1
+    && ($rwdPrefixMatch[0]['venue_id'] ?? null) === 81;
 $sequenceContext = [];
 $sequenceAnswers = [];
 foreach (['i want to book a venue', 'i wnt a wedding', 'next week sat', 'Event', '100 guest', 'i want infinity hall'] as $sequenceMessage) {
@@ -250,6 +289,73 @@ foreach (['AI_ENABLED', 'AI_API_KEY', 'AI_MODEL'] as $index => $key) {
 $checks['disabled or missing provider configuration falls back without a key'] = $disabledProvider === null && $missingProvider === null;
 
 $db = mysqli_init();
+$rafaelCatalog = [
+    ['id' => 80, 'category' => 'Hotel Room', 'name' => 'Rafael', 'room_type' => 'Dormitory Room', 'room_group_id' => 31],
+    ['id' => 80, 'category' => 'Hotel Room', 'name' => 'Rafael', 'room_type' => 'Down VIP Room', 'room_group_id' => 32],
+    ['id' => 81, 'category' => 'Hotel Room', 'name' => 'Rafael Down', 'room_type' => 'VIP Suite', 'room_group_id' => 33],
+    ['id' => 81, 'category' => 'Hotel Room', 'name' => 'Rafael Down', 'room_type' => 'Standard Room', 'room_group_id' => 34],
+];
+$uniqueRafaelRecords = receptionist_knowledge_build_records([
+    ['id' => 80, 'category' => 'Hotel Room', 'name' => 'Rafael', 'room_type' => 'Dormitory Room', 'room_group_id' => 31, 'bed_count' => 2, 'room_base_capacity' => 2, 'room_max_capacity' => 4, 'nightly_rate' => 1800, 'amenities' => 'Wi-Fi'],
+], $knowledgeSettings, $defaults);
+$rationaleTurn = receptionist_knowledge_reply($uniqueRafaelRecords, 'why is Rafael better?', 'en', $roomFollowupContext);
+$preparedRationaleTurn = receptionist_ai_prepare_knowledge($db, $rationaleTurn ?? [], $roomFollowupContext, $rafaelCatalog);
+$rationaleHistory = receptionist_ai_append_history([], 'why is Rafael better?', (string)($preparedRationaleTurn['reply'] ?? ''));
+$detailsTurnOne = receptionist_knowledge_reply($uniqueRafaelRecords, 'what is that rooms details?', 'en', $preparedRationaleTurn['slots'] ?? [], $rationaleHistory);
+$preparedDetailsTurnOne = receptionist_ai_prepare_knowledge($db, $detailsTurnOne ?? [], $preparedRationaleTurn['slots'] ?? [], $rafaelCatalog);
+$detailsHistory = receptionist_ai_append_history($rationaleHistory, 'what is that rooms details?', (string)($preparedDetailsTurnOne['reply'] ?? ''));
+$sessionResolution = receptionist_ai_resolve_context($preparedDetailsTurnOne['slots'] ?? [], [], null);
+$sessionDetailsContext = receptionist_ai_validate_slots($db, $sessionResolution['request_slots'], $sessionResolution['base_slots'], $rafaelCatalog);
+$detailsTurnTwo = receptionist_knowledge_reply($uniqueRafaelRecords, 'what is that rooms details?', 'en', $sessionDetailsContext, $detailsHistory);
+$preparedDetailsTurnTwo = receptionist_ai_prepare_knowledge($db, $detailsTurnTwo ?? [], $sessionDetailsContext, $rafaelCatalog);
+$checks['prepared Rafael rationale keeps exact group and repeated room details action with booking context'] = ($rationaleTurn['action'] ?? null) === 'ask'
+    && ($preparedRationaleTurn['slots']['active_room_group_id'] ?? null) === 31
+    && ($preparedDetailsTurnOne['action'] ?? null) === 'venue'
+    && ($preparedDetailsTurnTwo['action'] ?? null) === 'venue'
+    && ($preparedDetailsTurnTwo['slots']['active_venue_id'] ?? null) === 80
+    && ($preparedDetailsTurnTwo['slots']['active_room_group_id'] ?? null) === 31
+    && ($preparedDetailsTurnTwo['slots']['group_size'] ?? null) === 2
+    && ($preparedDetailsTurnTwo['slots']['preference'] ?? null) === 'best_fit'
+    && ($preparedDetailsTurnTwo['slots']['start_date'] ?? null) === '2037-11-14'
+    && ($preparedDetailsTurnTwo['slots']['end_date'] ?? null) === '2037-11-15';
+$ambiguousPrepared = receptionist_ai_prepare_knowledge($db, $ambiguousRafaelReason, $roomFollowupContext, $rafaelCatalog);
+$switchQuestion = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael Down better?', 'en', [
+    'intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'best_fit',
+    'start_date' => '2037-11-14', 'end_date' => '2037-11-15', 'active_venue_id' => 80, 'active_room_group_id' => 31,
+]);
+$preparedSwitchQuestion = receptionist_ai_prepare_knowledge($db, $switchQuestion ?? [], [
+    'intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'best_fit',
+    'start_date' => '2037-11-14', 'end_date' => '2037-11-15', 'active_venue_id' => 80, 'active_room_group_id' => 31,
+], $rafaelCatalog);
+$switchHistory = receptionist_ai_append_history([], 'why is Rafael Down better?', (string)($preparedSwitchQuestion['reply'] ?? ''));
+$switchGroup = receptionist_knowledge_reply($roomFollowupRecords, 'VIP Suite', 'en', $preparedSwitchQuestion['slots'] ?? [], $switchHistory);
+$preparedSwitchGroup = receptionist_ai_prepare_knowledge($db, $switchGroup ?? [], $preparedSwitchQuestion['slots'] ?? [], $rafaelCatalog);
+$checks['ambiguous building switch retains prior exact identity until one new group is selected'] = ($ambiguousPrepared['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($ambiguousPrepared['slots']['group_size'] ?? null) === 2
+    && ($ambiguousPrepared['slots']['preference'] ?? null) === 'best_fit'
+    && ($ambiguousPrepared['slots']['start_date'] ?? null) === '2037-11-14'
+    && !array_key_exists('active_venue_id', $ambiguousPrepared['slots'])
+    && !array_key_exists('active_room_group_id', $ambiguousPrepared['slots'])
+    && ($preparedSwitchQuestion['slots']['active_venue_id'] ?? null) === 80
+    && ($preparedSwitchQuestion['slots']['active_room_group_id'] ?? null) === 31
+    && ($preparedSwitchGroup['slots']['active_venue_id'] ?? null) === 81
+    && ($preparedSwitchGroup['slots']['active_room_group_id'] ?? null) === 33;
+$modelRoomRecord = array_values(array_filter($uniqueRafaelRecords, static fn(array $record): bool => ($record['kind'] ?? null) === 'venue'))[0] ?? [];
+$modelRoomCandidates = receptionist_knowledge_model_candidates($uniqueRafaelRecords, 'Rafael capacity', $roomFollowupContext);
+$modelRoomTurn = receptionist_ai_normalize_helper_output([
+    'language' => 'en', 'action' => 'ask', 'reply' => 'safe', 'knowledge_id' => $modelRoomRecord['id'] ?? null,
+    'knowledge_property' => 'capacity', 'faq_id' => null, 'slots' => [], 'quick_replies' => [],
+], $db, $roomFollowupContext, $defaults, 'en', $rafaelCatalog, $uniqueRafaelRecords, $modelRoomCandidates, 'Rafael capacity');
+$preparedModelRoomTurn = receptionist_ai_prepare_knowledge($db, $modelRoomTurn['knowledge_answer'] ?? [], $roomFollowupContext, $rafaelCatalog);
+$modelFollowup = receptionist_knowledge_reply($uniqueRafaelRecords, 'what is that rooms details?', 'en', $preparedModelRoomTurn['slots'] ?? [], [[
+    'role' => 'user', 'content' => 'Rafael capacity',
+], [
+    'role' => 'assistant', 'content' => (string)($preparedModelRoomTurn['reply'] ?? ''),
+]]);
+$checks['validated model capacity answer retains its exact room group for the following pronoun details request'] = ($modelRoomTurn['knowledge_answer']['slots']['active_room_group_id'] ?? null) === 31
+    && ($preparedModelRoomTurn['slots']['active_room_group_id'] ?? null) === 31
+    && ($modelFollowup['action'] ?? null) === 'venue'
+    && ($modelFollowup['slots']['active_room_group_id'] ?? null) === 31;
 $faq = $defaults[0];
 $normalized = receptionist_ai_normalize_output([
     'language' => 'en', 'action' => 'faq', 'reply' => 'ignored', 'faq_id' => $faq['id'], 'slots' => [], 'quick_replies' => ['Book']
@@ -630,26 +736,45 @@ $checks['AI environment defaults are disabled and keyless'] = str_contains($env,
     && str_contains($env, 'AI_PROVIDER=openrouter')
     && str_contains($env, 'AI_TIMEOUT_SECONDS=20')
     && str_contains($env, 'AI_MAX_OUTPUT_TOKENS=600')
+    && str_contains($env, 'AI_GOOGLE_REASONING_EFFORT=low')
     && preg_match('/^AI_API_KEY=\s*$/m', $env) === 1
     && preg_match('/^AI_MODEL=\s*$/m', $env) === 1;
 
-$captureRequest = static function (string $model, string $providerId): array {
+$checks['Google reasoning effort accepts only documented levels'] = receptionist_ai_google_reasoning_effort('low') === 'low'
+    && receptionist_ai_google_reasoning_effort(' MEDIUM ') === 'medium'
+    && receptionist_ai_google_reasoning_effort('high') === 'high'
+    && receptionist_ai_google_reasoning_effort('minimal') === null
+    && receptionist_ai_google_reasoning_effort('none') === null;
+
+$captureRequest = static function (string $model, string $providerId, ?string $reasoningEffort = null): array {
     $capturedRequest = [];
     $provider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', $model, $providerId, '', 'Test',
         static function (string $url, array $headers, string $body, int $timeout, bool $structured) use (&$capturedRequest): array {
             $decoded = json_decode($body, true);
             $capturedRequest = is_array($decoded) ? $decoded : [];
             return ['status' => 200, 'raw' => json_encode(['choices' => [['message' => ['content' => json_encode(['language' => 'en', 'action' => 'social', 'reply' => 'Hi', 'knowledge_id' => null, 'knowledge_property' => null])], 'finish_reason' => 'stop']]])];
-        }, static function (int $milliseconds): void {}, static function (): float { return 1000.0; });
+        }, static function (int $milliseconds): void {}, static function (): float { return 1000.0; }, $reasoningEffort);
     $provider->complete([['role' => 'user', 'content' => 'hi']], 100, 5);
     return $capturedRequest;
 };
-$googleBareRequest = $captureRequest('gemini-3.6-flash', 'google');
-$googlePrefixedRequest = $captureRequest('models/gemini-3.6-flash', 'google');
-$openRouterRequest = $captureRequest('custom/model-id', 'openrouter');
-$checks['Google request model IDs use the documented bare form while other providers stay unchanged'] = ($googleBareRequest['model'] ?? null) === 'gemini-3.6-flash'
-    && ($googlePrefixedRequest['model'] ?? null) === 'gemini-3.6-flash'
+$googleBareRequest = $captureRequest('gemini-3.5-flash', 'google', 'low');
+$googlePrefixedRequest = $captureRequest('models/gemini-3.5-flash', 'google', 'low');
+$googlePreviousGenerationRequest = $captureRequest('gemini-2.5-flash', 'google', 'low');
+$googleLegacyRequest = $captureRequest('gemini-2.0-flash', 'google', 'low');
+$googleInvalidEffortRequest = $captureRequest('gemini-3.5-flash', 'google', 'minimal');
+$openRouterRequest = $captureRequest('custom/model-id', 'openrouter', 'high');
+$checks['Google request model IDs use the documented bare form while other providers stay unchanged'] = ($googleBareRequest['model'] ?? null) === 'gemini-3.5-flash'
+    && ($googlePrefixedRequest['model'] ?? null) === 'gemini-3.5-flash'
     && ($openRouterRequest['model'] ?? null) === 'custom/model-id';
+$checks['Gemini 3 request uses low reasoning and the model default temperature while other requests preserve temperature'] = ($googleBareRequest['reasoning_effort'] ?? null) === 'low'
+    && !array_key_exists('temperature', $googleBareRequest)
+    && !array_key_exists('reasoning_effort', $googleInvalidEffortRequest)
+    && ($googlePreviousGenerationRequest['temperature'] ?? null) === 0.2
+    && ($googlePreviousGenerationRequest['reasoning_effort'] ?? null) === 'low'
+    && !array_key_exists('reasoning_effort', $googleLegacyRequest)
+    && ($googleLegacyRequest['temperature'] ?? null) === 0.2
+    && !array_key_exists('reasoning_effort', $openRouterRequest)
+    && ($openRouterRequest['temperature'] ?? null) === 0.2;
 $checks['Google and OpenRouter requests use the bounded JSON schema without provider-specific options'] = is_array($googleBareRequest['response_format'] ?? null)
     && ($googleBareRequest['response_format']['type'] ?? null) === 'json_schema'
     && !array_key_exists('provider', $googleBareRequest)
@@ -693,6 +818,46 @@ $checks['hotel booking follow-up keeps PHP session intent when stale showroom co
     && ($hotelPreparedTwo['slots']['group_size'] ?? null) === 2
     && ($hotelPreparedTwo['missing_slots'][0] ?? null) === 'preference'
     && str_contains(strtolower($hotelPreparedTwo['reply'] ?? ''), 'room search');
+$numericHotelOpen = 'io want to book hotel';
+$numericHotelTurnOne = receptionist_knowledge_reply($knowledgeRecords, $numericHotelOpen, 'en');
+$numericHotelPreparedOne = receptionist_ai_prepare_knowledge($db, $numericHotelTurnOne ?? [], [], []);
+$numericHotelHistory = receptionist_ai_append_history([], $numericHotelOpen, (string)($numericHotelPreparedOne['reply'] ?? ''));
+$numericHotelResolution = receptionist_ai_resolve_context(
+    $numericHotelPreparedOne['slots'] ?? [],
+    [],
+    receptionist_knowledge_explicit_category_switch('2')
+);
+$numericHotelTurnTwo = receptionist_knowledge_reply(
+    $knowledgeRecords,
+    '2',
+    'en',
+    $numericHotelResolution['base_slots'] ?? [],
+    $numericHotelHistory
+);
+$numericHotelPreparedTwo = receptionist_ai_prepare_knowledge(
+    $db,
+    $numericHotelTurnTwo ?? [],
+    $numericHotelResolution['base_slots'] ?? [],
+    []
+);
+$numericHotelHistory = receptionist_ai_append_history($numericHotelHistory, '2', (string)($numericHotelPreparedTwo['reply'] ?? ''));
+$numericWithoutPendingFlow = receptionist_knowledge_reply($knowledgeRecords, '2', 'en');
+$invalidPendingCountsStayOnPrompt = true;
+foreach (['0', '-1', '10001', '2.5'] as $invalidGuestReply) {
+    $invalidAnswer = receptionist_knowledge_reply($knowledgeRecords, $invalidGuestReply, 'en', $numericHotelPreparedOne['slots'] ?? [], $numericHotelHistory ? array_slice($numericHotelHistory, 0, 2) : []);
+    $invalidPrepared = receptionist_ai_prepare_knowledge($db, $invalidAnswer ?? [], $numericHotelPreparedOne['slots'] ?? [], []);
+    if (($invalidPrepared['missing_slots'][0] ?? null) !== 'group_size'
+        || array_key_exists('group_size', $invalidPrepared['slots'] ?? [])) $invalidPendingCountsStayOnPrompt = false;
+}
+$checks['bare numeric hotel guest reply follows the typo opener through resolved, prepared session history'] = ($numericHotelPreparedOne['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($numericHotelPreparedOne['missing_slots'][0] ?? null) === 'group_size'
+    && ($numericHotelResolution['request_slots'] ?? null) === []
+    && ($numericHotelPreparedTwo['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($numericHotelPreparedTwo['slots']['group_size'] ?? null) === 2
+    && ($numericHotelPreparedTwo['missing_slots'][0] ?? null) === 'preference'
+    && str_contains(strtolower($numericHotelPreparedTwo['reply'] ?? ''), 'room search')
+    && $numericWithoutPendingFlow === null;
+$checks['invalid bare numeric guest replies repeat the pending count prompt without changing slots'] = $invalidPendingCountsStayOnPrompt;
 $poolFollowUpResolution = receptionist_ai_resolve_context(
     ['intent' => 'Hotel Room'], ['intent' => 'Event Hall'], receptionist_knowledge_explicit_category_switch('is there a pool?')
 );
@@ -805,7 +970,7 @@ $checks['full knowledge preparation clears a stale hotel checkout after a later 
     && ($preparedAvailabilityCorrection['slots']['start_date'] ?? null) === '2037-11-17'
     && !array_key_exists('end_date', $preparedAvailabilityCorrection['slots'] ?? [])
     && ($preparedAvailabilityCorrection['clear_slots'] ?? []) === ['end_date']
-    && str_contains($source('assets/js/showroom.js'), 'result.clear_slots.includes("end_date")');
+    && str_contains($source('assets/js/showroom.js'), 'applyDateSlotPatch(guideContext, slots, result.clear_slots)');
 $staleBookingContext = [
     'intent' => 'Event Hall', 'occasion' => 'wedding', 'group_size' => 100,
     'start_date' => '2036-01-01', 'active_venue_id' => 1,

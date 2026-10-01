@@ -544,11 +544,14 @@ window.process = {
                     <details class="receptionist-chat-tools">
                         <summary>More options</summary>
                         <div class="receptionist-chat-tools-menu">
-                            <div class="receptionist-chat-tool-group" role="group" aria-label="Explore venue categories">
-                                <button type="button" data-receptionist-chat-category="category_event_hall">Event halls</button>
-                                <button type="button" data-receptionist-chat-category="category_hotel_room">Hotel rooms</button>
-                                <button type="button" data-receptionist-chat-category="category_resort_villa">Resort villas</button>
-                            </div>
+                            <label class="receptionist-chat-category-label" for="receptionist-chat-category">Change booking type
+                                <select id="receptionist-chat-category" name="category" data-receptionist-chat-category-select>
+                                    <option value="" selected>Choose a type</option>
+                                    <option value="category_event_hall">Event halls</option>
+                                    <option value="category_hotel_room">Hotel rooms</option>
+                                    <option value="category_resort_villa">Resort villas</option>
+                                </select>
+                            </label>
                             <button type="button" data-receptionist-chat-prompt="What policies and FAQs can you help with?">Support FAQs</button>
                             <label class="receptionist-chat-locale-label" for="receptionist-chat-locale">Language
                                 <select id="receptionist-chat-locale" name="locale">

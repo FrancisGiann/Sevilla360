@@ -133,4 +133,38 @@ const dstRegression = spawnSync(process.execPath, ['-e', `
 });
 assert.equal(dstRegression.status, 0, `calendar-night arithmetic must survive daylight-saving transitions: ${dstRegression.stderr}`);
 
-console.log('PASS|calendar timezone normalization, inclusive Villa availability, and DST-safe night arithmetic');
+const showroomSource = fs.readFileSync(require('node:path').join(__dirname, '..', 'assets/js/showroom.js'), 'utf8');
+const showroomPath = require('node:path').join(__dirname, '..', 'assets/js/showroom.js');
+const checkResortDateTimezone = (timezone, instant, expectedBrowserToday, expectedResortToday) => {
+  const probe = spawnSync(process.execPath, ['-e', `
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const source = fs.readFileSync(${JSON.stringify(showroomPath)}, 'utf8');
+    const context = vm.createContext({ Date, Intl, document: { addEventListener() {} }, window: {} });
+    vm.runInContext(source + '\\nglobalThis.showroomResortToday = showroomResortToday; globalThis.showroomIsCanonicalDate = showroomIsCanonicalDate; globalThis.showroomIsSelectableDate = showroomIsSelectableDate;', context);
+    const instant = new Date(${JSON.stringify(instant)});
+    const browserToday = [instant.getFullYear(), String(instant.getMonth() + 1).padStart(2, '0'), String(instant.getDate()).padStart(2, '0')].join('-');
+    assert.equal(browserToday, ${JSON.stringify(expectedBrowserToday)});
+    assert.equal(context.showroomResortToday(instant), ${JSON.stringify(expectedResortToday)});
+    const [year, month, day] = ${JSON.stringify(expectedResortToday)}.split('-');
+    const [pastYear, pastMonth, pastDay] = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) - 1)).toISOString().slice(0, 10).split('-');
+    const past = [pastYear, pastMonth, pastDay].join('-');
+    const future = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day) + 1)).toISOString().slice(0, 10);
+    assert.equal(context.showroomIsCanonicalDate(past, instant), false, 'past resort dates are rejected');
+    assert.equal(context.showroomIsCanonicalDate(${JSON.stringify(expectedResortToday)}, instant), true, 'today at the resort is selectable');
+    assert.equal(context.showroomIsCanonicalDate(future, instant), true, 'future resort dates are selectable');
+    assert.equal(context.showroomIsSelectableDate(${JSON.stringify(expectedResortToday)}, 'Hotel Room', 'checkOutDate', ${JSON.stringify(expectedResortToday)}, instant), false, 'checkout must be after check-in');
+    assert.equal(context.showroomIsSelectableDate(future, 'Hotel Room', 'checkOutDate', ${JSON.stringify(expectedResortToday)}, instant), true, 'a later checkout remains selectable');
+    assert.equal(context.showroomIsSelectableDate(future, 'Hotel Room', 'checkOutDate', past, instant), false, 'a stale past check-in invalidates checkout selection');
+  `], { encoding: 'utf8', env: { ...process.env, TZ: timezone } });
+  assert.equal(probe.status, 0, `${timezone} browser date handling must use resort time: ${probe.stderr}`);
+};
+checkResortDateTimezone('UTC', '2026-09-30T16:00:00.000Z', '2026-09-30', '2026-10-01');
+checkResortDateTimezone('Pacific/Kiritimati', '2026-09-30T13:00:00.000Z', '2026-10-01', '2026-09-30');
+assert.ok(showroomSource.includes('window.addEventListener("pageshow", refreshCalendarOnResume)')
+  && showroomSource.includes('document.addEventListener("visibilitychange"')
+  && showroomSource.includes('Date.UTC(year, month - 1, day + 1) - 8 * 60 * 60 * 1000'), 'an open calendar refreshes on resume and resort midnight');
+assert.ok(showroomSource.includes('if (!isSelectable(value)) { wrap.refreshDateEligibility(); return; }'), 'a stale rendered day is revalidated when clicked');
+
+console.log('PASS|calendar timezone normalization, resort date boundary, checkout rules, inclusive Villa availability, and DST-safe night arithmetic');

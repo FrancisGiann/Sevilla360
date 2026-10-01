@@ -284,8 +284,29 @@ function receptionist_ai_normalize_model_id(string $providerId, string $model): 
     return str_starts_with($model, 'models/') ? substr($model, 7) : $model;
 }
 
+function receptionist_ai_google_reasoning_effort(?string $effort): ?string
+{
+    if (!is_string($effort)) return null;
+    $effort = strtolower(trim($effort));
+    return in_array($effort, ['low', 'medium', 'high'], true) ? $effort : null;
+}
+
+function receptionist_ai_uses_gemini_3_defaults(string $providerId, string $model): bool
+{
+    return strtolower($providerId) === 'google'
+        && preg_match('/\\Agemini-3(?:[.-])/i', receptionist_ai_normalize_model_id($providerId, $model)) === 1;
+}
+
+function receptionist_ai_supports_google_reasoning_effort(string $providerId, string $model): bool
+{
+    return strtolower($providerId) === 'google'
+        && preg_match('/\\Agemini-(?:2\\.5|3)(?:[.-])/i', receptionist_ai_normalize_model_id($providerId, $model)) === 1;
+}
+
 final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderInterface
 {
+    private readonly ?string $reasoningEffort;
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $baseUrl,
@@ -295,8 +316,11 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         private readonly string $siteName = 'Sevilla360',
         private readonly ?Closure $transport = null,
         private readonly ?Closure $sleep = null,
-        private readonly ?Closure $clock = null
-    ) {}
+        private readonly ?Closure $clock = null,
+        ?string $reasoningEffort = null
+    ) {
+        $this->reasoningEffort = receptionist_ai_google_reasoning_effort($reasoningEffort);
+    }
 
     public function complete(array $messages, int $maxOutputTokens, int $timeoutSeconds): array
     {
@@ -359,10 +383,13 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         $request = [
             'model' => receptionist_ai_normalize_model_id($this->providerId, $this->model),
             'messages' => $messages,
-            'temperature' => 0.2,
             'max_tokens' => $maxOutputTokens,
             'stream' => false,
         ];
+        if (!receptionist_ai_uses_gemini_3_defaults($this->providerId, $this->model)) $request['temperature'] = 0.2;
+        if (receptionist_ai_supports_google_reasoning_effort($this->providerId, $this->model) && $this->reasoningEffort !== null) {
+            $request['reasoning_effort'] = $this->reasoningEffort;
+        }
         if ($structured) {
             $request['response_format'] = [
                 'type' => 'json_schema',
@@ -480,7 +507,11 @@ function receptionist_ai_provider(): ?ReceptionistAiProviderInterface
         $model,
         $provider,
         receptionist_ai_env('AI_SITE_URL'),
-        receptionist_ai_env('AI_SITE_NAME', 'Sevilla360')
+        receptionist_ai_env('AI_SITE_NAME', 'Sevilla360'),
+        null,
+        null,
+        null,
+        receptionist_ai_google_reasoning_effort(receptionist_ai_env('AI_GOOGLE_REASONING_EFFORT', 'low'))
     );
 }
 
@@ -780,6 +811,73 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
     return $slots;
 }
 
+/** Recover independently valid fields from trusted server session state. */
+function receptionist_ai_recover_session_slots(mysqli $conn, array $raw, array $catalog): array
+{
+    $intent = $raw['intent'] ?? null;
+    if (!in_array($intent, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) return [];
+
+    $slots = ['intent' => $intent];
+    foreach ([
+        'occasion' => ['wedding', 'celebration', 'corporate', 'other'],
+        'purpose' => ['relaxation', 'family', 'private'],
+        'preference' => ['save', 'best_fit', 'comfort'],
+    ] as $key => $allowed) {
+        if (is_string($raw[$key] ?? null) && in_array($raw[$key], $allowed, true)) $slots[$key] = $raw[$key];
+    }
+
+    if (array_key_exists('group_size', $raw)) {
+        try {
+            $validated = receptionist_ai_validate_slots($conn, ['group_size' => $raw['group_size']], $slots, $catalog);
+            if (isset($validated['group_size'])) $slots['group_size'] = $validated['group_size'];
+        } catch (Throwable $error) {
+            // Keep other valid fields so the next prompt can repair this one.
+        }
+    }
+    foreach (['start_date', 'end_date'] as $key) {
+        $date = receptionist_ai_canonical_date($raw[$key] ?? null);
+        if ($date !== null) $slots[$key] = $date;
+    }
+    // A stale checkout is the dependent field. Keep a valid check-in and ask
+    // for checkout again rather than throwing away the entire conversation.
+    if (isset($slots['start_date'], $slots['end_date']) && $slots['end_date'] <= $slots['start_date']) unset($slots['end_date']);
+
+    if (array_key_exists('active_venue_id', $raw)) {
+        $groupId = $raw['active_room_group_id'] ?? null;
+        try {
+            $validated = receptionist_ai_validate_slots($conn, [
+                'active_venue_id' => $raw['active_venue_id'],
+                'active_room_group_id' => $groupId,
+            ], $slots, $catalog);
+            foreach (['active_venue_id', 'active_room_group_id'] as $key) {
+                if (array_key_exists($key, $validated)) $slots[$key] = $validated[$key];
+            }
+        } catch (Throwable $error) {
+            // Venue identity is coupled and must still match the live catalog.
+        }
+    }
+    return $slots;
+}
+
+/** Ignore only invalid browser dates that exactly echo fields discarded from trusted session recovery. */
+function receptionist_ai_filter_recovered_session_dates(array $requestSlots, array $rawSessionSlots, array $recoveredSessionSlots): array
+{
+    foreach (['start_date', 'end_date'] as $key) {
+        if (!array_key_exists($key, $rawSessionSlots) || array_key_exists($key, $recoveredSessionSlots)) continue;
+        if (array_key_exists($key, $requestSlots) && $requestSlots[$key] === $rawSessionSlots[$key]) unset($requestSlots[$key]);
+    }
+    return $requestSlots;
+}
+
+function receptionist_ai_recovered_session_date_clears(array $rawSessionSlots, array $recoveredSessionSlots): array
+{
+    $clears = [];
+    foreach (['start_date', 'end_date'] as $key) {
+        if (array_key_exists($key, $rawSessionSlots) && !array_key_exists($key, $recoveredSessionSlots)) $clears[] = $key;
+    }
+    return $clears;
+}
+
 /**
  * Prepare deterministic knowledge slots with the same validation used by the
  * public endpoint. Kept pure (aside from the supplied connection/catalog) so
@@ -801,6 +899,10 @@ function receptionist_ai_prepare_knowledge(mysqli $conn, array $answer, array $b
     $knowledgeValidationBase = ($answer['reset_context'] ?? false) === true ? [] : $baseSlots;
     if (isset($knowledgePatch['intent'], $knowledgeValidationBase['intent']) && $knowledgePatch['intent'] !== $knowledgeValidationBase['intent']) {
         foreach (['occasion', 'purpose', 'preference', 'group_size', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'] as $key) unset($knowledgeValidationBase[$key]);
+    }
+    if (isset($knowledgePatch['active_venue_id'], $knowledgeValidationBase['active_venue_id'])
+        && (int)$knowledgePatch['active_venue_id'] !== (int)$knowledgeValidationBase['active_venue_id']) {
+        unset($knowledgeValidationBase['active_room_group_id']);
     }
     $answer['slots'] = receptionist_ai_validate_slots($conn, $knowledgePatch, $knowledgeValidationBase, $venueCatalog, $clearSlots);
     $answer['clear_slots'] = $clearSlots;
