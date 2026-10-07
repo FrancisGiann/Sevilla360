@@ -445,14 +445,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  document.querySelectorAll("[data-dashboard-section]").forEach((link) => {
-    link.addEventListener("click", (event) => {
+  document.addEventListener("click", (event) => {
+      const link = event.target.closest('[data-dashboard-section]');
+      if (!link) return;
       const section = link.dataset.dashboardSection;
       if (!validSections.has(section)) return;
       event.preventDefault();
       const linkedUrl = new URL(link.href, window.location.href);
       setDashboardSection(section, { push: true, focusBooking: Boolean(link.closest(".attention-list")), hash: linkedUrl.hash || null });
-    });
   });
 
   window.addEventListener("popstate", () => setDashboardSection(requestedDashboardSection(), { focusBooking: true }));
@@ -461,10 +461,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 2. Table Filtering ---
   const statusFilter = document.getElementById("statusFilter");
-  const tableRows = document.querySelectorAll("#bookingsTable tbody tr[data-status]");
 
   const applyBookingFilter = (filterValue) => {
-    tableRows.forEach((row) => {
+    document.querySelectorAll("#bookingsTable tbody tr[data-status]").forEach((row) => {
       const rowStatus = row.getAttribute("data-status");
       row.style.display = filterValue === "All" || rowStatus === filterValue ? "" : "none";
     });
@@ -801,8 +800,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 4. ACTION BUTTONS ---
 
   // A. Cancel Button
-  document.querySelectorAll(".btn-cancel").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+  document.addEventListener("click", (event) => {
+      const btn = event.target.closest('.btn-cancel');
+      if (!btn) return;
       const bookingId = btn.getAttribute("data-id");
       const venue = btn.getAttribute("data-venue");
       const date = btn.getAttribute("data-date");
@@ -863,7 +863,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
       openModal("cancel");
-    });
   });
 
   const refundDestinationMethod = document.getElementById('cancel-refund-method');
@@ -970,8 +969,9 @@ document.addEventListener("DOMContentLoaded", () => {
       userReschedCalendar = new SevillaCalendar("cal-ui-user-resched");
   }
 
-  document.querySelectorAll(".btn-reschedule").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
+  document.addEventListener("click", (event) => {
+      const btn = event.target.closest('.btn-reschedule');
+      if (!btn) return;
       const bookingId = btn.getAttribute("data-id");
       const venueName = btn.getAttribute("data-venue");
       const originalDate = btn.getAttribute("data-date");
@@ -1014,7 +1014,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       openModal("reschedule");
-    });
   });
 
   const btnSubmitResched = document.getElementById("btn-submit-resched");
@@ -1059,14 +1058,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // C. View Details Button
-  document.querySelectorAll(".btn-details").forEach((btn) => {
-    btn.addEventListener("click", function(e) {
-        const detailsTrigger = this;
-        const bookingId = this.getAttribute('data-id');
-        const originalHTML = this.innerHTML; 
+  document.addEventListener("click", function(event) {
+    const detailsTrigger = event.target.closest(".btn-details");
+    if (!detailsTrigger) return;
+    (function(e) {
+        const bookingId = detailsTrigger.getAttribute('data-id');
+        const originalHTML = detailsTrigger.innerHTML;
         
-        this.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span class="vd-text" style="margin-left:5px;">Loading...</span>';
-        this.disabled = true;
+        detailsTrigger.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span class="vd-text" style="margin-left:5px;">Loading...</span>';
+        detailsTrigger.disabled = true;
 
         fetch(`actions/user/get_my_booking_details.php?id=${bookingId}`)
         .then(async (response) => {
@@ -1079,8 +1079,8 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         })
         .then(res => {
-            this.innerHTML = originalHTML; 
-            this.disabled = false;
+            detailsTrigger.innerHTML = originalHTML;
+            detailsTrigger.disabled = false;
 
             if (!res.success) return showAlert("Error", "Error loading details: " + res.message, "error");
 
@@ -1323,10 +1323,10 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(err => {
             showAlert("Connection issue", "Booking details could not be loaded. No booking changes were submitted. Check your connection and try again.", "error");
-            this.innerHTML = originalHTML; 
-            this.disabled = false;
+            detailsTrigger.innerHTML = originalHTML;
+            detailsTrigger.disabled = false;
         });
-    });
+    }).call(detailsTrigger, event);
   });
 
   // --- 6. User Settings Logic ---
@@ -1420,13 +1420,15 @@ document.addEventListener("DOMContentLoaded", () => {
     option?.classList.toggle('is-filled', Number.isInteger(value) && value > 0 && value <= reviewRating);
   });
   reviewInputs.forEach((input) => input.addEventListener('change', () => { reviewRating = normalizeReviewRating(input.value); paintReviewRating(); }));
-  document.querySelectorAll('.btn-review-open').forEach((button) => button.addEventListener('click', () => {
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('.btn-review-open');
+    if (!button) return;
     reviewBookingId = button.dataset.id; reviewRating = normalizeReviewRating(button.dataset.rating || 0); paintReviewRating();
     document.getElementById('review-modal-title').textContent = button.textContent.trim() === 'View/edit review' ? 'View or edit review' : 'Rate venue';
     document.getElementById('review-modal-venue').textContent = button.dataset.venue || '';
     document.getElementById('review-text').value = button.dataset.review || '';
     setReviewStatus(''); openModal('review', button);
-  }));
+  });
   document.getElementById('review-submit')?.addEventListener('click', async () => {
     if (!reviewBookingId || reviewRating < 1 || reviewRating > 5) { setReviewStatus('Choose a rating from 1 to 5.'); return; }
     const submit = document.getElementById('review-submit'); submit.disabled = true; submit.classList.add('is-submitting'); submit.setAttribute('aria-busy', 'true'); setReviewStatus('');
@@ -1450,5 +1452,276 @@ document.addEventListener("DOMContentLoaded", () => {
   if (paymentProofSubmitted) {
     window.setTimeout(() => showAlert('Proof submitted', 'Your payment proof is awaiting verification. You can follow its status under My Bookings.', 'success'), 0);
   }
+
+  // Background dashboard refresh keeps server-rendered eligibility and action
+  // markup authoritative while quietly updating the existing customer view.
+  const dashboardPrincipal = Number(document.querySelector('meta[name="dashboard-principal"]')?.content);
+  const dashboardRefreshTargets = [
+    ['customer-overview-kpis', 'overviewKpis'],
+    ['customer-overview-main', 'overviewMain'],
+    ['customer-overview-recent', 'overviewRecent'],
+    ['customer-bookings-stats', 'bookingStats'],
+    ['customer-bookings-tbody', 'bookingRows'],
+    ['customer-booking-pagination', 'bookingPagination']
+  ];
+  const lastAppliedDashboardSnapshots = new Map(dashboardRefreshTargets.map(([id]) => {
+    const target = document.getElementById(id);
+    return [id, target?.innerHTML ?? null];
+  }));
+  let dashboardRefreshTimer = null;
+  let dashboardRefreshInFlight = false;
+  let dashboardRefreshQueued = false;
+  let dashboardRefreshStopped = !Number.isSafeInteger(dashboardPrincipal) || dashboardPrincipal < 1;
+  let dashboardRefreshFailures = 0;
+  let dashboardRefreshController = null;
+  let pendingDashboardRefresh = null;
+  let dashboardRefreshPageHidden = false;
+
+  const currentDashboardRefreshState = () => ({
+    page: Number(new URLSearchParams(window.location.search).get('booking_page') || 1),
+    status: statusFilter?.value || 'All',
+    section: requestedDashboardSection(),
+    principal: Number(document.querySelector('meta[name="dashboard-principal"]')?.content)
+  });
+
+  const stopDashboardRefreshForIdentityChange = () => {
+    if (dashboardRefreshStopped) return;
+    dashboardRefreshStopped = true;
+    pendingDashboardRefresh = null;
+    dashboardRefreshQueued = false;
+    window.clearTimeout(dashboardRefreshTimer);
+    dashboardRefreshController?.abort();
+    closeBookingActionDisclosure(false);
+    Object.values(modals).forEach((modal) => modal?.classList.remove('active'));
+    document.getElementById('globalAlertModal')?.classList.remove('active');
+    document.body.replaceChildren();
+    const notice = document.createElement('p');
+    notice.textContent = 'Your customer session changed. Returning to sign in…';
+    document.body.appendChild(notice);
+    window.location.replace('auth.php');
+  };
+
+  const dashboardRefreshStateChanged = (state) => {
+    const current = currentDashboardRefreshState();
+    return current.page !== state.page || current.status !== state.status
+      || current.section !== state.section || current.principal !== state.principal;
+  };
+
+  const customerDashboardIsInteracting = () => {
+    if (document.querySelector('.modal-overlay.active, .global-admin-modal.active')) return true;
+    if (Object.values(modals).some((modal) => modal?.classList.contains('active'))) return true;
+    if (document.querySelector('.booking-more-toggle[aria-expanded="true"]')) return true;
+    return document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'file';
+  };
+
+  const parseDashboardFragment = (html, expectedRootId) => {
+    if (typeof html !== 'string' || html.length > 300000) throw new Error('Invalid dashboard fragment');
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    if (template.content.querySelector('script, iframe, object, embed')) throw new Error('Unsafe dashboard fragment');
+    if (expectedRootId === 'customer-bookings-tbody') {
+      if (Array.from(template.content.children).some((element) => element.tagName !== 'TR')
+        || template.content.children.length > 10) throw new Error('Invalid booking rows');
+      return template;
+    }
+    if (expectedRootId === 'customer-booking-pagination') {
+      if (template.content.children.length > 1
+        || Array.from(template.content.children).some((element) => element.tagName !== 'NAV' || !element.classList.contains('booking-pagination'))) {
+        throw new Error('Invalid booking pagination');
+      }
+      return template;
+    }
+    const roots = Array.from(template.content.children);
+    if (roots.length !== 1 || roots[0].id !== expectedRootId) throw new Error('Invalid dashboard fragment root');
+    return template;
+  };
+
+  const applyDashboardRefresh = (payload, requestState) => {
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid dashboard response');
+    if (!Number.isSafeInteger(payload.principal) || payload.principal < 1) throw new Error('Invalid dashboard principal');
+    if (payload.principal !== dashboardPrincipal) {
+      stopDashboardRefreshForIdentityChange();
+      return false;
+    }
+    if (!payload.fragments || typeof payload.fragments !== 'object') throw new Error('Invalid dashboard fragments');
+    const serverPage = Number(payload.page);
+    const totalPages = Number(payload.total_pages);
+    if (!Number.isSafeInteger(serverPage) || serverPage < 1 || !Number.isSafeInteger(totalPages) || totalPages < 1 || serverPage > totalPages) {
+      throw new Error('Invalid dashboard page metadata');
+    }
+    const focusedDashboardTarget = dashboardRefreshTargets.some(([id]) => {
+      const target = document.getElementById(id);
+      return Boolean(target && document.activeElement && target.contains(document.activeElement));
+    });
+    if (customerDashboardIsInteracting() || focusedDashboardTarget) {
+      pendingDashboardRefresh = { payload, state: requestState };
+      return false;
+    }
+
+    const fragments = dashboardRefreshTargets.map(([id, key]) => {
+      const target = document.getElementById(id);
+      if (!target) throw new Error('Dashboard fragment target is unavailable');
+      const parsed = parseDashboardFragment(payload.fragments[key], id);
+      return { id, target, parsed };
+    });
+
+    fragments.forEach(({ id, target, parsed }) => {
+      const incomingSnapshot = parsed.innerHTML;
+      if (lastAppliedDashboardSnapshots.get(id) === incomingSnapshot) return;
+      if (id === 'customer-bookings-tbody' || id === 'customer-booking-pagination') {
+        target.replaceChildren(parsed.content);
+      } else {
+        target.replaceWith(parsed.content.firstElementChild);
+      }
+      lastAppliedDashboardSnapshots.set(id, incomingSnapshot);
+    });
+
+    applyBookingFilter(statusFilter?.value || 'All');
+    const url = new URL(window.location.href);
+    const currentPage = Number(url.searchParams.get('booking_page') || 1);
+    if (serverPage !== currentPage) {
+      if (serverPage === 1) url.searchParams.delete('booking_page');
+      else url.searchParams.set('booking_page', String(serverPage));
+      window.history.replaceState(window.history.state, '', url);
+    }
+    pendingDashboardRefresh = null;
+    return true;
+  };
+
+  const flushPendingDashboardRefresh = () => {
+    if (!pendingDashboardRefresh || dashboardRefreshStopped || customerDashboardIsInteracting()) return;
+    const pending = pendingDashboardRefresh;
+    const focusedDashboardTarget = dashboardRefreshTargets.some(([id]) => {
+      const target = document.getElementById(id);
+      return Boolean(target && document.activeElement && target.contains(document.activeElement));
+    });
+    if (focusedDashboardTarget) return;
+    pendingDashboardRefresh = null;
+    if (dashboardRefreshStateChanged(pending.state)) {
+      dashboardRefreshQueued = true;
+      if (!dashboardRefreshInFlight && document.visibilityState === 'visible' && navigator.onLine !== false) {
+        dashboardRefreshQueued = false;
+        window.setTimeout(refreshCustomerDashboard, 0);
+      }
+      return;
+    }
+    try { applyDashboardRefresh(pending.payload, pending.state); }
+    catch (error) { dashboardRefreshFailures = Math.min(3, dashboardRefreshFailures + 1); }
+  };
+
+  const scheduleDashboardRefresh = () => {
+    window.clearTimeout(dashboardRefreshTimer);
+    if (dashboardRefreshStopped || dashboardRefreshPageHidden) return;
+    const baseDelay = document.visibilityState === 'visible' ? 15000 : 120000;
+    const delay = Math.min(120000, baseDelay * (2 ** dashboardRefreshFailures));
+    dashboardRefreshTimer = window.setTimeout(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) refreshCustomerDashboard();
+      else scheduleDashboardRefresh();
+    }, delay);
+  };
+
+  const refreshCustomerDashboard = async () => {
+    if (dashboardRefreshStopped || dashboardRefreshPageHidden || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+    if (dashboardRefreshInFlight) {
+      dashboardRefreshQueued = true;
+      return;
+    }
+    window.clearTimeout(dashboardRefreshTimer);
+    const requestState = currentDashboardRefreshState();
+    if (!Number.isSafeInteger(requestState.page) || requestState.page < 1 || requestState.page > 1000000) return;
+    dashboardRefreshInFlight = true;
+    const controller = new AbortController();
+    dashboardRefreshController = controller;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
+    try {
+      const params = new URLSearchParams({ booking_page: String(requestState.page) });
+      const response = await fetch(`actions/user/refresh_dashboard.php?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'X-CSRF-Token': csrfToken,
+          'X-Sevilla-Background': '1'
+        }
+      });
+      if ([401, 403].includes(response.status) || response.redirected) {
+        stopDashboardRefreshForIdentityChange();
+        return;
+      }
+      if (!response.ok || !(response.headers.get('content-type') || '').includes('application/json')) {
+        throw new Error('Dashboard refresh failed');
+      }
+      const payload = await response.json();
+      if (!payload || payload.success !== true) {
+        if ([401, 403].includes(response.status)) dashboardRefreshStopped = true;
+        throw new Error('Dashboard refresh returned an error');
+      }
+      if (Number.isSafeInteger(payload?.principal) && payload.principal > 0 && payload.principal !== dashboardPrincipal) {
+        stopDashboardRefreshForIdentityChange();
+        return;
+      }
+      if (dashboardRefreshStateChanged(requestState)) {
+        dashboardRefreshQueued = true;
+        return;
+      }
+      applyDashboardRefresh(payload, requestState);
+      dashboardRefreshFailures = 0;
+    } catch (error) {
+      if ((error?.name !== 'AbortError' || timedOut) && !dashboardRefreshStopped) {
+        dashboardRefreshFailures = Math.min(3, dashboardRefreshFailures + 1);
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (dashboardRefreshController === controller) dashboardRefreshController = null;
+      dashboardRefreshInFlight = false;
+      if (dashboardRefreshQueued && !dashboardRefreshStopped && !dashboardRefreshPageHidden && document.visibilityState === 'visible' && navigator.onLine !== false) {
+        dashboardRefreshQueued = false;
+        window.setTimeout(refreshCustomerDashboard, 0);
+      } else {
+        dashboardRefreshQueued = false;
+        scheduleDashboardRefresh();
+      }
+    }
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      flushPendingDashboardRefresh();
+      refreshCustomerDashboard();
+    } else {
+      scheduleDashboardRefresh();
+    }
+  });
+  window.addEventListener('focus', () => {
+    flushPendingDashboardRefresh();
+    refreshCustomerDashboard();
+  });
+  window.addEventListener('online', () => {
+    dashboardRefreshFailures = 0;
+    flushPendingDashboardRefresh();
+    refreshCustomerDashboard();
+  });
+  window.addEventListener('pagehide', () => {
+    dashboardRefreshPageHidden = true;
+    window.clearTimeout(dashboardRefreshTimer);
+    dashboardRefreshController?.abort();
+  });
+  window.addEventListener('pageshow', () => {
+    dashboardRefreshPageHidden = false;
+    if (document.visibilityState === 'visible' && !dashboardRefreshStopped) refreshCustomerDashboard();
+  });
+  document.addEventListener('click', () => window.setTimeout(flushPendingDashboardRefresh, 0), true);
+  document.addEventListener('focusout', () => window.setTimeout(flushPendingDashboardRefresh, 0));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') window.setTimeout(flushPendingDashboardRefresh, 0);
+  }, true);
+  window.addEventListener('SevillaRealtimeEvent', (event) => {
+    const channel = String(event.detail?.channel || '');
+    if (channel.startsWith('customer:')) refreshCustomerDashboard();
+  });
+  scheduleDashboardRefresh();
 
 });

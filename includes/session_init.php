@@ -33,6 +33,7 @@ function session_policy_is_passive_request(): bool
     $request_path = '/' . ltrim($request_path, '/');
     $passive_routes = [
         '/actions/user/get_notifications.php',
+        '/actions/user/refresh_dashboard.php',
         '/actions/admin/get_dashboard_stats.php',
         '/actions/realtime/token.php',
     ];

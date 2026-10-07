@@ -1,19 +1,53 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json; charset=UTF-8');
-require_once __DIR__ . '/../../config/db_connect.php';
-require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+header('Cache-Control: private, no-store, no-cache, max-age=0, must-revalidate');
+header('Pragma: no-cache');
+header('Vary: Cookie');
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff', 'admin'], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+$respond = static function (int $status, string $message): never {
+    http_response_code($status);
+    echo json_encode(['success' => false, 'message' => $message]);
     exit;
+};
+
+$sessionUserId = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$sessionRole = (string)($_SESSION['role'] ?? '');
+if (($_SESSION['logged_in'] ?? false) !== true || $sessionUserId === false) {
+    $respond(401, 'Your staff session is no longer available. Sign in again to continue.');
+}
+if (!in_array($sessionRole, ['staff', 'admin'], true)) {
+    $respond(403, 'You are not authorized to view booking history.');
 }
 $clientToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals((string)$_SESSION['csrf_token'], (string)$clientToken)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'CSRF validation failed.']);
-    exit;
+    $respond(403, 'Your dashboard session changed. Refresh the page and sign in again if needed.');
+}
+
+try {
+    require_once __DIR__ . '/../../config/db_connect.php';
+    require_once __DIR__ . '/../../includes/booking_lifecycle.php';
+    $accountStatement = $conn->prepare("SELECT u.role, u.status AS user_status, s.status AS staff_status FROM users u LEFT JOIN staff s ON s.user_id = u.id WHERE u.id = ? LIMIT 1");
+    if (!$accountStatement) throw new RuntimeException('Unable to validate the current staff account.');
+    $accountStatement->bind_param('i', $sessionUserId);
+    if (!$accountStatement->execute()) {
+        $accountStatement->close();
+        throw new RuntimeException('Unable to validate the current staff account.');
+    }
+    $account = $accountStatement->get_result()->fetch_assoc();
+    $accountStatement->close();
+    $accountRole = (string)($account['role'] ?? '');
+    $accountStatus = in_array($accountRole, ['admin', 'staff'], true)
+        ? (string)($account['staff_status'] ?? '')
+        : (string)($account['user_status'] ?? '');
+    if (!$account || $accountRole !== $sessionRole || !in_array($accountRole, ['staff', 'admin'], true)
+        || strcasecmp($accountStatus, 'active') !== 0) {
+        session_policy_expire('Your account is suspended, inactive, or no longer authorized. Please sign in again.');
+        $respond(403, 'Your staff account is unavailable. Sign in again or contact support.');
+    }
+} catch (Throwable $error) {
+    error_log('Booking history account validation failed: ' . get_class($error));
+    $respond(503, 'Booking and seminar history is temporarily unavailable.');
 }
 
 $decoded = json_decode(file_get_contents('php://input') ?: '', true);

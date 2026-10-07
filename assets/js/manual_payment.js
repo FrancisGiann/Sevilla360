@@ -55,8 +55,9 @@
     }
 
     bind() {
-      document.querySelectorAll('.btn-submit-payment').forEach((button) => {
-        button.addEventListener('click', () => this.openBooking(button.dataset.id, button));
+      document.addEventListener('click', (event) => {
+        const button = event.target.closest('.btn-submit-payment');
+        if (button) this.openBooking(button.dataset.id, button);
       });
       this.retry?.addEventListener('click', () => {
         if (this.currentBookingId) this.loadDetails(this.currentBookingId);

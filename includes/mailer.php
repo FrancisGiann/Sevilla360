@@ -2,11 +2,9 @@
 // includes/mailer.php
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config/env.php'; // Load env variables
+require_once __DIR__ . '/resend_mailer.php';
 require_once __DIR__ . '/manual_payment.php';
 require_once __DIR__ . '/booking_rules.php';
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
 
 function get_biz_info() {
     global $conn;
@@ -31,8 +29,6 @@ function get_biz_info() {
 
 function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_name, $amount_paid, $status) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL'];
-    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
 
     // 1. Fetch Booking Details
@@ -204,57 +200,17 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     </div>
     ";
 
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->CharSet = 'UTF-8';
-        $mail->Host = 'smtp.gmail.com';
-        $mail->SMTPAuth = true;
-        $mail->Username = $smtp_email;
-        $mail->Password = $smtp_password;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port = 587;
-        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Reservations');
-        $mail->addAddress($customer_email, $customer_name);
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body = $html_content;
-        $mail->send();
-        return true;
-    } catch (Exception $e) {
-        throw new Exception("Mailer Error: {$mail->ErrorInfo}");
-    }
+    resend_mail_send($customer_email, $customer_name, $subject, $html_content, $biz['biz_name'] . ' Reservations');
+    return true;
 }
 
 // -------------------------------------------------------------
 // STANDALONE FUNCTION (Fixed from being nested!)
 // -------------------------------------------------------------
 function send_custom_email($to_email, $to_name, $subject, $html_content) {
-    $smtp_email = $_ENV['SMTP_EMAIL'];
-    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
-
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->CharSet = 'UTF-8';
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $smtp_email;
-        $mail->Password   = $smtp_password;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-
-
-        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($to_email, $to_name);
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body    = $html_content;
-
-        $mail->send();
-        return true;
-    } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+    resend_mail_send($to_email, $to_name, $subject, $html_content, $biz['biz_name'] . ' Accounts');
+    return true;
 }
 
 /** Shared Sevilla360 status-email shell. Values are escaped here at the boundary. */
@@ -405,8 +361,6 @@ function send_reschedule_approved_email($customer_email, $customer_name, $bookin
 // -------------------------------------------------------------
 function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $total_amount, $dashboard_link) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL'];
-    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
 
     // 1. Fetch Booking Details
@@ -501,32 +455,13 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     </div>
     ";
 
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->CharSet = 'UTF-8';
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $smtp_email;
-        $mail->Password   = $smtp_password;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-
-        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($customer_email, $customer_name);
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body    = $html_content;
-        $mail->send();
-    } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+    resend_mail_send($customer_email, $customer_name, $subject, $html_content, $biz['biz_name'] . ' Accounts');
 }
 // -------------------------------------------------------------
 // STANDALONE FUNCTION: Password Reset Email
 // -------------------------------------------------------------
 function send_password_reset_email($to_email, $to_name, $reset_link) {
     global $conn;
-    $smtp_email = $_ENV['SMTP_EMAIL'];
-    $smtp_password = $_ENV['SMTP_PASSWORD'];
     $biz = get_biz_info();
 
     $subject = "{$biz['biz_name']}: Password Reset Request";
@@ -556,26 +491,8 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
     </div>
     ";
 
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->CharSet = 'UTF-8';
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $smtp_email;
-        $mail->Password   = $smtp_password;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-
-        $mail->setFrom($smtp_email, $biz['biz_name'] . ' Accounts');
-        $mail->addAddress($to_email, $to_name);
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body    = $html_content;
-
-        $mail->send();
-        return true;
-    } catch (Exception $e) { throw new Exception("Mailer Error: {$mail->ErrorInfo}"); }
+    resend_mail_send($to_email, $to_name, $subject, $html_content, $biz['biz_name'] . ' Accounts');
+    return true;
 }
 
 /**

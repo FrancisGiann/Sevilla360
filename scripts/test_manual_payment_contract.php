@@ -6,7 +6,9 @@ $read = static fn(string $path): string => (string)file_get_contents($root . '/'
 $customerCancel = $read('actions/user/request_cancel.php');
 $adminStatus = $read('actions/admin/update_booking_status.php');
 $manualPayment = $read('includes/manual_payment.php');
-$customerDashboard = $read('user_dashboard.php');
+$customerDashboard = $read('user_dashboard.php')
+    . $read('includes/customer-dashboard/booking_rows.php')
+    . $read('includes/customer-dashboard/overview_main.php');
 $paymentDetailsEndpoint = $read('actions/user/get_manual_payment_details.php');
 $manualPaymentSettingsStart = strpos($manualPayment, 'function manual_payment_load_instructions(');
 $manualPaymentSettingsEnd = strpos($manualPayment, 'function manual_payment_decode_instructions(', $manualPaymentSettingsStart === false ? 0 : $manualPaymentSettingsStart);

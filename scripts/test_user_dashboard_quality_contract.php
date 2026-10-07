@@ -19,6 +19,9 @@ $assert = static function (bool $condition, string $message): void {
 };
 
 $php = $read('user_dashboard.php');
+foreach (glob($root . '/includes/customer-dashboard/*.php') ?: [] as $partialPath) {
+    $php .= "\n" . (string)file_get_contents($partialPath);
+}
 $js = $read('assets/js/user_dashboard.js');
 $css = $read('assets/css/user_dashboard.css');
 $uiCss = $read('assets/css/ui-refinement.css');

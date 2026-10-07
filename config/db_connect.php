@@ -16,6 +16,9 @@ $conn = new mysqli($host, $username, $password, $database);
 
 // 4. Check if the connection worked
 if ($conn->connect_error) {
+    if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
+        throw new RuntimeException('Database connection unavailable.');
+    }
     die("Connection failed: " . $conn->connect_error);
 }
 

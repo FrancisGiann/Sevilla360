@@ -15,6 +15,9 @@ $reviewFeatured = $read('actions/public/get_featured_reviews.php');
 $reviewModerate = $read('actions/admin/moderate_venue_review.php');
 $reviewAdminPage = $read('includes/admin-page/admin_reviews.php');
 $dashboard = $read('user_dashboard.php');
+foreach (glob($root . '/includes/customer-dashboard/*.php') ?: [] as $partialPath) {
+    $dashboard .= "\n" . (string)file_get_contents($partialPath);
+}
 $dashboardJs = $read('assets/js/user_dashboard.js');
 $dashboardCss = $read('assets/css/user_dashboard.css');
 $index = $read('index.php');

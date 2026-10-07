@@ -8,7 +8,7 @@ The GitHub deployment contains only committed files from the selected branch. Re
 
 Hostinger supports deploying a new site through **Websites → Import website → Deploy from GitHub**, or connecting GitHub from an existing site's **Dashboard → Advanced → Git** page. Select `FrancisGiann/Sevilla360`, branch `main`, and `public_html` as the root directory. Keep automatic deployment disabled until configuration and smoke checks pass. A redeploy or repository change can overwrite files in the target directory, so make a separate copy of uploads before deployment. See [Hostinger's Git deployment guide](https://www.hostinger.com/support/1583302-how-to-deploy-a-git-repository-in-hostinger/).
 
-Before adding any database, SMTP, or API credentials, verify that the deployed web server enforces `.htaccess`. In `public_html`, create a temporary `.env.deploy-check` containing only a harmless marker, request `https://misevillas.com/.env.deploy-check` and discard the response body, then confirm the status is 403 or 404. Also check `https://misevillas.com/composer.lock`, `/config/db_connect.php`, `/migrations/001_room_number.sql`, and `/.git/config`, discarding each response body. Delete the marker afterward. If any protected path returns 200, stop setup and have the hosting access rules corrected before adding real credentials, proof files, or database data. Never open or print the response body from a real `.env` URL.
+Before adding any database or API credentials, verify that the deployed web server enforces `.htaccess`. In `public_html`, create a temporary `.env.deploy-check` containing only a harmless marker, request `https://misevillas.com/.env.deploy-check` and discard the response body, then confirm the status is 403 or 404. Also check `https://misevillas.com/composer.lock`, `/config/db_connect.php`, `/migrations/001_room_number.sql`, and `/.git/config`, discarding each response body. Delete the marker afterward. If any protected path returns 200, stop setup and have the hosting access rules corrected before adding real credentials, proof files, or database data. Never open or print the response body from a real `.env` URL.
 
 ## PHP and Composer
 
@@ -49,11 +49,20 @@ rm /private/path/.sevilla360/sevilla360.sql
 
 Transfer the private dump using SFTP or another private channel; never place it in `public_html`. Compare the imported schema against the migrations before applying any missing migration, and apply only migrations confirmed absent, in order. If a full current database export is unavailable, database setup is blocked until the original schema and data can be recovered.
 
-Create a server-only `.env` in the deployed project root. The app loads it from that location; `.env` is ignored by Git and the root `.htaccess` denies web requests for environment files. Set at least `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`, and `APP_BASE_URL=https://misevillas.com` using hPanel's database details and the confirmed HTTPS domain. Configure `SMTP_EMAIL` and `SMTP_PASSWORD` if the deployed workflows must send email. Do not copy credentials from a developer machine or commit `.env`; set the file owner to the PHP account and mode to `0600`:
+Create a server-only `.env` in the deployed project root. The app loads it from that location; `.env` is ignored by Git and the root `.htaccess` denies web requests for environment files. Set at least `DB_HOST`, `DB_USER`, `DB_PASS`, `DB_NAME`, and `APP_BASE_URL=https://misevillas.com` using hPanel's database details and the confirmed HTTPS domain. Configure `RESEND_API_KEY` and `RESEND_FROM_EMAIL=reservations@misevillas.com` for application email. The sender domain must be verified with Resend and sending enabled before any messages can be delivered; complete the provider's DNS verification records before enabling email workflows. `RESEND_REPLY_TO` is optional and should be set to the monitored mailbox where customer replies should go. No Gmail SMTP fallback is used. Do not copy credentials from a developer machine or commit `.env`; set the file owner to the PHP account and mode to `0600`:
 
 ```sh
 chmod 600 ~/domains/misevillas.com/public_html/.env
 ```
+
+Check configuration without sending a message or contacting Resend:
+
+```sh
+cd ~/domains/misevillas.com/public_html
+php scripts/check_resend_config.php
+```
+
+The check reports only whether the key and sender are configured, whether an optional reply-to address is valid, and whether PHP cURL is available. The mail transport sends directly to `https://api.resend.com/emails` over verified HTTPS with bounded timeouts and no automatic retries. Configure the API key only in the server-side `.env`; never place it in Git, a URL, or a command-line argument.
 
 Manual payment proof upload requires `PAYMENT_PROOF_DIR` to point to a writable absolute directory outside both `public_html` and the application tree, for example `/home/ACCOUNT/.sevilla360/payment-proofs`. Provision it for the PHP account with private permissions (`0700`):
 

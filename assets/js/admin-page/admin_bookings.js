@@ -264,9 +264,42 @@ document.addEventListener("DOMContentLoaded", () => {
     let bookingsLoadInFlight = false;
     let bookingsLoadQueued = false;
     let queuedLoadSuppressUrlSearchAction = false;
+    let queuedLoadIsBackground = true;
     let bookingsRequestSequence = 0;
     let refundDestinationRequestSequence = 0;
     let realtimeRefreshTimeout = null;
+    let bookingPollTimer = null;
+    let bookingPollFailures = 0;
+    let bookingPollingStopped = false;
+    let deferredBookingsRefresh = false;
+    let lastBookingsSnapshot = null;
+    const modalOverlay = document.getElementById('modalOverlay');
+
+    function terminateAdminBookingsSession() {
+        if (bookingPollingStopped) return;
+        bookingPollingStopped = true;
+        deferredBookingsRefresh = false;
+        clearTimeout(bookingPollTimer);
+        document.body.replaceChildren();
+        const notice = document.createElement('p');
+        notice.textContent = 'Your staff session changed. Returning to sign in…';
+        document.body.appendChild(notice);
+        window.location.replace('auth.php');
+    }
+
+    function adminBookingsInteractionOpen() {
+        if (modalOverlay?.classList.contains('active')) return true;
+        const active = document.activeElement;
+        return Boolean(active && tbody?.contains(active)
+            && /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(active.tagName));
+    }
+
+    function refreshDeferredBookingsWhenSafe() {
+        if (!deferredBookingsRefresh || adminBookingsInteractionOpen() || document.visibilityState !== 'visible') return false;
+        deferredBookingsRefresh = false;
+        loadBookings({ background: true, suppressUrlSearchAction: true });
+        return true;
+    }
 
     function getBookingViewState() {
         return {
@@ -334,22 +367,38 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!tbody) return;
 
         const suppressUrlSearchAction = options.suppressUrlSearchAction === true;
+        const background = options.background === true;
         if (bookingsLoadInFlight) {
             bookingsLoadQueued = true;
             queuedLoadSuppressUrlSearchAction = queuedLoadSuppressUrlSearchAction || suppressUrlSearchAction;
+            queuedLoadIsBackground = queuedLoadIsBackground && background;
             return;
         }
 
+        clearTimeout(bookingPollTimer);
         bookingsLoadInFlight = true;
         const requestSequence = ++bookingsRequestSequence;
         const requestState = getBookingViewState();
 
-        setBookingsResultsStatus('Loading booking and seminar history…');
-        renderTableMessage('Loading booking and seminar history…');
+        if (!background) {
+            // Loading replaces the current rows, so a later unchanged snapshot
+            // must still be allowed to restore them after a failed foreground read.
+            lastBookingsSnapshot = null;
+            setBookingsResultsStatus('Loading booking and seminar history…');
+            renderTableMessage('Loading booking and seminar history…');
+        }
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 12000);
   
         fetch('actions/admin/get_bookings_page.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
+                ...(background ? { 'X-Sevilla-Background': '1', 'Accept': 'application/json' } : {})
+            },
             body: JSON.stringify({
                 page: requestState.page,
                 limit: rowsPerPage,
@@ -359,30 +408,64 @@ document.addEventListener("DOMContentLoaded", () => {
                 ...(urlBookingId !== null ? { booking_id: urlBookingId } : {})
             })
         })
-        .then(res => res.json())
+        .then(async response => {
+            if ([401, 403].includes(response.status) || response.redirected) {
+                terminateAdminBookingsSession();
+                return { success: false, authExpired: true };
+            }
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) throw new Error('Invalid history response');
+            const res = await response.json();
+            if (!response.ok && response.status !== 401 && response.status !== 403) throw new Error('History request failed');
+            return res;
+        })
         .then(res => {
+            if (res.authExpired) return;
             if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
 
-            if (!res.success) {
+            if (!res || typeof res !== 'object' || Array.isArray(res) || res.success !== true) {
+                if (background) {
+                    bookingPollFailures = Math.min(4, bookingPollFailures + 1);
+                    return;
+                }
                 const detail = typeof res.message === 'string' && res.message.trim() ? ` ${res.message.trim().slice(0, 300)}` : '';
                 const message = `We couldn’t load booking and seminar history.${detail}`;
                 setBookingsResultsStatus(`${message} Try again.`);
                 renderTableMessage(message, 'Try again', 'retry');
                 return;
             }
-            const rows = Array.isArray(res.data) ? res.data : [];
-            const rawPagination = res.pagination && typeof res.pagination === 'object' ? res.pagination : {};
-            const rawTotalRows = Number(rawPagination.total_rows);
-            const totalRows = Number.isSafeInteger(rawTotalRows) && rawTotalRows >= rows.length ? rawTotalRows : rows.length;
-            const rawTotalPages = Number(rawPagination.total_pages);
-            const totalPages = Number.isSafeInteger(rawTotalPages) && rawTotalPages > 0
-                ? rawTotalPages
-                : Math.max(1, Math.ceil(totalRows / rowsPerPage));
-            const rawCurrentPage = Number(rawPagination.current_page);
-            const page = Number.isSafeInteger(rawCurrentPage) && rawCurrentPage > 0 ? rawCurrentPage : requestState.page;
+            if (!Array.isArray(res.data) || res.data.some(row => {
+                if (!row || typeof row !== 'object' || Array.isArray(row)) return true;
+                const id = Number(row.id);
+                return !Number.isSafeInteger(id) || id < 1 || !['booking', 'seminar'].includes(row.record_type);
+            })) throw new Error('Invalid history rows');
+            const rows = res.data;
+            const rawPagination = res.pagination;
+            if (!rawPagination || typeof rawPagination !== 'object' || Array.isArray(rawPagination)) {
+                throw new Error('Invalid history pagination');
+            }
+            const totalRows = Number(rawPagination.total_rows);
+            const totalPages = Number(rawPagination.total_pages);
+            const page = Number(rawPagination.current_page);
+            if (!Number.isSafeInteger(totalRows) || totalRows < rows.length
+                || !Number.isSafeInteger(totalPages) || totalPages < 1
+                || !Number.isSafeInteger(page) || page < 1 || page > totalPages) {
+                throw new Error('Invalid history pagination');
+            }
             const pagination = { current_page: page, total_pages: totalPages, total_rows: totalRows };
+            const snapshot = JSON.stringify({ rows, pagination });
+            if (background && snapshot === lastBookingsSnapshot) {
+                bookingPollFailures = 0;
+                return;
+            }
+            if (background && adminBookingsInteractionOpen()) {
+                deferredBookingsRefresh = true;
+                return;
+            }
             renderTableRows(rows);
             updatePaginationUI(pagination);
+            lastBookingsSnapshot = snapshot;
+            bookingPollFailures = 0;
             if (rows.length === 0) {
                 setBookingsResultsStatus('No bookings or seminars found. Try changing or clearing the search and filters.');
             } else {
@@ -429,26 +512,84 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(err => {
             if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
+            if (background) {
+                bookingPollFailures = Math.min(4, bookingPollFailures + 1);
+                return;
+            }
             setBookingsResultsStatus('We couldn’t load booking and seminar history. Check your connection and try again.');
             renderTableMessage('We couldn’t load booking and seminar history. Check your connection, then try again.', 'Try again', 'retry');
         })
         .finally(() => {
+            clearTimeout(timeoutId);
             bookingsLoadInFlight = false;
             const shouldLoadQueuedRequest = bookingsLoadQueued || bookingViewStateChanged(requestState);
             const suppressQueuedUrlSearchAction = queuedLoadSuppressUrlSearchAction;
+            const queuedIsBackground = queuedLoadIsBackground;
             bookingsLoadQueued = false;
             queuedLoadSuppressUrlSearchAction = false;
+            queuedLoadIsBackground = true;
             if (shouldLoadQueuedRequest) {
-                loadBookings({ suppressUrlSearchAction: suppressQueuedUrlSearchAction });
+                loadBookings({ suppressUrlSearchAction: suppressQueuedUrlSearchAction, background: queuedIsBackground });
             }
+            scheduleBookingPoll();
         });
     }
+
+    function scheduleBookingPoll() {
+        clearTimeout(bookingPollTimer);
+        if (bookingPollingStopped || !tbody) return;
+        if (adminBookingsInteractionOpen()) {
+            deferredBookingsRefresh = true;
+            bookingPollTimer = window.setTimeout(scheduleBookingPoll, 15000);
+            return;
+        }
+        const delay = document.visibilityState === 'visible'
+            ? Math.min(120000, 15000 * (2 ** bookingPollFailures))
+            : 120000;
+        bookingPollTimer = window.setTimeout(() => {
+            if (bookingPollingStopped) return;
+            if (document.visibilityState === 'visible' && adminBookingsInteractionOpen()) {
+                deferredBookingsRefresh = true;
+            } else if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+                loadBookings({ background: true, suppressUrlSearchAction: true });
+            }
+            scheduleBookingPoll();
+        }, delay);
+    }
+
+    function resumeBookingPoll() {
+        if (document.visibilityState !== 'visible' || bookingPollingStopped) return;
+        if (adminBookingsInteractionOpen()) {
+            deferredBookingsRefresh = true;
+            scheduleBookingPoll();
+            return;
+        }
+        clearTimeout(bookingPollTimer);
+        if (navigator.onLine !== false) loadBookings({ background: true, suppressUrlSearchAction: true });
+        scheduleBookingPoll();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            if (!refreshDeferredBookingsWhenSafe()) resumeBookingPoll();
+        }
+        else scheduleBookingPoll();
+    });
+    window.addEventListener('focus', () => {
+        if (!refreshDeferredBookingsWhenSafe()) resumeBookingPoll();
+    });
+    window.addEventListener('online', () => { bookingPollFailures = 0; resumeBookingPoll(); });
+    document.addEventListener('click', () => window.setTimeout(refreshDeferredBookingsWhenSafe, 0), true);
+    document.addEventListener('focusout', () => window.setTimeout(refreshDeferredBookingsWhenSafe, 0));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') window.setTimeout(refreshDeferredBookingsWhenSafe, 0);
+    }, true);
 
     function scheduleRealtimeBookingRefresh() {
         clearTimeout(realtimeRefreshTimeout);
         realtimeRefreshTimeout = setTimeout(() => {
             realtimeRefreshTimeout = null;
-            loadBookings({ suppressUrlSearchAction: true });
+            loadBookings({ suppressUrlSearchAction: true, background: true });
         }, 250);
     }
 
@@ -767,6 +908,7 @@ document.addEventListener("DOMContentLoaded", () => {
   
     // Kickoff first load
     loadBookings();
+    scheduleBookingPoll();
   
     // =========================================================
     // 3. Shared AJAX Function
@@ -819,7 +961,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     // 4. Modal System Close Logic
     // =========================================================
-    const modalOverlay = document.getElementById('modalOverlay');
     const closeModal = () => {
       const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : null;
       modalOverlay.classList.remove("active");

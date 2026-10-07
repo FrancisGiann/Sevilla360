@@ -1,11 +1,13 @@
 <?php
-$required_role = 'customer';
-require 'includes/auth_guard.php';
-require_once 'config/db_connect.php';
-require_once 'includes/realtime.php';
-require_once 'includes/booking_lifecycle.php';
-require_once 'includes/manual_payment.php';
-require_once 'includes/customer_booking_status.php';
+if (!defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
+    $required_role = 'customer';
+    require __DIR__ . '/includes/auth_guard.php';
+}
+require_once __DIR__ . '/config/db_connect.php';
+require_once __DIR__ . '/includes/realtime.php';
+require_once __DIR__ . '/includes/booking_lifecycle.php';
+require_once __DIR__ . '/includes/manual_payment.php';
+require_once __DIR__ . '/includes/customer_booking_status.php';
 $realtime_client_config = realtime_client_config();
 $booking_completion_sql = booking_completion_sql('b');
 
@@ -18,6 +20,11 @@ $stmt_cust->execute();
 $customer_res = $stmt_cust->get_result();
 
 if ($customer_res->num_rows === 0) {
+    if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Customer profile not found. Please contact support.']);
+        return;
+    }
     die("Customer profile not found. Please contact support.");
 }
 $customer = $customer_res->fetch_assoc();
@@ -211,6 +218,48 @@ $manual_payment_action_label = static function (array $booking): string {
     if (!empty($booking['manual_payment_pending'])) return 'Replace proof';
     return ($booking['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment';
 };
+
+if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/overview_kpis.php';
+    $overviewKpisHtml = ob_get_clean();
+
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/overview_main.php';
+    $overviewMainHtml = ob_get_clean();
+
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/overview_recent.php';
+    $overviewRecentHtml = ob_get_clean();
+
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/booking_stats.php';
+    $bookingStatsHtml = ob_get_clean();
+
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/booking_rows.php';
+    $bookingRowsHtml = ob_get_clean();
+
+    ob_start();
+    require __DIR__ . '/includes/customer-dashboard/booking_pagination.php';
+    $bookingPaginationHtml = ob_get_clean();
+
+    echo json_encode([
+        'success' => true,
+        'principal' => (int)$user_id,
+        'page' => $booking_page,
+        'total_pages' => $booking_pages,
+        'fragments' => [
+            'overviewKpis' => $overviewKpisHtml,
+            'overviewMain' => $overviewMainHtml,
+            'overviewRecent' => $overviewRecentHtml,
+            'bookingStats' => $bookingStatsHtml,
+            'bookingRows' => $bookingRowsHtml,
+            'bookingPagination' => $bookingPaginationHtml,
+        ],
+        ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    return;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -229,6 +278,7 @@ $manual_payment_action_label = static function (array $booking): string {
     </script>
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
+    <meta name="dashboard-principal" content="<?= (int)$user_id; ?>">
     <title>Dashboard | SEVILLA360</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -386,85 +436,13 @@ $manual_payment_action_label = static function (array $booking): string {
                         <a href="booking.php" class="btn-primary-dash overview-primary-cta"><i class="fa-solid fa-plus"></i> Book a Venue</a>
                     </div>
 
-                    <section class="dashboard-summary-grid overview-kpis" aria-label="Booking overview">
-                        <div class="dashboard-summary-card">
-                            <span class="summary-card-label">Upcoming</span>
-                            <strong><?php echo $upcoming_count; ?></strong>
-                            <small><?php echo $upcoming_count ? 'Confirmed booking' . ($upcoming_count === 1 ? '' : 's') . ' ahead' : 'No upcoming bookings'; ?></small>
-                        </div>
-                        <div class="dashboard-summary-card">
-                            <span class="summary-card-label">Outstanding balance</span>
-                            <strong>₱<?php echo number_format($balance_due, 2); ?></strong>
-                            <small><?php echo $balance_due > 0 ? 'Payment action may be needed' : 'You are all caught up'; ?></small>
-                            <?php if ($balance_due > 0): ?>
-                            <a class="balance-review-link" href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">Review bookings</a>
-                            <?php endif; ?>
-                        </div>
-                    </section>
+                    <?php require __DIR__ . '/includes/customer-dashboard/overview_kpis.php'; ?>
 
-                    <div class="overview-main-grid<?php echo empty($attention_items) ? ' overview-main-grid-single' : ''; ?>">
-                        <section class="overview-card next-booking-card" aria-labelledby="next-booking-title">
-                            <div class="overview-card-heading">
-                                <div>
-                                    <h2 id="next-booking-title">Your upcoming stay</h2>
-                                </div>
-                                <?php if ($upcoming_booking) { [$next_status_text, $next_status_class] = $dashboard_status($upcoming_booking); } ?>
-                                <span class="badge <?php echo $upcoming_booking ? $next_status_class : 'badge-pending'; ?>"><?php echo htmlspecialchars($upcoming_booking ? $next_status_text : 'None yet'); ?></span>
-                            </div>
-                            <?php if ($upcoming_booking): ?>
-                            <div class="next-booking-details">
-                                <strong><?php echo htmlspecialchars($upcoming_booking['venue_name']); ?></strong>
-                                <span><i class="fa-regular fa-calendar"></i> <?php echo htmlspecialchars($format_dashboard_date($upcoming_booking['start_date'], $upcoming_booking['end_date'])); ?></span>
-                                <span><i class="fa-solid fa-receipt"></i> <?php echo $upcoming_booking['total_amount'] > 0 ? '₱' . number_format((float)$upcoming_booking['total_amount'], 2) : 'Amount to be arranged'; ?> · <?php echo htmlspecialchars($upcoming_booking['payment_status']); ?></span>
-                            </div>
-                            <div class="overview-card-actions">
-                                <button type="button" class="btn-outline-dash btn-details" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><i class="fa-solid fa-file-invoice"></i> View details</button>
-                                <?php if ($can_submit_manual_payment($upcoming_booking)): ?>
-                                <button type="button" class="btn-primary-dash btn-submit-payment" data-id="<?php echo (int)$upcoming_booking['id']; ?>"><?php echo htmlspecialchars($manual_payment_action_label($upcoming_booking), ENT_QUOTES, 'UTF-8'); ?></button>
-                                <?php endif; ?>
-                            </div>
-                            <?php else: ?>
-                            <div class="overview-empty-state"><i class="fa-regular fa-calendar"></i><p>No upcoming booking yet. Your next reservation will appear here.</p></div>
-                            <?php endif; ?>
-                        </section>
 
-                        <?php if (!empty($attention_items)): ?><section class="overview-card attention-card" aria-labelledby="attention-title">
-                            <div class="overview-card-heading">
-                                <div>
-                                    <h2 id="attention-title">Needs attention</h2>
-                                </div>
-                            </div>
-                            <ul class="attention-list">
-                                <?php foreach ($attention_items as $attention): [$attention_text, $attention_class] = $dashboard_status($attention); ?>
-                                <li>
-                                    <div><span class="badge <?php echo $attention_class; ?>"><?php echo htmlspecialchars($attention_text); ?></span><strong><?php echo htmlspecialchars($attention['venue_name']); ?></strong><small><?php echo htmlspecialchars($format_dashboard_date($attention['start_date'], $attention['end_date'])); ?></small></div>
-                                    <a href="user_dashboard.php?section=bookings#booking-<?php echo (int)$attention['id']; ?>" data-dashboard-section="bookings" aria-label="Open booking <?php echo htmlspecialchars($attention['reference_no'] ?: (string)$attention['id']); ?>">View</a>
-                                </li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </section>
-                        <?php endif; ?>
-                    </div>
+                    <?php require __DIR__ . '/includes/customer-dashboard/overview_main.php'; ?>
 
-                    <div class="overview-lower-grid overview-recent-only">
-                        <section class="overview-card recent-bookings-card" aria-labelledby="recent-bookings-title">
-                            <div class="overview-card-heading"><div><h2 id="recent-bookings-title">Recent bookings</h2></div><a href="user_dashboard.php?section=bookings" data-dashboard-section="bookings">View all</a></div>
-                            <?php if (empty($overview_recent)): ?>
-                            <div class="overview-empty-state compact"><i class="fa-regular fa-calendar-xmark"></i><p>No bookings yet. Use Book a Venue above to start your first reservation.</p></div>
-                            <?php else: ?>
-                            <div class="recent-bookings-list">
-                                <?php foreach ($overview_recent as $recent): [$recent_status_text, $recent_status_class] = $dashboard_status($recent); ?>
-                                <article class="recent-booking-row" id="overview-booking-<?php echo (int)$recent['id']; ?>">
-                                    <div><strong><?php echo htmlspecialchars($recent['venue_name']); ?></strong><small><?php echo htmlspecialchars($format_dashboard_date($recent['start_date'], $recent['end_date'])); ?></small></div>
-                                    <span class="badge <?php echo $recent_status_class; ?>"><?php echo htmlspecialchars($recent_status_text); ?></span>
-                                    <button type="button" class="btn-icon-link btn-details" data-id="<?php echo (int)$recent['id']; ?>" aria-label="View details for <?php echo htmlspecialchars($recent['venue_name']); ?>"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>
-                                </article>
-                                <?php endforeach; ?>
-                            </div>
-                            <?php endif; ?>
-                        </section>
+                    <?php require __DIR__ . '/includes/customer-dashboard/overview_recent.php'; ?>
 
-                    </div>
                 </section>
 
                 <!-- ================= TAB: MY BOOKINGS ================= -->
@@ -482,20 +460,8 @@ $manual_payment_action_label = static function (array $booking): string {
                         </div>
                     </div>
 
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value text-gold"><?php echo $stat_total; ?></div>
-                            <div class="stat-label">TOTAL BOOKINGS</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value"><?php echo $stat_pending; ?></div>
-                            <div class="stat-label">PENDING BOOKINGS</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value text-green"><?php echo $stat_confirmed; ?></div>
-                            <div class="stat-label">CONFIRMED</div>
-                        </div>
-                    </div>
+                    <?php require __DIR__ . '/includes/customer-dashboard/booking_stats.php'; ?>
+
 
                     <div class="history-container">
                         <div class="history-header">
@@ -525,158 +491,15 @@ $manual_payment_action_label = static function (array $booking): string {
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    <?php if (empty($bookings)): ?>
-                                    <tr>
-                                        <td colspan="6" class="empty-table-cell">You don’t have any bookings yet. Select “New Booking” above to explore venues and start a reservation.</td>
-                                    </tr>
-                                    <?php else: ?>
-                                    <?php foreach ($bookings as $b): 
-                                        $start = new DateTime($b['start_date']);
-                                        $end = new DateTime($b['end_date']);
-                                        $date_str = ($b['start_date'] === $b['end_date']) ? $start->format('M j, Y') : $start->format('M j') . ' - ' . $end->format('M j, Y');
-                                        $display_status = $b['display_booking_status'] ?? $b['booking_status'];
-                                        $is_completed = ($display_status === 'Completed');
-
-                                        $total_amt = floatval($b['total_amount']);
-                                        $amount_paid = floatval($b['amount_paid']);
-                                        $actual_room_type = ($b['venue_type'] === 'Hotel Room') ? $b['hotel_room_type'] : $b['venue_type'];
-                                        $is_pending_inquiry = ($b['venue_type'] === 'Event Hall' && $display_status === 'Pending');
-
-                                        $display_amount = '₱' . number_format($total_amt, 2);
-                                        if ($is_pending_inquiry) {
-                                            $display_amount = '<span class="text-tba">To Be Arranged</span>';
-                                        }
-
-                                        [$status_text, $badge_class] = $dashboard_status($b);
-                                        // Preserve the existing filter buckets based on lifecycle/payment state.
-                                        $filter_data = 'Pending';
-                                        if ($is_completed) {
-                                            $filter_data = 'Completed';
-                                        } elseif ($display_status === 'Cancelled') {
-                                            $filter_data = 'Cancelled';
-                                        } elseif ($display_status === 'Confirmed' && $b['payment_status'] === 'Paid') {
-                                            $filter_data = 'Paid';
-                                        } elseif ($display_status === 'Confirmed' && $b['payment_status'] === 'Partial') {
-                                            $filter_data = 'Partially Paid';
-                                        }
-
-                                        $raw_booking_reference = !empty($b['reference_no']) ? (string)$b['reference_no'] : '#' . (int)$b['id'];
-                                        $display_id = htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8');
-                                        $booking_review = $reviewsByBooking[(int)$b['id']] ?? null;
-                                        $payment_action = !$is_completed && $can_submit_manual_payment($b);
-                                        $can_cancel_booking = !$is_completed && $display_status !== 'Cancelled' && $b['cancel_status'] !== 'Pending';
-                                        $can_reschedule_booking = $can_cancel_booking && $display_status === 'Confirmed';
-                                        $can_review_booking = $is_completed && $b['booking_status'] !== 'Cancelled' && $b['payment_status'] !== 'Refunded';
-                                        $has_more_actions = $payment_action || $can_reschedule_booking || $can_cancel_booking || $can_review_booking;
-                                        $action_menu_id = 'booking-actions-' . (int)$b['id'];
-                                    ?>
-                                    <tr id="booking-<?php echo (int)$b['id']; ?>" data-status="<?php echo htmlspecialchars($filter_data, ENT_QUOTES, 'UTF-8'); ?>">
-
-                                        <td class="booking-ref-id" data-label="Booking ID">
-                                            <?php echo $display_id; ?>
-                                        </td>
-                                        <td data-label="Venue"><?php echo htmlspecialchars($b['venue_name']); ?></td>
-                                        <td data-label="Date"><?php echo $date_str; ?></td>
-                                        <td
-                                            data-label="Amount"
-                                            class="<?php echo ($display_status === 'Cancelled') ? 'text-muted' : ''; ?>">
-                                            <?php echo $display_amount; ?>
-                                        </td>
-                                        <td data-label="Status">
-                                            <span class="badge <?php echo $badge_class; ?>">
-                                                <?php echo $status_text; ?>
-                                            </span>
-                                            <?php if (!$is_completed && !empty($b['has_rescheduled']) && $display_status === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
-                                            <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td data-label="Actions">
-                                            <div class="action-cell<?php echo $has_more_actions ? ' has-more-actions' : ''; ?>">
-                                            <?php if (!$is_completed && $can_submit_manual_payment($b)): ?>
-                                                <button type="button" class="btn-action btn-pay btn-submit-payment booking-row-primary"
-                                                    data-id="<?php echo (int)$b['id']; ?>"><?php echo htmlspecialchars($manual_payment_action_label($b), ENT_QUOTES, 'UTF-8'); ?></button>
-                                                <?php endif; ?>
-                                                <?php if (!$payment_action): ?>
-                                                <button type="button" class="btn-action btn-outline-action btn-details booking-row-primary"
-                                                    data-id="<?php echo $b['id']; ?>"
-                                                    data-venue="<?php echo htmlspecialchars($b['venue_name']); ?>"
-                                                    data-date="<?php echo $date_str; ?>"
-                                                    data-paid="<?php echo $amount_paid; ?>"
-                                                    data-status="<?php echo $status_text; ?>"
-                                                    title="View Booking Invoice">
-                                                    <i class="fa-solid fa-file-invoice"></i>
-                                                    <span class="vd-text">View Details</span>
-                                                </button>
-                                                <?php endif; ?>
-
-                                                <?php if ($has_more_actions): ?>
-                                                <div class="booking-row-more">
-                                                    <button type="button" class="btn-action booking-more-toggle"
-                                                        aria-label="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>"
-                                                        title="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>"
-                                                        aria-expanded="false" aria-controls="<?php echo htmlspecialchars($action_menu_id, ENT_QUOTES, 'UTF-8'); ?>">
-                                                        <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
-                                                    </button>
-                                                    <div class="booking-action-menu-panel" id="<?php echo htmlspecialchars($action_menu_id, ENT_QUOTES, 'UTF-8'); ?>" role="group" aria-label="More actions for booking <?php echo htmlspecialchars($raw_booking_reference, ENT_QUOTES, 'UTF-8'); ?>" hidden>
-                                                        <?php if ($payment_action): ?>
-                                                        <button type="button" class="btn-details action-menu-item" data-id="<?php echo (int)$b['id']; ?>"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i><span>View details</span></button>
-                                                        <?php endif; ?>
-                                                        <?php if ($can_reschedule_booking): ?>
-                                                        <button type="button" class="btn-reschedule action-menu-item"
-                                                            data-id="<?php echo (int)$b['id']; ?>"
-                                                            data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-type="<?php echo htmlspecialchars($actual_room_type, ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-start="<?php echo htmlspecialchars($b['start_date'], ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-end="<?php echo htmlspecialchars($b['end_date'], ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-date="<?php echo htmlspecialchars($date_str, ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i><span>Reschedule</span></button>
-                                                        <?php endif; ?>
-                                                        <?php if ($can_review_booking && !$booking_review): ?>
-                                                        <button type="button" class="btn-review btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-star" aria-hidden="true"></i><span>Rate venue</span></button>
-                                                        <?php elseif ($can_review_booking && $booking_review['moderation_status'] === 'Pending'): ?>
-                                                        <button type="button" class="btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Review pending</span></button>
-                                                        <?php elseif ($can_review_booking): ?>
-                                                        <button type="button" class="btn-review-open action-menu-item" data-id="<?php echo (int)$b['id']; ?>" data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>" data-rating="<?php echo (int)$booking_review['rating']; ?>" data-review="<?php echo htmlspecialchars((string)($booking_review['review_text'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>View/edit review</span></button>
-                                                        <?php endif; ?>
-                                                        <?php if ($can_cancel_booking): ?>
-                                                        <button type="button" class="btn-cancel action-menu-item action-menu-item--destructive"
-                                                            data-id="<?php echo (int)$b['id']; ?>"
-                                                            data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-date="<?php echo htmlspecialchars($date_str, ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-paid="<?php echo htmlspecialchars((string)$amount_paid, ENT_QUOTES, 'UTF-8'); ?>">
-                                                            <i class="fa-solid <?php echo ($amount_paid > 0) ? 'fa-arrow-rotate-left' : 'fa-ban'; ?>" aria-hidden="true"></i>
-                                                            <span><?php echo ($amount_paid > 0) ? 'Request refund' : 'Cancel booking'; ?></span>
-                                                        </button>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                    <?php endif; ?>
+                                <tbody id="customer-bookings-tbody">
+                                    <?php require __DIR__ . '/includes/customer-dashboard/booking_rows.php'; ?>
                                 </tbody>
                             </table>
                         </div>
-                        <?php if ($booking_pages > 1): ?>
-                        <nav class="booking-pagination" aria-label="Booking history pages">
-                            <span class="pagination-summary">
-                                Showing <?php echo (($booking_page - 1) * $booking_limit) + 1; ?>-<?php echo min($booking_page * $booking_limit, $stat_total); ?> of <?php echo $stat_total; ?> bookings
-                            </span>
-                            <div class="pagination-controls">
-                                <?php if ($booking_page > 1): ?>
-                                <a class="pagination-link" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $booking_page - 1; ?>" aria-label="Previous page">&larr; Previous</a>
-                                <?php endif; ?>
-                                <?php for ($page_number = 1; $page_number <= $booking_pages; $page_number++): ?>
-                                <a class="pagination-link <?php echo $page_number === $booking_page ? 'active' : ''; ?>" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $page_number; ?>" aria-current="<?php echo $page_number === $booking_page ? 'page' : 'false'; ?>"><?php echo $page_number; ?></a>
-                                <?php endfor; ?>
-                                <?php if ($booking_page < $booking_pages): ?>
-                                <a class="pagination-link" href="user_dashboard.php?section=bookings&amp;booking_page=<?php echo $booking_page + 1; ?>" aria-label="Next page">Next &rarr;</a>
-                                <?php endif; ?>
-                            </div>
-                        </nav>
-                        <?php endif; ?>
+                        <div id="customer-booking-pagination">
+                            <?php require __DIR__ . '/includes/customer-dashboard/booking_pagination.php'; ?>
+                        </div>
+
                     </div>
                     <p class="footer-note">Online payment is verified by staff after you submit a transfer reference and receipt image. Pending proof pauses the payment window.</p>
                 </div>
