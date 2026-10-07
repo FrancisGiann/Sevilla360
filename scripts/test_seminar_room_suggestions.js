@@ -23,6 +23,19 @@ check('keeps manual available selections and only adds positive-capacity availab
   assert.equal(result.capacity, 4);
 });
 
+check('keeps a manual room pick and completes its same-building gender partition before adding another building', () => {
+  const result = suggestRoomSelection([
+    { venue_id: 1, available: 1, building_name: 'Main Hotel', max_capacity: 3 },
+    { venue_id: 2, available: 1, building_name: 'Main Hotel', max_capacity: 3 },
+    { venue_id: 3, available: 1, building_name: 'Annex', max_capacity: 12 },
+  ], [1], { people: 6, female: 3, male: 3 });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.addedIds, [2]);
+  assert.deepEqual(result.selectedIds, [1, 2]);
+  assert.equal(result.capacity, 6);
+  assert.deepEqual(result.buildingNames, ['Main Hotel']);
+});
+
 check('reports a total-bed inventory shortage without adding every room', () => {
   const result = suggestRoomSelection([
     { venue_id: 1, available: 1, max_capacity: 4 },
@@ -193,6 +206,15 @@ check('suggests enough rooms for 300 attendees with strict gender separation', (
   assert.equal(result.success, true);
   assert.equal(result.roomCount, 60);
   assert.equal(result.capacity, 300);
+});
+
+check('suggests exact 300-bed inventory across 10/12-bed rooms for a balanced gender split', () => {
+  const rooms = Array.from({ length: 28 }, (_, index) => ({ venue_id: index + 1, available: 1, building_name: 'Main Hotel', max_capacity: index < 18 ? 10 : 12 }));
+  const result = suggestRoomSelection(rooms, [], { people: 300, female: 150, male: 150 });
+  assert.equal(result.success, true);
+  assert.equal(result.roomCount, 28);
+  assert.equal(result.capacity, 300);
+  assert.deepEqual(result.buildingNames, ['Main Hotel']);
 });
 
 check('suggests enough rooms for 1,000 attendees across a larger inventory', () => {

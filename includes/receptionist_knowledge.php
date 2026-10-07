@@ -1355,6 +1355,24 @@ function receptionist_knowledge_is_comparison_request(string $message): bool
     return preg_match('/\b(?:why\b.{0,100}\b(?:better|best|recommended|recommendation|fit)|what\s+makes\b.{0,100}\b(?:better|best|recommended)|compare\b|difference\s+between\b)\b/i', $lower) === 1;
 }
 
+function receptionist_knowledge_pending_room_comparison_message(array $history): ?string
+{
+    for ($index = count($history) - 1; $index >= 0; $index--) {
+        if (($history[$index]['role'] ?? null) !== 'assistant') continue;
+        for ($prior = $index - 1; $prior >= 0; $prior--) {
+            if (($history[$prior]['role'] ?? null) !== 'user' || !is_string($history[$prior]['content'] ?? null)) continue;
+            return receptionist_knowledge_is_comparison_request($history[$prior]['content']) ? $history[$prior]['content'] : null;
+        }
+        return null;
+    }
+    return null;
+}
+
+function receptionist_knowledge_is_short_why(string $message): bool
+{
+    return preg_match('/\A\s*(?:why|how\s+come|bakit)\s*[?.!]*\s*\z/i', $message) === 1;
+}
+
 function receptionist_knowledge_pending_room_followup(array $history): ?string
 {
     $lastAssistantIndex = null;
@@ -1788,6 +1806,13 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     $routeCategory = in_array($route['kind'] ?? null, ['booking', 'booking_process'], true) ? ($route['category'] ?? null) : null;
     $explicitCategory = receptionist_knowledge_explicit_category_switch($message);
     $category = $routeCategory ?? $explicitCategory ?? (($baseSlots['intent'] ?? null) ?: receptionist_knowledge_category_hint($message));
+    $comparisonTargetMessage = receptionist_knowledge_is_comparison_request($message) ? $message : null;
+    if ($comparisonTargetMessage === null && receptionist_knowledge_is_short_why($message)) {
+        $comparisonTargetMessage = receptionist_knowledge_pending_room_comparison_message($history);
+    }
+    $roomComparisonIntent = $comparisonTargetMessage !== null;
+    $hotelComparisonIntent = $roomComparisonIntent && (($baseSlots['intent'] ?? null) === 'Hotel Room'
+        || receptionist_knowledge_hotel_parent_matches($records, $comparisonTargetMessage) !== []);
     $availabilityAnswer = receptionist_knowledge_availability_reply($records, $message, $language, $baseSlots, $category);
     if ($availabilityAnswer !== null) return $availabilityAnswer;
     $prefix = [
@@ -1818,7 +1843,7 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
     }
     $walkInReply = receptionist_knowledge_walk_in_reply($message, $language, $baseSlots);
     if ($walkInReply !== null) return $walkInReply;
-    $bookingContinuation = receptionist_knowledge_booking_continuation($records, $message, $language, $baseSlots, $route, $category, $pendingBareGuestCount['count'] ?? null, $pendingStep);
+    $bookingContinuation = $hotelComparisonIntent ? null : receptionist_knowledge_booking_continuation($records, $message, $language, $baseSlots, $route, $category, $pendingBareGuestCount['count'] ?? null, $pendingStep);
     if ($bookingContinuation !== null) return $bookingContinuation;
     if (($route['kind'] ?? null) === 'booking' && empty($baseSlots['intent'])) {
         $bookingCategory = $category;
@@ -1904,15 +1929,16 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $prefix['booking'] . ' ' . $reply, 'faq_id' => null, 'slots' => $slots, 'missing_slots' => [], 'quick_replies' => $quickReplies];
     }
     $roomDetailsIntent = receptionist_knowledge_is_room_details_request($message, $baseSlots);
-    $roomComparisonIntent = receptionist_knowledge_is_comparison_request($message);
+    $roomComparisonIntent = $roomComparisonIntent || receptionist_knowledge_is_comparison_request($message);
     $pendingRoomFollowup = receptionist_knowledge_pending_room_followup($history);
     if ($pendingRoomFollowup === 'details') $roomDetailsIntent = true;
     if ($pendingRoomFollowup === 'comparison') $roomComparisonIntent = true;
     $activeVenueId = receptionist_knowledge_positive_int($baseSlots['active_venue_id'] ?? null);
     $activeRoomGroupId = receptionist_knowledge_positive_int($baseSlots['active_room_group_id'] ?? null);
     $sessionVenueId = $activeVenueId;
-    $namedParentRows = receptionist_knowledge_hotel_parent_matches($records, $message);
-    $namedExactRows = receptionist_knowledge_explicit_venue_matches($records, $message, 'Hotel Room');
+    $roomReferenceMessage = $comparisonTargetMessage ?? $message;
+    $namedParentRows = receptionist_knowledge_hotel_parent_matches($records, $roomReferenceMessage);
+    $namedExactRows = receptionist_knowledge_explicit_venue_matches($records, $roomReferenceMessage, 'Hotel Room');
     $pendingParentMessage = receptionist_knowledge_pending_room_parent_message($history);
     if (!$namedParentRows && $pendingParentMessage !== null) {
         $namedParentRows = receptionist_knowledge_hotel_parent_matches($records, $pendingParentMessage);
@@ -1925,8 +1951,8 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         }
     }
     $roomSelectionRows = $namedParentRows ?: $activeHotelRows;
-    $typedActiveRows = array_values(array_filter($roomSelectionRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($message, $record)));
-    $messagePhrase = receptionist_knowledge_normalized_phrase($message);
+    $typedActiveRows = array_values(array_filter($roomSelectionRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($roomReferenceMessage, $record)));
+    $messagePhrase = receptionist_knowledge_normalized_phrase($roomReferenceMessage);
     $isRoomTypeSelection = count($typedActiveRows) === 1 && strlen($messagePhrase) <= 32;
     if ($isRoomTypeSelection) {
         $selectedType = receptionist_knowledge_normalized_phrase((string)($typedActiveRows[0]['room_type'] ?? ''));
@@ -1963,8 +1989,19 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
         } elseif ($activeRoomGroupId !== null) {
             $candidateRows = array_values(array_filter($candidateRows, static fn(array $record): bool => (int)($record['room_group_id'] ?? 0) === $activeRoomGroupId));
         } else {
-            $typedRows = array_values(array_filter($candidateRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($message, $record)));
+            $typedRows = array_values(array_filter($candidateRows, static fn(array $record): bool => receptionist_knowledge_hotel_room_type_matches($roomReferenceMessage, $record)));
             if ($typedRows) $candidateRows = $typedRows;
+        }
+        $requestedGuests = receptionist_knowledge_positive_int($baseSlots['group_size'] ?? null);
+        if ($roomComparisonIntent && $requestedGuests !== null && count($candidateRows) > 1) {
+            $capacityFits = [];
+            $unknownCapacity = false;
+            foreach ($candidateRows as $candidate) {
+                $candidateCapacity = receptionist_knowledge_positive_int($candidate['capacity_max'] ?? null);
+                if ($candidateCapacity === null) $unknownCapacity = true;
+                elseif ($candidateCapacity >= $requestedGuests) $capacityFits[] = $candidate;
+            }
+            if (count($capacityFits) === 1 && !$unknownCapacity) $candidateRows = $capacityFits;
         }
 
         $followupSlots = $baseSlots;
@@ -1991,14 +2028,28 @@ function receptionist_knowledge_reply(array $records, string $message, string $l
                 ];
             }
 
-            $capacity = isset($room['capacity_max']) ? 'It lists capacity up to ' . number_format((int)$room['capacity_max']) . ' guests' : 'Its guest capacity is not listed';
-            $beds = isset($room['bed_count_min']) ? ' and ' . number_format((int)$room['bed_count_min']) . ' bed' . ((int)$room['bed_count_min'] === 1 ? '' : 's') : '';
-            $reason = $capacity . $beds . '. ';
-            if (($followupSlots['preference'] ?? null) === 'best_fit') {
-                $estimatedTotal = !empty($followupSlots['start_date']) && !empty($followupSlots['end_date']);
-                $reason .= 'Your best-fit search ranks by capacity fit, then listed bed count and ' . ($estimatedTotal ? 'estimated stay total' : 'estimated nightly amount') . '. ';
+            $capacityMax = receptionist_knowledge_positive_int($room['capacity_max'] ?? null);
+            $requestedGuests = receptionist_knowledge_positive_int($followupSlots['group_size'] ?? null);
+            $capacity = $capacityMax !== null
+                ? 'Its published capacity is up to ' . number_format($capacityMax) . ' guests'
+                : 'Its guest capacity is not listed';
+            if ($capacityMax !== null && $requestedGuests !== null) {
+                $capacity .= $capacityMax >= $requestedGuests
+                    ? ', which covers your group of ' . number_format($requestedGuests)
+                    : ', below your group of ' . number_format($requestedGuests);
             }
-            $reason .= 'Those factors explain the fit; the published room facts alone do not establish that it is better overall.';
+            $beds = isset($room['bed_count_min']) ? ' and ' . number_format((int)$room['bed_count_min']) . ' bed' . ((int)$room['bed_count_min'] === 1 ? '' : 's') : '';
+            $reason = $name . ': ' . $capacity . $beds . '. ';
+            if (($followupSlots['preference'] ?? null) === 'best_fit') {
+                $rateBasis = !empty($followupSlots['start_date']) && !empty($followupSlots['end_date'])
+                    ? 'estimated stay total' : 'estimated nightly amount';
+                $reason .= 'The best-fit order favors capacity fit, then listed bed count and ' . $rateBasis . '. ';
+            }
+            if (!empty($followupSlots['start_date']) && !empty($followupSlots['end_date'])) {
+                $reason .= 'I kept your dates ' . $followupSlots['start_date'] . ' to ' . $followupSlots['end_date'] . ' and have not rechecked availability.';
+            } else {
+                $reason .= 'This uses published room facts and does not confirm current availability.';
+            }
             return ['mode' => 'knowledge', 'action' => 'ask', 'reply' => $reason, 'faq_id' => null, 'slots' => $followupSlots, 'missing_slots' => [], 'quick_replies' => [], 'show_support_contact_cta' => false];
         }
 

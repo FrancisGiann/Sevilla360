@@ -7,7 +7,7 @@ $realtime_client_config = realtime_client_config();
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
-$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'seminars', 'sales', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms'];
+$allowed_pages = ['overview', 'calendar', 'bookings', 'walkin', 'maintenance', 'seminars', 'sales', 'reviews', 'settings', 'auditlog', 'usermanagement', 'cms', 'database_backups'];
 if (!in_array($page, $allowed_pages, true)) $page = 'overview';
 $is_admin_user = (($_SESSION['role'] ?? '') === 'admin');
 
@@ -67,6 +67,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <link rel="stylesheet" href="assets/css/admin-page/admin_calendar.css?v=<?= time() ?>">
     <?php elseif ($page === 'bookings'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css') ?>">
     <?php elseif ($page === 'walkin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=<?= time() ?>">
     <?php elseif ($page === 'maintenance'): ?>
@@ -79,6 +80,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_settings.css') ?>">
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
+    <?php elseif ($page === 'database_backups' && $is_admin_user): ?>
+    <link rel="stylesheet" href="assets/css/admin-page/admin_database_backups.css?v=<?= time() ?>">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
@@ -164,6 +167,11 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                                 class="fa-solid fa-clipboard-list" aria-hidden="true"></i><span class="nav-link-label">Audit Log</span></a>
                     </li>
                     <li class="nav-item">
+                        <a href="admin_dashboard.php?page=database_backups"
+                            class="nav-link <?php echo $page === 'database_backups' ? 'active' : ''; ?>" <?= $page === 'database_backups' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-database" aria-hidden="true"></i><span class="nav-link-label">Database Backups</span></a>
+                    </li>
+                    <li class="nav-item">
                         <a href="admin_dashboard.php?page=cms"
                             class="nav-link <?php echo $page === 'cms' ? 'active' : ''; ?>" <?= $page === 'cms' ? 'aria-current="page"' : ''; ?>><i
                                 class="fa-solid fa-images" aria-hidden="true"></i><span class="nav-link-label">Media CMS</span></a>
@@ -211,6 +219,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                         elseif ($page === 'reviews') echo 'Venue Reviews';
                         elseif ($page === 'settings') echo $is_admin_user ? 'System Settings' : 'Account &amp; Security';
                         elseif ($page === 'auditlog') echo 'System Audit Log';
+                        elseif ($page === 'database_backups' && $is_admin_user) echo 'Database Backup &amp; Recovery';
                         elseif ($page === 'usermanagement') echo 'User Management';
                         elseif ($page === 'cms') echo 'Media CMS';
                     ?>
@@ -296,6 +305,9 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                 } elseif ($page === 'usermanagement') {
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_usermanagement.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
+                } elseif ($page === 'database_backups') {
+                    if ($is_admin_user) include 'includes/admin-page/admin_database_backups.php';
+                    else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
                 } elseif ($page === 'cms') {
                     if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') include 'includes/admin-page/admin_cms.php';
                     else echo '<div class="unauthorized-access"><i class="fa-solid fa-lock"></i><h3>Unauthorized Access</h3></div>';
@@ -305,6 +317,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
             ?>
         </main>
     </div>
+
+    <?php if ($page === 'bookings') include __DIR__ . '/includes/partials/receipt_preview.php'; ?>
 
 
     <!-- Shared Calendar Engine -->
@@ -322,6 +336,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <?php elseif ($page === 'calendar'): ?>
     <script src="assets/js/admin-page/admin_calendar.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
+    <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js') ?>"></script>
     <script src="assets/js/admin-page/admin_bookings.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'walkin'): ?>
     <script src="assets/js/admin-page/admin_walkin.js?v=<?= time() ?>"></script>
@@ -338,6 +353,8 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="assets/js/admin-page/admin_settings.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_settings.js') ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="assets/js/admin-page/admin_auditlog.js?v=<?= time() ?>"></script>
+    <?php elseif ($page === 'database_backups' && $is_admin_user): ?>
+    <script src="assets/js/admin-page/admin_database_backups.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="assets/js/admin-page/admin_usermanagement.js?v=<?= time() ?>"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>

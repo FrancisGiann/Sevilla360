@@ -212,6 +212,26 @@ function seminar_text(mixed $value, int $maxLength, bool $required = true): stri
     return $value;
 }
 
+/** Validate a manually entered seminar contract price for DECIMAL(12,2). */
+function seminar_validate_agreed_price(mixed $value): ?string
+{
+    if ($value === null) return null;
+    if (!is_string($value) && !is_int($value)) {
+        throw new InvalidArgumentException('Enter a non-negative price with up to 10 whole digits and 2 decimal places.');
+    }
+    $price = trim((string)$value);
+    if ($price === '') return null;
+    if (!preg_match('/\A[0-9]+(?:\.[0-9]{1,2})?\z/', $price)) {
+        throw new InvalidArgumentException('Enter a non-negative price with up to 10 whole digits and 2 decimal places.');
+    }
+    [$whole, $fraction] = array_pad(explode('.', $price, 2), 2, '');
+    $whole = ltrim($whole, '0');
+    $whole = $whole === '' ? '0' : $whole;
+    if (strlen($whole) > 10) throw new InvalidArgumentException('Enter a non-negative price with up to 10 whole digits and 2 decimal places.');
+    $fraction = str_pad($fraction, 2, '0');
+    return $whole . '.' . $fraction;
+}
+
 function seminar_normalize_gender(mixed $gender): string
 {
     $value = strtolower(trim((string)$gender));
@@ -227,9 +247,102 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
     $roomState = [];
     foreach ($rooms as $room) {
         $id = (int)$room['venue_id'];
-        $roomState[$id] = ['capacity' => max(0, (int)$room['max_capacity']), 'people' => [], 'gender' => null, 'locations' => []];
+        $roomState[$id] = ['capacity' => max(0, (int)$room['max_capacity']), 'people' => [], 'gender' => null, 'pool_gender' => null, 'locations' => []];
     }
+    ksort($roomState, SORT_NUMERIC);
     $genders = ['female', 'male'];
+    $genderCounts = ['female' => 0, 'male' => 0];
+    foreach ($attendees as $attendee) {
+        $gender = seminar_normalize_gender($attendee['gender'] ?? 'unknown');
+        if (isset($genderCounts[$gender])) $genderCounts[$gender]++;
+    }
+    $knownAttendees = array_sum($genderCounts);
+    $roomCapacities = [];
+    $inventoryGenderCapacity = 0;
+    $largestGenderRoom = 0;
+    foreach ($roomState as $roomId => $state) {
+        if ($state['capacity'] < 1) continue;
+        $effectiveCapacity = min($state['capacity'], $knownAttendees);
+        $roomCapacities[$roomId] = $effectiveCapacity;
+        $inventoryGenderCapacity += $effectiveCapacity;
+        $largestGenderRoom = max($largestGenderRoom, $effectiveCapacity);
+    }
+
+    $femaleRoomIds = [];
+    if ($genderCounts['female'] > 0 && $genderCounts['male'] > 0) {
+        // Find a deterministic subset of rooms for women while leaving enough
+        // capacity in the remaining rooms for men. The same partition rule is
+        // used by the room picker, so a successful suggestion is allocatable.
+        $femaleCount = $genderCounts['female'];
+        $maleCount = $genderCounts['male'];
+        $subsetLimit = min($inventoryGenderCapacity, $femaleCount + $largestGenderRoom - 1);
+        $reachable = array_fill(0, $subsetLimit + 1, false);
+        $reachable[0] = true;
+        $decisionRows = [];
+        $capacityRows = [];
+        foreach ($roomCapacities as $roomId => $capacity) {
+            $decisions = str_repeat("\0", $subsetLimit + 1);
+            if ($capacity <= $subsetLimit) {
+                for ($beds = $subsetLimit; $beds >= $capacity; $beds--) {
+                    if ($reachable[$beds] || !$reachable[$beds - $capacity]) continue;
+                    $reachable[$beds] = true;
+                    $decisions[$beds] = "\1";
+                }
+            }
+            $capacityRows[] = [$roomId, $capacity];
+            $decisionRows[] = $decisions;
+        }
+
+        $chosenFemaleCapacity = null;
+        for ($beds = $femaleCount; $beds <= $subsetLimit; $beds++) {
+            if ($reachable[$beds] && $inventoryGenderCapacity - $beds >= $maleCount) {
+                $chosenFemaleCapacity = $beds;
+                break;
+            }
+        }
+        if ($chosenFemaleCapacity === null) {
+            // If inventory cannot fit both groups, still divide room capacity
+            // to maximize assigned attendees instead of letting the first
+            // gender consume every room.
+            $bestAssigned = -1;
+            $bestImbalance = PHP_INT_MAX;
+            $bestDistance = PHP_INT_MAX;
+            $idealFemaleCapacity = (int)round($inventoryGenderCapacity * $femaleCount / max(1, $knownAttendees));
+            for ($beds = 0; $beds <= $subsetLimit; $beds++) {
+                if (!$reachable[$beds]) continue;
+                $femaleAssigned = min($femaleCount, $beds);
+                $maleAssigned = min($maleCount, max(0, $inventoryGenderCapacity - $beds));
+                $assigned = $femaleAssigned + $maleAssigned;
+                $imbalance = abs(($femaleCount - $femaleAssigned) - ($maleCount - $maleAssigned));
+                $distance = abs($beds - $idealFemaleCapacity);
+                if ($assigned > $bestAssigned
+                    || ($assigned === $bestAssigned && $imbalance < $bestImbalance)
+                    || ($assigned === $bestAssigned && $imbalance === $bestImbalance && $distance < $bestDistance)) {
+                    $chosenFemaleCapacity = $beds;
+                    $bestAssigned = $assigned;
+                    $bestImbalance = $imbalance;
+                    $bestDistance = $distance;
+                }
+            }
+        }
+
+        $beds = $chosenFemaleCapacity ?? 0;
+        for ($index = count($capacityRows) - 1; $index >= 0 && $beds > 0; $index--) {
+            if ($decisionRows[$index][$beds] !== "\1") continue;
+            $femaleRoomIds[] = $capacityRows[$index][0];
+            $beds -= $capacityRows[$index][1];
+        }
+        $femaleRoomSet = array_fill_keys($femaleRoomIds, true);
+        foreach ($roomState as $roomId => &$state) {
+            if ($state['capacity'] < 1) continue;
+            $state['pool_gender'] = isset($femaleRoomSet[$roomId]) ? 'female' : 'male';
+        }
+        unset($state);
+    } elseif ($genderCounts['female'] > 0 || $genderCounts['male'] > 0) {
+        $onlyGender = $genderCounts['female'] > 0 ? 'female' : 'male';
+        foreach ($roomState as &$state) if ($state['capacity'] > 0) $state['pool_gender'] = $onlyGender;
+        unset($state);
+    }
     $normalizeLocation = static function (mixed $value): string {
         $raw = is_scalar($value) ? (string)$value : '';
         $collapsed = preg_replace('/\s+/u', ' ', trim($raw));
@@ -285,14 +398,14 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
         });
         foreach ($groups as $locationKey => $people) {
             $remaining = count($people);
-            $sameLocation = static fn(int $roomId, array $state): bool => $state['gender'] === $gender && isset($state['locations'][$locationKey]);
-            $empty = static fn(int $roomId, array $state): bool => count($state['people']) === 0 && $state['capacity'] > 0;
-            $sameGenderOccupied = static fn(int $roomId, array $state): bool => $state['gender'] === $gender && count($state['people']) > 0;
+            $sameLocation = static fn(int $roomId, array $state): bool => $state['pool_gender'] === $gender && $state['gender'] === $gender && isset($state['locations'][$locationKey]);
+            $empty = static fn(int $roomId, array $state): bool => $state['pool_gender'] === $gender && count($state['people']) === 0 && $state['capacity'] > 0;
+            $sameGenderOccupied = static fn(int $roomId, array $state): bool => $state['pool_gender'] === $gender && $state['gender'] === $gender && count($state['people']) > 0;
 
-            // Keep a full location cohort together whenever an existing cohort room can take it.
+            // Keep a location cohort together when a compatible room can take
+            // it, while using space in occupied same-gender rooms first.
             $roomId = $chooseRoom($sameLocation, $remaining);
-            // A one-person location cohort should join same-gender occupants if there is room.
-            if ($roomId === null && $remaining === 1) $roomId = $chooseRoom($sameGenderOccupied, 1);
+            if ($roomId === null) $roomId = $chooseRoom($sameGenderOccupied, $remaining);
             if ($roomId === null) $roomId = $chooseRoom($empty, $remaining);
             if ($roomId !== null) {
                 $addPeople($roomId, $people, $gender, $locationKey);
@@ -304,7 +417,7 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
             while ($offset < count($people)) {
                 $remaining = count($people) - $offset;
                 $roomId = $chooseRoom($sameLocation, $remaining);
-                if ($roomId === null && $remaining === 1) $roomId = $chooseRoom($sameGenderOccupied, 1);
+                if ($roomId === null) $roomId = $chooseRoom($sameGenderOccupied, $remaining);
                 if ($roomId === null) $roomId = $chooseRoom($empty, $remaining);
                 if ($roomId !== null) {
                     $chunk = array_slice($people, $offset);
@@ -314,8 +427,8 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
 
                 // Fill an existing same-location room before opening another room.
                 $roomId = $chooseRoom($sameLocation, 1);
-                if ($roomId === null) $roomId = $chooseLargestRoom($empty);
                 if ($roomId === null) $roomId = $chooseRoom($sameGenderOccupied, 1);
+                if ($roomId === null) $roomId = $chooseLargestRoom($empty);
                 if ($roomId === null) break;
                 $free = $roomState[$roomId]['capacity'] - count($roomState[$roomId]['people']);
                 $take = min($free, $remaining);
@@ -326,7 +439,7 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
                     foreach ($roomState as $otherRoomId => $otherState) {
                         if ($otherRoomId === $roomId) continue;
                         $otherFree = $otherState['capacity'] - count($otherState['people']);
-                        if ($otherFree >= 2 && ($otherState['gender'] === null || $otherState['gender'] === $gender)) {
+                        if ($otherFree >= 2 && $otherState['pool_gender'] === $gender) {
                             $anotherRoomCanPair = true;
                             break;
                         }
@@ -336,6 +449,16 @@ function seminar_allocate_attendees(array $attendees, array $rooms): array
                 $chunk = array_slice($people, $offset, $take);
                 $addPeople($roomId, $chunk, $gender, $locationKey);
                 $offset += $take;
+            }
+
+            // Cohorts are kept together when possible, then any members left
+            // over use spare occupied beds before another room is considered.
+            foreach ($people as $person) {
+                $personId = (int)$person['id'];
+                if (isset($assignments[$personId])) continue;
+                $roomId = $chooseRoom($sameLocation, 1);
+                if ($roomId === null) $roomId = $chooseRoom($sameGenderOccupied, 1);
+                if ($roomId !== null) $addPeople($roomId, [$person], $gender, $locationKey);
             }
         }
     }
@@ -571,6 +694,53 @@ function seminar_floor_display_label(mixed $value): string
     return preg_match('/\\A\\d+(?:st|nd|rd|th)?\\z/iD', $label) ? 'Floor ' . $label : $label;
 }
 
+function seminar_pdf_text_sort_key(mixed $value): string
+{
+    $text = is_scalar($value) ? (string)$value : '';
+    return function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+}
+
+function seminar_pdf_location_sort_key(mixed $value): string
+{
+    $text = is_scalar($value) ? (string)$value : '';
+    $collapsed = preg_replace('/[\\s\\p{Z}\\x{FEFF}]+/u', ' ', $text);
+    if ($collapsed !== null) $collapsed = trim($collapsed);
+    if ($collapsed === null) $collapsed = preg_replace('/\\s+/', ' ', trim($text)) ?? trim($text);
+    return seminar_pdf_text_sort_key($collapsed);
+}
+
+function seminar_sort_room_sheet_attendees(array $attendees): array
+{
+    $sorted = array_values($attendees);
+    usort($sorted, static function (array $left, array $right): int {
+        $locationOrder = strcmp(seminar_pdf_location_sort_key($left['location'] ?? ''), seminar_pdf_location_sort_key($right['location'] ?? ''));
+        if ($locationOrder !== 0) return $locationOrder;
+        $leftName = is_scalar($left['full_name'] ?? null) ? (string)$left['full_name'] : '';
+        $rightName = is_scalar($right['full_name'] ?? null) ? (string)$right['full_name'] : '';
+        $nameOrder = strcmp(seminar_pdf_text_sort_key($leftName), seminar_pdf_text_sort_key($rightName));
+        if ($nameOrder !== 0) return $nameOrder;
+        $nameCaseOrder = strcmp($leftName, $rightName);
+        if ($nameCaseOrder !== 0) return $nameCaseOrder;
+        return (int)($left['id'] ?? 0) <=> (int)($right['id'] ?? 0);
+    });
+    return $sorted;
+}
+
+function seminar_sort_alphabetical_attendees(array $attendees): array
+{
+    $sorted = array_values($attendees);
+    usort($sorted, static function (array $left, array $right): int {
+        $leftName = is_scalar($left['full_name'] ?? null) ? (string)$left['full_name'] : '';
+        $rightName = is_scalar($right['full_name'] ?? null) ? (string)$right['full_name'] : '';
+        $nameOrder = strcmp(seminar_pdf_text_sort_key($leftName), seminar_pdf_text_sort_key($rightName));
+        if ($nameOrder !== 0) return $nameOrder;
+        $nameCaseOrder = strcmp($leftName, $rightName);
+        if ($nameCaseOrder !== 0) return $nameCaseOrder;
+        return (int)($left['id'] ?? 0) <=> (int)($right['id'] ?? 0);
+    });
+    return $sorted;
+}
+
 function seminar_render_pdf_html(array $seminar, array $rooms, array $attendees, string $type): string
 {
     if (!in_array($type, ['rooms', 'list'], true)) throw new InvalidArgumentException('Invalid seminar PDF type.');
@@ -615,7 +785,7 @@ function seminar_render_pdf_html(array $seminar, array $rooms, array $attendees,
     $html = '<!doctype html><html><head><meta charset="utf-8">' . $style . '</head><body>';
     if ($type === 'rooms') {
         foreach ($rooms as $roomIndex => $room) {
-            $people = array_values(array_filter($attendees, static fn($a) => (int)$a['assigned_venue_id'] === (int)$room['venue_id']));
+            $people = seminar_sort_room_sheet_attendees(array_values(array_filter($attendees, static fn($a) => (int)$a['assigned_venue_id'] === (int)$room['venue_id'])));
             $roomName = !empty($room['room_number']) ? 'Room ' . $room['room_number'] : $room['name'];
             $floorLabel = seminar_floor_display_label($room['floor_label'] ?? '');
             $floorText = $floorLabel !== '' ? $e($floorLabel) . ' · ' : '';
@@ -638,7 +808,7 @@ function seminar_render_pdf_html(array $seminar, array $rooms, array $attendees,
         $html .= ($logo ? '<div class="brand"><img src="' . $e($logo) . '" alt="Sevilla360"><span>SEVILLA360 · SEMINAR OPERATIONS</span></div>' : '');
         $html .= '<h1>Seminar Attendee Room List</h1><h2>' . $e($seminar['name']) . '</h2><div class="sub">' . $e($seminar['hall_name']) . ' · Hall ' . $e($hallDate) . ' · Hotel ' . $e($hotelDate) . '</div>';
         $html .= '<table class="roster"><thead><tr><th style="width:8%">No.</th><th style="width:35%">Attendee name</th><th style="width:25%">Location</th><th>Hotel room</th></tr></thead><tbody>';
-        foreach ($attendees as $index => $person) $html .= '<tr><td>' . ($index + 1) . '</td><td>' . $e($person['full_name']) . '</td><td>' . $e($person['location']) . '</td><td>' . $e($roomById[(int)$person['assigned_venue_id']] ?? 'Unassigned') . '</td></tr>';
+        foreach (seminar_sort_alphabetical_attendees($attendees) as $index => $person) $html .= '<tr><td>' . ($index + 1) . '</td><td>' . $e($person['full_name']) . '</td><td>' . $e($person['location']) . '</td><td>' . $e($roomById[(int)$person['assigned_venue_id']] ?? 'Unassigned') . '</td></tr>';
         $html .= '</tbody></table>';
     }
     return $html . '</body></html>';

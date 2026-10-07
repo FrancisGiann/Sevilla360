@@ -12,6 +12,19 @@ $throws = static function (callable $callable): bool {
     try { $callable(); return false; } catch (InvalidArgumentException) { return true; }
 };
 
+$check('agreed seminar price accepts exact non-negative decimal values and canonicalizes pesos', seminar_validate_agreed_price(null) === null
+    && seminar_validate_agreed_price('') === null
+    && seminar_validate_agreed_price('0') === '0.00'
+    && seminar_validate_agreed_price('00012.3') === '12.30'
+    && seminar_validate_agreed_price('000000000001.00') === '1.00'
+    && seminar_validate_agreed_price('9999999999.99') === '9999999999.99');
+$check('agreed seminar price rejects negatives, excess precision, overflow, and non-decimal input', $throws(static fn() => seminar_validate_agreed_price('-1'))
+    && $throws(static fn() => seminar_validate_agreed_price('1.001'))
+    && $throws(static fn() => seminar_validate_agreed_price('10000000000'))
+    && $throws(static fn() => seminar_validate_agreed_price('1e3'))
+    && $throws(static fn() => seminar_validate_agreed_price('1,000'))
+    && $throws(static fn() => seminar_validate_agreed_price(1.25)));
+
 $attendees = [];
 for ($i = 1; $i <= 6; $i++) $attendees[] = ['id' => $i, 'gender' => 'male', 'location' => 'Sevilla'];
 $allocation = seminar_allocate_attendees($attendees, [
@@ -94,6 +107,14 @@ $insufficientAllocation = seminar_allocate_attendees($attendees, [
 ]);
 $check('allocator leaves attendees unassigned when total capacity is insufficient', count($insufficientAllocation['assignments']) === 4
     && count($insufficientAllocation['unassigned']) === 2 && $insufficientAllocation['solo'] === []);
+$genderShortageAllocation = seminar_allocate_attendees([
+    ['id' => 1, 'gender' => 'female', 'location' => 'North'], ['id' => 2, 'gender' => 'female', 'location' => 'South'], ['id' => 3, 'gender' => 'female', 'location' => 'West'],
+    ['id' => 4, 'gender' => 'male', 'location' => 'North'], ['id' => 5, 'gender' => 'male', 'location' => 'South'], ['id' => 6, 'gender' => 'male', 'location' => 'West'],
+], [['venue_id' => 222, 'max_capacity' => 2], ['venue_id' => 223, 'max_capacity' => 2]]);
+$genderShortageCounts = ['female' => 0, 'male' => 0];
+foreach ($genderShortageAllocation['assignments'] as $personId => $_roomId) $genderShortageCounts[$personId <= 3 ? 'female' : 'male']++;
+$check('allocator splits insufficient inventory between genders instead of consuming all rooms for the first gender', $genderShortageCounts === ['female' => 2, 'male' => 2]
+    && count($genderShortageAllocation['unassigned']) === 2 && $genderShortageAllocation['solo'] === []);
 $check('allocator is deterministic for the same roster and room order', $allocation === seminar_allocate_attendees($attendees, [
     ['venue_id' => 101, 'max_capacity' => 5], ['venue_id' => 102, 'max_capacity' => 5],
 ]));
@@ -111,6 +132,33 @@ $largeRooms = [];
 for ($i = 1; $i <= 120; $i++) $largeRooms[] = ['venue_id' => 1000 + $i, 'max_capacity' => 5];
 $largeAllocation = seminar_allocate_attendees($largeRoster, $largeRooms);
 $check('allocator handles 300 attendees across 120 rooms at exact capacity', count($largeAllocation['assignments']) === 300 && $largeAllocation['unassigned'] === [] && $largeAllocation['solo'] === []);
+$packedRoster = [];
+for ($group = 1; $group <= 50; $group++) {
+    foreach (['female', 'male'] as $gender) {
+        for ($member = 0; $member < 3; $member++) {
+            $packedRoster[] = ['id' => count($packedRoster) + 1, 'gender' => $gender, 'location' => sprintf('%s location %02d', $gender, $group)];
+        }
+    }
+}
+$packedRooms = [];
+for ($index = 0; $index < 28; $index++) $packedRooms[] = ['venue_id' => 3000 + $index, 'max_capacity' => $index < 18 ? 10 : 12];
+$packedAllocation = seminar_allocate_attendees($packedRoster, $packedRooms);
+$packedRoomCounts = array_count_values($packedAllocation['assignments']);
+$packedGenderByRoom = [];
+foreach ($packedRoster as $person) {
+    $roomId = $packedAllocation['assignments'][$person['id']] ?? 0;
+    if ($roomId) $packedGenderByRoom[$roomId][$person['gender']] = true;
+}
+$packedCapacities = array_column($packedRooms, 'max_capacity', 'venue_id');
+ksort($packedRoomCounts);
+ksort($packedCapacities);
+$packedRoomLimitsHeld = true;
+foreach ($packedRoomCounts as $roomId => $count) if ($count > $packedCapacities[$roomId]) $packedRoomLimitsHeld = false;
+$check('allocator packs 300 attendees in three-person location groups across exact 10/12-bed inventory without stranding either gender', count($packedAllocation['assignments']) === 300
+    && $packedAllocation['unassigned'] === [] && $packedAllocation['solo'] === [] && array_sum($packedCapacities) === 300
+    && count($packedRoomCounts) === 28 && $packedRoomCounts === $packedCapacities
+    && $packedRoomLimitsHeld && count(array_filter($packedGenderByRoom, static fn($genders) => count($genders) > 1)) === 0
+    && $packedAllocation === seminar_allocate_attendees($packedRoster, array_reverse($packedRooms)));
 $roomIds = seminar_normalize_room_ids(range(1, 120));
 $check('room selection accepts more than 100 distinct room units', count($roomIds) === 120 && $roomIds[0] === 1 && $roomIds[119] === 120);
 $check('room option availability returns inventory floor metadata and uses hotel checkout-exclusive overlap', str_contains((string)file_get_contents(__DIR__ . '/../includes/seminars.php'), "m.start_date < ? AND m.end_date > ?")
@@ -190,6 +238,41 @@ $check('floor labels preserve arbitrary text, format numeric and ordinal labels,
     && seminar_floor_display_label('') === ''
     && str_contains((string)file_get_contents(__DIR__ . '/../assets/js/admin-page/admin_seminars.js'), 'if (/\\bfloor\\b/i.test(label)) return label;')
     && str_contains((string)file_get_contents(__DIR__ . '/../assets/js/admin-page/admin_seminars.js'), 'return /^\\d+(?:st|nd|rd|th)?$/i.test(label) ? `Floor ${label}` : label;'));
+$locationSortSample = [
+    ['id' => 4, 'full_name' => 'Zoe Quezon', 'location' => 'Quezon City', 'assigned_venue_id' => 4],
+    ['id' => 2, 'full_name' => 'Ben Pasig', 'location' => ' pasig ', 'assigned_venue_id' => 4],
+    ['id' => 3, 'full_name' => 'Ana Pasig', 'location' => "PASIG\t", 'assigned_venue_id' => 4],
+    ['id' => 1, 'full_name' => 'Amir Quezon', 'location' => "quezon  city", 'assigned_venue_id' => 4],
+];
+$roomSortedSample = seminar_sort_room_sheet_attendees($locationSortSample);
+$roomSortHtml = seminar_render_pdf_html($seminar, [['venue_id' => 4, 'name' => 'North Wing', 'room_number' => '12', 'floor_label' => '', 'max_capacity' => 4]], $locationSortSample, 'rooms');
+$alphabeticalListHtml = seminar_render_pdf_html($seminar, $rooms, $locationSortSample, 'list');
+$seminarWithAgreedPrice = $seminar + ['agreed_price' => '1234567.89'];
+$publicRoomPdfHtml = seminar_render_pdf_html($seminarWithAgreedPrice, $rooms, $locationSortSample, 'rooms');
+$publicListPdfHtml = seminar_render_pdf_html($seminarWithAgreedPrice, $rooms, $locationSortSample, 'list');
+$check('staff agreed price is absent from public room sheets and name-to-room PDF', !str_contains($publicRoomPdfHtml, '1234567.89')
+    && !str_contains($publicListPdfHtml, '1234567.89')
+    && !str_contains($publicRoomPdfHtml, 'Agreed seminar price')
+    && !str_contains($publicListPdfHtml, 'Agreed seminar price'));
+$roomNamePositions = array_map(static fn(string $name) => strpos($roomSortHtml, '<td>' . $name . '</td>'), ['Ana Pasig', 'Ben Pasig', 'Amir Quezon', 'Zoe Quezon']);
+$alphabeticalNamePositions = array_map(static fn(string $name) => strpos($alphabeticalListHtml, '<td>' . $name . '</td>'), ['Amir Quezon', 'Ana Pasig', 'Ben Pasig', 'Zoe Quezon']);
+$pasigSortKeys = [
+    seminar_pdf_location_sort_key('PASIG'),
+    seminar_pdf_location_sort_key(' pasig '),
+    seminar_pdf_location_sort_key("\u{00A0}pasig\u{00A0}"),
+];
+$unicodeWhitespaceSort = seminar_sort_room_sheet_attendees([
+    ['id' => 2, 'full_name' => 'Zoe Pasig', 'location' => "\u{00A0}pasig\u{00A0}"],
+    ['id' => 1, 'full_name' => 'Amy Pasig', 'location' => ' PASIG '],
+]);
+$check('PDF location sort keys collapse case and ASCII or nonbreaking boundary whitespace', count(array_unique($pasigSortKeys)) === 1);
+$check('PDF sheets keep normalized location groups consecutive and sort names within groups', array_column($roomSortedSample, 'full_name') === ['Ana Pasig', 'Ben Pasig', 'Amir Quezon', 'Zoe Quezon']
+    && array_column($roomSortedSample, 'location') === ["PASIG\t", ' pasig ', 'quezon  city', 'Quezon City']
+    && count($roomNamePositions) === 4 && !in_array(false, $roomNamePositions, true)
+    && $roomNamePositions[0] < $roomNamePositions[1] && $roomNamePositions[1] < $roomNamePositions[2] && $roomNamePositions[2] < $roomNamePositions[3]
+    && array_column($unicodeWhitespaceSort, 'full_name') === ['Amy Pasig', 'Zoe Pasig']);
+$check('name-to-room PDF remains alphabetical when given an unsorted roster', count($alphabeticalNamePositions) === 4 && !in_array(false, $alphabeticalNamePositions, true)
+    && $alphabeticalNamePositions[0] < $alphabeticalNamePositions[1] && $alphabeticalNamePositions[1] < $alphabeticalNamePositions[2] && $alphabeticalNamePositions[2] < $alphabeticalNamePositions[3]);
 $pdfAttendees = [['full_name' => 'Amira Santos', 'location' => 'Sevilla', 'contact' => '555-0101', 'assigned_venue_id' => 4]];
 for ($i = 2; $i <= 16; $i++) $pdfAttendees[] = ['full_name' => 'Attendee ' . $i, 'location' => $i % 2 ? 'Sevilla' : 'Dos Hermanas', 'contact' => '555-01' . str_pad((string)$i, 2, '0', STR_PAD_LEFT), 'assigned_venue_id' => 4];
 $pdfAttendees[] = ['full_name' => 'Diego Santos', 'location' => 'Dos Hermanas', 'contact' => '555-0202', 'assigned_venue_id' => 5];
@@ -254,6 +337,7 @@ $pdfEndpoint = $source('actions/admin/seminar_pdf.php');
 $adminJs = $source('assets/js/admin-page/admin_seminars.js');
 $seminarPage = $source('includes/admin-page/admin_seminars.php');
 $seminarCss = $source('assets/css/admin-page/admin_seminars.css');
+$seminarMigration = $source('migrations/030_seminar_agreed_price.sql');
 $dashboard = $source('admin_dashboard.php');
 $statusEndpoint = $source('actions/admin/update_booking_status.php');
 $onlineSubmit = $source('actions/bookings/submit_online.php');
@@ -283,6 +367,15 @@ $check('new seminars require validated roster before atomic create-from-import',
     && str_contains($adminJs, "request('create_from_import'")
     && str_contains($adminEndpoint, "if (\$op === 'create_from_import')")
     && str_contains($adminEndpoint, 'seminar_mutate_reservation($conn, $data, null, $validated'));
+$check('agreed seminar price is nullable for legacy plans and persists in create, import, update, list, and get paths', str_contains($seminarMigration, 'agreed_price DECIMAL(12,2) NULL DEFAULT NULL')
+    && str_contains($adminEndpoint, "seminar_validate_agreed_price(\$input['agreed_price'] ?? null)")
+    && str_contains($adminEndpoint, 'INSERT INTO seminars (name,agreed_price,status')
+    && str_contains($adminEndpoint, 'UPDATE seminars SET name=?,agreed_price=?')
+    && str_contains($adminEndpoint, 'SELECT s.id,s.name,s.agreed_price,s.status')
+    && str_contains($adminEndpoint, 'SELECT s.*, v.name AS hall_name FROM seminars s')
+    && str_contains($adminJs, "agreed_price: String(draft.agreed_price ?? '').trim()")
+    && str_contains($adminJs, "plan.agreed_price")
+    && str_contains($adminJs, 'Agreed seminar price ('));
 $check('picker shows disabled unavailable rooms with reasons and selected summary excludes them', str_contains($adminJs, 'unavailable_reason')
     && str_contains($adminJs, "'disabled'") && str_contains($adminJs, 'Number(room.available) === 1'));
 $check('room bulk selection requires a nonempty search and selects only available visible matches', str_contains($adminJs, 'searchButton.disabled = !query || !matches.length;')
@@ -390,6 +483,13 @@ $check('draft review keeps save and finalize prominent and groups secondary acti
     && str_contains($secondaryActionsBody, 'seminar-cancel')
     && str_contains($planRenderBody, 'const moreActionsMarkup = secondaryActions.length ? `<details class="seminar-more-actions">')
     && str_contains($planRenderBody, '<span>More actions</span>'));
+$check('draft review exposes a confirmed regenerate action when attendees are unassigned and reserved rooms have free beds', str_contains($planRenderBody, 'const freeBeds = plan.rooms.reduce')
+    && str_contains($planRenderBody, "const hasAssignableUnassigned = unassigned.some(person => ['female', 'male'].includes(String(person.gender || '').trim().toLowerCase()));")
+    && str_contains($planRenderBody, 'const showUnassignedRegenerate = isDraft && hasAssignableUnassigned && freeBeds > 0;')
+    && str_contains($planRenderBody, 'Set gender to Male or Female to assign these attendees.')
+    && str_contains($planRenderBody, 'id="seminar-regenerate-unassigned"')
+    && str_contains($adminJs, "message: 'This replaces manual room moves and clears mixed-gender approvals.")
+    && str_contains($adminJs, "workspace.querySelector('#seminar-regenerate-unassigned')"));
 $check('finalized and cancelled review states expose only valid primary actions', str_contains($primaryActionsBody, "plan.status === 'finalized'")
     && str_contains($primaryActionsBody, 'id="seminar-reopen">Reopen plan')
     && str_contains($primaryActionsBody, "plan.status === 'cancelled'")
@@ -481,6 +581,8 @@ $check('seminar attendee copy uses correct singular and plural grammar and solo 
     && str_contains($adminJs, 'id="seminar-auto-select-rooms"')
     && str_contains($adminJs, 'Suggest rooms by building')
     && str_contains($adminJs, 'Keeps selected rooms; clear selection to start over by building. Assignments happen on continue.')
+    && str_contains($adminJs, 'enough capacity for the known-gender groups')
+    && str_contains($adminJs, 'will remain unassigned until their gender is clarified')
     && str_contains($adminJs, "result.reason === 'total_capacity'")
     && str_contains($adminJs, "result.reason === 'gender_separation'")
     && !str_contains($adminJs, '100 or more rooms')

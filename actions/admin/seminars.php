@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/seminars.php';
+require_once __DIR__ . '/../../includes/seminar_payments.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'staff'], true)) {
@@ -51,6 +52,9 @@ function seminar_load(int $seminarId): array
     $stmt = $conn->prepare('SELECT id, full_name, gender, location, contact, assigned_venue_id, solo_flag FROM seminar_attendees WHERE seminar_id=? ORDER BY full_name COLLATE utf8mb4_unicode_ci, id');
     $stmt->bind_param('i', $seminarId); $stmt->execute(); $attendees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
     $seminar['hall'] = $hall; $seminar['rooms'] = $rooms; $seminar['attendees'] = $attendees;
+    $seminar['payment_summary'] = seminar_payment_summary($conn, $seminarId);
+    $seminar['payments'] = seminar_payment_history($conn, $seminarId);
+    $seminar['payment_methods'] = seminar_payment_methods($conn);
     return $seminar;
 }
 
@@ -118,6 +122,7 @@ function seminar_suggest_mapping(array $headers): array
 function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId, ?array $initialRoster = null, ?array &$initialAllocation = null): int
 {
     $name = seminar_text($input['name'] ?? '', 180);
+    $agreedPrice = seminar_validate_agreed_price($input['agreed_price'] ?? null);
     [$hallStart, $hallEnd, $checkIn, $checkOut] = seminar_validate_dates($input['hall_start'] ?? null, $input['hall_end'] ?? null, $input['hotel_check_in'] ?? null, $input['hotel_check_out'] ?? null);
     $hallId = seminar_id($input['hall_venue_id'] ?? null, 'Event Hall');
     $roomIds = seminar_selected_room_ids($input['room_ids'] ?? null);
@@ -126,10 +131,12 @@ function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId,
     $conn->begin_transaction();
     try {
         if ($seminarId !== null) {
-            $stmt = $conn->prepare("SELECT id FROM seminars WHERE id=? AND status='draft' FOR UPDATE");
+            $stmt = $conn->prepare("SELECT id,agreed_price FROM seminars WHERE id=? AND status='draft' FOR UPDATE");
             $stmt->bind_param('i', $seminarId); $stmt->execute();
-            if (!$stmt->get_result()->num_rows) throw new InvalidArgumentException('Reopen the finalized seminar before changing its reservation.');
+            $lockedSeminar = $stmt->get_result()->fetch_assoc();
+            if (!$lockedSeminar) throw new InvalidArgumentException('Reopen the finalized seminar before changing its reservation.');
             $stmt->close();
+            seminar_payment_assert_price_floor($conn, $seminarId, $agreedPrice);
         }
         seminar_lock_resources($conn, $ids);
         foreach ($ids as $venueId) {
@@ -138,8 +145,8 @@ function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId,
         }
         if ($seminarId === null) {
             $userId = (int)$_SESSION['user_id'];
-            $stmt = $conn->prepare("INSERT INTO seminars (name,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (?,'draft',?,?,?,?,?,?)");
-            $stmt->bind_param('sissssi', $name, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $userId); $stmt->execute(); $seminarId = (int)$conn->insert_id; $stmt->close();
+            $stmt = $conn->prepare("INSERT INTO seminars (name,agreed_price,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (?,?, 'draft',?,?,?,?,?,?)");
+            $stmt->bind_param('ssissssi', $name, $agreedPrice, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $userId); $stmt->execute(); $seminarId = (int)$conn->insert_id; $stmt->close();
         } else {
             $floorStmt = $conn->prepare("SELECT venue_id,floor_label FROM seminar_reservations WHERE seminar_id=? AND resource_kind='room' FOR UPDATE");
             $floorStmt->bind_param('i', $seminarId); $floorStmt->execute();
@@ -147,8 +154,8 @@ function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId,
                 $retainedFloors[(int)$floorRow['venue_id']] = (string)($floorRow['floor_label'] ?? '');
             }
             $floorStmt->close();
-            $stmt = $conn->prepare('UPDATE seminars SET name=?,hall_venue_id=?,hall_start_date=?,hall_end_date=?,hotel_check_in=?,hotel_check_out=? WHERE id=?');
-            $stmt->bind_param('sissssi', $name, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $seminarId); $stmt->execute(); $stmt->close();
+            $stmt = $conn->prepare('UPDATE seminars SET name=?,agreed_price=?,hall_venue_id=?,hall_start_date=?,hall_end_date=?,hotel_check_in=?,hotel_check_out=? WHERE id=?');
+            $stmt->bind_param('ssissssi', $name, $agreedPrice, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $seminarId); $stmt->execute(); $stmt->close();
             $stmt = $conn->prepare('UPDATE seminar_attendees SET assigned_venue_id=NULL,solo_flag=0 WHERE seminar_id=? AND assigned_venue_id NOT IN (' . implode(',', $roomIds) . ')');
             $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
             $stmt = $conn->prepare('DELETE FROM seminar_reservations WHERE seminar_id=?'); $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
@@ -246,7 +253,10 @@ try {
             echo json_encode(['success' => true, 'halls' => seminar_available_halls($conn, $hallStart, $hallEnd, $excludeId)]); exit;
         }
         if ($op === 'get') { echo json_encode(['success' => true, 'seminar' => seminar_load(seminar_id($_GET['id'] ?? null))]); exit; }
-        $result = $conn->query('SELECT s.id,s.name,s.status,s.hall_start_date,s.hall_end_date,s.hotel_check_in,s.hotel_check_out,v.name AS hall_name,(SELECT COUNT(*) FROM seminar_attendees a WHERE a.seminar_id=s.id) AS attendee_count FROM seminars s JOIN venues v ON v.id=s.hall_venue_id WHERE s.status <> \'cancelled\' ORDER BY s.updated_at DESC,s.id DESC');
+        $result = $conn->query("SELECT s.id,s.name,s.agreed_price,s.status,s.hall_start_date,s.hall_end_date,s.hotel_check_in,s.hotel_check_out,v.name AS hall_name,
+                (SELECT COUNT(*) FROM seminar_attendees a WHERE a.seminar_id=s.id) AS attendee_count,
+                (SELECT COALESCE(SUM(p.amount),0) FROM seminar_payments p WHERE p.seminar_id=s.id AND p.status='posted') AS amount_paid
+            FROM seminars s JOIN venues v ON v.id=s.hall_venue_id WHERE s.status <> 'cancelled' ORDER BY s.updated_at DESC,s.id DESC");
         echo json_encode(['success' => true, 'seminars' => $result->fetch_all(MYSQLI_ASSOC)]); exit;
     }
 
@@ -412,5 +422,5 @@ try {
     http_response_code(422); echo json_encode(['success' => false, 'message' => $error->getMessage()]);
 } catch (Throwable $error) {
     error_log('Seminar operation failed: ' . get_class($error));
-    http_response_code(500); echo json_encode(['success' => false, 'message' => 'Unable to save seminar changes. Check that migration 028 has been applied.']);
+    http_response_code(500); echo json_encode(['success' => false, 'message' => 'Unable to save seminar changes. Check that migrations 028, 030, and 031 have been applied.']);
 }

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/receptionist_faq.php';
 require_once __DIR__ . '/receptionist_knowledge.php';
+require_once __DIR__ . '/hotel_rooms.php';
 
 interface ReceptionistAiProviderInterface
 {
@@ -90,13 +91,13 @@ function receptionist_ai_enforce_session_owner(): void
         // Preserve legacy anonymous session state across deployment. Authenticated
         // sessions without an owner marker cannot safely inherit prior history.
         if ($owner !== 'guest') {
-            unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_focus']);
+            unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_focus'], $_SESSION['receptionist_natural_state']);
         }
         $_SESSION['receptionist_ai_owner'] = $owner;
         return;
     }
     if ($_SESSION['receptionist_ai_owner'] !== $owner) {
-        unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_focus']);
+        unset($_SESSION['receptionist_ai_message_count'], $_SESSION['receptionist_ai_history'], $_SESSION['receptionist_ai_context'], $_SESSION['receptionist_ai_focus'], $_SESSION['receptionist_natural_state']);
         $_SESSION['receptionist_ai_owner'] = $owner;
     }
 }
@@ -124,7 +125,7 @@ function receptionist_ai_public_history(array $history): array
  */
 function receptionist_ai_model_context_summary(array $slots, array $history, array $knowledgeRecords, ?string $focusedFaqId = null): array
 {
-    $allowedSlots = ['intent', 'occasion', 'purpose', 'group_size', 'preference', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'];
+    $allowedSlots = ['intent', 'occasion', 'purpose', 'group_size', 'preference', 'room_type_code', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'];
     $summary = array_intersect_key($slots, array_flip($allowedSlots));
     $publicHistory = receptionist_ai_public_history($history);
     for ($index = count($publicHistory) - 1; $index >= 0; $index--) {
@@ -324,7 +325,14 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
 
     public function complete(array $messages, int $maxOutputTokens, int $timeoutSeconds): array
     {
+        return $this->completeWithSchema($messages, $maxOutputTokens, $timeoutSeconds, receptionist_ai_response_schema(), 'sevilla_receptionist_response');
+    }
+
+    /** Optional task-specific schema entry point; legacy providers keep the original interface. */
+    public function completeWithSchema(array $messages, int $maxOutputTokens, int $timeoutSeconds, array $schema, string $schemaName = 'sevilla_receptionist_response', ?int $attemptLimit = null): array
+    {
         $policy = receptionist_ai_retry_policy($timeoutSeconds);
+        if ($attemptLimit !== null) $policy['max_attempts'] = max(1, min($policy['max_attempts'], $attemptLimit));
         $started = $this->now();
         $deadline = $started + $policy['deadline_seconds'];
         // Gemini's current OpenAI-compatible endpoint supports structured
@@ -342,7 +350,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
             }
             $attempt++;
             $requestTimeoutMs = max(1, min($policy['deadline_seconds'] * 1000, $remainingMs));
-            $result = $this->request($messages, $maxOutputTokens, $requestTimeoutMs, $structured);
+            $result = $this->request($messages, $maxOutputTokens, $requestTimeoutMs, $structured ? $schema : null, $schemaName);
             $last = $result;
             $diagnostic = is_array($result['diagnostic'] ?? null) ? $result['diagnostic'] : [];
             $diagnostic['attempt_count'] = $attempt;
@@ -376,7 +384,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         return $last;
     }
 
-    private function request(array $messages, int $maxOutputTokens, int $timeoutMs, bool $structured): array
+    private function request(array $messages, int $maxOutputTokens, int $timeoutMs, ?array $schema, string $schemaName): array
     {
         if ($this->transport === null && !function_exists('curl_init')) return ['success' => false, 'error_class' => 'curl_unavailable'];
         $url = rtrim($this->baseUrl, '/') . '/chat/completions';
@@ -390,13 +398,13 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         if (receptionist_ai_supports_google_reasoning_effort($this->providerId, $this->model) && $this->reasoningEffort !== null) {
             $request['reasoning_effort'] = $this->reasoningEffort;
         }
-        if ($structured) {
+        if ($schema !== null) {
             $request['response_format'] = [
                 'type' => 'json_schema',
                 'json_schema' => [
-                    'name' => 'sevilla_receptionist_response',
+                    'name' => $schemaName,
                     'strict' => true,
-                    'schema' => receptionist_ai_response_schema(),
+                    'schema' => $schema,
                 ],
             ];
             if ($this->providerId === 'openrouter') {
@@ -414,7 +422,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
         $error = '';
         if ($this->transport !== null) {
             try {
-                $transportResult = ($this->transport)($url, $headers, $body, $timeoutMs, $structured);
+                $transportResult = ($this->transport)($url, $headers, $body, $timeoutMs, $schema !== null);
             } catch (Throwable $transportError) {
                 $transportResult = ['status' => 0, 'raw' => '', 'error' => $transportError->getMessage(), 'errno' => 1];
             }
@@ -447,7 +455,7 @@ final class ReceptionistGenericOpenAiProvider implements ReceptionistAiProviderI
             $topLevelCode = is_array($decodedError) ? ($decodedError['code'] ?? null) : null;
             $errorCode = receptionist_ai_sanitize_provider_error_code($providerError['code'] ?? $topLevelCode);
             $errorMessage = is_string($providerError['message'] ?? null) ? strtolower($providerError['message']) : '';
-            $formatRejected = receptionist_ai_should_retry_without_response_format($structured, $status, $errorCode, $errorMessage);
+            $formatRejected = receptionist_ai_should_retry_without_response_format($schema !== null, $status, $errorCode, $errorMessage);
             $diagnostic = $diagnosticBase;
             $diagnostic['provider_error_code'] = $errorCode;
             $timedOut = defined('CURLE_OPERATION_TIMEDOUT') && $curlErrno === CURLE_OPERATION_TIMEDOUT;
@@ -779,6 +787,11 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
         if (!in_array($source[$key], $allowed, true)) throw new InvalidArgumentException('Invalid receptionist preference.');
         $slots[$key] = $source[$key];
     }
+    if ($intent === 'Hotel Room' && is_string($source['room_type_code'] ?? null) && $source['room_type_code'] !== '') {
+        $typeCode = $source['room_type_code'];
+        if ($typeCode !== 'any') hotel_validate_room_type_code($typeCode);
+        $slots['room_type_code'] = $typeCode;
+    }
     if (array_key_exists('group_size', $source) && $source['group_size'] !== null && $source['group_size'] !== '') {
         $count = filter_var($source['group_size'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($count === false || $count > 10000) throw new InvalidArgumentException('Invalid guest count.');
@@ -822,6 +835,7 @@ function receptionist_ai_recover_session_slots(mysqli $conn, array $raw, array $
         'occasion' => ['wedding', 'celebration', 'corporate', 'other'],
         'purpose' => ['relaxation', 'family', 'private'],
         'preference' => ['save', 'best_fit', 'comfort'],
+        'room_type_code' => [...array_keys(hotel_fixed_room_types()), 'any'],
     ] as $key => $allowed) {
         if (is_string($raw[$key] ?? null) && in_array($raw[$key], $allowed, true)) $slots[$key] = $raw[$key];
     }

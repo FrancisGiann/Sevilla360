@@ -44,14 +44,16 @@ try {
     if ($output === false) throw new RuntimeException('Unable to create the export.');
 
     if ($exportType === 'transactions') {
-        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer', 'Booking', 'Venue', 'Reference', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
+        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer / record', 'Booking / seminar', 'Venue', 'Reference', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
         sales_report_build($conn, $filters, 1, 50, static function (array $transaction) use ($output): void {
             $received = $transaction['type'] === 'received' ? $transaction['amount_cents'] / 100 : 0;
             $refunded = $transaction['type'] === 'refunded' ? $transaction['amount_cents'] / 100 : 0;
             $net = $received - $refunded;
             sales_report_csv_line($output, [
                 $transaction['date'],
-                $transaction['type'] === 'received' ? 'Received' : 'Refunded',
+                $transaction['source'] === 'seminar'
+                    ? ($transaction['type'] === 'received' ? 'Seminar received' : 'Seminar refunded')
+                    : ($transaction['type'] === 'received' ? 'Received' : 'Refunded'),
                 $transaction['method'],
                 $transaction['customer_name'],
                 $transaction['booking_reference'],

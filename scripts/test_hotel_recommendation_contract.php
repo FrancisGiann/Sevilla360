@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/hotel_rooms.php';
 require_once __DIR__ . '/../includes/media_helper.php';
+require_once __DIR__ . '/../includes/hotel_recommendation_service.php';
 
 $root = dirname(__DIR__);
 $read = static fn(string $path): string => (string)file_get_contents($root . '/' . $path);
@@ -13,6 +14,7 @@ $submitPhp = $read('actions/bookings/submit_online.php');
 $availabilityPhp = $read('actions/bookings/get_room_availability.php');
 $datePhp = $read('actions/bookings/fetch_dates.php');
 $recommendPhp = $read('actions/bookings/recommend_hotel_rooms.php');
+$recommendServicePhp = $read('includes/hotel_recommendation_service.php');
 $hotelRoomsPhp = $read('includes/hotel_rooms.php');
 $mediaHelperPhp = $read('includes/media_helper.php');
 $hotelAdminPhp = $read('includes/admin-page/admin_settings.php');
@@ -66,8 +68,8 @@ $checks['Hotel priority codes expose only the confirmed three options'] = hotel_
     && hotel_parse_recommendation_priority('comfort') === 'comfort'
     && hotel_parse_recommendation_priority('privacy') === null
     && hotel_parse_recommendation_priority('space') === null
-    && str_contains($recommendPhp, 'if (!$guestRange || !$priority)')
-    && str_contains($recommendPhp, "hotel_recommendation_response(['success' => false, 'message' => 'Choose a guest count and recommendation priority.'], 422)");
+    && str_contains($recommendServicePhp, 'if (!$guestRange || !$priority)')
+    && str_contains($recommendPhp, 'hotel_recommendation_search($conn, $requestData, session_id())');
 $checks['Hotel guest ranges allow only the six fixed capacity bands'] = hotel_allowed_guest_ranges() === [
         '1-2' => ['min' => 1, 'max' => 2],
         '3-4' => ['min' => 3, 'max' => 4],
@@ -78,9 +80,9 @@ $checks['Hotel guest ranges allow only the six fixed capacity bands'] = hotel_al
     ]
     && hotel_parse_guest_range('17+') === null
     && hotel_parse_guest_range('5-10') === null
-    && str_contains($recommendPhp, 'if (!$guestRange || !$priority)')
-    && str_contains($recommendPhp, "['success' => false, 'message' => 'Choose a guest count and recommendation priority.'], 422)")
-    && !str_contains($recommendPhp, "'state' => 'contact_reception'");
+    && str_contains($recommendServicePhp, 'if (!$guestRange || !$priority)')
+    && str_contains($recommendPhp, 'catch (InvalidArgumentException $error)')
+    && !str_contains($recommendServicePhp, "'state' => 'contact_reception'");
 $checks['showroom pre-migration fallback aliases NULL exactly once'] = str_contains($showroomPhp, "\$hotel_type_code_select = \$hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';")
     && str_contains($showroomPhp, '{$hotel_type_code_select} AS room_type_code')
     && !str_contains($showroomPhp, "'NULL AS room_type_code'");
@@ -126,12 +128,12 @@ $checks['distinct commercial variants may share the same exact legacy media slot
     ]) === hotel_room_group_media_slot_key([
         'media_slot_key' => null, 'building_name' => 'Rafael', 'legacy_media_room_type' => 'Dormitory Room'
     ])
-    && str_contains($recommendPhp, '$standardSlotToGroup[$slot][]')
-    && str_contains($recommendPhp, '$panoSlotToGroup[$slot . \'_360\'][]');
-$checks['recommendation and booking media use shared group slot resolution for standard and 360 media'] = str_contains($recommendPhp, 'hotel_room_group_media_slot_key($group)')
-    && str_contains($recommendPhp, '$standardSlotToGroup[$slot][]')
-    && str_contains($recommendPhp, '$panoSlotToGroup[$slot . \'_360\'][]')
-    && str_contains($recommendPhp, "\$media['media_type'] === '360'")
+    && str_contains($recommendServicePhp, '$standardSlotToGroup[$slot][]')
+    && str_contains($recommendServicePhp, '$panoSlotToGroup[$slot . \'_360\'][]');
+$checks['recommendation and booking media use shared group slot resolution for standard and 360 media'] = str_contains($recommendServicePhp, 'hotel_room_group_media_slot_key($group)')
+    && str_contains($recommendServicePhp, '$standardSlotToGroup[$slot][]')
+    && str_contains($recommendServicePhp, '$panoSlotToGroup[$slot . \'_360\'][]')
+    && str_contains($recommendServicePhp, "\$media['media_type'] === '360'")
     && str_contains($mediaHelperPhp, 'function get_hotel_room_group_image')
     && str_contains($mediaHelperPhp, 'hotel_room_group_media_slot_key($group)')
     && str_contains($homepagePhp, 'hotel_room_group_public_images($venue, $public_media)')
@@ -152,7 +154,7 @@ $checks['admin hotel saves require a database-active catalog code and retain a l
     && str_contains($hotelRoomsPhp, 'if (!hotel_group_schema_ready($conn)) return $typeCode;')
     && str_contains($hotelRoomsPhp, 'SELECT active FROM hotel_room_types WHERE type_code = ? LIMIT 1')
     && substr_count($hotelSavePhp, 'hotel_validate_active_room_type_code($conn, $_POST[\'room_type_code\'] ?? null)') === 3;
-$checks['customer room-group queries exclude inactive canonical types'] = str_contains($recommendPhp, 't.type_code = g.room_type_code AND t.active = 1')
+$checks['customer room-group queries exclude inactive canonical types'] = str_contains($recommendServicePhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($hotelRoomsPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($bookingPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($homepagePhp, 't.type_code = g.room_type_code AND t.active = 1')
@@ -162,7 +164,7 @@ $checks['customer room-group queries exclude inactive canonical types'] = str_co
     && str_contains($publicReviewsPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($submitPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($lockPhp, 't.type_code = g.room_type_code AND t.active = 1');
-$checks['catalog sort order deterministically orders migrated customer group lists'] = str_contains($recommendPhp, 'ORDER BY t.sort_order ASC')
+$checks['catalog sort order deterministically orders migrated customer group lists'] = str_contains($recommendServicePhp, 'ORDER BY t.sort_order ASC')
     && str_contains($bookingPhp, 'ORDER BY t.sort_order')
     && str_contains($homepagePhp, 'ORDER BY t.sort_order');
 try {
@@ -186,6 +188,14 @@ $rangeCandidates = [
     $candidate(11, 'standard_room', 12, 1200),
     $candidate(12, 'deluxe', 16, 1800),
 ];
+$typeCandidates = [...$rangeCandidates, $candidate(13, 'dormitory_room', 12, 900)];
+$checks['selected room type filters candidates before ranking while any keeps all types'] = array_column(
+    hotel_rank_recommendation_groups(hotel_filter_recommendation_groups_by_type($typeCandidates, 'dormitory_room'), 'best_fit', 2, 12, 3, true), 'id') === [13]
+    && count(hotel_filter_recommendation_groups_by_type($typeCandidates, 'any')) === count($typeCandidates)
+    && count(hotel_filter_recommendation_groups_by_type($rangeCandidates, null)) === count($rangeCandidates);
+$checks['nearby date recovery checks authoritative availability in a bounded seven-start window'] = str_contains($recommendServicePhp, 'for ($offset = 1; $offset <= 7 && count($options) < 3; $offset++)')
+    && str_contains($recommendServicePhp, 'hotel_available_group_units($conn, $start->format(\'Y-m-d\'), $end->format(\'Y-m-d\')')
+    && str_contains($recommendServicePhp, "\$response['nearby_dates'] = hotel_recommendation_nearby_date_options(");
 $fit = hotel_rank_recommendation_groups($rangeCandidates, 'save', 2, 12);
 $checks['guest-range maximum filters undersized groups and no media is required'] = array_column($fit, 'id') === [11, 12]
     && !array_key_exists('gallery', $fit[0]);
@@ -297,29 +307,30 @@ $checks['read-only availability and booking calendar use room group ids'] = !str
     && str_contains($availabilityPhp, 'hotel_available_group_units') && str_contains($datePhp, 'h.room_group_id = ?');
 $checks['recommender is a single POST endpoint with factual partial/no-match output'] = str_contains($recommendPhp, "\$_SERVER['REQUEST_METHOD'] !== 'POST'")
     && str_contains($recommendPhp, '$requestData = $_POST;') && str_contains($recommendPhp, 'application/json')
-    && str_contains($recommendPhp, 'hotel_recommendation_state') && str_contains($recommendPhp, 'hotel_available_group_units')
-    && str_contains($recommendPhp, 'hotel_validate_optional_recommendation_dates')
-    && !str_contains($recommendPhp, 'WHERE g.recommendation_ready = 1')
-    && str_contains($recommendPhp, 'hotel_group_common_recommendation_issue')
-    && str_contains($recommendPhp, "\$response['reason_code'] = \$issueCode;")
-    && str_contains($recommendPhp, "\$response['message'] = \$issueMessage;")
-    && str_contains($recommendPhp, '$availableUnits = $availabilityChecked')
-    && str_contains($recommendPhp, 'AS active_unit_count')
-    && str_contains($recommendPhp, "'availability_checked' => \$availabilityChecked")
-    && str_contains($recommendPhp, "'pricing_basis' => \$pricingBasis")
-    && str_contains($recommendPhp, "['estimated_nightly_amount'] = hotel_estimated_nightly_amount")
-    && str_contains($recommendPhp, 'application/json') && str_contains($recommendPhp, 'check_rate_limit($conn, \'hotel_room_recommendation\', 30, 5)')
-    && str_contains($recommendPhp, '], 429)') && str_contains($recommendPhp, "'checked_at'")
-    && str_contains($recommendPhp, "'total_matches'") && str_contains($recommendPhp, "'partial_match'")
-    && !str_contains($recommendPhp, "'available_unit_count' =>") && str_contains($hotelRoomsPhp, "'Available for your stay'")
+    && str_contains($recommendPhp, 'hotel_recommendation_search($conn, $requestData, session_id())')
+    && str_contains($recommendServicePhp, 'hotel_available_group_units')
+    && str_contains($recommendServicePhp, 'hotel_validate_optional_recommendation_dates')
+    && !str_contains($recommendServicePhp, 'WHERE g.recommendation_ready = 1')
+    && str_contains($recommendServicePhp, 'hotel_group_common_recommendation_issue')
+    && str_contains($recommendServicePhp, "\$response['reason_code'] = 'pricing_metadata_missing';")
+    && str_contains($recommendServicePhp, "hotel_recommendation_issue_message('pricing_metadata_missing')")
+    && str_contains($recommendServicePhp, '$availableUnits = $availabilityChecked')
+    && str_contains($recommendServicePhp, 'AS active_unit_count')
+    && str_contains($recommendServicePhp, "'availability_checked' => \$availabilityChecked")
+    && str_contains($recommendServicePhp, "'pricing_basis' => \$pricingBasis")
+    && str_contains($recommendServicePhp, "['estimated_nightly_amount'] = hotel_estimated_nightly_amount")
+    && str_contains($recommendPhp, 'check_rate_limit($conn, \'hotel_room_recommendation\', 30, 5)')
+    && str_contains($recommendPhp, '], 429)') && str_contains($recommendServicePhp, "'checked_at'")
+    && str_contains($recommendServicePhp, "'total_matches'") && str_contains($recommendServicePhp, "'partial_match'")
+    && !str_contains($recommendServicePhp, "'available_unit_count' =>") && str_contains($hotelRoomsPhp, "'Available for your stay'")
     && str_contains($hotelRoomsPhp, "'Dates needed to check availability'");
-$checks['availability remains internal while mapped media may be shared and absent media stays eligible'] = str_contains($recommendPhp, '$group[\'available_unit_count\']')
-    && !str_contains($recommendPhp, "'available_unit_count' =>") && str_contains($recommendPhp, '$standardSlotToGroup[$slot][]')
-    && str_contains($recommendPhp, "'status' => \$availabilityChecked ? 'Available' : 'Availability not checked'") && str_contains($recommendPhp, "'description' =>")
-    && str_contains($recommendPhp, "'amenities' =>") && str_contains($recommendPhp, "'gallery' => array_values(");
+$checks['availability remains internal while mapped media may be shared and absent media stays eligible'] = str_contains($recommendServicePhp, '$group[\'available_unit_count\']')
+    && !str_contains($recommendServicePhp, "'available_unit_count' =>") && str_contains($recommendServicePhp, '$standardSlotToGroup[$slot][]')
+    && str_contains($recommendServicePhp, "'status' => \$availabilityChecked ? 'Available' : 'Availability not checked'") && str_contains($recommendServicePhp, "'description' =>")
+    && str_contains($recommendServicePhp, "'amenities' =>") && str_contains($recommendServicePhp, "'gallery' => array_values(");
 $checks['active Hotel UI and admin controls use only the confirmed priorities and no retired metadata fields'] = str_contains($showroomJs, '["Lowest price", "save"]')
     && str_contains($showroomJs, '["Best fit for my group", "best_fit"]')
-    && str_contains($showroomJs, '["Higher room category", "comfort"]')
+    && str_contains($showroomJs, '["Comfort", "comfort"]')
     && !str_contains($showroomJs, '"privacy"') && !str_contains($showroomJs, '"space"')
     && !str_contains($hotelAdminPhp, 'name="occupancy_mode"')
     && !str_contains($hotelAdminPhp, 'name="bathroom_mode"')
@@ -337,15 +348,18 @@ $checks['active Hotel UI and admin controls use only the confirmed priorities an
     && substr_count($hotelSavePhp, "hotel_normalize_media_slot_key(\$_POST['media_slot_key'] ?? null)") === 3;
 $checks['migrated booking records retain group description and amenities'] = str_contains($bookingPhp, 'g.description AS venue_description')
     && str_contains($bookingPhp, 'g.amenities AS venue_amenities') && str_contains($bookingPhp, 'g.description, g.amenities');
-$checks['Hotel guest range question renders only the six allowed options'] = str_contains($showroomJs, 'options = [["1–2 guests", "1-2"], ["3–4 guests", "3-4"], ["5–6 guests", "5-6"], ["7–8 guests", "7-8"], ["9–12 guests", "9-12"], ["13–16 guests", "13-16"]];')
+$checks['Hotel guest count uses an exact number input and room type presents five fixed choices plus any'] = str_contains($showroomJs, 'input.type = "number";')
+    && str_contains($showroomJs, 'options = [["Standard Room", "standard_room"], ["Dormitory Room", "dormitory_room"], ["Family Room / Superior", "family_room_superior"], ["Deluxe", "deluxe"], ["VIP Suite", "vip_suite"], ["Any room type", "any"]];')
     && !str_contains($showroomJs, 'renderHotelContactReception')
     && !str_contains($showroomJs, 'For 17+ guests')
     && !str_contains($showroomJs, 'Groups of 17 or more');
 $checks['ordinary no-match states link to reception and preserve browse/search actions'] = str_contains($showroomJs, 'support.php#contact')
     && str_contains($showroomJs, 'createReceptionContactLink()') && str_contains($showroomJs, 'Browse the showroom')
     && str_contains($showroomJs, 'Change dates') && str_contains($showroomJs, 'Change guests or priority');
-$checks['no-match reason is announced with recovery actions'] = str_contains($showroomJs, 'guideState.hotelRecommendationMessage = typeof data.message')
-    && str_contains($showroomJs, 'recommendationMessage || (availabilityChecked')
+$checks['no-match status is explicit and offers date, type, and guest recovery actions'] = str_contains($showroomJs, 'guideState.hotelRecommendationMessage = typeof data.message')
+    && str_contains($showroomJs, 'No hotel rooms are available for these guests and dates. No available alternative was found within the next 7 check-in dates.')
+    && str_contains($showroomJs, 'Choose another room type') && str_contains($showroomJs, 'Any room type')
+    && str_contains($showroomJs, 'data-receptionist-nearby-date')
     && str_contains($showroomJs, 'setDialogue(heading, lead, announce)')
     && str_contains($showroomJs, 'Change guests or priority') && str_contains($showroomJs, 'createReceptionContactLink()');
 $checks['selected group activates its explicit gallery safely and mobile hotel screens scroll and stack actions'] = str_contains($showroomJs, 'activateVenue(room.id);')
@@ -382,6 +396,10 @@ $checks['Hotel recommendations reuse the receptionist thinking transition'] = st
     && str_contains($showroomJs, 'Math.max(0, 800 - (Date.now() - thinkingStartedAt))')
     && str_contains($showroomJs, 'receptionistRoot.classList.remove("is-thinking")')
     && str_contains($showroomJs, 'if (guideState.hotelResults.length) playSuccessChime();');
+$checks['natural hotel results hydrate an authoritative server room when showroom catalog data lacks the exact identity'] = str_contains($showroomJs, 'const hotelSource = source || {')
+    && str_contains($showroomJs, 'room_group_id: groupId')
+    && str_contains($showroomJs, 'id: String(item.id || `hotel-group-${groupId}`)')
+    && str_contains($showroomJs, 'if (!source && !(category === "Hotel Room"');
 $checks['Hotel results use one no-scroll desktop row and compact actions'] = str_contains($showroomCss, '.showroom-receptionist.is-hotel-results .receptionist-hotel-results-grid')
     && str_contains($showroomCss, 'grid-template-columns: repeat(3, minmax(0, 1fr));')
     && str_contains($showroomCss, '.showroom-receptionist.is-hotel-results .receptionist-hotel-actions')

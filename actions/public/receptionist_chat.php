@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/rate_limit.php';
 require_once __DIR__ . '/../../includes/receptionist_ai.php';
 require_once __DIR__ . '/../../includes/receptionist_knowledge.php';
+require_once __DIR__ . '/../../includes/receptionist_natural.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -120,6 +121,40 @@ try {
     $message = receptionist_ai_clean_message($rawMessage);
     receptionist_ai_enforce_session_owner();
     $requestContext = is_array($request['context'] ?? null) ? $request['context'] : [];
+
+    if (receptionist_natural_enabled()) {
+        $rawNaturalState = is_array($_SESSION['receptionist_natural_state'] ?? null)
+            ? $_SESSION['receptionist_natural_state'] : receptionist_natural_empty_state();
+        $naturalState = array_replace(receptionist_natural_empty_state(), $rawNaturalState);
+        $expectedRevision = filter_var($request['expected_revision'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($expectedRevision === false || $expectedRevision !== (int)$naturalState['revision']) {
+            receptionist_chat_response(['success' => false, 'code' => 'stale_state', 'mode' => 'natural',
+                'reply' => receptionist_natural_local_reply('stale', $language), 'revision' => (int)$naturalState['revision'],
+                'natural_state' => receptionist_natural_public_state($naturalState), 'request_id' => $requestId], 409);
+        }
+        try {
+            $naturalRateAllowed = check_rate_limit($conn, 'receptionist_chat', 120, 10);
+        } catch (Throwable $rateError) {
+            $naturalRateAllowed = false;
+        }
+        if (!$naturalRateAllowed) {
+            [$busyPayload, $busyStatus] = receptionist_natural_finish($naturalState, $message,
+                receptionist_natural_local_reply('outage', $language), 'keep',
+                ['slots' => $naturalState['slots'], 'validated_slots' => $naturalState['slots']], 'busy', $requestId);
+            receptionist_chat_response($busyPayload, $busyStatus);
+        }
+        $venueCatalog = receptionist_ai_public_venue_catalog($conn);
+        try {
+            [$naturalPayload, $naturalStatus] = receptionist_natural_handle_turn($conn, $request, $message, $language, $venueCatalog, $requestId);
+        } catch (Throwable $naturalError) {
+            error_log('receptionist_natural ' . json_encode(['request_id' => $requestId, 'fallback_class' => 'server_error']));
+            $safeState = receptionist_natural_state($naturalState, $conn, $venueCatalog);
+            [$naturalPayload, $naturalStatus] = receptionist_natural_finish($safeState, $message,
+                receptionist_natural_local_reply('outage', $language), 'keep',
+                ['slots' => $safeState['slots'], 'validated_slots' => $safeState['slots']], 'server_error', $requestId);
+        }
+        receptionist_chat_response($naturalPayload, $naturalStatus);
+    }
 
     // Keep a cheap endpoint-wide abuse bound separate from the provider burst
     // bucket below. Deterministic booking/FAQ turns must not consume provider

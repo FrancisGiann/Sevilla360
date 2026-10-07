@@ -780,86 +780,21 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 
 #venueModal .venue-hotel-advanced {
   grid-column: 1 / -1;
-}
-
-#venueModal .venue-hotel-advanced details {
   border-top: 1px solid rgba(42, 37, 34, .12);
-  padding-top: 12px;
+  padding-top: 16px;
 }
 
-#venueModal .venue-hotel-advanced summary {
-  box-sizing: border-box;
-  min-height: 68px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid rgba(42, 37, 34, .14);
-  border-radius: 8px;
-  background: #fcfbf9;
+#venueModal .venue-hotel-advanced-heading h5 {
+  margin: 0 0 4px;
   color: var(--color-dark);
   font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  transition: background-color .18s ease, border-color .18s ease;
 }
 
-#venueModal .venue-hotel-advanced summary::-webkit-details-marker {
-  display: none;
-}
-
-#venueModal .venue-hotel-advanced summary:hover {
-  border-color: rgba(135, 91, 43, .5);
-  background: #f8f4ec;
-}
-
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-copy {
-  display: block;
-  min-width: 0;
-}
-
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-title,
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-description {
-  display: block;
-}
-
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-title {
-  line-height: 1.35;
-}
-
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-description {
-  margin-top: 3px;
+#venueModal .venue-hotel-advanced-heading p {
+  margin: 0 0 14px;
   color: var(--color-dark-light);
   font-size: .84rem;
-  font-weight: 400;
   line-height: 1.45;
-}
-
-#venueModal .venue-hotel-advanced .venue-hotel-advanced-chevron {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  margin: -5px 2px 0 0;
-  border-right: 2px solid var(--color-gold);
-  border-bottom: 2px solid var(--color-gold);
-  transform: rotate(45deg);
-  transition: transform .18s ease;
-}
-
-#venueModal .venue-hotel-advanced details[open] summary {
-  border-color: rgba(135, 91, 43, .42);
-  background: #f8f4ec;
-}
-
-#venueModal .venue-hotel-advanced details[open] .venue-hotel-advanced-chevron {
-  margin-top: 5px;
-  transform: rotate(225deg);
-}
-
-#venueModal .venue-hotel-advanced details[open] summary {
-  margin-bottom: 14px;
 }
 
 #venueModal .venue-hotel-advanced-grid {
@@ -868,7 +803,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
   gap: 18px 20px;
 }
 
-#venueModal :is(input, select, textarea, button, summary):focus-visible {
+#venueModal :is(input, select, textarea, button):focus-visible {
   outline: 2px solid var(--color-dark);
   outline-offset: 3px;
 }

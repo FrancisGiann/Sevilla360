@@ -161,3 +161,15 @@ For every failed item, record: test ID, date/time, browser/device, account used,
 | Test ID | Result | Browser/device | Evidence / defect link | Tester / date |
 |---|---|---|---|---|
 | Example: 4.8 | Pass / Fail / Blocked | Chrome / Windows | Screenshot or ticket | Name / YYYY-MM-DD |
+
+## Database backup and recovery
+
+- [ ] Confirm the admin backup page reports missing `proc_open`, MySQL clients, private storage, signing key, or staging DB as a clear disabled capability.
+- [ ] Create a backup through the admin page and confirm the CLI worker marks the job complete, the archive is private, compressed, signed, and downloadable by POST with CSRF.
+- [ ] Upload a valid signed `.s360db` archive; reject plain SQL, wrong-signature archives, altered payloads, truncated archives, wrong-database archives, oversized files, and staging restores missing current migration-backed columns.
+- [ ] Verify a staff or customer session, stale/suspended admin, missing/invalid CSRF token, and GET request cannot create, upload, download, or restore an archive.
+- [ ] Run two worker processes and overlapping web writes; confirm one worker owns staging at a time and restore gating returns 503 for application action routes while backup status remains available.
+- [ ] Create more than seven scheduled snapshots and age old managed archives; confirm daily retention removes archives older than seven days and retains the latest seven scheduled snapshots.
+- [ ] On an isolated staging DB, restore an archive containing representative application data and schema objects; confirm production remains untouched during preflight.
+- [ ] In a local disposable DB environment, verify live restore creates a signed pre-restore safety archive, replaces objects absent from the selected snapshot, verifies required tables, and reopens writes after success.
+- [ ] Simulate production restore failure; confirm automatic safety recovery. Simulate recovery failure and confirm maintenance stays active until a verified CLI recovery succeeds.

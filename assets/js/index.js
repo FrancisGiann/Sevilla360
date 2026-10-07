@@ -232,21 +232,53 @@ document.addEventListener("DOMContentLoaded", function () {
     if (venue.category === 'Resort Villa') params.set('stay_type', villaStayType);
     return 'booking.php?' + params.toString();
   };
+  const makeCatalogImageFallback = () => {
+    const fallback = document.createElement('div');
+    fallback.className = 'idx-catalog-card-image-fallback';
+    fallback.setAttribute('role', 'img');
+    fallback.setAttribute('aria-label', 'Venue photo unavailable');
+    const icon = document.createElement('i');
+    icon.className = 'fa-regular fa-image';
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.textContent = 'No photo available';
+    fallback.append(icon, label);
+    return fallback;
+  };
   const makeCard = venue => {
     const article = document.createElement('article');
     article.className = 'idx-catalog-card';
-    const image = document.createElement('img');
-    image.src = (venue.images && venue.images[0]) || 'assets/img/placeholder.jpg';
-    image.alt = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Sevilla360 venue';
-    image.loading = 'lazy';
-    article.appendChild(image);
+    const media = document.createElement('div');
+    media.className = 'idx-catalog-card-media';
+    const imageUrl = Array.isArray(venue.images)
+      ? venue.images.find(path => typeof path === 'string' && path.trim() && path.trim() !== placeholderImage)
+      : '';
+    if (imageUrl) {
+      const image = document.createElement('img');
+      image.alt = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Sevilla360 venue';
+      image.loading = 'lazy';
+      image.addEventListener('error', () => image.replaceWith(makeCatalogImageFallback()), { once: true });
+      image.src = imageUrl;
+      media.appendChild(image);
+    } else {
+      media.appendChild(makeCatalogImageFallback());
+    }
     const body = document.createElement('div'); body.className = 'idx-catalog-card-body';
     const title = document.createElement('h4'); title.textContent = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Venue';
     const kind = document.createElement('p'); kind.className = 'idx-catalog-card-category';
     kind.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     const rate = document.createElement('p'); rate.className = 'idx-catalog-card-rate'; rate.textContent = rateText(venue);
     const rating = document.createElement('p'); rating.className = 'idx-catalog-card-rating'; rating.textContent = ratingText(venue);
-    const facts = document.createElement('p'); facts.className = 'idx-catalog-card-facts'; facts.textContent = Object.values(venue.facts || {}).slice(0, 3).join(' · ');
+    const factEntries = venue.facts && typeof venue.facts === 'object' ? Object.entries(venue.facts) : [];
+    const factText = factEntries
+      .filter(([, value]) => {
+        const text = String(value ?? '').trim();
+        return text && !/^0(?:\s*[–-]\s*0)?\s+guests?$/i.test(text);
+      })
+      .slice(0, 3)
+      .map(([label, value]) => `${label}: ${value}`)
+      .join(' · ');
+    const facts = document.createElement('p'); facts.className = 'idx-catalog-card-facts'; facts.textContent = factText;
     const actions = document.createElement('div'); actions.className = 'idx-catalog-card-actions';
     const details = document.createElement('button'); details.type = 'button'; details.className = 'idx-btn idx-btn-outline-dark'; details.textContent = 'View details';
     details.addEventListener('click', () => openVenueModal(venue, details));
@@ -260,7 +292,9 @@ document.addEventListener("DOMContentLoaded", function () {
       book.href = bookingUrl(venue);
       book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
     }
-    actions.append(details, book); body.append(title, kind, rate, rating, facts, actions); article.appendChild(body);
+    actions.append(details, book); body.append(title, kind, rate, rating);
+    if (factText) body.appendChild(facts);
+    body.appendChild(actions); article.append(media, body);
     return article;
   };
   const topRatedSection = document.getElementById('top-rated');

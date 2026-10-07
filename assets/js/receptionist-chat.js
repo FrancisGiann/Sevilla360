@@ -13,11 +13,12 @@
     if (step === "active_room_group_id") {
       return { items: Array.isArray(data.quick_replies) ? data.quick_replies.slice(0, 4) : [], actions: [], contextual: true };
     }
-    if (data?.booking_continuation !== true) return null;
+    if (step === "room_type_code") return { items: ["Standard Room", "Dormitory Room", "Family Room / Superior", "Deluxe", "VIP Suite", "Any room type"], actions: [], contextual: true, maxItems: 6 };
+    if (data?.booking_continuation !== true && data?.mode !== "natural") return null;
     const choices = {
       occasion: ["Wedding", "Birthday", "Corporate", "Other"],
       purpose: ["Family", "Private", "Relaxation"],
-      preference: ["Best fit", "Lowest price", "Comfort"]
+      preference: ["Best fit", "Lowest price", "Comfort", "No preference"]
     };
     if (step === "intent") {
       const categoryActions = ["category_event_hall", "category_hotel_room", "category_resort_villa"];
@@ -41,6 +42,18 @@
       if (clearSlots.includes("end_date")) context.endDate = null;
     }
     return context;
+  };
+
+  const applyGateDisabledState = (control, gated, originalStates, keepDisabled = false) => {
+    if (gated) {
+      if (!originalStates.has(control)) originalStates.set(control, Boolean(control.disabled));
+      control.disabled = true;
+      return;
+    }
+    if (!originalStates.has(control)) return;
+    const wasDisabled = originalStates.get(control);
+    originalStates.delete(control);
+    control.disabled = wasDisabled || keepDisabled;
   };
 
   function init(options) {
@@ -99,7 +112,7 @@
 
     // The visible transcript lives in memory. A bounded, sanitized copy can be
     // restored from the same PHP session after navigation or reload.
-    let stored = { messages: [], context: {} };
+    let stored = { messages: [], context: {}, revision: 0 };
     let suppressDialogueEvents = 0;
 
     const normalizeMessages = messages => {
@@ -120,8 +133,10 @@
     let chatOpen = false;
     let gated = true;
     let deferredGate = false;
+    const gateDisabledStates = new WeakMap();
     let serverResetPromise = Promise.resolve();
     let serverHistoryPromise = Promise.resolve();
+    let guidedSyncPromise = Promise.resolve();
     let conversationGeneration = 0;
     let chatOpenGeneration = 0;
     let pendingChatOpen = false;
@@ -172,6 +187,9 @@
         window.requestAnimationFrame(() => {
           input.focus();
           scrollConversationToEnd();
+        });
+        void serverHistoryPromise.then(() => {
+          if (chatOpen) window.dispatchEvent(new CustomEvent("SevillaReceptionistChatOpened"));
         });
       } else if (restoreFocus && !gated && chatToggle && !chatToggle.hidden) {
         chatToggle.focus();
@@ -224,11 +242,11 @@
         if (gated) {
           if (!control.hasAttribute("data-chat-gate-tabindex")) control.setAttribute("data-chat-gate-tabindex", control.getAttribute("tabindex") ?? "");
           control.setAttribute("tabindex", "-1");
-          control.disabled = true;
+          applyGateDisabledState(control, true, gateDisabledStates);
         } else {
           const original = control.getAttribute("data-chat-gate-tabindex");
           if (original !== null) { if (original === "") control.removeAttribute("tabindex"); else control.setAttribute("tabindex", original); control.removeAttribute("data-chat-gate-tabindex"); }
-          if (control !== send || form.dataset.busy !== "true") control.disabled = false;
+          applyGateDisabledState(control, false, gateDisabledStates, control === send && form.dataset.busy === "true");
         }
       });
     };
@@ -236,7 +254,7 @@
     const safeContext = () => {
       const source = typeof options.getContext === "function" ? options.getContext() : {};
       if (!source || typeof source !== "object") return {};
-      const allowed = { intent: "intent", occasion: "occasion", purpose: "purpose", groupSizeExact: "group_size", groupSize: "group_size", group_size_exact: "group_size", group_size: "group_size", preference: "preference", startDate: "start_date", endDate: "end_date", activeVenueId: "active_venue_id", active_venue_id: "active_venue_id", activeRoomGroupId: "active_room_group_id", active_room_group_id: "active_room_group_id" };
+      const allowed = { intent: "intent", occasion: "occasion", purpose: "purpose", groupSizeExact: "group_size", groupSize: "group_size", group_size_exact: "group_size", group_size: "group_size", preference: "preference", roomTypeCode: "room_type_code", startDate: "start_date", endDate: "end_date", activeVenueId: "active_venue_id", active_venue_id: "active_venue_id", activeRoomGroupId: "active_room_group_id", active_room_group_id: "active_room_group_id" };
       const normalizeGroupSize = value => {
         const text = String(value).trim();
         if (/^\d+$/.test(text)) return Number(text);
@@ -255,6 +273,16 @@
       const exactCount = exact === undefined || exact === null || exact === "" ? null : normalizeGroupSize(exact);
       if (exactCount !== null) result.group_size = exactCount;
       return result;
+    };
+    const guidedContextPayload = () => {
+      const source = typeof options.getContext === "function" ? options.getContext() : {};
+      if (!source || typeof source !== "object") return {};
+      const keys = ["intent", "occasion", "purpose", "groupSizeExact", "preference", "roomTypeCode", "roomTypeRequested", "startDate", "endDate", "activeVenueId", "activeRoomGroupId"];
+      return keys.reduce((payload, key) => {
+        const value = source[key];
+        payload[key] = value === undefined || value === "" ? null : value;
+        return payload;
+      }, {});
     };
     const save = () => {
       stored.messages = normalizeMessages(stored.messages);
@@ -355,12 +383,14 @@
         });
         const data = await response.json();
         if (generation !== conversationGeneration || !response.ok || data?.success !== true) return;
+        if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
         const messages = normalizeMessages(data.history);
-        if (!messages.length) return;
+        if (data.natural_state && typeof options.onRestoreState === "function") options.onRestoreState(data.natural_state);
         transcript.replaceChildren();
         stored.messages = messages;
         stored.context = safeContext();
         messages.forEach(turn => appendMessage(turn.role, turn.content, false, null, false, false));
+        if (!messages.length) return;
       } catch (error) {}
     };
     const quickActionLabels = {
@@ -380,7 +410,7 @@
     suggestedReplies.setAttribute("aria-label", "Suggested replies");
     quickReplies.replaceChildren(suggestedReplies);
     const hasActiveGuidedContent = () => Boolean(choices?.querySelector(
-      ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-room]"
+      ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-room], [data-receptionist-answer], [data-receptionist-group-input]"
     ));
     const removeRedundantPromptChips = () => {
       if (!hasActiveGuidedContent()) return;
@@ -403,12 +433,13 @@
       "browse venues": "venue_list",
       "start over": "start_over"
     };
-    const renderQuickReplies = (items, actionIds = [], contextualChoices = false) => {
+    const renderQuickReplies = (items, actionIds = [], contextualChoices = false, maxItems = 4) => {
       suggestedReplies.replaceChildren();
+      const limit = Math.max(1, Math.min(6, Number(maxItems) || 4));
       const addedActionIds = new Set();
       const addAction = id => {
         const safeSuggestionAction = ["category_event_hall", "category_hotel_room", "category_resort_villa", "support_faqs", "retry_provider"].includes(id);
-        if (!safeSuggestionAction || addedActionIds.has(id) || suggestedReplies.children.length >= 4) return;
+        if (!safeSuggestionAction || addedActionIds.has(id) || suggestedReplies.children.length >= limit) return;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
@@ -419,7 +450,7 @@
       };
       const addPrompt = (prompt, contextual = false) => {
         const label = typeof prompt === "string" ? prompt.trim() : "";
-        if (!label || (hasActiveGuidedContent() && !contextual) || suggestedReplies.children.length >= 4) return;
+        if (!label || (hasActiveGuidedContent() && !contextual) || suggestedReplies.children.length >= limit) return;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "receptionist-chat-quick-reply";
@@ -429,7 +460,7 @@
         suggestedReplies.appendChild(button);
       };
       (Array.isArray(actionIds) ? actionIds : []).forEach(addAction);
-      (Array.isArray(items) ? items : []).slice(0, 4).forEach(item => {
+      (Array.isArray(items) ? items : []).slice(0, limit).forEach(item => {
         const label = typeof item === "string" ? item.trim() : "";
         if (!label) return;
         const actionId = legacyQuickActionIds[label.toLowerCase()];
@@ -438,6 +469,7 @@
       });
       removeRedundantPromptChips();
     };
+    root.sevillaReceptionistShowGuidedChoices = items => renderQuickReplies(items, [], true, 6);
     if (choices && typeof MutationObserver === "function") {
       const guidedContentObserver = new MutationObserver(syncGuidedContent);
       guidedContentObserver.observe(choices, { childList: true, subtree: true });
@@ -494,7 +526,7 @@
         suggestedReplies.appendChild(retry);
       }
     };
-    const submit = async (message, displayMessage = message) => {
+    const submit = async (message, displayMessage = message, actionId = null) => {
       const clean = String(message || "").trim();
       if (!clean || clean.length > MAX_MESSAGE_LENGTH || form.dataset.busy === "true" || form.dataset.resetting === "true") return;
       preferGuidedContent = false;
@@ -509,6 +541,7 @@
       if (send) send.disabled = true;
       setStatus("");
       await serverHistoryPromise;
+      await guidedSyncPromise;
       if (requestGeneration !== conversationGeneration || form.dataset.resetting === "true") {
         form.dataset.busy = "false";
         form.removeAttribute("aria-busy");
@@ -530,14 +563,24 @@
           setStatus("Chat reset could not be confirmed; guided choices are still available.");
           return;
         }
+        const requestBody = { message: clean, locale: locale?.value || "auto", context, expected_revision: stored.revision };
+        if (["category_event_hall", "category_hotel_room", "category_resort_villa"].includes(actionId)) requestBody.action_id = actionId;
         const response = await fetch("actions/public/receptionist_chat.php", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
-          body: JSON.stringify({ message: clean, locale: locale?.value || "auto", context })
+          body: JSON.stringify(requestBody)
         });
         const data = await response.json();
         if (requestGeneration !== conversationGeneration) return;
+        if (response.status === 409 && data?.code === "stale_state") {
+          await restoreServerHistory();
+          if (requestGeneration !== conversationGeneration) return;
+          input.value = clean;
+          pendingMessage = "";
+          setStatus("Conversation refreshed. Send your message again to continue from the latest details.");
+          return;
+        }
         if (response.status === 422 && data && data.code === "sensitive_input") {
           const last = transcript.lastElementChild;
           if (last?.dataset.role === "user") last.remove();
@@ -572,6 +615,8 @@
         }
         input.value = "";
         pendingMessage = "";
+        if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
+        if (data.natural_state && typeof options.onNaturalState === "function") options.onNaturalState(data.natural_state);
         await waitForTypingMin(data.local_reply === true ? 120 : TYPING_MIN_MS);
         if (requestGeneration !== conversationGeneration) return;
         removeTypingIndicator();
@@ -597,7 +642,7 @@
           window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
           appendMessage("assistant", reply, true, data.action, data.show_support_faq_cta === true, true, data.show_support_contact_cta === true);
           const bookingSuggestions = resolveBookingSuggestions(data);
-          if (bookingSuggestions) renderQuickReplies(bookingSuggestions.items, bookingSuggestions.actions, bookingSuggestions.contextual);
+          if (bookingSuggestions) renderQuickReplies(bookingSuggestions.items, bookingSuggestions.actions, bookingSuggestions.contextual, bookingSuggestions.maxItems);
           else renderQuickReplies(data.quick_replies, []);
         }
         if (!keptGuidedStatus) setStatus("");
@@ -623,18 +668,65 @@
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
-          body: "{}"
+          body: JSON.stringify({ expected_revision: stored.revision })
         });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409 && data?.code === "stale_state") {
+          await restoreServerHistory();
+          setStatus("Conversation refreshed. Start over again to clear the latest details.");
+          return false;
+        }
         if (!response.ok) {
           setStatus("Chat was reset here, but the server reset could not be confirmed.");
           return false;
         }
+        if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
         return true;
       } catch (error) {
         setStatus("Chat was reset here, but the server reset could not be confirmed.");
         return false;
       }
     };
+    const syncGuidedContext = () => {
+      if (root.dataset.receptionistNaturalEnabled !== "true") return Promise.resolve(null);
+      const operation = guidedSyncPromise.then(async () => {
+        await serverHistoryPromise;
+        if (form.dataset.resetting === "true") return null;
+        try {
+        const response = await fetch("actions/public/receptionist_chat.php", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
+          body: JSON.stringify({
+            message: "guided search update",
+            locale: locale?.value || "auto",
+            context: safeContext(),
+            guided_context: guidedContextPayload(),
+            action_id: "guided_search_update",
+            expected_revision: stored.revision
+          })
+        });
+        const data = await response.json().catch(() => null);
+        if (response.status === 409 && data?.code === "stale_state") {
+          await restoreServerHistory();
+          setStatus("Conversation refreshed. Please retry the guided search action.");
+          return null;
+        }
+        if (!response.ok || data?.success !== true) return null;
+        if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
+        if (data.natural_state && typeof options.onNaturalState === "function") options.onNaturalState(data.natural_state);
+        const guidedReply = typeof data.reply === "string" ? data.reply.trim() : "";
+        const guidedUserMessage = typeof data.guided_user_message === "string" ? data.guided_user_message.trim() : "";
+        if (guidedReply || guidedUserMessage) window.dispatchEvent(new CustomEvent("SevillaReceptionistGuidedServerReply", {
+          detail: { reply: guidedReply, user_message: guidedUserMessage, revision: data.revision }
+        }));
+        return data;
+        } catch (error) { return null; }
+      });
+      guidedSyncPromise = operation.then(() => undefined, () => undefined);
+      return operation;
+    };
+    root.sevillaReceptionistSyncGuidedContext = syncGuidedContext;
     const categoryActionCommands = {
       category_event_hall: "event hall",
       category_hotel_room: "hotel room",
@@ -643,7 +735,7 @@
     const submitCategoryAction = actionId => {
       const command = categoryActionCommands[actionId];
       if (!command || form.dataset.busy === "true" || form.dataset.resetting === "true") return false;
-      void submit(command);
+      void submit(command, command, actionId);
       return true;
     };
 
@@ -746,7 +838,7 @@
         pendingMessage = "";
         input.value = "";
         removeTypingIndicator();
-        stored = { messages: [], context: {} };
+        stored = { messages: [], context: {}, revision: stored.revision };
         transcript.replaceChildren();
         renderQuickReplies([], []);
         form.dataset.resetting = "true";
@@ -774,7 +866,9 @@
         return;
       }
       const guided = event.target instanceof Element ? event.target.closest(".receptionist-choices [data-receptionist-answer], .receptionist-choices [data-receptionist-group-submit]") : null;
-      if (chatOpen && event.isTrusted && guided && guided.textContent.trim()) appendMessage("user", guided.textContent.trim());
+      if (chatOpen && root.dataset.receptionistNaturalEnabled !== "true" && event.isTrusted && guided && guided.textContent.trim()) {
+        appendMessage("user", guided.textContent.trim());
+      }
     });
     root.addEventListener("keydown", event => {
       if (event.key !== "Escape" || !chatOpen || !chatShell?.contains(document.activeElement)) return;
@@ -791,11 +885,21 @@
         appendMessage("assistant", message);
       }
     });
+    window.addEventListener("SevillaReceptionistGuidedServerReply", event => {
+      if (!chatOpen) return;
+      const userMessage = event.detail && typeof event.detail.user_message === "string" ? event.detail.user_message.trim() : "";
+      const reply = event.detail && typeof event.detail.reply === "string" ? event.detail.reply : "";
+      if (userMessage) appendMessage("user", userMessage);
+      if (reply) {
+        preferGuidedContent = Boolean(choices && guidedContent?.contains(choices));
+        appendMessage("assistant", reply);
+      }
+    });
     window.addEventListener("SevillaReceptionistGateChanged", event => setGated(Boolean(event.detail?.gated)));
     window.addEventListener("SevillaReceptionistClosed", () => setChatOpen(false, false));
     window.addEventListener("SevillaReceptionistOpening", () => setChatOpen(false, false));
     root.classList.add("has-receptionist-chat");
   }
 
-  window.SevillaReceptionistChat = { init, resolveBookingSuggestions, applyDateSlotPatch };
+  window.SevillaReceptionistChat = { init, resolveBookingSuggestions, applyDateSlotPatch, applyGateDisabledState };
 }(window, document));

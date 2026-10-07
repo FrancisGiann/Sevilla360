@@ -186,4 +186,6 @@ session_policy_enforce();
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
+require_once __DIR__ . '/database_backup.php';
+database_backup_enforce_web_write_gate();
 ?>

@@ -1,0 +1,21 @@
+Options -Indexes
+
+RewriteEngine On
+
+# Only existing, regular CMS WebP derivatives at the exact generated path are public.
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !-l
+RewriteRule ^assets/uploads/\.cms-thumbnails/[a-f0-9]{64}\.webp$ - [END]
+
+# Keep Hostinger's TLS challenge path available while denying other dot paths.
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L]
+
+# Includes and maintenance code are only loaded by PHP or run from the CLI.
+RewriteRule ^(?:config|includes|migrations|scratch|scripts|storage|realtime|vendor|\.git|\.agents|\.codex|\.openai)(?:/|$) - [F,L,NC]
+
+# Do not serve deployment metadata, documentation, SQL, logs, or backup archives.
+RewriteRule (^|/)(?:composer\.(?:json|lock)|README(?:\.[^/]*)?|AGENTS\.md|error_log|[^/]*\.(?:md|sql(?:\.gz)?|log|s360db|bak|backup|old|orig|swp))$ - [F,L,NC]
+
+<FilesMatch "(?i)^(?:\.env(?:\..*)?|\.git(?:ignore|attributes|modules)?|\.htaccess|\.htpasswd|composer\.(?:json|lock)|README(?:\..*)?|AGENTS\.md|error_log|[^/]*\.(?:md|sql(?:\.gz)?|log|s360db|bak|backup|old|orig|swp))$">
+    Require all denied
+</FilesMatch>

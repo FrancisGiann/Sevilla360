@@ -426,7 +426,7 @@ function hotel_rank_recommendation_groups(array $groups, string $priority, int $
     return array_slice($ranked, 0, max(0, min(count($ranked), $limit)));
 }
 
-function hotel_recommendation_reasons(array $group, string $priority, int $nights, int $guestCount, bool $availabilityChecked = true): array
+function hotel_recommendation_reasons(array $group, string $priority, int $nights, int $guestCount, bool $availabilityChecked = true, bool $exactGuestCount = false): array
 {
     $types = hotel_fixed_room_types();
     $typeLabel = $types[(string)($group['room_type_code'] ?? '')]['label'] ?? 'Hotel room';
@@ -434,15 +434,16 @@ function hotel_recommendation_reasons(array $group, string $priority, int $night
     $surplus = (int)$group['max_capacity'] - $guestCount;
     $estimatedValue = $availabilityChecked
         ? '₱' . number_format($total, 2) . " for {$nights} night" . ($nights === 1 ? '' : 's')
-        : '₱' . number_format($total, 2) . " /night for up to {$guestCount} guests, including extra-pax charges";
+        : '₱' . number_format($total, 2) . " /night for " . ($exactGuestCount ? '' : 'up to ') . "{$guestCount} guests, including extra-pax charges";
+    $fitLabel = $exactGuestCount ? 'your group' : 'your range maximum';
     $priorityReason = match ($priority) {
         'save' => $availabilityChecked
             ? ['code' => 'estimated_total', 'label' => 'Estimated full-stay total', 'value' => $estimatedValue]
             : ['code' => 'estimated_nightly_amount', 'label' => 'Estimated nightly amount', 'value' => $estimatedValue],
-        'best_fit' => ['code' => 'capacity_fit', 'label' => 'Capacity fit', 'value' => 'Fits up to ' . (int)$group['max_capacity'] . ' guests' . ($surplus > 0 ? " · {$surplus} places above your range maximum" : ' · exact fit for your range maximum')],
+        'best_fit' => ['code' => 'capacity_fit', 'label' => 'Capacity fit', 'value' => 'Fits up to ' . (int)$group['max_capacity'] . ' guests' . ($surplus > 0 ? " · {$surplus} places above {$fitLabel}" : ' · exact fit for ' . $fitLabel)],
         'comfort' => ['code' => 'comfort', 'label' => 'Canonical room type', 'value' => $typeLabel],
     };
-    $capacityReason = ['code' => 'capacity_fit', 'label' => 'Capacity fit', 'value' => 'Fits up to ' . (int)$group['max_capacity'] . ' guests' . ($surplus > 0 ? " · {$surplus} places above your range maximum" : ' · exact fit for your range maximum')];
+    $capacityReason = ['code' => 'capacity_fit', 'label' => 'Capacity fit', 'value' => 'Fits up to ' . (int)$group['max_capacity'] . ' guests' . ($surplus > 0 ? " · {$surplus} places above {$fitLabel}" : ' · exact fit for ' . $fitLabel)];
     $bedReason = ['code' => 'bed_count', 'label' => 'Bed count', 'value' => (int)$group['bed_count'] . ' bed' . ((int)$group['bed_count'] === 1 ? '' : 's') . ' listed'];
     $availabilityReason = ['code' => 'availability', 'label' => 'Availability', 'value' => $availabilityChecked ? 'Available for your stay' : 'Dates needed to check availability'];
     if ($priority === 'best_fit') return [$capacityReason, $bedReason, ['code' => 'estimated_price', 'label' => $availabilityChecked ? 'Estimated full-stay total' : 'Estimated nightly amount', 'value' => $estimatedValue], $availabilityReason];

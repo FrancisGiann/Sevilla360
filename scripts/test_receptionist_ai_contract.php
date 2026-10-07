@@ -36,7 +36,7 @@ $roomFollowupContext = [
     'intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'best_fit',
     'start_date' => '2037-11-14', 'end_date' => '2037-11-15',
 ];
-$ambiguousRafaelReason = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael better?', 'en', $roomFollowupContext);
+$ambiguousRafaelReason = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael a best fit?', 'en', $roomFollowupContext);
 $unnamedRoomDetails = receptionist_knowledge_reply($roomFollowupRecords, 'what are its details?', 'en');
 $checks['ambiguous hotel comparison asks which room type without choosing one'] = ($ambiguousRafaelReason['action'] ?? null) === 'ask'
     && ($ambiguousRafaelReason['missing_slots'] ?? []) === ['active_room_group_id']
@@ -60,7 +60,33 @@ $checks['clarification room type answer resolves the pending comparison to one e
     && ($selectedRafaelDormitory['slots']['active_venue_id'] ?? null) === 80
     && ($selectedRafaelDormitory['slots']['active_room_group_id'] ?? null) === 31
     && str_contains((string)($selectedRafaelDormitory['reply'] ?? ''), 'up to 4 guests')
-    && str_contains(strtolower((string)($selectedRafaelDormitory['reply'] ?? '')), 'not establish');
+    && str_contains(strtolower((string)($selectedRafaelDormitory['reply'] ?? '')), 'best-fit order')
+    && str_contains(strtolower((string)($selectedRafaelDormitory['reply'] ?? '')), 'have not rechecked availability');
+$comparisonContext = $roomFollowupContext;
+$comparisonContext['group_size'] = 2;
+$comparisonHistory = receptionist_ai_append_history([], 'which rooms fit?', 'Three options match your group for November 14–15, 2037.');
+$countCorrection = receptionist_knowledge_reply($roomFollowupRecords, 'actually we are 3 person', 'en', $comparisonContext, $comparisonHistory);
+$comparisonContext = $countCorrection['slots'] ?? $comparisonContext;
+$comparisonHistory = receptionist_ai_append_history($comparisonHistory, 'actually we are 3 person', (string)($countCorrection['reply'] ?? ''));
+$comparisonHistory[] = ['role' => 'assistant', 'content' => 'Three options match 3–4 guests for your saved dates.'];
+$namedRafaelWhy = receptionist_knowledge_reply($roomFollowupRecords, 'why is Rafael a best fit?', 'en', $comparisonContext, $comparisonHistory);
+$whyHistory = receptionist_ai_append_history($comparisonHistory, 'why is Rafael a best fit?', (string)($namedRafaelWhy['reply'] ?? ''));
+$shortRafaelWhy = receptionist_knowledge_reply($roomFollowupRecords, 'why?', 'en', $namedRafaelWhy['slots'] ?? $comparisonContext, $whyHistory);
+$checks['count correction and named Rafael comparison explain the unique capacity fit through why follow-up'] = ($comparisonContext['group_size'] ?? null) === 3
+    && ($comparisonContext['start_date'] ?? null) === '2037-11-14'
+    && ($comparisonContext['end_date'] ?? null) === '2037-11-15'
+    && ($namedRafaelWhy['missing_slots'] ?? []) === []
+    && ($shortRafaelWhy['missing_slots'] ?? []) === []
+    && ($namedRafaelWhy['slots']['active_room_group_id'] ?? null) === 31
+    && ($shortRafaelWhy['slots']['active_room_group_id'] ?? null) === 31
+    && ($shortRafaelWhy['slots']['group_size'] ?? null) === 3
+    && ($shortRafaelWhy['slots']['start_date'] ?? null) === '2037-11-14'
+    && ($shortRafaelWhy['slots']['end_date'] ?? null) === '2037-11-15'
+    && str_contains(strtolower((string)($namedRafaelWhy['reply'] ?? '')), 'covers your group of 3')
+    && str_contains(strtolower((string)($namedRafaelWhy['reply'] ?? '')), 'estimated stay total')
+    && str_contains(strtolower((string)($shortRafaelWhy['reply'] ?? '')), 'your dates 2037-11-14 to 2037-11-15')
+    && str_contains(strtolower((string)($shortRafaelWhy['reply'] ?? '')), 'have not rechecked availability')
+    && !str_contains(strtolower((string)($namedRafaelWhy['reply'] ?? '')), 'prioritize the best fit');
 $rwdPrefixMatch = receptionist_knowledge_hotel_parent_matches($roomFollowupRecords, 'Why is Rafael Down better?');
 $checks['hotel parent matching prefers the longest explicitly named building'] = count($rwdPrefixMatch) === 2
     && count(array_unique(array_column($rwdPrefixMatch, 'venue_id'))) === 1
@@ -592,7 +618,7 @@ $checks['Start over clears server and visible turns and reseeds the greeting'] =
     && str_contains($chatJs, 'pendingMessage = "";')
     && str_contains($chatJs, 'serverHistoryPromise = Promise.resolve();')
     && str_contains($chatJs, 'serverResetPromise = resetServerSession()')
-    && str_contains($chatJs, 'stored = { messages: [], context: {} };')
+    && str_contains($chatJs, 'stored = { messages: [], context: {}, revision: stored.revision };')
     && str_contains($chatJs, 'transcript.replaceChildren();')
     && substr_count($chatJs, 'ensureGreeting();') >= 2
     && str_contains($chatJs, 'suppressDialogueEvents++')
@@ -623,7 +649,8 @@ $checks['chat panel is compact, dark, bounded, touch-safe, and responsive'] = st
     && str_contains($showroomCss, 'overflow-y: auto;')
     && str_contains($showroomCss, '.receptionist-chat-toggle')
     && str_contains($showroomCss, '.receptionist-chat-form-actions .receptionist-choice { width: auto; flex: 0 0 auto; }')
-    && str_contains($showroomCss, 'flex: 1 0 100%')
+    && str_contains($showroomCss, '.receptionist-chat-composer {')
+    && str_contains($showroomCss, 'grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);')
     && str_contains($showroomCss, '@media (max-width: 700px)');
 $checks['unified panel keeps chat, guided choices, and venue details visible together'] = str_contains($showroomCss, '.showroom-receptionist.is-chat-open .receptionist-panel {')
     && str_contains($showroomCss, 'height: min(88svh, 48rem)')
@@ -1051,7 +1078,7 @@ $checks['generic booking reset is explicit across server and client context boun
     && str_contains($showroomJs, 'result.reset_context === true');
 $checks['chat initialization is idempotent and hotel follow-up asks for a concrete count'] = str_contains($chatJs, 'root.dataset.receptionistChatReady === "true"')
     && str_contains($showroomJs, 'window.__sevilla360ShowroomInitialized === true')
-    && str_contains($showroomJs, 'Choose the option that includes the total number of adults and children')
+    && str_contains($showroomJs, 'Enter the exact number of adults and children who will stay.')
     && !str_contains($showroomJs, 'message = "Choose a guest range for your room search."');
 $fakeAttempts = 0;
 $fakeProvider = new ReceptionistGenericOpenAiProvider('test-key', 'https://example.test/v1', 'test-model', 'test', '', 'Test',

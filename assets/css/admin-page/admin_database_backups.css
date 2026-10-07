@@ -1,0 +1,49 @@
+.database-backup-page{display:grid;gap:24px;max-width:1440px;margin:0 auto;padding:24px 40px 42px;color:var(--color-dark);font-family:var(--font-body)}
+.database-backup-intro,.database-backup-section-heading{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.database-backup-intro p,.database-backup-section-heading p,.database-backup-tool>p:not(.database-backup-tool-title){max-width:70ch;margin:0;color:#514b47;font-size:.88rem;line-height:1.55}
+.database-backup-section{padding:0 0 22px;border-bottom:1px solid rgba(42,37,34,.12)}
+.database-backup-section-heading{margin-bottom:15px}
+.database-backup-section-heading h3{margin:0 0 5px;color:var(--color-dark);font-family:var(--font-body);font-size:1.08rem;font-weight:650}
+.database-backup-section-heading p{font-size:.83rem}
+.database-backup-tools{display:grid;grid-template-columns:1fr 1.35fr;border:1px solid rgba(42,37,34,.12);border-radius:8px;background:var(--color-white)}
+.database-backup-tool{min-width:0;padding:20px 22px}
+.database-backup-tool+.database-backup-tool{border-left:1px solid rgba(42,37,34,.12)}
+.database-backup-tool-title,.database-backup-file-label{display:block;margin:0 0 5px;color:var(--color-dark);font-size:.9rem;font-weight:650}
+.database-backup-tool>p:not(.database-backup-tool-title){margin-bottom:14px}
+.database-backup-upload-row{display:flex;align-items:center;gap:12px}
+.database-backup-refresh,.database-backup-button,.database-backup-action{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 13px;border:1px solid transparent;border-radius:6px;font:inherit;font-size:.83rem;font-weight:650;text-decoration:none;cursor:pointer;transition:background-color .16s ease,border-color .16s ease,color .16s ease}
+.database-backup-refresh{min-height:36px;border-color:rgba(42,37,34,.2);background:var(--color-white);color:var(--color-dark)}
+.database-backup-refresh:hover,.database-backup-action:hover{border-color:var(--color-gold-hover);background:#fbf7f0}
+.database-backup-button{background:var(--color-gold);color:#2a2522}
+.database-backup-button:hover{background:var(--color-gold-hover)}
+.database-backup-button-secondary{background:#e7dcc5}.database-backup-button-secondary:hover{background:#d9c9a8}
+.database-backup-button-danger{background:#a33d2e;color:#fff}.database-backup-button-danger:hover{background:#832e22}
+.database-backup-button:disabled,.database-backup-refresh:disabled,.database-backup-action:disabled{opacity:.55;cursor:not-allowed}
+.database-backup-tool input[type=file]{min-width:0;flex:1;padding:7px;border:1px solid rgba(42,37,34,.18);border-radius:6px;background:#fff;color:var(--color-dark);font:inherit;font-size:.82rem}
+.database-backup-restore{padding:18px;border:1px solid rgba(166,58,43,.25);border-radius:8px;background:#fffdfa}
+.database-backup-restore-fields{display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:14px;margin-bottom:14px}
+.database-backup-restore-fields label{display:grid;align-content:start;gap:6px;color:var(--color-dark);font-size:.82rem;font-weight:650}
+.database-backup-page input[type=password],.database-backup-page input[type=text],.database-backup-page select{box-sizing:border-box;width:100%;min-height:39px;padding:8px 10px;border:1px solid rgba(42,37,34,.2);border-radius:6px;background:#fff;color:var(--color-dark);font:inherit;font-size:.85rem}
+.database-backup-help{max-width:74ch;margin:10px 0 0;color:#514b47;font-size:.81rem;line-height:1.55}
+.database-backup-count{display:grid;place-items:center;min-width:28px;height:28px;padding:0 7px;border-radius:999px;background:#eee8dc;color:#38312b;font-size:.78rem;font-weight:750;font-variant-numeric:tabular-nums}
+.database-backup-table-wrap{overflow-x:auto;border:1px solid rgba(42,37,34,.12);border-radius:8px;background:var(--color-white)}
+.database-backup-table{width:100%;border-collapse:collapse;text-align:left;font-size:.82rem;font-variant-numeric:tabular-nums}
+.database-backup-table th{padding:11px 13px;background:#f6f3ee;color:#403a35;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.database-backup-table td{padding:11px 13px;border-top:1px solid rgba(42,37,34,.09);vertical-align:middle;line-height:1.45}
+.database-backup-table tr:first-child td{border-top:0}
+.database-backup-table td:nth-child(4){min-width:125px}
+.database-backup-table td:nth-child(5){min-width:110px}
+.database-backup-empty{text-align:center;color:#514b47;padding:22px!important}
+.database-backup-action{min-height:31px;padding:5px 9px;border-color:rgba(42,37,34,.18);background:#fff;color:var(--color-dark);font-size:.76rem}
+.database-backup-status{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#ece9e3;color:#3b3833;font-size:.7rem;font-weight:750;text-transform:capitalize;white-space:nowrap}
+.database-backup-status-succeeded,.database-backup-status-succeeded_maintenance,.database-backup-status-recovered_maintenance,.database-backup-status-valid{background:#e5f1e7;color:#235d35}
+.database-backup-status-failed,.database-backup-status-failed_maintenance,.database-backup-status-recovery_failed,.database-backup-status-invalid{background:#f8e8e4;color:#842c20}
+.database-backup-status-running,.database-backup-status-queued{background:#f4eddb;color:#624a19}
+.database-backup-alert{padding:12px 14px;border:1px solid #c78376;border-radius:7px;background:#fff1ed;color:#67281f;font-size:.85rem;line-height:1.5}
+.database-backup-alert-info{border-color:#b9c9da;background:#eef4f9;color:#293f54}
+.database-backup-alert[hidden]{display:none}
+.database-backup-page :focus-visible{outline:3px solid #9b7023;outline-offset:2px}
+.database-backup-page ::selection{background:#e7cf9e;color:#2a2522}
+@media(max-width:850px){.database-backup-page{padding:20px 18px 34px}.database-backup-tools{grid-template-columns:1fr}.database-backup-tool+.database-backup-tool{border-top:1px solid rgba(42,37,34,.12);border-left:0}.database-backup-restore-fields{grid-template-columns:1fr}}
+@media(max-width:560px){.database-backup-page{padding:18px 12px 28px}.database-backup-intro{align-items:flex-start;flex-direction:column}.database-backup-upload-row{align-items:stretch;flex-direction:column}.database-backup-tool{padding:16px}.database-backup-restore{padding:15px}.database-backup-table{min-width:660px}}
+@media(prefers-reduced-motion:reduce){.database-backup-refresh,.database-backup-button,.database-backup-action{transition:none}}

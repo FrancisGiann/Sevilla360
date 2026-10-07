@@ -171,9 +171,10 @@
 .seminar-actions-row [data-back-import], .seminar-actions-row [data-back-list] { margin-right: auto; }
 .seminar-reservation-form { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); margin-bottom: 24px; }
 .seminar-reservation-name { border-bottom: 1px solid var(--seminar-line); padding-bottom: 18px; }
-.seminar-reservation-name .seminar-field { align-items: center; gap: 18px; grid-template-columns: minmax(150px, .35fr) minmax(0, 1fr); }
+.seminar-reservation-name .seminar-field { align-items: stretch; gap: 7px; grid-template-columns: minmax(0, 1fr); }
 .seminar-reservation-name .seminar-field > span, .seminar-reservation-group .seminar-field > span { color: #493f35; font-size: 14px; font-weight: 600; }
 .seminars-page .seminar-reservation-name input { font-size: 15px; min-height: 46px; }
+.seminar-reservation-name .seminar-field-hint { font-size: 12px; line-height: 1.45; }
 .seminar-reservation-panels { align-items: start; display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .seminar-reservation-group { align-content: start; background: var(--seminar-paper); border: 1px solid var(--seminar-line); border-radius: 10px; display: grid; gap: 12px; margin: 0; min-width: 0; padding: 20px; }
 .seminar-reservation-group > h3 { color: #493623; font: 500 21px/1.25 "Playfair Display", Georgia, serif; margin: 0; }
@@ -250,6 +251,8 @@
 .seminar-unassigned-panel { background: #fbf7f0; border: 1px dashed #d7c4a9; border-radius: 9px; margin: 0 0 14px; padding: 13px; }
 .seminar-unassigned-panel__head { align-items: center; display: flex; gap: 10px; justify-content: space-between; margin-bottom: 9px; }
 .seminar-unassigned-panel__head > div:first-child { align-items: baseline; display: flex; gap: 9px; min-width: 0; }
+.seminar-unassigned-panel__actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.seminar-unassigned-panel__hint { color: #74501f; font-size: 12px; line-height: 1.4; margin: -1px 0 9px; }
 .seminar-unassigned-panel__head h3, .seminar-unassigned-empty h3 { color: #493623; font: 600 13px/1.25 Inter, sans-serif; margin: 0; }
 .seminar-unassigned-panel__head span { color: #8f5a32; font-size: 11px; }
 .seminar-unassigned-list { display: grid; gap: 6px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -277,6 +280,12 @@
 .seminar-room-warnings { background: #fff5e5; border-bottom: 1px solid #ead8bc; color: #74501f; display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 8px 14px; }
 .seminar-room-warnings span { font-size: 12px; line-height: 1.35; }
 .seminar-room-card__people { display: grid; padding: 4px 14px; }
+.seminar-attendee-location { display: grid; min-width: 0; }
+.seminar-attendee-location + .seminar-attendee-location { border-top: 1px solid #e8dfd2; margin-top: 5px; padding-top: 5px; }
+.seminar-attendee-location[hidden] { display: none; }
+.seminar-attendee-location__head { align-items: baseline; background: #f8f3ea; border-radius: 4px; color: #604627; display: flex; font-size: 11px; font-weight: 600; gap: 8px; justify-content: space-between; line-height: 1.3; margin: 3px 0; min-width: 0; padding: 4px 7px; }
+.seminar-attendee-location__head > span { min-width: 0; overflow-wrap: anywhere; }
+.seminar-attendee-location__head > small { color: #746a60; flex: 0 0 auto; font-size: 10px; font-weight: 500; }
 .seminar-attendee { align-items: start; background: transparent; border-bottom: 1px solid #eee8df; display: grid; gap: 8px; grid-template-columns: 32px minmax(0, 1fr) 36px; min-width: 0; padding: 10px 2px; }
 .seminar-select-person { align-items: center; cursor: pointer; display: flex; justify-content: center; min-height: 32px; min-width: 32px; }
 .seminar-attendee__info { display: grid; gap: 3px; min-width: 0; }
@@ -352,7 +361,6 @@
   .seminar-upload-controls > * { width: 100%; }
   .seminar-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .seminar-reservation-group__fields--hall, .seminar-reservation-group__fields--hotel { grid-template-columns: 1fr; }
-  .seminar-reservation-name .seminar-field { align-items: stretch; gap: 7px; grid-template-columns: 1fr; }
   .seminar-reservation-group { padding: 16px; }
   .seminar-reservation-group .seminar-field--hall-select { grid-column: auto; }
   .seminar-room-filter { align-items: stretch; grid-template-columns: 1fr; }
@@ -383,4 +391,115 @@
 @media (prefers-reduced-motion: reduce) {
   .seminar-button, .seminar-button::before, .seminar-loading-indicator { animation: none; transition-duration: 0s; }
   .seminar-loading-indicator { border-right-color: #9d7446; }
+}
+
+.seminar-payment-section { background: #fffdfa; border: 1px solid var(--seminar-line); border-radius: 10px; display: grid; gap: 14px; margin: 18px 0 20px; min-width: 0; padding: 17px; }
+.seminar-payment-section__header { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.seminar-payment-section__header h3, .seminar-payment-history h4 { color: #493623; font: 600 16px/1.3 Inter, sans-serif; margin: 0; }
+.seminar-payment-section__header p { color: #665a4e; font-size: 12px; line-height: 1.45; margin: 4px 0 0; }
+.seminar-payment-cancelled { background: #f7e8e4; border-radius: 5px; color: #783b31; flex: 0 0 auto; font-size: 11px; font-weight: 700; padding: 5px 8px; }
+.seminar-payment-totals { display: grid; gap: 9px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.seminar-payment-totals > div { background: #f8f3ea; border-radius: 7px; display: grid; gap: 3px; min-width: 0; padding: 10px 12px; }
+.seminar-payment-totals dt { color: #655747; font-size: 11px; }
+.seminar-payment-totals dd { color: #493623; font-size: 16px; font-variant-numeric: tabular-nums; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.seminar-payment-notice { background: #fff7e9; border: 1px solid #ead8bc; border-radius: 7px; color: #74501f; font-size: 12px; line-height: 1.45; margin: 0; padding: 9px 11px; }
+.seminar-payment-notice--paid { background: #f1f6ee; border-color: #cad8c3; color: #40523d; }
+.seminar-payment-form { border-top: 1px solid var(--seminar-line); display: grid; gap: 11px; padding-top: 13px; }
+.seminar-payment-form__fields { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(130px, .7fr) minmax(150px, .8fr) minmax(220px, 1.5fr); }
+.seminar-payment-form .seminar-field { gap: 5px; min-width: 0; }
+.seminar-payment-form .seminar-field > span, .seminar-payment-void-reason > span { color: #493f35; font-size: 12px; font-weight: 600; }
+.seminar-payment-form input, .seminar-payment-form select, .seminar-payment-void-reason textarea { background: #fff; border: 1px solid #d7cbbb; border-radius: 6px; color: #352d27; font: 400 13px/1.4 Inter, sans-serif; min-height: 40px; min-width: 0; padding: 8px 10px; width: 100%; }
+.seminar-payment-form input:focus-visible, .seminar-payment-form select:focus-visible, .seminar-payment-void-reason textarea:focus-visible { border-color: #9d7446; outline: 3px solid rgb(157 116 70 / 20%); outline-offset: 1px; }
+.seminar-payment-form input::placeholder { color: #71675d; opacity: 1; }
+.seminar-payment-form__actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.seminar-payment-form__hint { color: #665a4e; font-size: 11px; line-height: 1.45; margin: 0; max-width: 68ch; }
+.seminar-payment-history { border-top: 1px solid var(--seminar-line); display: grid; gap: 9px; padding-top: 12px; }
+.seminar-payment-history h4 { align-items: baseline; display: flex; gap: 7px; font-size: 13px; }
+.seminar-payment-history h4 span { color: #71675d; font-size: 11px; font-weight: 500; }
+.seminar-payment-entry { align-items: start; border-bottom: 1px solid #e8dfd2; display: grid; gap: 8px 14px; grid-template-columns: minmax(100px, .5fr) minmax(0, 2fr) auto; min-width: 0; padding: 9px 2px; }
+.seminar-payment-entry.is-voided { opacity: .78; }
+.seminar-payment-entry__amount { align-items: baseline; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.seminar-payment-entry__amount > strong { color: #493623; font-size: 14px; font-variant-numeric: tabular-nums; }
+.seminar-payment-status { border-radius: 4px; font-size: 10px; font-weight: 700; padding: 3px 6px; }
+.seminar-payment-status.is-posted { background: #edf4e9; color: #38583e; }
+.seminar-payment-status.is-voided { background: #f7e8e4; color: #783b31; }
+.seminar-payment-entry dl { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; min-width: 0; }
+.seminar-payment-entry dl > div { display: grid; gap: 2px; min-width: 0; }
+.seminar-payment-entry dt { color: #71675d; font-size: 10px; }
+.seminar-payment-entry dd { color: #41372e; font-size: 11px; margin: 0; overflow-wrap: anywhere; }
+.seminar-payment-entry__void { font-size: 11px; min-height: 32px; padding: 6px 9px; }
+.seminar-payment-entry__correction { color: #783b31; font-size: 11px; grid-column: 2 / -1; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+.seminar-payment-empty { color: #665a4e; font-size: 12px; line-height: 1.45; margin: 0; }
+.seminar-payment-void-dialog { max-width: min(490px, calc(100vw - 28px)); }
+.seminar-payment-void-dialog__surface { display: grid; gap: 12px; }
+.seminar-payment-void-reason { display: grid; gap: 6px; }
+.seminar-payment-void-reason textarea { min-height: 86px; resize: vertical; }
+.seminar-payment-void-status { background: #fff1ed; border-radius: 5px; color: #783b31; font-size: 12px; line-height: 1.4; margin: 0; padding: 8px 10px; }
+.seminar-payment-void-status[hidden] { display: none; }
+.seminar-payment-void-dialog[data-fallback-modal="true"] { background: transparent; display: grid; inset: 0; margin: 0; max-height: none; max-width: none; padding: 14px; place-items: center; position: fixed; width: 100%; z-index: 1000; }
+.seminar-payment-void-dialog[data-fallback-modal="true"]::before { background: rgb(37 31 26 / 52%); content: ""; inset: 0; position: fixed; z-index: -1; }
+@media (max-width: 760px) {
+  .seminar-payment-section { padding: 13px; }
+  .seminar-payment-totals { grid-template-columns: 1fr; }
+  .seminar-payment-totals > div { align-items: baseline; display: flex; gap: 10px; justify-content: space-between; }
+  .seminar-payment-totals dd { text-align: right; }
+  .seminar-payment-form__fields { grid-template-columns: 1fr; }
+  .seminar-payment-form__actions { align-items: stretch; flex-direction: column; }
+  .seminar-payment-form__actions .seminar-button { width: 100%; }
+  .seminar-payment-entry { grid-template-columns: minmax(0, 1fr) auto; }
+  .seminar-payment-entry dl, .seminar-payment-entry__correction { grid-column: 1 / -1; }
+  .seminar-payment-entry__void { grid-column: 2; grid-row: 1; }
+}
+
+/* Review-stage reading sizes: keep the existing display face while lifting
+   labels and supporting copy to a comfortable size at desktop and mobile. */
+.seminar-wizard-progress__step strong { font-size: 14px; line-height: 1.4; }
+.seminar-button { font-size: 14px; line-height: 1.4; min-height: 42px; }
+.seminar-text-link, .seminar-more-actions__item { font-size: 14px; line-height: 1.4; }
+.seminar-feedback__message, .seminar-muted, .seminar-list-item__meta { font-size: 14px; line-height: 1.5; }
+.seminar-plan-head p { font-size: 14px; line-height: 1.5; }
+.seminar-plan-head .seminar-plan-meta { font-size: 14px; line-height: 1.4; }
+.seminar-field > span { font-size: 14px; line-height: 1.4; }
+.seminars-page input:not([type=checkbox]):not([type=file]), .seminars-page select { font-size: 16px; line-height: 1.4; min-height: 44px; }
+.seminar-inline-fields input, .seminar-add-attendee input { font-size: 16px !important; line-height: 1.4; min-height: 44px !important; }
+.seminar-board-tools > .seminar-muted { padding-bottom: 7px; }
+.seminar-unassigned-panel__head h3, .seminar-unassigned-empty h3 { font-size: 15px; line-height: 1.35; }
+.seminar-unassigned-panel__head span, .seminar-unassigned-empty p, .seminar-unassigned-panel__hint { font-size: 14px; line-height: 1.5; }
+.seminar-unassigned-panel__head > div:first-child { flex-wrap: wrap; }
+.seminar-room-card__head > div:first-child { min-width: 0; }
+.seminar-room-card__head p, .seminar-room-card__count span, .seminar-room-warnings span,
+.seminar-attendee-location__head, .seminar-attendee__info > span, .seminar-attendee-edit summary,
+.seminar-approval, .seminar-room-print small, .seminar-room-board-filter > p { font-size: 14px; line-height: 1.5; }
+.seminar-attendee-location__head > small { font-size: 13px; }
+.seminar-attendee { align-items: start; }
+.seminar-attendee__info { min-width: 0; }
+
+.seminar-payment-section__header p, .seminar-payment-notice, .seminar-payment-empty,
+.seminar-payment-form__hint, .seminar-payment-entry__correction { font-size: 14px; line-height: 1.5; }
+.seminar-payment-cancelled { font-size: 13px; }
+.seminar-payment-totals dt { font-size: 14px; line-height: 1.4; }
+.seminar-payment-form .seminar-field > span, .seminar-payment-void-reason > span { font-size: 14px; line-height: 1.4; }
+.seminar-payment-form input, .seminar-payment-form select { font-size: 16px; line-height: 1.4; min-height: 44px; }
+.seminar-payment-void-reason textarea { font-size: 16px; line-height: 1.4; min-height: 86px; }
+.seminar-payment-history h4 { font-size: 15px; }
+.seminar-payment-history h4 span { font-size: 14px; }
+.seminar-payment-entry { min-width: 0; }
+.seminar-payment-entry__amount > strong { font-size: 15px; }
+.seminar-payment-status { font-size: 12px; }
+.seminar-payment-entry dt, .seminar-payment-entry dd { font-size: 14px; line-height: 1.4; }
+.seminar-payment-entry dl > div { min-width: min(100%, 100px); }
+.seminar-payment-entry__void { font-size: 14px; min-height: 38px; }
+
+@media (max-width: 520px) {
+  .seminar-wizard-progress__step { align-items: start; min-height: 60px; }
+  .seminar-wizard-progress__step strong { font-size: 14px; }
+  .seminar-plan-head { gap: 14px; }
+  .seminar-plan-actions { gap: 10px; }
+  .seminar-primary-actions { gap: 8px; }
+  .seminar-board-tools { gap: 12px; }
+  .seminar-room-card__head { gap: 10px; }
+  .seminar-room-card__head h3 { overflow-wrap: anywhere; }
+  .seminar-payment-entry { gap: 10px 8px; }
+  .seminar-payment-entry dl { gap: 8px 12px; }
+  .seminar-payment-entry dl > div { min-width: 0; }
 }

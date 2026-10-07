@@ -5,10 +5,10 @@
     <div class="bookings-page-header">
         <div class="top-controls">
             <div class="filter-control-group">
-                <label for="table-search">Search bookings</label>
+                <label for="table-search">Search bookings and seminars</label>
                 <div class="search-bar">
                     <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
-                    <input type="search" id="table-search" placeholder="Search by name, ID, or venue..." autocomplete="off">
+                    <input type="search" id="table-search" placeholder="Search by name, ID, seminar, or venue..." autocomplete="off">
                 </div>
             </div>
             <div class="filter-control-group">
@@ -27,10 +27,10 @@
     <!-- Table Card & History -->
     <div class="table-card">
         <div class="booking-history-heading">
-            <h3 class="card-title">Booking History</h3>
+            <h3 class="card-title">Booking &amp; Seminar History</h3>
             <div class="booking-history-actions">
                 <button type="button" id="btn-refresh-bookings" class="btn btn-outline">
-                    <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh Bookings
+                    <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh History
                 </button>
                 <a id="btn-export-bookings" class="btn btn-outline" href="actions/admin/export_bookings.php">
                     <i class="fa-solid fa-file-csv" aria-hidden="true"></i> Export CSV
@@ -38,38 +38,34 @@
             </div>
         </div>
 
-        <!-- Booking Status Filter Tabs -->
-        <div class="booking-tabs" id="bookingFilters">
-            <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="awaiting_verification">Awaiting Verification</button>
-            <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="pending">Pending</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="confirmed">Confirmed</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="completed">Completed</button>
-            <button type="button" class="tab-btn" aria-pressed="false" data-filter="cancelled">Cancelled</button>
+        <!-- Priority statuses stay one click away; the select keeps the full status list easy to scan. -->
+        <div class="booking-filter-toolbar">
+            <div class="booking-tabs" id="bookingFilters" role="group" aria-label="Priority booking status filters">
+                <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
+                <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
+                <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
+            </div>
+            <div class="booking-filter-menu">
+                <label class="booking-filter-select-label" for="bookingFilterSelect">More statuses</label>
+                <select class="booking-filter-select" id="bookingFilterSelect">
+                    <option value="" disabled selected>Select a status</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
         </div>
-        <label class="booking-filter-select-label" for="bookingFilterSelect">Booking status</label>
-        <select class="booking-filter-select" id="bookingFilterSelect" aria-label="Filter bookings by status">
-            <option value="all">All</option>
-            <option value="awaiting_verification">Awaiting Verification</option>
-            <option value="action_req">Action Required</option>
-            <option value="partial">Balances Due</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-        </select>
-        <p class="booking-results-status" id="booking-results-status" role="status" aria-live="polite" aria-atomic="true">Loading bookings…</p>
+        <p class="booking-results-status" id="booking-results-status" role="status" aria-live="polite" aria-atomic="true">Loading booking and seminar history…</p>
 
         <div class="table-responsive">
             <table class="bookings-table" aria-describedby="booking-results-status">
-                <caption class="sr-only">Customer booking history</caption>
+                <caption class="sr-only">Customer booking and seminar history</caption>
                 <thead>
                     <tr>
-                        <th>BOOKING ID</th>
+                        <th>BOOKING / SEMINAR ID</th>
                         <th>VENUE</th>
-                        <th>CUSTOMER</th>
+                        <th>CUSTOMER / SEMINAR</th>
                         <th>DATE</th>
                         <th>AMOUNT</th>
                         <th>STATUS</th>
@@ -91,7 +87,7 @@
         <!-- Server-Side Pagination Controls -->
         <div class="pagination-controls pagination-wrapper">
             <div class="pagination-info">
-                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> bookings
+                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> records
             </div>
             <div class="pagination-controls-right">
                 <span class="pagination-page-label">Page <span id="pag-current-page" class="text-gold-bold">1</span> of <span id="pag-total-pages">1</span></span>
@@ -260,6 +256,7 @@
                 <span class="label">Payment Scheme:</span> <span class="value" id="vd-scheme">--</span>
                 <span class="label">Amount Paid:</span> <span class="value text-green-paid" id="vd-paid-amt">₱0.00</span>
             </div>
+            <div class="tax-receipt-notice"><strong>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</strong><span>Booking and payment details only. This document is not a tax invoice.</span></div>
 
             <div class="modal-actions vd-modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Close</button>

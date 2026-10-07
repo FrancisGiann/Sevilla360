@@ -244,6 +244,7 @@ $manual_payment_action_label = static function (array $booking): string {
     <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
+    <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css'); ?>">
 </head>
 
 <body class="dashboard-body">
@@ -983,6 +984,7 @@ $manual_payment_action_label = static function (array $booking): string {
                     <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
                     <p><span>Amount Paid:</span> <span id="ud-paid-amt" class="text-paid-green">₱0.00</span></p>
                     <p><span>Remaining Balance:</span> <span id="ud-balance-amt" class="text-balance-red">₱0.00</span></p>
+                    <div class="tax-receipt-notice"><strong>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</strong><span>Booking and payment details only. This document is not a tax invoice.</span></div>
                     <div id="ud-payment-history-list" class="payment-history-list" aria-live="polite"></div>
                     <div id="ud-manual-submission-container" class="hidden-element">
                         <p><span>Submitted payment reference:</span> <span id="ud-submitted-payment-reference" class="text-mono-tid">--</span></p>
@@ -1039,6 +1041,8 @@ $manual_payment_action_label = static function (array $booking): string {
         </div>
     </div>
 
+    <?php include __DIR__ . '/includes/partials/receipt_preview.php'; ?>
+
     <script src="assets/js/calendar.js?v=<?= time() ?>"></script>
     
     <!-- Flatpickr Core -->
@@ -1051,6 +1055,7 @@ $manual_payment_action_label = static function (array $booking): string {
 
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/manual_payment.js?v=<?= filemtime(__DIR__ . '/assets/js/manual_payment.js'); ?>"></script>
+    <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js'); ?>"></script>
     <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
 
 </body>

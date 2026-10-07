@@ -192,17 +192,17 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
         </div>
         <div class="sales-table-scroll">
             <table class="sales-table sales-ledger-table">
-                <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Method</th><th scope="col">Customer</th><th scope="col">Booking</th><th scope="col">Venue</th><th scope="col">Reference</th><th scope="col" class="sales-amount-cell">Amount</th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Method</th><th scope="col">Customer / record</th><th scope="col">Booking / seminar</th><th scope="col">Venue</th><th scope="col">Reference</th><th scope="col" class="sales-amount-cell">Amount</th></tr></thead>
                 <tbody>
                 <?php if (!$salesReport['transactions']): ?>
                     <tr><td class="sales-empty-cell" colspan="8">No transactions match this report. Try a wider date range or remove a filter.</td></tr>
                 <?php else: foreach ($salesReport['transactions'] as $transaction): ?>
                     <tr>
                         <td data-label="Date"><?= $salesEscape(date('M j, Y · g:i A', strtotime($transaction['date']))) ?></td>
-                        <td data-label="Type"><span class="sales-type-badge sales-type-<?= $salesEscape($transaction['type']) ?>"><?= $transaction['type'] === 'received' ? 'Received' : 'Refunded' ?></span></td>
+                        <td data-label="Type"><span class="sales-type-badge sales-type-<?= $salesEscape($transaction['type']) ?>"><?= $salesEscape($transaction['source'] === 'seminar' ? ($transaction['type'] === 'received' ? 'Seminar received' : 'Seminar refunded') : ($transaction['type'] === 'received' ? 'Received' : 'Refunded')) ?></span></td>
                         <td data-label="Method"><?= $salesEscape($transaction['method']) ?></td>
-                        <td data-label="Customer"><?= $salesEscape($transaction['customer_name']) ?></td>
-                        <td data-label="Booking"><?= $salesEscape($transaction['booking_reference']) ?></td>
+                        <td data-label="Customer / record"><?= $salesEscape($transaction['customer_name']) ?></td>
+                        <td data-label="Booking / seminar"><?= $salesEscape($transaction['booking_reference']) ?></td>
                         <td data-label="Venue"><?= $salesEscape($transaction['venue']) ?></td>
                         <td data-label="Reference"><?= $salesEscape($transaction['reference'] !== '' ? $transaction['reference'] : '—') ?></td>
                         <td data-label="Amount" class="sales-amount-cell <?= $transaction['type'] === 'received' ? 'is-positive' : 'is-negative' ?>"><?= $transaction['type'] === 'received' ? '+' : '−' ?><?= $salesCurrency($transaction['amount_cents']) ?></td>

@@ -496,7 +496,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const floorField = document.getElementById("vm-hr-floor");
   const floorHelp = document.getElementById("vm-hr-floor-help");
   const floorBulkHelp = document.getElementById("vm-hr-floor-bulk-help");
-  const hotelAdvancedDetails = document.getElementById("vm-hr-advanced");
   let venueModalTrigger = null;
 
   function updateFloorHelp(bulkEnabled) {
@@ -519,7 +518,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function trapVenueModalFocus(event) {
     if (event.key !== "Tab") return;
-    const focusable = [...venueModal.querySelectorAll("button:not(:disabled), input:not(:disabled):not([type='hidden']), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex='-1'])")]
+    const focusable = [...venueModal.querySelectorAll("button:not(:disabled), input:not(:disabled):not([type='hidden']), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])")]
       .filter((element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true");
     if (!focusable.length) {
       event.preventDefault();
@@ -570,7 +569,6 @@ document.addEventListener("DOMContentLoaded", () => {
       venueModalTitle.textContent = isHotelRoom ? (isEditMode ? "Edit Hotel Room" : "Add Hotel Room") : (isEditMode ? "Edit Venue" : "Add New Venue");
       venueSaveButton.textContent = isHotelRoom ? (isEditMode ? "Save Room" : (bulkToggle?.checked ? "Create Rooms" : "Add Room")) : "Save Venue";
     }
-    if (hotelAdvancedDetails) hotelAdvancedDetails.open = isHotelRoom && isEditMode;
     if (!targetClass) return;
 
     document.querySelectorAll(targetClass).forEach((el) => {

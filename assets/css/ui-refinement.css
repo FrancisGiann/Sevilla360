@@ -198,11 +198,10 @@ select, input[type="date"], input[type="email"], input[type="number"], input[typ
 /* Homepage polish only: no display/order/grid declarations are changed. */
 .idx-page { --idx-gold: #bc8a4c; --idx-gold-deep: #93632e; --idx-paper: #fffdf9; --idx-sand: #f5f0e8; --idx-hairline: rgba(147, 99, 46, .34); --idx-shadow-editorial: 0 22px 48px -28px rgba(42, 37, 34, .58); --idx-shadow-lift: 0 26px 58px -30px rgba(42, 37, 34, .56); }
 .idx-page .reveal { opacity: 1; transform: none; transition: none; }
-.idx-hero::after { background: linear-gradient(to bottom, rgba(32, 27, 24, .56) 0%, rgba(32, 27, 24, .25) 46%, rgba(32, 27, 24, .78) 100%); }
 .idx-hero-content { animation: idx-hero-settle 900ms var(--ui-ease) both; }
 @keyframes idx-hero-settle { from { opacity: .86; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .idx-hero-title { letter-spacing: -.018em; }
-.idx-hero-sub, .idx-reserve-row-dark .idx-reserve-text p { color: rgba(255, 253, 249, .78); }
+.idx-reserve-row-dark .idx-reserve-text p { color: rgba(255, 253, 249, .78); }
 .idx-btn { min-height: 48px; border-radius: var(--ui-radius-sm); }
 .idx-btn-gold { background: var(--idx-gold) !important; color: var(--idx-ink) !important; box-shadow: 0 10px 24px rgba(32, 27, 24, .2) !important; }
 .idx-btn-gold:hover { background: var(--idx-gold-deep) !important; }

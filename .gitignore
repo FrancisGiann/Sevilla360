@@ -1,5 +1,7 @@
-# Ignore Environment Variables (Secrets)
+# Keep deployment credentials and environment variants out of version control.
 .env
+.env.*
+!.env.example
 
 # Ignore Composer Vendor folder (Standard PHP practice)
 vendor/
@@ -10,10 +12,7 @@ realtime/node_modules/
 # Ignore error logs
 error_log
 *.log
-# Local receptionist request payloads may contain visitor-provided text.
-scratch/payload.json
-# Keep ad-hoc AI scratch clients and payload fixtures out of accidental staging.
-scratch/test_*.php
-scratch/*.json
-# Ignore backups directory
-storage/backups/
+# Local scratch files may contain test data or credentials.
+scratch/
+# Keep runtime storage private and out of Git deployments.
+storage/

@@ -4,18 +4,92 @@ require_once 'config/db_connect.php';
 $upcoming_maint = $conn->query("
     SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, m.status, v.name as venue_name 
     FROM maintenance m 
-    JOIN venues v ON m.venue_id = v.id 
-    WHERE (m.status = 'Scheduled' OR m.status IS NULL) AND m.end_date >= m.start_date
-    ORDER BY m.start_date ASC
+    LEFT JOIN venues v ON m.venue_id = v.id
+    WHERE (m.status = 'Scheduled' OR m.status IS NULL)
+    ORDER BY m.start_date ASC, m.id ASC
 ");
 
 $past_maint = $conn->query("
     SELECT m.id, m.start_date, m.end_date, m.maintenance_type, m.is_blocking, m.status, m.completed_at, v.name as venue_name 
     FROM maintenance m 
-    JOIN venues v ON m.venue_id = v.id 
-    WHERE m.status = 'Completed' OR m.end_date < m.start_date OR m.end_date < CURDATE()
+    LEFT JOIN venues v ON m.venue_id = v.id
+    WHERE m.status = 'Completed'
     ORDER BY m.id DESC LIMIT 50
 ");
+
+$parseMaintenanceDate = static function ($value) {
+    if (!is_string($value) || trim($value) === '') {
+        return null;
+    }
+
+    $dateString = trim($value);
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dateString);
+    $errors = DateTimeImmutable::getLastErrors();
+
+    if ($date === false
+        || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+        || $date->format('Y-m-d') !== $dateString
+    ) {
+        return null;
+    }
+
+    return $date;
+};
+
+$formatMaintenanceSchedule = static function ($startDate, $endDate) use ($parseMaintenanceDate) {
+    $start = $parseMaintenanceDate($startDate);
+    $end = $parseMaintenanceDate($endDate);
+
+    if ($start === null || $end === null) {
+        return '<span class="maintenance-schedule-value maintenance-date-unavailable">Date unavailable</span>';
+    }
+
+    $startLabel = htmlspecialchars($start->format('M j, Y'), ENT_QUOTES, 'UTF-8');
+    $startValue = htmlspecialchars($start->format('Y-m-d'), ENT_QUOTES, 'UTF-8');
+    $markup = '<span class="maintenance-schedule-value"><time datetime="' . $startValue . '">' . $startLabel . '</time>';
+
+    if ($start->format('Y-m-d') !== $end->format('Y-m-d')) {
+        $endLabel = htmlspecialchars($end->format('M j, Y'), ENT_QUOTES, 'UTF-8');
+        $endValue = htmlspecialchars($end->format('Y-m-d'), ENT_QUOTES, 'UTF-8');
+        $markup .= ' <span aria-hidden="true">—</span> <time datetime="' . $endValue . '">' . $endLabel . '</time>';
+    }
+
+    return $markup . '</span>';
+};
+
+$getOpenMaintenanceStatus = static function ($startDate, $endDate) use ($parseMaintenanceDate) {
+    $start = $parseMaintenanceDate($startDate);
+    $end = $parseMaintenanceDate($endDate);
+
+    if ($start === null || $end === null) {
+        return ['label' => 'Date needs review', 'class' => 'needs-review'];
+    }
+
+    if ($end < $start) {
+        return ['label' => 'Invalid date range', 'class' => 'needs-review'];
+    }
+
+    $today = new DateTimeImmutable('today');
+    if ($end < $today) {
+        return ['label' => 'Overdue', 'class' => 'overdue'];
+    }
+
+    if ($start > $today) {
+        return ['label' => 'Upcoming', 'class' => 'upcoming'];
+    }
+
+    return ['label' => 'In progress', 'class' => 'in-progress'];
+};
+
+$formatCompletedAt = static function ($value) {
+    $timestamp = is_string($value) && trim($value) !== '' ? strtotime($value) : false;
+    return $timestamp === false ? 'Date unavailable' : date('M j, Y h:i A', $timestamp);
+};
+
+$upcoming_maint_failed = $upcoming_maint === false;
+$past_maint_failed = $past_maint === false;
+$upcoming_maint_count = $upcoming_maint_failed ? 0 : $upcoming_maint->num_rows;
+$past_maint_count = $past_maint_failed ? 0 : $past_maint->num_rows;
 
 $venues_query = $conn->query("
     SELECT v.id, v.category, v.name, h.room_type, h.room_number 
@@ -56,7 +130,10 @@ while ($row = $venues_query->fetch_assoc()) {
 ?>
 
 <script>
-window.venueData = <?php echo json_encode($grouped_venues); ?>;
+window.venueData = <?php
+    $venueDataJson = json_encode($grouped_venues, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+    echo $venueDataJson === false ? '{}' : $venueDataJson;
+?>;
 </script>
 
 <div class="admin-maintenance-container admin-booking-container">
@@ -73,7 +150,7 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
     </div>
 
     <div class="maintenance-grid">
-        <!-- Middle Main Area: Form Inputs, Availability Calendar & Table -->
+        <!-- Form Inputs & Availability Calendar -->
         <div class="maintenance-main">
 
             <!-- Maintenance Form Inputs -->
@@ -142,107 +219,6 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
                 ?>
             </div>
 
-            <!-- Active & History Maintenance Table -->
-            <div class="table-card maint-table-card">
-                <h3 class="card-title">Maintenance Records</h3>
-
-                <div class="booking-tabs maint-table-tabs" id="maintTableSubTabs">
-                    <button class="tab-btn active" data-maint-view="active">Active & Upcoming</button>
-                    <button class="tab-btn" data-maint-view="history">Past / Completed History</button>
-                </div>
-
-                <!-- Active & Upcoming Maintenance Table -->
-                <div class="table-responsive" id="view-maint-active">
-                    <table class="bookings-table">
-                        <thead>
-                            <tr>
-                                <th>VENUE</th>
-                                <th>START DATE</th>
-                                <th>END DATE</th>
-                                <th>TYPE</th>
-                                <th>STATUS</th>
-                                <th>ACTIONS</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if ($upcoming_maint && $upcoming_maint->num_rows > 0): ?>
-                            <?php while($m = $upcoming_maint->fetch_assoc()): ?>
-                            <tr>
-                                <td data-label="Venue" class="font-weight-600"><?php echo htmlspecialchars($m['venue_name']); ?></td>
-                                <td data-label="Start Date"><?php echo date('M j, Y', strtotime($m['start_date'])); ?></td>
-                                <td data-label="End Date"><?php echo date('M j, Y', strtotime($m['end_date'])); ?></td>
-                                <td data-label="Type"><?php echo htmlspecialchars($m['maintenance_type']); ?></td>
-                                <td data-label="Status">
-                                    <?php if($m['is_blocking']): ?>
-                                    <span class="status-badge status-refunded status-badge-blocked">Blocked</span>
-                                    <?php else: ?>
-                                    <span class="status-badge status-paid status-badge-note">Note Only</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td data-label="Actions">
-                                    <div class="maint-action-cell">
-                                        <button class="btn-action btn-done btn-complete-maint"
-                                            data-id="<?php echo $m['id']; ?>"
-                                            title="Finish early & free up calendar">Mark Done</button>
-                                        <button class="btn-action btn-cancel btn-delete-maint"
-                                            data-id="<?php echo $m['id']; ?>"
-                                            title="Completely delete this record">Delete</button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <?php endwhile; ?>
-                            <?php else: ?>
-                            <tr>
-                                <td colspan="6" class="maint-empty-row">No active upcoming maintenance scheduled.</td>
-                            </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Past / Completed Maintenance History Table -->
-                <div class="table-responsive hidden-element" id="view-maint-history">
-                    <table class="bookings-table">
-                        <thead>
-                            <tr>
-                                <th>VENUE</th>
-                                <th>SCHEDULED DATES</th>
-                                <th>TYPE</th>
-                                <th>STATUS</th>
-                                <th>COMPLETED ON</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if ($past_maint && $past_maint->num_rows > 0): ?>
-                            <?php while($pm = $past_maint->fetch_assoc()): ?>
-                            <tr>
-                                <td data-label="Venue" class="font-weight-600"><?php echo htmlspecialchars($pm['venue_name']); ?></td>
-                                <td data-label="Scheduled Dates">
-                                    <?php 
-                                        $s = date('M j, Y', strtotime($pm['start_date']));
-                                        $e = date('M j, Y', strtotime($pm['end_date']));
-                                        echo ($s === $e) ? $s : "$s — $e";
-                                    ?>
-                                </td>
-                                <td data-label="Type"><?php echo htmlspecialchars($pm['maintenance_type']); ?></td>
-                                <td data-label="Status">
-                                    <span class="status-badge status-confirmed">Completed</span>
-                                </td>
-                                <td data-label="Completed On">
-                                    <?php echo !empty($pm['completed_at']) ? date('M j, Y h:i A', strtotime($pm['completed_at'])) : date('M j, Y', strtotime($pm['end_date'])); ?>
-                                </td>
-                            </tr>
-                            <?php endwhile; ?>
-                            <?php else: ?>
-                            <tr>
-                                <td colspan="5" class="maint-empty-row">No past maintenance history recorded yet.</td>
-                            </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-            </div>
         </div>
 
         <!-- Right Sidebar: Maintenance Summary & Actions -->
@@ -267,4 +243,149 @@ window.venueData = <?php echo json_encode($grouped_venues); ?>;
             </div>
         </div>
     </div>
+
+    <section class="table-card maint-table-card" aria-labelledby="maint-records-title">
+        <div class="maint-records-heading">
+            <div>
+                <h3 class="maint-records-title" id="maint-records-title">Maintenance records</h3>
+                <p class="maint-records-description" id="maint-records-description">
+                    Open schedules, including overdue work, stay here until completed or deleted. Recent completions shows the latest 50 records.
+                </p>
+            </div>
+        </div>
+
+        <div class="maint-table-tabs" id="maintTableSubTabs" role="group" aria-label="Maintenance record views">
+            <button type="button" class="maint-view-button active" id="maint-view-active"
+                data-maint-view="active" aria-pressed="true" aria-controls="view-maint-active">
+                <span>Open &amp; scheduled</span>
+                <span class="maint-view-count"><?php echo $upcoming_maint_count; ?></span>
+            </button>
+            <button type="button" class="maint-view-button" id="maint-view-history"
+                data-maint-view="history" aria-pressed="false" aria-controls="view-maint-history">
+                <span>Recent completions</span>
+                <span class="maint-view-count"><?php echo $past_maint_count; ?></span>
+            </button>
+        </div>
+
+        <div class="table-responsive maint-record-panel" id="view-maint-active" role="region"
+            aria-labelledby="maint-view-active" aria-describedby="maint-records-description">
+            <table class="bookings-table maint-record-table">
+                <thead>
+                    <tr>
+                        <th scope="col">RECORD</th>
+                        <th scope="col">SCHEDULE</th>
+                        <th scope="col">STATUS</th>
+                        <th scope="col">ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($upcoming_maint_failed): ?>
+                    <tr class="maint-empty-state">
+                        <td colspan="4" class="maint-empty-row" role="alert">Maintenance records could not be loaded. Refresh the page to try again.</td>
+                    </tr>
+                    <?php elseif ($upcoming_maint_count > 0): ?>
+                    <?php while ($m = $upcoming_maint->fetch_assoc()): ?>
+                    <?php
+                        $openStatus = $getOpenMaintenanceStatus($m['start_date'], $m['end_date']);
+                        $venueName = $m['venue_name'] ?? 'Venue unavailable';
+                        $maintenanceType = $m['maintenance_type'] ?? 'Maintenance type unavailable';
+                    ?>
+                    <tr>
+                        <td data-label="Record" class="maintenance-record-cell">
+                            <span class="maintenance-record-details">
+                                <strong class="maintenance-venue-name"><?php echo htmlspecialchars($venueName, ENT_QUOTES, 'UTF-8'); ?></strong>
+                                <span class="maintenance-type"><?php echo htmlspecialchars($maintenanceType, ENT_QUOTES, 'UTF-8'); ?></span>
+                            </span>
+                        </td>
+                        <td data-label="Schedule" class="maintenance-schedule"><?php echo $formatMaintenanceSchedule($m['start_date'], $m['end_date']); ?></td>
+                        <td data-label="Status">
+                            <div class="maintenance-status-group">
+                                <span class="maintenance-lifecycle maintenance-lifecycle--<?php echo htmlspecialchars($openStatus['class'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <?php echo htmlspecialchars($openStatus['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                </span>
+                                <span class="maintenance-impact"><?php echo !empty($m['is_blocking']) ? 'Blocked' : 'Note only'; ?></span>
+                            </div>
+                        </td>
+                        <td data-label="Actions" class="maintenance-actions-cell">
+                            <div class="maint-action-cell">
+                                <button type="button" class="btn-action btn-complete-maint maint-action-complete"
+                                    data-id="<?php echo htmlspecialchars((string)$m['id'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    title="Finish early and free up the calendar">Mark Done</button>
+                                <button type="button" class="btn-action btn-delete-maint maint-action-delete"
+                                    data-id="<?php echo htmlspecialchars((string)$m['id'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    title="Completely delete this record">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                    <?php else: ?>
+                    <tr class="maint-empty-state">
+                        <td colspan="4" class="maint-empty-row">No open maintenance records. Scheduled and overdue work will appear here.</td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="table-responsive maint-record-panel" id="view-maint-history" role="region"
+            aria-labelledby="maint-view-history" aria-describedby="maint-records-description" hidden>
+            <table class="bookings-table maint-record-table">
+                <thead>
+                    <tr>
+                        <th scope="col">RECORD</th>
+                        <th scope="col">SCHEDULE</th>
+                        <th scope="col">STATUS</th>
+                        <th scope="col">COMPLETED ON</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($past_maint_failed): ?>
+                    <tr class="maint-empty-state">
+                        <td colspan="4" class="maint-empty-row" role="alert">Completed records could not be loaded. Refresh the page to try again.</td>
+                    </tr>
+                    <?php elseif ($past_maint_count > 0): ?>
+                    <?php while ($pm = $past_maint->fetch_assoc()): ?>
+                    <?php
+                        $historyStart = $parseMaintenanceDate($pm['start_date']);
+                        $historyEnd = $parseMaintenanceDate($pm['end_date']);
+                        $historyNeedsDateReview = $historyStart === null || $historyEnd === null || $historyEnd < $historyStart;
+                        $historyCompletedOn = !empty($pm['completed_at'])
+                            ? $formatCompletedAt($pm['completed_at'])
+                            : ($historyEnd === null ? 'Date unavailable' : $historyEnd->format('M j, Y'));
+                        $venueName = $pm['venue_name'] ?? 'Venue unavailable';
+                        $maintenanceType = $pm['maintenance_type'] ?? 'Maintenance type unavailable';
+                    ?>
+                    <tr>
+                        <td data-label="Record" class="maintenance-record-cell">
+                            <span class="maintenance-record-details">
+                                <strong class="maintenance-venue-name"><?php echo htmlspecialchars($venueName, ENT_QUOTES, 'UTF-8'); ?></strong>
+                                <span class="maintenance-type"><?php echo htmlspecialchars($maintenanceType, ENT_QUOTES, 'UTF-8'); ?></span>
+                            </span>
+                        </td>
+                        <td data-label="Schedule" class="maintenance-schedule">
+                            <?php echo $formatMaintenanceSchedule($pm['start_date'], $pm['end_date']); ?>
+                            <?php if ($historyNeedsDateReview): ?>
+                            <span class="maintenance-schedule-note">Dates need review</span>
+                            <?php endif; ?>
+                        </td>
+                        <td data-label="Status">
+                            <div class="maintenance-status-group">
+                                <span class="maintenance-lifecycle maintenance-lifecycle--completed">Completed</span>
+                                <span class="maintenance-impact"><?php echo !empty($pm['is_blocking']) ? 'Blocked' : 'Note only'; ?></span>
+                            </div>
+                        </td>
+                        <td data-label="Completed on" class="maintenance-completed-date">
+                            <?php echo htmlspecialchars($historyCompletedOn, ENT_QUOTES, 'UTF-8'); ?>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                    <?php else: ?>
+                    <tr class="maint-empty-state">
+                        <td colspan="4" class="maint-empty-row">No completed maintenance records yet.</td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>

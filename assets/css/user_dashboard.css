@@ -1633,6 +1633,21 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   letter-spacing: 0.05em;
 }
 
+.tax-receipt-notice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9b6a7;
+  background: #fff8f5;
+  color: #713c32;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.tax-receipt-notice strong,
+.tax-receipt-notice span { display: block; }
+.tax-receipt-notice strong { letter-spacing: 0.02em; }
+.tax-receipt-notice span { margin-top: 3px; }
+
 .details-subhead {
   display: block;
   margin: 8px 0 4px;

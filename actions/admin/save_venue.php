@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
 require_once __DIR__ . '/../../includes/hotel_room_number_sequence.php';
+require_once __DIR__ . '/../../includes/venue_time.php';
 
 function venue_response(bool $success, string $message, int $status = 200): never
 {
@@ -44,11 +45,11 @@ function venue_money(string $key): float
     return $value;
 }
 
-function venue_time(string $key, string $default): string
+function venue_time(string $key, string $default, bool $allowEmpty = false): string
 {
-    $raw = trim((string)($_POST[$key] ?? $default));
-    if (!preg_match('/\A(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\z/D', $raw)) throw new InvalidArgumentException("{$key} must be a valid time.");
-    return strlen($raw) === 5 ? $raw . ':00' : $raw;
+    $raw = $_POST[$key] ?? $default;
+    if (!is_string($raw) && !is_numeric($raw)) throw new InvalidArgumentException("{$key} must be a valid time.");
+    return venue_normalize_time_value((string)$raw, $default, $allowEmpty, $key);
 }
 
 function venue_exec(mysqli_stmt $stmt): void
@@ -106,8 +107,8 @@ try {
             $bed_count = venue_int('bed_count', 1, $max_capacity);
             $nightly_rate = venue_money('nightly_rate');
             $extra_pax_rate = venue_money('extra_pax_rate');
-            $check_in = venue_time('check_in_time', '14:00');
-            $check_out = venue_time('check_out_time', '12:00');
+            $check_in = venue_time('check_in_time', '14:00', true);
+            $check_out = venue_time('check_out_time', '12:00', true);
             $group_ready = hotel_group_schema_ready($conn);
             $room_group_id = null;
             if ($group_ready) {
@@ -160,8 +161,8 @@ try {
                 $bed_count = venue_int('bed_count', 1, $max_capacity);
                 $nightly_rate = venue_money('nightly_rate');
                 $extra_pax_rate = venue_money('extra_pax_rate');
-                $check_in = venue_time('check_in_time', '14:00');
-                $check_out = venue_time('check_out_time', '12:00');
+                $check_in = venue_time('check_in_time', '14:00', true);
+                $check_out = venue_time('check_out_time', '12:00', true);
                 if (hotel_group_schema_ready($conn)) {
                     $media_slot_key = hotel_normalize_media_slot_key($_POST['media_slot_key'] ?? null);
                     $room_group_id = hotel_room_group_upsert($conn, [
@@ -227,8 +228,8 @@ try {
             $bed_count = venue_int('bed_count', 1, $max_capacity);
             $nightly_rate = venue_money('nightly_rate');
             $extra_pax_rate = venue_money('extra_pax_rate');
-            $check_in = venue_time('check_in_time', '14:00');
-            $check_out = venue_time('check_out_time', '12:00');
+            $check_in = venue_time('check_in_time', '14:00', true);
+            $check_out = venue_time('check_out_time', '12:00', true);
             if (hotel_group_schema_ready($conn)) {
                 $media_slot_key = hotel_normalize_media_slot_key($_POST['media_slot_key'] ?? null);
                 $room_group_id = hotel_room_group_upsert($conn, [

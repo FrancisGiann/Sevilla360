@@ -12,6 +12,62 @@
     return left < right ? -1 : left > right ? 1 : 0;
   }
 
+  function displaySeminarLocation(value) {
+    return String(value ?? '').trim().replace(/\s+/g, ' ');
+  }
+
+  function normalizeSeminarLocation(value) {
+    return displaySeminarLocation(value).toLowerCase();
+  }
+
+  function compareAttendees(left, right) {
+    const leftName = String(left?.full_name ?? '');
+    const rightName = String(right?.full_name ?? '');
+    return compareText(leftName.toLowerCase(), rightName.toLowerCase())
+      || compareText(leftName, rightName)
+      || compareText(Number(left?.id) || 0, Number(right?.id) || 0);
+  }
+
+  function groupAttendeesByLocation(attendees, getLocation = person => person?.location) {
+    const groupsByKey = new Map();
+    (Array.isArray(attendees) ? attendees : []).forEach(person => {
+      const key = normalizeSeminarLocation(getLocation(person));
+      if (!groupsByKey.has(key)) groupsByKey.set(key, { key, people: [] });
+      groupsByKey.get(key).people.push(person);
+    });
+    return [...groupsByKey.values()]
+      .map(group => {
+        const people = group.people.slice().sort(compareAttendees);
+        const label = displaySeminarLocation(getLocation(people[0])) || 'Unknown location';
+        return { ...group, label, people };
+      })
+      .sort((left, right) => compareText(left.key, right.key));
+  }
+
+  function formatAgreedSeminarPrice(value) {
+    const price = String(value ?? '').trim();
+    if (!price) return 'Not set';
+    const match = /^([0-9]+)(?:\.([0-9]{1,2}))?$/.exec(price);
+    if (!match) return 'Not set';
+    const normalizedWhole = match[1].replace(/^0+/, '') || '0';
+    if (normalizedWhole.length > 10) return 'Not set';
+    const whole = normalizedWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `₱${whole}.${(match[2] || '').padEnd(2, '0')}`;
+  }
+
+  function formatSeminarCents(value) {
+    const cents = Number(value);
+    if (!Number.isSafeInteger(cents) || cents < 0) return '—';
+    return `₱${Math.floor(cents / 100).toLocaleString('en-PH')}.${String(cents % 100).padStart(2, '0')}`;
+  }
+
+  function isValidAgreedSeminarPrice(value) {
+    const price = String(value ?? '').trim();
+    if (!price) return true;
+    const match = /^([0-9]+)(?:\.([0-9]{1,2}))?$/.exec(price);
+    return !!match && (match[1].replace(/^0+/, '') || '0').length <= 10;
+  }
+
   function suggestRoomSelection(rooms, selectedIds, roster) {
     const toCount = value => {
       const count = Number(value);
@@ -169,11 +225,12 @@
     return { success: true, reason: '', addedIds: added.map(room => room.id), selectedIds: selectedRoomSet.map(room => room.id), roomCount: selectedRoomSet.length, capacity: selectedRoomSet.reduce((sum, room) => sum + room.capacity, 0), ...describeSelection(selectedRoomSet), inventoryCapacity, roster: rosterCounts };
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { suggestRoomSelection };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { suggestRoomSelection, groupAttendeesByLocation, normalizeSeminarLocation, formatAgreedSeminarPrice, isValidAgreedSeminarPrice };
 
   const app = typeof document === 'undefined' ? null : document.getElementById('seminars-app');
   if (!app) return;
   const endpoint = app.dataset.endpoint;
+  const paymentsEndpoint = app.dataset.paymentsEndpoint;
   const workspace = document.getElementById('seminar-workspace');
   const list = document.getElementById('seminar-list');
   const savedPlans = document.getElementById('seminar-saved-plans');
@@ -185,6 +242,9 @@
   const confirmationMessage = document.getElementById('seminar-confirm-message');
   const confirmationCancel = confirmationDialog.querySelector('[data-confirm-cancel]');
   const confirmationAccept = confirmationDialog.querySelector('[data-confirm-accept]');
+  const paymentVoidDialog = document.getElementById('seminar-payment-void-dialog');
+  const paymentVoidForm = document.getElementById('seminar-payment-void-form');
+  const paymentVoidStatus = document.getElementById('seminar-payment-void-status');
   const pdfPreviewDialog = document.getElementById('seminar-pdf-dialog');
   const pdfPreviewTitle = document.getElementById('seminar-pdf-title');
   const pdfPreviewContext = pdfPreviewDialog.querySelector('[data-pdf-context]');
@@ -211,6 +271,8 @@
     if (/\bfloor\b/i.test(label)) return label;
     return /^\d+(?:st|nd|rd|th)?$/i.test(label) ? `Floor ${label}` : label;
   };
+  let pendingPaymentVoidId = 0;
+  let paymentVoidInvoker = null;
   let feedbackActionHandler = null;
   let pendingConfirmation = null;
   const flash = (message, type = 'error', options = null) => {
@@ -521,6 +583,25 @@
     if (!response.ok || !result.success) throw new Error(result.message || 'Unable to complete the request.');
     return result;
   }
+  async function requestPayment(op, payload = null, method = 'POST') {
+    const url = new URL(paymentsEndpoint, window.location.href);
+    if (method === 'GET') Object.entries(payload || {}).forEach(([key, value]) => url.searchParams.set(key, value));
+    const response = await fetch(url, {
+      method,
+      headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: method === 'GET' ? undefined : JSON.stringify({ op, ...payload }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.success) throw new Error(result.message || 'Unable to update seminar payments.');
+    return result;
+  }
+  function applyPaymentState(result) {
+    if (!state.current) return;
+    state.current.payment_summary = result.summary || state.current.payment_summary;
+    state.current.payments = Array.isArray(result.payments) ? result.payments : state.current.payments;
+    state.current.payment_methods = Array.isArray(result.methods) ? result.methods : state.current.payment_methods;
+    renderPlan();
+  }
   async function listPlans() {
     if (!state.plans.length) {
       savedPlans.hidden = false;
@@ -530,7 +611,7 @@
     try {
       const result = await request('list', null, 'GET');
       state.plans = result.seminars || [];
-      list.innerHTML = state.plans.map(plan => `<button type="button" class="seminar-list-item ${Number(state.current?.id) === Number(plan.id) ? 'is-active' : ''}" data-open="${Number(plan.id)}"><span class="seminar-list-item__title">${esc(plan.name)}</span><span class="seminar-list-item__meta">${esc(plan.status)} · ${Number(plan.attendee_count)} attendees</span><span class="seminar-list-item__meta">${date(plan.hall_start_date)} – ${date(plan.hall_end_date)}</span></button>`).join('');
+      list.innerHTML = state.plans.map(plan => `<button type="button" class="seminar-list-item ${Number(state.current?.id) === Number(plan.id) ? 'is-active' : ''}" data-open="${Number(plan.id)}"><span class="seminar-list-item__title">${esc(plan.name)}</span><span class="seminar-list-item__meta">${esc(plan.status)} · ${Number(plan.attendee_count)} attendees</span><span class="seminar-list-item__meta">${date(plan.hall_start_date)} – ${date(plan.hall_end_date)}</span><span class="seminar-list-item__meta">Agreed ${esc(formatAgreedSeminarPrice(plan.agreed_price))} · Paid ${esc(formatAgreedSeminarPrice(plan.amount_paid))}</span></button>`).join('');
       savedPlans.hidden = state.plans.length === 0;
     } catch (error) {
       savedPlans.hidden = state.plans.length === 0;
@@ -746,7 +827,7 @@
     if (!status) return;
     const roster = result.roster;
     const unknownNote = roster.unknown
-      ? ` ${roster.unknown} unknown-gender attendee${roster.unknown === 1 ? '' : 's'} remain for review; attendee assignments happen when you continue.`
+      ? ` ${roster.unknown} unknown-gender attendee${roster.unknown === 1 ? '' : 's'} need review and will remain unassigned until their gender is clarified.`
       : '';
     const buildingDetail = result.buildingCount
       ? `${result.buildingCount} hotel building${result.buildingCount === 1 ? '' : 's'}${result.buildingNames.length ? ` (${result.buildingNames.join(', ')})` : ''}`
@@ -756,7 +837,10 @@
       const currentSelection = result.addedIds.length === 0;
       const roomDetail = `${result.roomCount} selected room${result.roomCount === 1 ? '' : 's'} ${result.roomCount === 1 ? 'provides' : 'provide'} ${result.capacity} beds`;
       const genderDetail = roster.female && roster.male ? ' Female and male groups can fit in separate rooms.' : '';
-      message = `${currentSelection ? 'Your current selection already covers the roster.' : `Added ${result.addedIds.length} room${result.addedIds.length === 1 ? '' : 's'}.`} ${roomDetail} across ${buildingDetail} for ${roster.people} attendee${roster.people === 1 ? '' : 's'}.${genderDetail}${unknownNote}`;
+      const selectionDetail = currentSelection
+        ? roster.unknown ? 'Your current selection has enough capacity for the known-gender groups.' : 'Your current selection already covers the roster.'
+        : `Added ${result.addedIds.length} room${result.addedIds.length === 1 ? '' : 's'}.`;
+      message = `${selectionDetail} ${roomDetail} across ${buildingDetail} for ${roster.people} attendee${roster.people === 1 ? '' : 's'}.${genderDetail}${unknownNote}`;
       status.dataset.state = 'ready';
     } else if (result.reason === 'total_capacity') {
       const selectedShortfall = Math.max(0, roster.people - result.capacity);
@@ -783,9 +867,10 @@
   }
   function captureReservationDraft() {
     const name = document.getElementById('seminar-name')?.value;
+    const agreedPrice = document.getElementById('seminar-agreed-price')?.value;
     const hallId = document.getElementById('seminar-hall')?.value;
     const dates = formDates();
-    state.reservationDraft = { ...state.reservationDraft, name: name ?? state.reservationDraft.name ?? '', hall_venue_id: hallId ?? state.reservationDraft.hall_venue_id ?? '', ...dates };
+    state.reservationDraft = { ...state.reservationDraft, name: name ?? state.reservationDraft.name ?? '', agreed_price: agreedPrice ?? state.reservationDraft.agreed_price ?? '', hall_venue_id: hallId ?? state.reservationDraft.hall_venue_id ?? '', ...dates };
   }
   function renderDetailsScreen() {
     state.wizardStep = 2;
@@ -799,6 +884,7 @@
       <div class="seminar-reservation-form">
         <div class="seminar-reservation-name">
           <label class="seminar-field" for="seminar-name"><span>Seminar name *</span><input id="seminar-name" maxlength="180" required value="${esc(draft.name || '')}" placeholder="e.g. Regional Leadership Workshop"></label>
+          <label class="seminar-field" for="seminar-agreed-price"><span>Agreed seminar price (₱)</span><input id="seminar-agreed-price" type="text" inputmode="decimal" pattern="[0-9]+([.][0-9]{1,2})?" value="${esc(draft.agreed_price ?? '')}" aria-describedby="seminar-agreed-price-help" autocomplete="off"><small class="seminar-field-hint" id="seminar-agreed-price-help">Enter the price agreed with the client. Leave blank if it is not set.</small></label>
         </div>
         <div class="seminar-reservation-panels">
           <section class="seminar-reservation-group" aria-labelledby="seminar-hall-heading" aria-describedby="seminar-hall-help">
@@ -821,8 +907,8 @@
         </div>
       </div>
       <div class="seminar-actions-row"><button class="seminar-button seminar-button--quiet" type="button" data-wizard-back="1">${state.wizardMode === 'edit' ? 'Back to plan' : 'Back to roster'}</button><button class="seminar-button seminar-button--primary" type="button" id="seminar-details-continue">Continue to room selection</button></div>`;
-    workspace.querySelectorAll('#seminar-name,#seminar-hall,#seminar-check-in,#seminar-check-out').forEach(input => input.addEventListener('change', captureReservationDraft));
-    workspace.querySelector('#seminar-name')?.addEventListener('input', captureReservationDraft);
+    workspace.querySelectorAll('#seminar-name,#seminar-agreed-price,#seminar-hall,#seminar-check-in,#seminar-check-out').forEach(input => input.addEventListener('change', captureReservationDraft));
+    workspace.querySelectorAll('#seminar-name,#seminar-agreed-price').forEach(input => input.addEventListener('input', captureReservationDraft));
     workspace.querySelectorAll('#seminar-hall-start,#seminar-hall-end').forEach(input => input.addEventListener('change', () => {
       captureReservationDraft();
       const { hall_start: start, hall_end: end } = state.reservationDraft;
@@ -856,6 +942,7 @@
       };
       if (!draft.name.trim()) throw new Error('Enter a seminar name.');
       if (!draft.hall_venue_id) throw new Error('Choose an Event Hall.');
+      if (!isValidAgreedSeminarPrice(draft.agreed_price)) throw new Error('Enter a price with up to 10 whole digits and 2 decimal places, or leave it blank.');
       if (![draft.hall_start, draft.hall_end, draft.hotel_check_in, draft.hotel_check_out].every(validDate)) throw new Error('Enter all four dates.');
       const today = new Date(); today.setHours(0, 0, 0, 0);
       if (new Date(`${draft.hall_start}T00:00:00`) < today || new Date(`${draft.hotel_check_in}T00:00:00`) < today) throw new Error('Seminar and hotel dates must not be in the past.');
@@ -995,11 +1082,11 @@
       if (selectedSummary().shortfall) throw new Error('Selected rooms do not have enough beds for the imported attendees.');
       const draft = state.reservationDraft;
       if (state.current) {
-        const result = await request('update_reservation', { id: state.current.id, name: draft.name, hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
+        const result = await request('update_reservation', { id: state.current.id, name: draft.name, agreed_price: String(draft.agreed_price ?? '').trim(), hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
         state.current = result.seminar; renderPlan();
       } else {
         if (!state.import?.token || !state.validated) throw new Error('Import and validate a roster before creating this seminar.');
-        const result = await request('create_from_import', { token: state.import.token, sheet: state.validated.sheet, mapping: state.validated.mapping, name: draft.name, hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
+        const result = await request('create_from_import', { token: state.import.token, sheet: state.validated.sheet, mapping: state.validated.mapping, name: draft.name, agreed_price: String(draft.agreed_price ?? '').trim(), hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
         state.current = result.seminar; state.import = null; state.validated = null; await listPlans(); renderPlan();
       }
       flash(isEditing ? 'Reservation updated.' : 'Seminar created and room holds are active.', 'success');
@@ -1014,8 +1101,120 @@
   }
   function attendeeMarkup(person, roomId) {
     const edit = state.edits[person.id] || person;
-    const query = `${person.full_name} ${person.location} ${person.gender}`.toLowerCase();
+    const query = `${edit.full_name} ${edit.location} ${edit.gender}`.toLowerCase();
     return `<article class="seminar-attendee" data-attendee-row data-attendee-search="${esc(query)}" data-attendee-id="${Number(person.id)}"><label class="seminar-select-person"><input type="checkbox" data-attendee-select value="${Number(person.id)}" ${state.selectedAttendees.has(Number(person.id)) ? 'checked' : ''} aria-label="Select ${esc(person.full_name)}"><span></span></label><div class="seminar-attendee__info"><strong>${esc(edit.full_name)}</strong><span>${esc(edit.location)} · ${esc(edit.gender)}</span><details class="seminar-attendee-edit"><summary>Edit attendee</summary><div class="seminar-inline-fields"><input data-edit-field="full_name" value="${esc(edit.full_name)}" aria-label="Attendee name"><input data-edit-field="gender" value="${esc(edit.gender)}" aria-label="Gender"><input data-edit-field="location" value="${esc(edit.location)}" aria-label="Location"><input data-edit-field="contact" value="${esc(edit.contact)}" aria-label="Contact number"></div></details></div><button class="seminar-icon-button" type="button" data-delete-attendee="${Number(person.id)}" title="Remove attendee" aria-label="Remove ${esc(edit.full_name)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></article>`;
+  }
+  function attendeeLocationGroupsMarkup(people, roomId) {
+    const groups = groupAttendeesByLocation(people.map(person => ({ ...person, ...(state.edits[person.id] || {}) })));
+    const showLocationLabels = groups.length > 1;
+    return groups.map(group => `<div class="seminar-attendee-location" data-attendee-location-group="${esc(group.key)}">${showLocationLabels ? `<div class="seminar-attendee-location__head"><span>${esc(group.label)}</span><small>${group.people.length}</small></div>` : ''}${group.people.map(person => attendeeMarkup(person, roomId)).join('')}</div>`).join('');
+  }
+  function refreshRoomAttendeeGroups(card) {
+    const container = card?.querySelector('.seminar-room-card__people');
+    if (!container) return;
+    const activeElement = container.contains(document.activeElement) ? document.activeElement : null;
+    const selection = activeElement && typeof activeElement.selectionStart === 'number'
+      ? [activeElement.selectionStart, activeElement.selectionEnd]
+      : null;
+    const rows = [...container.querySelectorAll('[data-attendee-row]')];
+    const people = rows.map(row => {
+      const id = Number(row.dataset.attendeeId);
+      return { ...(state.edits[id] || {}), id, row };
+    });
+    const groups = groupAttendeesByLocation(people);
+    const showLocationLabels = groups.length > 1;
+    container.replaceChildren();
+    groups.forEach(group => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'seminar-attendee-location';
+      wrapper.dataset.attendeeLocationGroup = group.key;
+      if (showLocationLabels) {
+        const heading = document.createElement('div');
+        heading.className = 'seminar-attendee-location__head';
+        const label = document.createElement('span');
+        label.textContent = group.label;
+        const count = document.createElement('small');
+        count.textContent = String(group.people.length);
+        heading.append(label, count);
+        wrapper.append(heading);
+      }
+      group.people.forEach(person => wrapper.append(person.row));
+      container.append(wrapper);
+    });
+    if (activeElement?.isConnected) {
+      activeElement.focus({ preventScroll: true });
+      if (selection && typeof activeElement.setSelectionRange === 'function') activeElement.setSelectionRange(...selection);
+    }
+  }
+  function applyAttendeeSearch(query) {
+    const normalizedQuery = String(query || '').toLowerCase().trim();
+    workspace.querySelectorAll('[data-attendee-row]').forEach(row => { row.hidden = !row.dataset.attendeeSearch.includes(normalizedQuery); });
+    workspace.querySelectorAll('[data-attendee-location-group]').forEach(group => {
+      group.hidden = !group.querySelector('[data-attendee-row]:not([hidden])');
+    });
+  }
+  function refreshRoomLocationWarning(card) {
+    if (!card) return;
+    const locationKeys = new Set([...card.querySelectorAll('[data-attendee-row]')]
+      .map(row => normalizeSeminarLocation(state.edits[Number(row.dataset.attendeeId)]?.location ?? ''))
+      .filter(Boolean));
+    const needsWarning = locationKeys.size > 1;
+    let warningList = card.querySelector('.seminar-room-warnings');
+    let locationWarning = warningList?.querySelector('[data-room-warning="locations"]');
+    if (needsWarning && !locationWarning) {
+      if (!warningList) {
+        warningList = document.createElement('div');
+        warningList.className = 'seminar-room-warnings';
+        warningList.setAttribute('role', 'status');
+        card.insertBefore(warningList, card.querySelector('.seminar-room-card__people'));
+      }
+      locationWarning = document.createElement('span');
+      locationWarning.dataset.roomWarning = 'locations';
+      locationWarning.textContent = 'Multiple locations';
+      warningList.append(locationWarning);
+    } else if (!needsWarning && locationWarning) {
+      locationWarning.remove();
+      if (!warningList.querySelector('span')) warningList.remove();
+    }
+  }
+  function seminarPaymentMarkup(plan) {
+    const summary = plan.payment_summary || {};
+    const paidCents = Number(summary.paid_cents) || 0;
+    const balanceCents = summary.balance === null ? null : Number(summary.balance_cents ?? Math.max(0, Number(summary.agreed_price_cents) - paidCents));
+    const priceIsSet = summary.agreed_price !== null && summary.agreed_price !== undefined;
+    const canRecord = plan.status !== 'cancelled' && priceIsSet && balanceCents > 0;
+    const methods = Array.isArray(plan.payment_methods) ? plan.payment_methods : ['Cash'];
+    const options = methods.map(method => `<option value="${esc(method)}">${esc(method)}</option>`).join('');
+    const payments = Array.isArray(plan.payments) ? plan.payments : [];
+    const notice = plan.status === 'cancelled'
+      ? '<p class="seminar-payment-notice">This seminar is cancelled. Existing payment history is retained, and new payments are closed.</p>'
+      : !priceIsSet
+        ? '<p class="seminar-payment-notice">Set the agreed seminar price in the draft reservation before recording a payment.</p>'
+        : balanceCents <= 0
+          ? '<p class="seminar-payment-notice seminar-payment-notice--paid">The agreed seminar price is fully paid.</p>'
+          : '';
+    const rows = payments.map(payment => {
+      const isVoided = payment.status === 'voided';
+      return `<article class="seminar-payment-entry ${isVoided ? 'is-voided' : ''}">
+        <div class="seminar-payment-entry__amount"><strong>${formatAgreedSeminarPrice(payment.amount)}</strong><span class="seminar-payment-status ${isVoided ? 'is-voided' : 'is-posted'}">${isVoided ? 'Accounting correction' : 'Posted'}</span></div>
+        <dl><div><dt>Method</dt><dd>${esc(payment.payment_method || '—')}</dd></div><div><dt>Transaction reference</dt><dd>${esc(payment.transaction_reference || '—')}</dd></div><div><dt>Recorded</dt><dd>${esc(payment.created_at || '—')}</dd></div></dl>
+        ${isVoided ? `<p class="seminar-payment-entry__correction">Correction: ${esc(payment.void_reason || 'Reason not recorded')}${payment.voided_at ? ` · ${esc(payment.voided_at)}` : ''}</p>` : `<button type="button" class="seminar-button seminar-button--quiet seminar-payment-entry__void" data-payment-void="${Number(payment.id)}">Correct payment</button>`}
+      </article>`;
+    }).join('');
+    const form = canRecord ? `<form class="seminar-payment-form" id="seminar-payment-form">
+      <div class="seminar-payment-form__fields">
+        <label class="seminar-field"><span>Amount received</span><input name="amount" type="number" min="0.01" max="${esc(summary.balance)}" step="0.01" inputmode="decimal" placeholder="0.00" required></label>
+        <label class="seminar-field"><span>Payment method</span><select name="payment_method" data-payment-method>${options}</select></label>
+        <label class="seminar-field seminar-payment-reference"><span data-payment-reference-label>Transaction reference</span><input name="transaction_reference" type="text" maxlength="64" autocomplete="off" placeholder="Enter the reference from the transfer"></label>
+      </div>
+      <div class="seminar-payment-form__actions"><p class="seminar-payment-form__hint">Enter the reference from the external payment. This only records the receipt; it does not contact a payment provider or customer.</p><button class="seminar-button seminar-button--primary" type="submit">Record payment</button></div>
+    </form>` : '';
+    return `<section class="seminar-payment-section" aria-labelledby="seminar-payment-title">
+      <header class="seminar-payment-section__header"><div><h3 id="seminar-payment-title" tabindex="-1">Payment tracking</h3><p>Staff-entered receipts for this seminar agreement.</p></div>${plan.status === 'cancelled' ? '<span class="seminar-payment-cancelled">Cancelled</span>' : ''}</header>
+      <dl class="seminar-payment-totals"><div><dt>Agreed price</dt><dd>${esc(formatAgreedSeminarPrice(summary.agreed_price))}</dd></div><div><dt>Paid</dt><dd>${formatSeminarCents(paidCents)}</dd></div><div><dt>Balance due</dt><dd>${balanceCents === null ? 'Not set' : formatSeminarCents(balanceCents)}</dd></div></dl>
+      ${notice}${form}
+      <div class="seminar-payment-history"><h4>Payment history <span>${payments.length}</span></h4>${rows || '<p class="seminar-payment-empty">No payments have been recorded for this seminar.</p>'}</div>
+    </section>`;
   }
   function renderPlan(resetDraft = true) {
     const plan = state.current;
@@ -1029,10 +1228,17 @@
     const isDraft = plan.status === 'draft';
     const roomMap = roomsByAttendee();
     const unassigned = plan.attendees.filter(person => !Number(state.assignments[person.id]));
+    const freeBeds = plan.rooms.reduce((total, room) => {
+      const occupied = (roomMap.get(Number(room.venue_id)) || []).length;
+      return total + Math.max(0, Number(room.max_capacity || 0) - occupied);
+    }, 0);
+    const hasAssignableUnassigned = unassigned.some(person => ['female', 'male'].includes(String(person.gender || '').trim().toLowerCase()));
+    const showUnassignedRegenerate = isDraft && hasAssignableUnassigned && freeBeds > 0;
+    const showGenderAssignmentHint = isDraft && unassigned.length > 0 && !hasAssignableUnassigned;
     const roomCards = plan.rooms.map(room => {
       const roomId = Number(room.venue_id), people = roomMap.get(roomId) || [], capacity = Number(room.max_capacity || 0);
       const genders = new Set(people.map(person => person.gender).filter(value => value === 'female' || value === 'male'));
-      const locations = [...new Set(people.map(person => person.location).filter(Boolean))];
+      const locations = [...new Set(people.map(person => normalizeSeminarLocation(state.edits[person.id]?.location ?? person.location)).filter(Boolean))];
       const unknownGenders = people.filter(person => !['female', 'male'].includes(person.gender)).length;
       const warnings = [];
       if (people.length === 1) warnings.push('Solo occupancy allowed'); if (unknownGenders) warnings.push(`${unknownGenders} unknown gender${unknownGenders === 1 ? '' : 's'}`); if (people.length > capacity) warnings.push('Over capacity'); if (genders.size > 1 && !state.mixed.has(roomId)) warnings.push('Mixed genders need approval'); if (locations.length > 1) warnings.push('Multiple locations');
@@ -1046,12 +1252,12 @@
         : plan.status === 'finalized' && people.length
           ? `<div class="seminar-room-print"><button class="seminar-button seminar-button--quiet" type="button" data-pdf-preview data-pdf-id="${Number(plan.id)}" data-pdf-type="room" data-pdf-room-id="${roomId}" data-pdf-seminar="${esc(plan.name)}" data-pdf-label="${esc(roomLabel)}">Print this room</button></div>`
           : '';
-      return `<section class="seminar-room-card" data-room-card="${roomId}" data-room-search="${esc(roomSearch)}"><div class="seminar-room-card__head"><div><h3>${esc(room.room_number ? `Room ${room.room_number}` : room.room_type || 'Room')}</h3><p>${esc(room.name)}${room.room_type ? ` · ${esc(room.room_type)}` : ''}${floorText ? ` · ${esc(floorText)}` : ''}</p></div><div class="seminar-room-card__count" aria-label="${people.length} of ${capacity} beds occupied"><strong>${people.length}</strong><span>of ${capacity} beds</span></div></div>${warnings.length ? `<div class="seminar-room-warnings" role="status">${warnings.map(warning => `<span>${esc(warning)}</span>`).join('')}</div>` : ''}<div class="seminar-room-card__people">${people.map(person => attendeeMarkup(person, roomId)).join('') || '<p class="seminar-muted">Move attendees here.</p>'}</div>${isDraft ? `<label class="seminar-approval"><input type="checkbox" data-mixed="${roomId}" ${state.mixed.has(roomId) ? 'checked' : ''}> Approve mixed-gender room</label>` : ''}${printAction}</section>`;
+      return `<section class="seminar-room-card" data-room-card="${roomId}" data-room-search="${esc(roomSearch)}"><div class="seminar-room-card__head"><div><h3>${esc(room.room_number ? `Room ${room.room_number}` : room.room_type || 'Room')}</h3><p>${esc(room.name)}${room.room_type ? ` · ${esc(room.room_type)}` : ''}${floorText ? ` · ${esc(floorText)}` : ''}</p></div><div class="seminar-room-card__count" aria-label="${people.length} of ${capacity} beds occupied"><strong>${people.length}</strong><span>of ${capacity} beds</span></div></div>${warnings.length ? `<div class="seminar-room-warnings" role="status">${warnings.map(warning => `<span${warning === 'Multiple locations' ? ' data-room-warning="locations"' : ''}>${esc(warning)}</span>`).join('')}</div>` : ''}<div class="seminar-room-card__people">${attendeeLocationGroupsMarkup(people, roomId) || '<p class="seminar-muted">Move attendees here.</p>'}</div>${isDraft ? `<label class="seminar-approval"><input type="checkbox" data-mixed="${roomId}" ${state.mixed.has(roomId) ? 'checked' : ''}> Approve mixed-gender room</label>` : ''}${printAction}</section>`;
     }).join('');
     const addAttendeeForm = `<form class="seminar-add-attendee" id="seminar-add-form"><input name="full_name" required maxlength="180" placeholder="Attendee name" aria-label="Attendee name"><input name="gender" required placeholder="Gender" aria-label="Gender"><input name="location" required maxlength="180" placeholder="Location" aria-label="Location"><input name="contact" maxlength="100" placeholder="Contact (optional)" aria-label="Contact number"><button type="submit" class="seminar-button seminar-button--quiet">Add attendee</button></form>`;
     const addAttendeeDisclosure = `<details class="seminar-add-attendee-details"><summary class="seminar-button seminar-button--quiet"><span>Add attendee</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></summary>${addAttendeeForm}</details>`;
     const unassignedMarkup = !isDraft ? '' : unassigned.length
-      ? `<section class="seminar-unassigned-panel"><div class="seminar-unassigned-panel__head"><div><h3>Unassigned</h3><span>${unassigned.length} attendee${unassigned.length === 1 ? '' : 's'}</span></div>${addAttendeeDisclosure}</div><div class="seminar-unassigned-list">${unassigned.map(person => attendeeMarkup(person, 0)).join('')}</div></section>`
+      ? `<section class="seminar-unassigned-panel"><div class="seminar-unassigned-panel__head"><div><h3>Unassigned</h3><span>${unassigned.length} attendee${unassigned.length === 1 ? '' : 's'}${showUnassignedRegenerate ? ` · ${freeBeds} free bed${freeBeds === 1 ? '' : 's'}` : ''}</span></div><div class="seminar-unassigned-panel__actions">${showUnassignedRegenerate ? '<button type="button" class="seminar-button seminar-button--quiet" id="seminar-regenerate-unassigned">Regenerate assignments</button>' : ''}${addAttendeeDisclosure}</div></div>${showGenderAssignmentHint ? '<p class="seminar-unassigned-panel__hint">Set gender to Male or Female to assign these attendees.</p>' : ''}<div class="seminar-unassigned-list">${unassigned.map(person => attendeeMarkup(person, 0)).join('')}</div></section>`
       : `<section class="seminar-unassigned-empty"><div><h3>Unassigned</h3><p>Every attendee has a room assignment.</p></div>${addAttendeeDisclosure}</section>`;
     const primaryActions = isDraft
       ? `<button type="button" class="seminar-button seminar-button--primary" id="seminar-save-plan">Save changes</button><button type="button" class="seminar-button seminar-button--primary" id="seminar-finalize">Finalize plan</button>`
@@ -1075,15 +1281,38 @@
     const moreActionsMarkup = secondaryActions.length ? `<details class="seminar-more-actions"><summary class="seminar-button seminar-button--quiet"><span>More actions</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></summary><div class="seminar-more-actions__menu" aria-label="More seminar actions">${secondaryActions.join('')}</div></details>` : '';
     const planActions = `<div class="seminar-plan-actions"><div class="seminar-primary-actions">${primaryActions}</div>${moreActionsMarkup}</div>`;
     const hall = plan.hall || {};
-    workspace.innerHTML = `${wizardProgress(4)}<div class="seminar-plan-head"><div><h2>${esc(plan.name)}</h2><p>${esc(plan.hall_name)} · Hall ${date(plan.hall_start_date)} – ${date(plan.hall_end_date)} · Hotel ${date(plan.hotel_check_in)} to ${date(plan.hotel_check_out)}</p><p class="seminar-plan-meta">${esc(plan.status)} · ${plan.attendees.length} attendees</p></div>${planActions}</div>${isDraft ? `<div class="seminar-board-tools"><label class="seminar-field"><span>Find an attendee</span><input type="search" id="seminar-attendee-search" placeholder="Name, gender or location"></label><label class="seminar-field"><span>Move selected to</span><select id="seminar-bulk-room"><option value="0">Unassigned</option>${plan.rooms.map(room => `<option value="${Number(room.venue_id)}">${esc(room.name)} · ${esc(room.room_number || '')}</option>`).join('')}</select></label><button type="button" class="seminar-button seminar-button--quiet" id="seminar-bulk-move">Move selected</button><span class="seminar-muted" id="seminar-selected-count">${state.selectedAttendees.size} selected</span></div>${unassignedMarkup}` : ''}${plan.rooms.length ? `<div class="seminar-room-board-filter"><label class="seminar-field"><span>Find a room</span><input type="search" id="seminar-room-board-search" placeholder="Hotel, floor or room number"></label><p id="seminar-room-board-search-status" role="status" aria-live="polite">Showing ${plan.rooms.length} room${plan.rooms.length === 1 ? '' : 's'}.</p></div><p class="seminar-room-filter-empty" data-room-filter-empty hidden>No rooms match this search.</p>` : ''}<div class="seminar-room-board">${roomCards || '<p class="seminar-muted">No hotel rooms are reserved.</p>'}</div>`;
+    workspace.innerHTML = `${wizardProgress(4)}<div class="seminar-plan-head"><div><h2>${esc(plan.name)}</h2><p>${esc(plan.hall_name)} · Hall ${date(plan.hall_start_date)} – ${date(plan.hall_end_date)} · Hotel ${date(plan.hotel_check_in)} to ${date(plan.hotel_check_out)}</p><p class="seminar-plan-meta">${esc(plan.status)} · ${plan.attendees.length} attendees</p></div>${planActions}</div>${seminarPaymentMarkup(plan)}${isDraft ? `<div class="seminar-board-tools"><label class="seminar-field"><span>Find an attendee</span><input type="search" id="seminar-attendee-search" placeholder="Name, gender or location"></label><label class="seminar-field"><span>Move selected to</span><select id="seminar-bulk-room"><option value="0">Unassigned</option>${plan.rooms.map(room => `<option value="${Number(room.venue_id)}">${esc(room.name)} · ${esc(room.room_number || '')}</option>`).join('')}</select></label><button type="button" class="seminar-button seminar-button--quiet" id="seminar-bulk-move">Move selected</button><span class="seminar-muted" id="seminar-selected-count">${state.selectedAttendees.size} selected</span></div>${unassignedMarkup}` : ''}${plan.rooms.length ? `<div class="seminar-room-board-filter"><label class="seminar-field"><span>Find a room</span><input type="search" id="seminar-room-board-search" placeholder="Hotel, floor or room number"></label><p id="seminar-room-board-search-status" role="status" aria-live="polite">Showing ${plan.rooms.length} room${plan.rooms.length === 1 ? '' : 's'}.</p></div><p class="seminar-room-filter-empty" data-room-filter-empty hidden>No rooms match this search.</p>` : ''}<div class="seminar-room-board">${roomCards || '<p class="seminar-muted">No hotel rooms are reserved.</p>'}</div>`;
     bindPlanEvents();
     listPlans().catch(showPlanListError);
   }
   function bindPlanEvents() {
     workspace.querySelectorAll('[data-attendee-select]').forEach(input => input.addEventListener('change', () => { const id = Number(input.value); input.checked ? state.selectedAttendees.add(id) : state.selectedAttendees.delete(id); const count = document.getElementById('seminar-selected-count'); if (count) count.textContent = `${state.selectedAttendees.size} selected`; }));
-    workspace.querySelectorAll('[data-edit-field]').forEach(input => input.addEventListener('input', () => { const row = input.closest('[data-attendee-row]'); const id = Number(row.dataset.attendeeId); state.edits[id][input.dataset.editField] = input.value; }));
+    workspace.querySelectorAll('[data-edit-field]').forEach(input => input.addEventListener('input', () => {
+      const row = input.closest('[data-attendee-row]');
+      if (!row) return;
+      const id = Number(row.dataset.attendeeId);
+      state.edits[id][input.dataset.editField] = input.value;
+      row.dataset.attendeeSearch = ['full_name', 'location', 'gender']
+        .map(field => state.edits[id][field])
+        .join(' ')
+        .toLowerCase();
+      row.querySelector('.seminar-attendee__info > strong').textContent = state.edits[id].full_name;
+      row.querySelector('.seminar-attendee__info > span').textContent = `${state.edits[id].location} · ${state.edits[id].gender}`;
+      row.querySelector('[data-attendee-select]').setAttribute('aria-label', `Select ${state.edits[id].full_name}`);
+      const removeButton = row.querySelector('[data-delete-attendee]');
+      if (removeButton) {
+        removeButton.title = `Remove ${state.edits[id].full_name}`;
+        removeButton.setAttribute('aria-label', `Remove ${state.edits[id].full_name}`);
+      }
+      if (input.dataset.editField === 'location') {
+        const roomCard = row.closest('[data-room-card]');
+        refreshRoomAttendeeGroups(roomCard);
+        refreshRoomLocationWarning(roomCard);
+      }
+      applyAttendeeSearch(workspace.querySelector('#seminar-attendee-search')?.value || '');
+    }));
     workspace.querySelectorAll('[data-mixed]').forEach(input => input.addEventListener('change', () => { const id = Number(input.dataset.mixed); input.checked ? state.mixed.add(id) : state.mixed.delete(id); }));
-    workspace.querySelector('#seminar-attendee-search')?.addEventListener('input', event => { const query = event.target.value.toLowerCase().trim(); workspace.querySelectorAll('[data-attendee-row]').forEach(row => row.hidden = !row.dataset.attendeeSearch.includes(query) && !row.querySelector('.seminar-attendee__info strong').textContent.toLowerCase().includes(query)); });
+    workspace.querySelector('#seminar-attendee-search')?.addEventListener('input', event => applyAttendeeSearch(event.target.value));
     workspace.querySelector('#seminar-room-board-search')?.addEventListener('input', event => {
       const query = event.target.value.toLowerCase().trim();
       const cards = [...workspace.querySelectorAll('[data-room-card]')];
@@ -1094,9 +1323,26 @@
       const empty = workspace.querySelector('[data-room-filter-empty]');
       if (empty) empty.hidden = visible > 0;
     });
+    const paymentForm = workspace.querySelector('#seminar-payment-form');
+    const paymentMethod = paymentForm?.querySelector('[data-payment-method]');
+    const paymentReference = paymentForm?.querySelector('[name="transaction_reference"]');
+    const paymentReferenceLabel = paymentForm?.querySelector('[data-payment-reference-label]');
+    const refreshPaymentReference = () => {
+      const cash = paymentMethod?.value === 'Cash';
+      if (paymentReference) {
+        paymentReference.required = !cash;
+        paymentReference.placeholder = cash ? 'Optional receipt or cash drawer note' : 'Enter the reference from the transfer';
+      }
+      if (paymentReferenceLabel) paymentReferenceLabel.textContent = cash ? 'Reference (optional)' : 'Transaction reference';
+    };
+    paymentMethod?.addEventListener('change', refreshPaymentReference);
+    refreshPaymentReference();
+    paymentForm?.addEventListener('submit', recordSeminarPayment);
+    workspace.querySelectorAll('[data-payment-void]').forEach(button => button.addEventListener('click', () => beginPaymentVoid(button)));
     workspace.querySelector('#seminar-bulk-move')?.addEventListener('click', bulkMove);
     workspace.querySelector('#seminar-save-plan')?.addEventListener('click', savePlan);
-    workspace.querySelector('#seminar-regenerate')?.addEventListener('click', regenerate);
+    workspace.querySelector('#seminar-regenerate')?.addEventListener('click', event => regenerate(event.currentTarget));
+    workspace.querySelector('#seminar-regenerate-unassigned')?.addEventListener('click', event => regenerate(event.currentTarget));
     workspace.querySelector('#seminar-edit-reservation')?.addEventListener('click', editReservation);
     workspace.querySelector('#seminar-replace-roster')?.addEventListener('click', () => beginRosterReplacement(state.current.id));
     workspace.querySelector('#seminar-finalize')?.addEventListener('click', finalizePlan);
@@ -1116,6 +1362,92 @@
       finally { restore(); }
     }));
   }
+  async function recordSeminarPayment(event) {
+    event.preventDefault();
+    if (!state.current || !event.currentTarget.reportValidity()) return;
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const button = form.querySelector('button[type="submit"]');
+    const restore = markButtonBusy(button, 'Recording…');
+    const seminarId = Number(state.current.id);
+    const randomKey = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+    try {
+      const result = await requestPayment('record', { seminar_id: seminarId, ...values, idempotency_key: randomKey });
+      if (Number(state.current?.id) === seminarId) applyPaymentState(result);
+      else listPlans().catch(showPlanListError);
+      flash(result.idempotent ? 'This payment was already recorded. The saved history is up to date.' : 'Seminar payment recorded.', 'success');
+    } catch (error) { flash(error.message); }
+    finally { restore(); }
+  }
+  function beginPaymentVoid(button) {
+    if (!state.current || paymentVoidDialog.open) return;
+    pendingPaymentVoidId = Number(button.dataset.paymentVoid) || 0;
+    if (!pendingPaymentVoidId) return;
+    paymentVoidInvoker = button;
+    paymentVoidForm.reset();
+    paymentVoidStatus.hidden = true;
+    paymentVoidStatus.textContent = '';
+    try {
+      if (typeof paymentVoidDialog.showModal === 'function') paymentVoidDialog.showModal();
+      else {
+        paymentVoidDialog.dataset.fallbackModal = 'true';
+        paymentVoidDialog.setAttribute('open', '');
+      }
+      paymentVoidForm.querySelector('[name="reason"]')?.focus();
+    } catch (error) {
+      pendingPaymentVoidId = 0;
+      flash('The payment correction window could not be opened. Please try again.');
+    }
+  }
+  function finishPaymentVoid() {
+    if (paymentVoidDialog.open && typeof paymentVoidDialog.close === 'function') paymentVoidDialog.close();
+    else paymentVoidDialog.removeAttribute('open');
+    delete paymentVoidDialog.dataset.fallbackModal;
+    pendingPaymentVoidId = 0;
+  }
+  paymentVoidDialog.addEventListener('close', () => {
+    if (paymentVoidInvoker?.isConnected) paymentVoidInvoker.focus({ preventScroll: true });
+    else workspace.querySelector('#seminar-payment-title')?.focus({ preventScroll: true });
+    paymentVoidInvoker = null;
+  });
+  paymentVoidDialog.addEventListener('cancel', () => { pendingPaymentVoidId = 0; });
+  paymentVoidDialog.querySelector('[data-payment-void-cancel]').addEventListener('click', finishPaymentVoid);
+  paymentVoidDialog.addEventListener('keydown', event => {
+    if (!paymentVoidDialog.dataset.fallbackModal) return;
+    if (event.key === 'Escape') { event.preventDefault(); finishPaymentVoid(); return; }
+    if (event.key !== 'Tab') return;
+    const controls = [...paymentVoidDialog.querySelectorAll('textarea:not(:disabled), button:not(:disabled)')];
+    if (!controls.length) { event.preventDefault(); return; }
+    const first = controls[0]; const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  paymentVoidForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const seminarId = Number(state.current?.id) || 0;
+    const reasonField = paymentVoidForm.querySelector('[name="reason"]');
+    const reason = String(reasonField?.value || '').trim();
+    if (!seminarId || !pendingPaymentVoidId) return;
+    if (!reason || reason.length > 500) {
+      paymentVoidStatus.textContent = 'Enter a correction reason between 1 and 500 characters.';
+      paymentVoidStatus.hidden = false;
+      reasonField?.focus();
+      return;
+    }
+    const submit = paymentVoidForm.querySelector('button[type="submit"]');
+    const restore = markButtonBusy(submit, 'Saving correction…');
+    paymentVoidStatus.hidden = true;
+    try {
+      const result = await requestPayment('void', { seminar_id: seminarId, payment_id: pendingPaymentVoidId, reason });
+      finishPaymentVoid();
+      if (Number(state.current?.id) === seminarId) applyPaymentState(result);
+      else listPlans().catch(showPlanListError);
+      flash('Accounting correction saved. Any return of funds must be handled separately.', 'success');
+    } catch (error) {
+      paymentVoidStatus.textContent = error.message;
+      paymentVoidStatus.hidden = false;
+    } finally { restore(); }
+  });
   function bulkMove() {
     if (!state.selectedAttendees.size) { flash('Select at least one attendee to move.', 'info'); return; }
     const roomId = Number(document.getElementById('seminar-bulk-room').value);
@@ -1138,10 +1470,10 @@
     } catch (error) { flash(error.message); }
     finally { restore(); }
   }
-  async function regenerate() {
+  async function regenerate(button = null) {
     const accepted = await requestConfirmation({ title: 'Regenerate room assignments?', message: 'This replaces manual room moves and clears mixed-gender approvals. You can review the new assignments before saving.', confirmLabel: 'Regenerate assignments' });
     if (!accepted) return;
-    const restore = markButtonBusy(document.getElementById('seminar-regenerate'), 'Regenerating…');
+    const restore = markButtonBusy(button || document.getElementById('seminar-regenerate'), 'Regenerating…');
     try { const result = await request('allocate', { id: state.current.id }); state.current = result.seminar; state.selectedAttendees.clear(); renderPlan(); flash('Room assignments regenerated. Review and save the plan when ready.', 'success'); } catch (error) { flash(error.message); }
     finally { restore(); }
   }
@@ -1170,7 +1502,7 @@
       state.validated = { count: state.current.attendees.length };
       state.selectedRooms = new Set(state.current.rooms.map(room => Number(room.venue_id)));
       state.wizardMode = 'edit';
-      state.reservationDraft = { name: state.current.name, hall_venue_id: state.current.hall_venue_id, hall_start: state.current.hall_start_date, hall_end: state.current.hall_end_date, hotel_check_in: state.current.hotel_check_in, hotel_check_out: state.current.hotel_check_out };
+      state.reservationDraft = { name: state.current.name, agreed_price: state.current.agreed_price ?? '', hall_venue_id: state.current.hall_venue_id, hall_start: state.current.hall_start_date, hall_end: state.current.hall_end_date, hotel_check_in: state.current.hotel_check_in, hotel_check_out: state.current.hotel_check_out };
       await updateHallAvailability(state.current.hall_start_date, state.current.hall_end_date);
       renderDetailsScreen();
     } catch (error) { flash(error.message); }
@@ -1308,4 +1640,6 @@
   list.addEventListener('click', event => { const button = event.target.closest('[data-open]'); if (button) openPlan(button.dataset.open); });
   bindGlobalEvents();
   emptyScreen();
+  const requestedSeminarId = new URLSearchParams(window.location.search).get('seminar_id');
+  if (requestedSeminarId && /^[1-9]\d{0,17}$/.test(requestedSeminarId) && Number.isSafeInteger(Number(requestedSeminarId))) openPlan(Number(requestedSeminarId));
 })();

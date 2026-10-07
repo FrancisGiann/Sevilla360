@@ -146,7 +146,7 @@ include 'includes/header.php';
 
     <!-- ===================== HERO ===================== -->
     <header class="idx-hero"
-        style="background-image: url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>');">
+        style="background-image: url('<?php echo get_cms_image('home-hero', 'assets/uploads/home-hero-expanded-pool.png', $cms_images); ?>');">
         <div class="idx-hero-content reveal">
             <span class="idx-hero-script">M.I. Sevilla</span>
             <span class="idx-hero-rule"></span>

@@ -15,6 +15,8 @@ require_once 'includes/showroom_tour.php';
 require_once 'includes/hotel_rooms.php';
 require_once 'includes/media_helper.php';
 
+$natural_receptionist_enabled = trim((string)($_ENV['RECEPTIONIST_NATURAL_HYBRID_ENABLED'] ?? getenv('RECEPTIONIST_NATURAL_HYBRID_ENABLED') ?: '')) === '1';
+
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
 $hotel_room_group_select = $hotel_group_schema_ready ? 'hr.room_group_id' : 'NULL';
 $hotel_type_code_select = $hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';
@@ -483,7 +485,7 @@ window.process = {
     </div>
 
     <!-- Virtual receptionist: the showroom remains visible while the guide introduces the available tours. -->
-    <div class="showroom-receptionist" id="showroom-receptionist" hidden>
+    <div class="showroom-receptionist" id="showroom-receptionist" data-receptionist-natural-enabled="<?= $natural_receptionist_enabled ? 'true' : 'false' ?>" hidden>
         <div class="showroom-receptionist-backdrop" aria-hidden="true">
             <img id="receptionist-backdrop-image" src="assets/img/placeholder.jpg" alt="" decoding="async">
         </div>
@@ -536,9 +538,11 @@ window.process = {
                     <div class="receptionist-chat-quick-replies" id="receptionist-chat-quick-replies" aria-label="Suggested questions"></div>
                     <form class="receptionist-chat-form" id="receptionist-chat-form">
                         <label class="sr-only" for="receptionist-chat-input">Ask the receptionist</label>
-                        <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask a question" autocomplete="off"></textarea>
-                        <div class="receptionist-chat-form-actions">
-                            <button type="submit" class="receptionist-choice receptionist-choice-primary" id="receptionist-chat-send">Send</button>
+                        <div class="receptionist-chat-composer">
+                            <textarea id="receptionist-chat-input" name="message" maxlength="500" rows="2" placeholder="Ask a question" autocomplete="off"></textarea>
+                            <div class="receptionist-chat-form-actions">
+                                <button type="submit" class="receptionist-choice receptionist-choice-primary" id="receptionist-chat-send">Send</button>
+                            </div>
                         </div>
                     </form>
                     <details class="receptionist-chat-tools">
@@ -552,7 +556,6 @@ window.process = {
                                     <option value="category_resort_villa">Resort villas</option>
                                 </select>
                             </label>
-                            <button type="button" data-receptionist-chat-prompt="What policies and FAQs can you help with?">Support FAQs</button>
                             <label class="receptionist-chat-locale-label" for="receptionist-chat-locale">Language
                                 <select id="receptionist-chat-locale" name="locale">
                                     <option value="auto">Auto</option>
@@ -561,6 +564,7 @@ window.process = {
                                     <option value="taglish">Taglish</option>
                                 </select>
                             </label>
+                            <button type="button" data-receptionist-chat-prompt="What policies and FAQs can you help with?">Support FAQs</button>
                             <button type="button" data-receptionist-chat-start-over>Start over</button>
                         </div>
                     </details>

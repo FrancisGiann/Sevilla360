@@ -185,25 +185,30 @@ function sales_report_fetch_activities(mysqli $conn, array $filters, int $offset
     $toBoundary = $to->format('Y-m-d 00:00:00');
     $excluded = sales_report_activity_exclusions();
     $receivedMethodUsable = sales_report_usable_method_sql('p.payment_method');
+    $seminarMethodUsable = sales_report_usable_method_sql('sp.payment_method');
     $refundMethodUsable = sales_report_usable_method_sql('cx.refund_destination_method');
     $primaryVenueLabel = sales_report_venue_label_sql('v');
     $hotelBuildingGroup = sales_report_hotel_building_group_sql();
+    $reportText = static fn(string $expression): string => "CONVERT(({$expression}) USING utf8mb4) COLLATE utf8mb4_unicode_ci";
+    $primaryVenueText = $reportText($primaryVenueLabel);
+    $primaryCategoryText = $reportText('v.category');
+    $customerNameText = $reportText("TRIM(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')))");
     $sql = "
-        SELECT activity_type, activity_id, occurred_at, amount, method_label, reference_code,
+        SELECT record_source, activity_type, activity_id, occurred_at, amount, method_label, reference_code,
                booking_id, booking_reference, booking_total, primary_filter_id, primary_venue,
                primary_category, customer_name
         FROM (
-            SELECT 'received' AS activity_type, p.id AS activity_id, p.payment_date AS occurred_at,
-                   p.amount, TRIM(COALESCE(p.payment_method, '')) AS method_label,
-                   CASE
+            SELECT 'booking' AS record_source, 'received' AS activity_type, p.id AS activity_id, p.payment_date AS occurred_at,
+                   p.amount, {$reportText("TRIM(COALESCE(p.payment_method, ''))")} AS method_label,
+                   {$reportText("CASE
                        WHEN UPPER(LEFT(TRIM(COALESCE(p.transaction_id, '')), 7)) = 'MANUAL-'
                            THEN COALESCE(NULLIF(TRIM(mps.transaction_reference), ''), '')
                        ELSE COALESCE(NULLIF(TRIM(mps.transaction_reference), ''), NULLIF(TRIM(p.transaction_id), ''), '')
-                   END AS reference_code,
-                   b.id AS booking_id, b.reference_no AS booking_reference, b.total_amount AS booking_total,
+                   END")} AS reference_code,
+                   b.id AS booking_id, {$reportText('b.reference_no')} AS booking_reference, b.total_amount AS booking_total,
                    COALESCE(hotel_building.group_id, v.id) AS primary_filter_id,
-                   {$primaryVenueLabel} AS primary_venue, v.category AS primary_category,
-                   TRIM(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))) AS customer_name
+                   {$primaryVenueText} AS primary_venue, {$primaryCategoryText} AS primary_category,
+                   {$customerNameText} AS customer_name
             FROM payments p
             INNER JOIN bookings b ON b.id = p.booking_id
             INNER JOIN customers c ON c.id = b.customer_id
@@ -216,14 +221,14 @@ function sales_report_fetch_activities(mysqli $conn, array $filters, int $offset
 
             UNION ALL
 
-            SELECT 'refunded' AS activity_type, h.id AS activity_id, h.created_at AS occurred_at,
+            SELECT 'booking' AS record_source, 'refunded' AS activity_type, h.id AS activity_id, h.created_at AS occurred_at,
                    h.refund_amount AS amount,
-                   TRIM(COALESCE(cx.refund_destination_method, '')) AS method_label,
-                   COALESCE(NULLIF(TRIM(cx.refund_transaction_id), ''), '') AS reference_code,
-                   b.id AS booking_id, b.reference_no AS booking_reference, b.total_amount AS booking_total,
+                   {$reportText("TRIM(COALESCE(cx.refund_destination_method, ''))")} AS method_label,
+                   {$reportText("COALESCE(NULLIF(TRIM(cx.refund_transaction_id), ''), '')")} AS reference_code,
+                   b.id AS booking_id, {$reportText('b.reference_no')} AS booking_reference, b.total_amount AS booking_total,
                    COALESCE(hotel_building.group_id, v.id) AS primary_filter_id,
-                   {$primaryVenueLabel} AS primary_venue, v.category AS primary_category,
-                   TRIM(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))) AS customer_name
+                   {$primaryVenueText} AS primary_venue, {$primaryCategoryText} AS primary_category,
+                   {$customerNameText} AS customer_name
             FROM cancellation_history h
             INNER JOIN bookings b ON b.id = h.booking_id
             INNER JOIN customers c ON c.id = b.customer_id
@@ -233,15 +238,31 @@ function sales_report_fetch_activities(mysqli $conn, array $filters, int $offset
             WHERE h.action = 'processed' AND h.refund_amount > 0
               AND h.created_at >= ? AND h.created_at < ? AND {$excluded}
               AND {$refundMethodUsable}
+
+            UNION ALL
+
+            SELECT 'seminar' AS record_source, 'received' AS activity_type, sp.id AS activity_id, sp.created_at AS occurred_at,
+                   sp.amount, {$reportText("TRIM(COALESCE(sp.payment_method, ''))")} AS method_label,
+                   {$reportText("COALESCE(NULLIF(TRIM(sp.transaction_reference), ''), '')")} AS reference_code,
+                   NULL AS booking_id, {$reportText("CONCAT('Seminar: ', s.name)")} AS booking_reference, s.agreed_price AS booking_total,
+                   s.hall_venue_id AS primary_filter_id,
+                   {$reportText("CONCAT('Seminar · Event Hall · ', v.name)")} AS primary_venue,
+                   {$reportText("'Seminar'")} AS primary_category, {$reportText("'Staff-entered seminar'")} AS customer_name
+            FROM seminar_payments sp
+            INNER JOIN seminars s ON s.id=sp.seminar_id
+            INNER JOIN venues v ON v.id=s.hall_venue_id
+            WHERE sp.status='posted' AND sp.amount > 0
+              AND sp.created_at >= ? AND sp.created_at < ?
+              AND {$seminarMethodUsable}
         ) AS activity
-        ORDER BY occurred_at DESC, activity_type ASC, activity_id DESC
+        ORDER BY occurred_at DESC, activity_type ASC, record_source ASC, activity_id DESC
         LIMIT ? OFFSET ?
     ";
     $statement = $conn->prepare($sql);
     if (!$statement) throw new RuntimeException('Unable to prepare sales report query.');
     $offset = max(0, $offset);
     $limit = max(1, min(5000, $limit));
-    $statement->bind_param('ssssii', $fromBoundary, $toBoundary, $fromBoundary, $toBoundary, $limit, $offset);
+    $statement->bind_param('ssssssii', $fromBoundary, $toBoundary, $fromBoundary, $toBoundary, $fromBoundary, $toBoundary, $limit, $offset);
     if (!$statement->execute()) {
         $statement->close();
         throw new RuntimeException('Unable to load sales report data.');
@@ -396,6 +417,7 @@ function sales_report_build(mysqli $conn, array $filters, int $page = 1, int $pa
             if ($onTransaction !== null || ($totalRows > ($page - 1) * $pageSize && $totalRows <= $page * $pageSize)) {
                 $transaction = [
                     'type' => (string)$activity['activity_type'],
+                    'source' => (string)$activity['record_source'],
                     'date' => (string)$activity['occurred_at'],
                     'method' => $method,
                     'reference' => (string)($activity['reference_code'] ?? ''),
@@ -448,13 +470,19 @@ function sales_report_current_month_received_total(mysqli $conn, ?DateTimeImmuta
     $until = $today->modify('+1 day')->setTime(0, 0, 0)->format('Y-m-d H:i:s');
     $excluded = sales_report_activity_exclusions();
     $methodUsable = sales_report_usable_method_sql('p.payment_method');
-    $statement = $conn->prepare("SELECT COALESCE(SUM(p.amount), 0) AS total
-        FROM payments p INNER JOIN bookings b ON b.id = p.booking_id
-        INNER JOIN customers c ON c.id = b.customer_id
-        WHERE p.status = 'Success' AND p.amount > 0 AND p.payment_date >= ? AND p.payment_date < ? AND {$excluded}
-          AND {$methodUsable}");
+    $seminarMethodUsable = sales_report_usable_method_sql('sp.payment_method');
+    $statement = $conn->prepare("SELECT COALESCE(SUM(receipts.amount), 0) AS total FROM (
+        SELECT p.amount, CONVERT(p.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method FROM payments p
+        INNER JOIN bookings b ON b.id = p.booking_id INNER JOIN customers c ON c.id = b.customer_id
+        WHERE p.status='Success' AND p.amount > 0 AND p.payment_date >= ? AND p.payment_date < ? AND {$excluded}
+          AND {$methodUsable}
+        UNION ALL
+        SELECT sp.amount, CONVERT(sp.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method FROM seminar_payments sp
+        WHERE sp.status='posted' AND sp.amount > 0 AND sp.created_at >= ? AND sp.created_at < ?
+          AND {$seminarMethodUsable}
+    ) AS receipts");
     if (!$statement) throw new RuntimeException('Unable to prepare monthly sales query.');
-    $statement->bind_param('ss', $from, $until);
+    $statement->bind_param('ssss', $from, $until, $from, $until);
     if (!$statement->execute()) {
         $statement->close();
         throw new RuntimeException('Unable to load monthly sales data.');

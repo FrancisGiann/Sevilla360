@@ -5,6 +5,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/hotel_rooms.php';
 require_once '../../includes/seminars.php';
+require_once '../../includes/venue_recommendation_service.php';
 
 try {
     $bookedDates = [];
@@ -13,6 +14,8 @@ try {
     $room_type = $_REQUEST['room_type'] ?? '';
     $room_name = $_REQUEST['room_name'] ?? ''; // This is venue name or building name
     $venue_id_raw = $_REQUEST['venue_id'] ?? '';
+    $requestedStartDate = isset($_REQUEST['start_date']) && is_string($_REQUEST['start_date']) ? $_REQUEST['start_date'] : '';
+    $requestedEndDate = isset($_REQUEST['end_date']) && is_string($_REQUEST['end_date']) ? $_REQUEST['end_date'] : '';
     $venue_id = $venue_id_raw === '' ? null : filter_var($venue_id_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $room_group_raw = $_REQUEST['room_group_id'] ?? '';
     $room_group_id = $room_group_raw === '' ? null : filter_var($room_group_raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -108,6 +111,15 @@ try {
                     }
                 }
                 $stmt_locks->close();
+            }
+            // Keep the date picker calendar and natural-chat snapshot on one
+            // overlap rule for the exact requested range.
+            if ($venue_id_raw !== '' && $requestedStartDate !== '' && $requestedEndDate !== ''
+                && preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $requestedStartDate)
+                && preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $requestedEndDate)) {
+                $selectedVenueAvailable = venue_recommendation_is_available(
+                    $conn, (int)$venue_id, $room_type, $requestedStartDate, $requestedEndDate, $current_session
+                );
             }
         } elseif ($venue_id_raw !== '') {
             http_response_code(404);

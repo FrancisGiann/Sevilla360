@@ -27,8 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnAdminPrint = document.getElementById('btn-admin-print');
     if (btnAdminPrint) {
         btnAdminPrint.addEventListener('click', () => {
-            if (window.currentAdminBookingId) {
-                window.open(`print_receipt.php?booking_id=${window.currentAdminBookingId}`, '_blank');
+            if (window.currentAdminBookingId && window.SevillaReceiptPreview) {
+                window.SevillaReceiptPreview.open(window.currentAdminBookingId, btnAdminPrint, document.getElementById('vd-title')?.textContent || 'Booking receipt');
             }
         });
     }
@@ -295,7 +295,11 @@ document.addEventListener("DOMContentLoaded", () => {
             tab.classList.toggle('active', isSelected);
             tab.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         });
-        if (bookingFilterSelect) bookingFilterSelect.value = selected;
+        if (bookingFilterSelect) {
+            const hasMenuOption = Array.from(bookingFilterSelect.options)
+                .some(option => option.value !== '' && option.value === selected);
+            bookingFilterSelect.value = hasMenuOption ? selected : '';
+        }
         if (resetFiltersButton) {
             const hasFilters = Boolean(searchInput?.value.trim())
                 || (venueFilter?.value || 'All') !== 'All'
@@ -312,7 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
         cell.className = 'table-state-cell';
         const copy = document.createElement('p');
         copy.className = 'table-state-message';
-        copy.textContent = String(message || 'Bookings are unavailable.');
+        copy.textContent = String(message || 'Booking and seminar history are unavailable.');
         cell.appendChild(copy);
         if (actionLabel && actionName) {
             const button = document.createElement('button');
@@ -340,8 +344,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const requestSequence = ++bookingsRequestSequence;
         const requestState = getBookingViewState();
 
-        setBookingsResultsStatus('Loading bookings…');
-        renderTableMessage('Loading bookings…');
+        setBookingsResultsStatus('Loading booking and seminar history…');
+        renderTableMessage('Loading booking and seminar history…');
   
         fetch('actions/admin/get_bookings_page.php', {
             method: 'POST',
@@ -361,7 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!res.success) {
                 const detail = typeof res.message === 'string' && res.message.trim() ? ` ${res.message.trim().slice(0, 300)}` : '';
-                const message = `We couldn’t load bookings.${detail}`;
+                const message = `We couldn’t load booking and seminar history.${detail}`;
                 setBookingsResultsStatus(`${message} Try again.`);
                 renderTableMessage(message, 'Try again', 'retry');
                 return;
@@ -380,13 +384,13 @@ document.addEventListener("DOMContentLoaded", () => {
             renderTableRows(rows);
             updatePaginationUI(pagination);
             if (rows.length === 0) {
-                setBookingsResultsStatus('No bookings found. Try changing or clearing the search and filters.');
+                setBookingsResultsStatus('No bookings or seminars found. Try changing or clearing the search and filters.');
             } else {
                 const total = pagination.total_rows;
                 const announcedPage = Math.min(pagination.current_page, pagination.total_pages);
                 const start = total > 0 ? ((announcedPage - 1) * rowsPerPage) + 1 : 0;
                 const end = Math.min(announcedPage * rowsPerPage, total);
-                setBookingsResultsStatus(`Showing ${start}–${end} of ${total} bookings.`);
+                setBookingsResultsStatus(`Showing ${start}–${end} of ${total} records.`);
             }
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
@@ -425,8 +429,8 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .catch(err => {
             if (requestSequence !== bookingsRequestSequence || bookingViewStateChanged(requestState)) return;
-            setBookingsResultsStatus('We couldn’t load bookings. Check your connection and try again.');
-            renderTableMessage('We couldn’t load bookings. Check your connection, then try again.', 'Try again', 'retry');
+            setBookingsResultsStatus('We couldn’t load booking and seminar history. Check your connection and try again.');
+            renderTableMessage('We couldn’t load booking and seminar history. Check your connection, then try again.', 'Try again', 'retry');
         })
         .finally(() => {
             bookingsLoadInFlight = false;
@@ -467,13 +471,59 @@ document.addEventListener("DOMContentLoaded", () => {
   
     function renderTableRows(bookings) {
         if (bookings.length === 0) {
-            renderTableMessage('No bookings found for these filters. Try changing or clearing your search and filters.');
+            renderTableMessage('No bookings or seminars found for these filters. Try changing or clearing the search and filters.');
             return;
         }
 
         let html = '';
         const attr = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
         bookings.forEach(b => {
+            if (b?.record_type === 'seminar') {
+                const seminarId = Number(b.id);
+                const safeSeminarId = Number.isSafeInteger(seminarId) && seminarId > 0 ? seminarId : 0;
+                if (!safeSeminarId) return;
+                const referenceNo = String(b.reference_no || `SEM-${safeSeminarId}`);
+                const amount = b.total_amount === null || b.total_amount === '' ? null : Number.parseFloat(b.total_amount);
+                const paid = Number.parseFloat(b.amount_paid);
+                const paidAmount = Number.isFinite(paid) ? paid : 0;
+                const due = amount === null || !Number.isFinite(amount) ? null : Math.max(0, amount - paidAmount);
+                const displayStatus = String(b.display_booking_status || 'Draft');
+                const badgeClass = displayStatus === 'Cancelled' ? 'status-badge--seminar-cancelled' : displayStatus === 'Finalized' ? 'status-badge--seminar-finalized' : 'status-badge--seminar-draft';
+                const dateValue = value => {
+                    const parsed = new Date(value);
+                    return Number.isNaN(parsed.getTime()) ? null : parsed;
+                };
+                const startDate = dateValue(b.start_date);
+                const endDate = dateValue(b.end_date);
+                const shortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Date unavailable';
+                const longDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date unavailable';
+                const dateLabel = !startDate || !endDate || b.start_date === b.end_date
+                    ? longDate(startDate)
+                    : `${shortDate(startDate)} – ${longDate(endDate)}`;
+                const seminarName = String(b.seminar_name || 'Unnamed seminar');
+                const venue = String(b.venue_name || 'Event Hall');
+                const agreedText = amount === null || !Number.isFinite(amount)
+                    ? 'Price not set'
+                    : `Agreed ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const paidText = `Paid ₱${paidAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const dueText = due === null ? 'Balance not set' : `Due ₱${due.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                const attendeeCount = Number(b.attendee_count) || 0;
+                const statusText = b.payment_status === 'Partial' ? `${displayStatus} · Partially paid`
+                    : b.payment_status === 'Paid' ? `${displayStatus} · Paid`
+                    : b.payment_status === 'Unpriced' ? `${displayStatus} · Price not set`
+                    : `${displayStatus} · Unpaid`;
+                const seminarUrl = `admin_dashboard.php?page=seminars&seminar_id=${safeSeminarId}`;
+                html += `<tr class="seminar-history-row${displayStatus === 'Cancelled' ? ' faded-row' : ''}" data-ref="${attr(referenceNo.toLowerCase())}" data-record-type="seminar">
+                    <td data-label="Booking / seminar ID" class="seminar-history-id"><div class="seminar-history-id__content"><span class="seminar-history-type">Seminar</span><strong>${attr(referenceNo)}</strong></div></td>
+                    <td data-label="Venue"><span>Event Hall · ${attr(venue)}</span></td>
+                    <td data-label="Customer / seminar"><span class="seminar-history-name">${attr(seminarName)}</span><small>Staff managed · ${attendeeCount} attendee${attendeeCount === 1 ? '' : 's'}</small></td>
+                    <td data-label="Date">${attr(dateLabel)}</td>
+                    <td data-label="Amount" class="seminar-history-money"><div class="seminar-history-money__content"><strong>${attr(agreedText)}</strong><small>${attr(paidText)} · ${attr(dueText)}</small></div></td>
+                    <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${attr(statusText)}</span></div></td>
+                    <td data-label="Actions" class="action-cells"><div class="action-buttons"><a class="btn-action btn-seminar-open" href="${attr(seminarUrl)}">Open seminar</a></div></td>
+                </tr>`;
+                return;
+            }
             const numericId = Number(b?.id);
             const bookingId = Number.isSafeInteger(numericId) && numericId > 0 ? String(numericId) : '';
             const referenceNo = String(b?.reference_no ?? '');
@@ -684,9 +734,16 @@ document.addEventListener("DOMContentLoaded", () => {
     let openPaymentProofId = urlParams.get('open_payment_proof');
 
     if (urlFilter) {
-        const targetTab = Array.from(tabFilters).find(tab => tab.dataset.filter === urlFilter);
-        if (targetTab) {
+        const isQuickFilter = Array.from(tabFilters).some(tab => tab.dataset.filter === urlFilter);
+        const isMenuFilter = Array.from(bookingFilterSelect?.options || []).some(option => option.value !== '' && option.value === urlFilter);
+        if (isQuickFilter || isMenuFilter) {
             syncBookingFilterControls(urlFilter);
+        } else {
+            // Removed or invalid filters cannot be represented by this UI. Clear the stale query while preserving other deep-link parameters.
+            urlParams.delete('filter');
+            const remainingQuery = urlParams.toString();
+            const sanitizedUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${window.location.hash}`;
+            window.history.replaceState(window.history.state, '', sanitizedUrl);
         }
     }
 

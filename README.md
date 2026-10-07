@@ -79,6 +79,78 @@ Do not make proof storage world-readable or world-writable. Verify from the
 deployed host that requesting the configured filesystem path through the web
 server is impossible; no proof files are placed in the served project tree.
 
+## Database backup and recovery
+
+Backups contain the database only. The admin dashboard creates and lists
+compressed `.s360db` archives, verifies their HMAC signature and checksum,
+accepts signed archive uploads, and streams verified files for manual off-host
+storage. Arbitrary SQL uploads are never accepted. Set `APP_KEY` to a random,
+deployment-specific value with at least 32 characters and keep the same key
+with off-host copies; archives are bound to the configured `DB_NAME`.
+
+Set `BACKUP_DIR` to a private absolute directory outside both the project and
+document root. On a VPS, provision it for the PHP and CLI account with mode
+`0700`; on Hostinger shared hosting, use an owned directory in the account's
+home directory, such as `/home/ACCOUNT/.sevilla360/backups`. Set
+`BACKUP_MAX_BYTES` for the compressed archive and
+`BACKUP_MAX_UNCOMPRESSED_BYTES` for the expanded SQL limit. The runtime checks
+for `proc_open`, `mysqldump` or `mariadb-dump`, and `mysql` or `mariadb`.
+Hostinger environments missing a capability show a disabled reason in the
+admin page; `MYSQLDUMP_BIN` and `MYSQL_BIN` can point to executable paths when
+the clients are not on PHP's `PATH`.
+
+Restore is disabled until a dedicated, pre-provisioned staging database is
+configured with `DB_STAGING_HOST`, `DB_STAGING_USER`, `DB_STAGING_PASS`, and
+`DB_STAGING_NAME` (and optional `DB_STAGING_PORT`). It must be a separate,
+disposable database; every restore preflight clears its tables, views,
+triggers, routines, and events. Grant the staging user the object-management
+and import privileges needed inside that database. No global `DROP DATABASE`
+or `CREATE DATABASE` grant is required. Do not use a production database as
+staging. The worker restores each candidate there and checks the core
+authentication, booking, payment, and cancellation tables and required columns
+before production is touched; archives from an older, incompatible transaction
+schema are rejected. Optional integrations such as Google sign-in, realtime
+delivery, reviews, and hotel room groups do not block restore when their
+migrations are not enabled in a deployment.
+
+Add a PHP cron job in Hostinger hPanel to run every five minutes. Manual backup
+and restore requests wait for this CLI-only worker. It also creates one daily
+snapshot at `BACKUP_DAILY_HOUR` in Asia/Manila (default `3`) and removes managed
+archives older than seven days:
+
+```text
+/home/ACCOUNT/domains/DOMAIN/public_html/scripts/database_backup_worker.php
+```
+
+For a standard crontab, use the full PHP executable path:
+
+```cron
+*/5 * * * * /usr/bin/php /var/www/html/Sevilla360/scripts/database_backup_worker.php
+```
+
+The worker serializes staging, backup, and restore jobs. A restore requires the
+current admin password and the exact confirmation word `RESTORE`. It activates
+a private maintenance gate, creates a signed pre-restore safety archive,
+replaces production database objects with the selected snapshot, verifies the
+restored application tables, and then reopens web writes. If restoration fails,
+the worker automatically restores the safety archive. If that recovery also
+fails, maintenance remains active and the admin status endpoint remains
+available. After fixing host/database access, use the CLI recovery command
+with the safety archive ID shown in job status:
+
+```sh
+php scripts/database_backup_worker.php --recover db-<32-hex>.s360db
+```
+
+This operator recovery path verifies the signed archive before touching
+production and does not depend on staging, so it remains available if the
+staging database was the component that failed. It still verifies the restored
+production tables before reopening writes.
+
+Web restore compatibility is tested on staging before the safety backup or
+production changes. Download backups manually and store them in a separate
+off-host location; the application does not copy backups to a cloud provider.
+
 ## Manual payment proof retention
 
 Pending proofs are retained. Approved and rejected proof images are no longer
@@ -153,6 +225,29 @@ The local environment intentionally does not install Redis or realtime Node
 packages. Run `node --test realtime/test/*.test.mjs` for deterministic token,
 channel, dedupe, and backoff checks. A live Redis/WebSocket check is a
 deployment prerequisite, not a local pass claim.
+
+## Natural hybrid receptionist
+
+The structured natural receptionist uses
+`RECEPTIONIST_NATURAL_HYBRID_ENABLED`; `.env.example` keeps it disabled by
+default. The local flag was enabled after the bounded synthetic acceptance
+run. It uses the configured `AI_PROVIDER` and `AI_MODEL`, server-validated
+booking slots, published knowledge records, and the shared hotel
+recommendation service. No chat text is written to application logs.
+
+The latest evaluation covered 20 synthetic conversations. The harness reported
+14 naturally worded replies accepted by grounding, 7 grounded fallbacks, 3
+local replies, and 1 intentional outage response across the sampled turns. All
+30 live provider requests returned successfully. The sample showed no
+unsupported factual claims or state resets; grounded fallbacks remain an
+expected safety path.
+
+Run `php scripts/test_receptionist_natural_contract.php` for the offline
+full-handler contract. Root/staging evaluation can run
+`php scripts/eval_receptionist_natural_live.php --live` to exercise 20 synthetic
+conversations with the configured model and fixed, non-writing search fixtures.
+The live flag is required before the script contacts the provider; it prints
+synthetic replies for review and logs only metadata.
 
 ## Optional Google sign-in
 

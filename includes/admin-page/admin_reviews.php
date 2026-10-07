@@ -47,14 +47,16 @@ if ($statement) $statement->close();
             <div class="review-admin-actions">
                 <span class="review-status review-status--<?= strtolower($escapeReview($review['moderation_status'])) ?>"><?= $escapeReview($review['moderation_status']) ?></span>
                 <label class="review-note-field">Note <input type="text" maxlength="500" data-review-note aria-label="Optional moderation note" value="<?= $review['admin_note'] ? $escapeReview($review['admin_note']) : '' ?>"></label>
-                <?php if ($review['moderation_status'] === 'Pending'): ?>
-                    <button type="button" data-review-action="approve" data-review-id="<?= (int)$review['id'] ?>">Approve</button>
-                    <button type="button" data-review-action="reject" data-review-id="<?= (int)$review['id'] ?>">Reject</button>
-                <?php elseif ($review['moderation_status'] === 'Approved'): ?>
-                    <button type="button" data-review-action="hide" data-review-id="<?= (int)$review['id'] ?>">Hide</button>
-                <?php else: ?>
-                    <button type="button" data-review-action="approve" data-review-id="<?= (int)$review['id'] ?>">Approve</button>
-                <?php endif; ?>
+                <div class="review-action-buttons">
+                    <?php if ($review['moderation_status'] === 'Pending'): ?>
+                        <button type="button" data-review-action="approve" data-review-id="<?= (int)$review['id'] ?>">Approve</button>
+                        <button type="button" data-review-action="reject" data-review-id="<?= (int)$review['id'] ?>">Reject</button>
+                    <?php elseif ($review['moderation_status'] === 'Approved'): ?>
+                        <button type="button" data-review-action="hide" data-review-id="<?= (int)$review['id'] ?>">Hide</button>
+                    <?php else: ?>
+                        <button type="button" data-review-action="approve" data-review-id="<?= (int)$review['id'] ?>">Approve</button>
+                    <?php endif; ?>
+                </div>
             </div>
         </article>
     <?php endforeach; ?>

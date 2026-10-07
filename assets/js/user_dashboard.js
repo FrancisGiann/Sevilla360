@@ -158,8 +158,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnPrintReceipt = document.getElementById('btn-print-receipt');
   if (btnPrintReceipt) {
       btnPrintReceipt.addEventListener('click', () => {
-          if (window.currentViewBookingId) {
-              window.open(`print_receipt.php?booking_id=${window.currentViewBookingId}`, '_blank');
+          if (window.currentViewBookingId && window.SevillaReceiptPreview) {
+              window.SevillaReceiptPreview.open(window.currentViewBookingId, btnPrintReceipt, document.getElementById('ud-title')?.textContent || 'Booking receipt');
           }
       });
   }

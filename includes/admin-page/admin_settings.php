@@ -746,25 +746,20 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     </div>
 
                     <div class="form-group vm-dynamic vm-hotel venue-hotel-advanced" style="display:none; margin-bottom: 0;">
-                        <details id="vm-hr-advanced">
-                            <summary>
-                                <span class="venue-hotel-advanced-copy">
-                                    <span class="venue-hotel-advanced-title">Stay times (optional)</span>
-                                    <span class="venue-hotel-advanced-description">Set the check-in and check-out times for this room type.</span>
-                                </span>
-                                <span class="venue-hotel-advanced-chevron" aria-hidden="true"></span>
-                            </summary>
-                            <div class="venue-hotel-advanced-grid">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="vm-hr-check-in">Check-in</label>
-                                    <input type="time" id="vm-hr-check-in" name="check_in_time" class="form-control" value="14:00" data-required="false">
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="vm-hr-check-out">Check-out</label>
-                                    <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="12:00" data-required="false">
-                                </div>
+                        <div class="venue-hotel-advanced-heading">
+                            <h5>Stay times (optional)</h5>
+                            <p>Leave either field blank to use the standard time: check-in at 2:00 PM and check-out at 12:00 PM.</p>
+                        </div>
+                        <div class="venue-hotel-advanced-grid">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="vm-hr-check-in">Check-in</label>
+                                <input type="time" id="vm-hr-check-in" name="check_in_time" class="form-control" value="" data-required="false">
                             </div>
-                        </details>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="vm-hr-check-out">Check-out</label>
+                                <input type="time" id="vm-hr-check-out" name="check_out_time" class="form-control" value="" data-required="false">
+                            </div>
+                        </div>
                         <input type="hidden" id="vm-hr-media-slot" name="media_slot_key" value="" data-required="false">
                     </div>
                 </div>

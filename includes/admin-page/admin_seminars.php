@@ -1,4 +1,4 @@
-<section class="seminars-page" id="seminars-app" data-endpoint="actions/admin/seminars.php">
+<section class="seminars-page" id="seminars-app" data-endpoint="actions/admin/seminars.php" data-payments-endpoint="actions/admin/seminar_payments.php">
     <header class="seminars-heading">
         <div>
             <h1>Seminar rooming</h1>
@@ -53,6 +53,18 @@
                 <button class="seminar-button seminar-button--primary" type="button" data-confirm-accept>Continue</button>
             </div>
         </div>
+    </dialog>
+    <dialog class="seminar-confirm-dialog seminar-payment-void-dialog" id="seminar-payment-void-dialog" aria-modal="true" aria-labelledby="seminar-payment-void-title" aria-describedby="seminar-payment-void-copy">
+        <form class="seminar-confirm-dialog__surface seminar-payment-void-dialog__surface" id="seminar-payment-void-form" novalidate>
+            <h2 id="seminar-payment-void-title">Correct this payment</h2>
+            <p id="seminar-payment-void-copy">This is an accounting correction only; it does not return funds. The original receipt stays in history and its amount is removed from the paid total. Record any replacement separately.</p>
+            <label class="seminar-field seminar-payment-void-reason"><span>Correction reason</span><textarea name="reason" rows="3" maxlength="500" required></textarea></label>
+            <p class="seminar-payment-void-status" id="seminar-payment-void-status" role="status" aria-live="polite" hidden></p>
+            <div class="seminar-confirm-dialog__actions">
+                <button class="seminar-button seminar-button--quiet" type="button" data-payment-void-cancel>Keep payment</button>
+                <button class="seminar-button seminar-button--danger" type="submit">Apply accounting correction</button>
+            </div>
+        </form>
     </dialog>
     <dialog class="seminar-pdf-dialog" id="seminar-pdf-dialog" aria-modal="true" aria-labelledby="seminar-pdf-title" aria-describedby="seminar-pdf-context">
         <div class="seminar-pdf-dialog__surface">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 require_once $root . '/includes/event_bundle.php';
 require_once $root . '/includes/hotel_room_number_sequence.php';
+require_once $root . '/includes/venue_time.php';
 $read = static function (string $path) use ($root): string {
     $contents = file_get_contents($root . '/' . $path);
     if ($contents === false) {
@@ -41,6 +42,11 @@ $assertThrows(static fn() => hotel_bulk_room_numbers('A-101', 0), 'bulk room seq
 $assertThrows(static fn() => hotel_bulk_room_numbers('room 1', 2), 'bulk room sequence rejects unsupported starting identifiers.');
 $assertThrows(static fn() => hotel_bulk_room_numbers('999999', 2), 'bulk room sequence rejects numeric overflow.');
 $assertThrows(static fn() => hotel_bulk_room_numbers(str_repeat('Z', 20), 2), 'bulk room sequence rejects an alphabetic rollover beyond the 20-character room limit.');
+$assert(venue_normalize_time_value('', '14:00', true, 'check_in_time') === '14:00:00'
+    && venue_normalize_time_value('', '12:00', true, 'check_out_time') === '12:00:00'
+    && venue_normalize_time_value('18:45', '14:00', true, 'check_in_time') === '18:45:00', 'blank optional hotel stay times use standard defaults and explicit valid times are preserved.');
+$assertThrows(static fn() => venue_normalize_time_value('', '07:00', false, 'day_check_in_time'), 'villa stay time validation continues rejecting blank values.');
+$assertThrows(static fn() => venue_normalize_time_value('25:61', '14:00', true, 'check_in_time'), 'optional hotel stay time validation still rejects malformed nonempty values.');
 
 $shell = $read('admin_dashboard.php');
 $settings = $read('includes/admin-page/admin_settings.php');
@@ -73,15 +79,16 @@ $assert(str_contains($settings, '$hotel_building_names')
     && str_contains($settings, 'Reuse the same hotel or building name for every room in this property.')
     && str_contains($settings, 'Rooms group by building name and floor.')
     && str_contains($settings, 'Stay times (optional)')
-    && str_contains($settings, 'Set the check-in and check-out times for this room type.')
-    && str_contains($settings, 'class="venue-hotel-advanced-chevron" aria-hidden="true"')
-    && str_contains($settingsStyles, '#venueModal .venue-hotel-advanced summary:hover')
-    && str_contains($settingsStyles, '#venueModal .venue-hotel-advanced details[open] .venue-hotel-advanced-chevron')
-    && str_contains($settingsStyles, '#venueModal :is(input, select, textarea, button, summary):focus-visible'), 'hotel names can be reused from suggestions, floor grouping is explicit, and the full native disclosure row has explanatory copy, a visible stateful chevron, and keyboard focus styling.');
+    && str_contains($settings, 'Leave either field blank to use the standard time: check-in at 2:00 PM and check-out at 12:00 PM.')
+    && str_contains($settings, 'class="venue-hotel-advanced-heading"')
+    && !str_contains($settings, '<details')
+    && !str_contains($settings, '<summary')
+    && str_contains($settingsStyles, '#venueModal .venue-hotel-advanced-heading h5')
+    && str_contains($settingsStyles, '#venueModal :is(input, select, textarea, button):focus-visible'), 'hotel names, floor grouping, and always-visible stay times have clear copy and keyboard focus styling.');
 $assert(preg_match('/id="vm-hr-floor"[^>]*data-required="false"/', $settings) === 1
     && str_contains($settings, '<label for="vm-hr-floor">Floor label (optional)</label>')
     && !str_contains($settings, '<label for="vm-hr-floor">Floor label <span class="field-help">Optional</span></label>')
-    && preg_match('/<\/details>\s*<input type="hidden" id="vm-hr-media-slot" name="media_slot_key" value="" data-required="false">/', $settings) === 1
+    && preg_match('/<\/div>\s*<input type="hidden" id="vm-hr-media-slot" name="media_slot_key" value="" data-required="false">/', $settings) === 1
     && !str_contains($settings, '<label for="vm-hr-media-slot">')
     && !str_contains($settings, 'Media CMS slot key')
     && !str_contains($settings, 'Room photos link')
@@ -102,9 +109,15 @@ $assert(str_contains($settings, 'type="hidden" id="vm-hr-media-slot" name="media
     && str_contains($mediaHelper, 'return media_cms_venue_slot_key($building . \' - \' . $roomType);')
     && str_contains($mediaHelper, 'return $images ?: [\'assets/img/placeholder.jpg\'];'), 'room edits retain their existing media group mapping through a hidden optional value, while new groups use the default CMS match.');
 $assert(str_contains($settingsClient, 'venueData.floor_label')
-    && str_contains($settingsClient, 'hotelAdvancedDetails.open = isHotelRoom && isEditMode')
+    && str_contains($settingsClient, 'venueData.check_in_time || "14:00:00"')
+    && !str_contains($settingsClient, 'hotelAdvancedDetails')
     && str_contains($settingsClient, 'venueSaveButton.textContent = enabled ? "Create Rooms" : "Add Room"')
-    && str_contains($settingsClient, 'openVenueModal(this)'), 'hotel edit values remain available, optional details open for edits, and single/bulk add actions stay distinct.');
+    && str_contains($settingsClient, 'openVenueModal(this)'), 'hotel edit values remain available and single/bulk add actions stay distinct with stay times always visible.');
+$assert(substr_count($venueSave, "venue_time('check_in_time', '14:00', true)") === 3
+    && substr_count($venueSave, "venue_time('check_out_time', '12:00', true)") === 3
+    && str_contains($venueSave, "venue_time('day_check_in_time', '07:00')")
+    && str_contains($venueSave, "venue_time('overnight_check_out_time', '12:00')")
+    && !str_contains($venueSave, "venue_time('day_check_in_time', '07:00', true)"), 'only hotel room check-in and check-out fields permit blank values; villa fields keep strict validation.');
 $assert(str_contains($venueSave, "require_once __DIR__ . '/../../includes/hotel_room_number_sequence.php';")
     && str_contains($venueSave, 'hotel_bulk_room_numbers($start, $quantity)')
     && str_contains($venueSave, '$formatted = $room_numbers[$offset];')

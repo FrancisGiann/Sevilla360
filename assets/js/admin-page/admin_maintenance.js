@@ -117,24 +117,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Sub-tab switching between Active Maintenance & Past Maintenance History
-    const tableSubTabs = document.querySelectorAll("#maintTableSubTabs .tab-btn");
+    // Switch between open schedules and explicitly completed history.
+    const tableSubTabs = document.querySelectorAll("#maintTableSubTabs .maint-view-button");
     const activeView = document.getElementById("view-maint-active");
     const historyView = document.getElementById("view-maint-history");
 
     if (tableSubTabs.length > 0 && activeView && historyView) {
         tableSubTabs.forEach(tab => {
             tab.addEventListener("click", (e) => {
-                tableSubTabs.forEach(t => t.classList.remove("active"));
-                e.target.classList.add("active");
+                const selectedButton = e.currentTarget;
+                const showHistory = selectedButton.getAttribute("data-maint-view") === "history";
 
-                const view = e.target.getAttribute("data-maint-view");
-                if (view === "history") {
-                    activeView.classList.add("hidden-element");
-                    historyView.classList.remove("hidden-element");
-                } else {
-                    historyView.classList.add("hidden-element");
-                    activeView.classList.remove("hidden-element");
+                tableSubTabs.forEach(button => {
+                    const isSelected = button === selectedButton;
+                    button.classList.toggle("active", isSelected);
+                    button.setAttribute("aria-pressed", String(isSelected));
+                });
+
+                activeView.hidden = showHistory;
+                historyView.hidden = !showHistory;
+
+                // Keep keyboard and pointer users anchored on the chosen view control.
+                if (document.activeElement !== selectedButton) {
+                    selectedButton.focus();
                 }
             });
         });
@@ -244,15 +249,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const deleteMaintBtns = document.querySelectorAll(".btn-delete-maint");
     deleteMaintBtns.forEach(btn => {
         btn.addEventListener("click", async (e) => {
-            const maintId = e.target.getAttribute("data-id");
+            const actionButton = e.currentTarget;
+            const maintId = actionButton.getAttribute("data-id");
 
             const confirmed = await showConfirm("Cancel Maintenance", "Are you sure you want to cancel and delete this maintenance block? This will free up the dates on the calendar immediately.");
             if (!confirmed) {
                 return;
             }
 
-            e.target.innerText = "Deleting...";
-            e.target.disabled = true;
+            actionButton.innerText = "Deleting...";
+            actionButton.disabled = true;
 
             try {
                 const res = await fetch("actions/admin/delete_maintenance.php", {
@@ -273,8 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } catch (error) {
                 showAlert("Notice", "Error: " + error.message, "error");
-                e.target.innerText = "Cancel / Delete";
-                e.target.disabled = false;
+                actionButton.innerText = "Delete";
+                actionButton.disabled = false;
             }
         });
     });
@@ -282,15 +288,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const completeMaintBtns = document.querySelectorAll(".btn-complete-maint");
     completeMaintBtns.forEach(btn => {
         btn.addEventListener("click", async (e) => {
-            const maintId = e.target.getAttribute("data-id");
+            const actionButton = e.currentTarget;
+            const maintId = actionButton.getAttribute("data-id");
 
             const confirmed = await showConfirm("Complete Maintenance", "Mark this maintenance as completed? This will instantly free up the room for new bookings today, while keeping the historical record intact.");
             if (!confirmed) {
                 return;
             }
 
-            e.target.innerText = "Processing...";
-            e.target.disabled = true;
+            actionButton.innerText = "Processing...";
+            actionButton.disabled = true;
 
             try {
                 const res = await fetch("actions/admin/complete_maintenance.php", {
@@ -310,8 +317,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } catch (error) {
                 showAlert("Notice", "Error: " + error.message, "error");
-                e.target.innerText = "Mark Done";
-                e.target.disabled = false;
+                actionButton.innerText = "Mark Done";
+                actionButton.disabled = false;
             }
         });
     });
