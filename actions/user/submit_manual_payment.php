@@ -108,14 +108,14 @@ try {
         $previousProofFilename = (string)$pendingSubmission['proof_filename'];
         $stmt = $conn->prepare("UPDATE manual_payment_submissions SET customer_user_id = ?, reviewer_user_id = NULL, payment_id = NULL, payment_method = ?, expected_amount = ?, transaction_reference = ?, reference_fingerprint = ?, proof_filename = ?, proof_mime = ?, proof_size_bytes = ?, proof_sha256 = ?, rejection_reason = NULL, submitted_at = NOW(), reviewed_at = NULL WHERE id = ? AND booking_id = ? AND status = 'pending'");
         if (!$stmt) throw new RuntimeException('Unable to replace the pending payment proof.');
-        $stmt->bind_param('isdsssssisii', $userId, $method, $expectedAmount, $reference, $fingerprint, $stored['filename'], $stored['mime'], $stored['size'], $stored['sha256'], $submissionId, $bookingId);
+        $stmt->bind_param('isdssssisii', $userId, $method, $expectedAmount, $reference, $fingerprint, $stored['filename'], $stored['mime'], $stored['size'], $stored['sha256'], $submissionId, $bookingId);
         if (!$stmt->execute() || $stmt->affected_rows !== 1) throw new RuntimeException('The pending payment proof changed before replacement could be saved.');
     } elseif ($decision === 'resubmit') {
         $submissionId = (int)$existing['id'];
         $previousProofFilename = (string)$existing['proof_filename'];
         $stmt = $conn->prepare("UPDATE manual_payment_submissions SET customer_user_id = ?, reviewer_user_id = NULL, payment_id = NULL, payment_method = ?, expected_amount = ?, transaction_reference = ?, reference_fingerprint = ?, proof_filename = ?, proof_mime = ?, proof_size_bytes = ?, proof_sha256 = ?, status = 'pending', rejection_reason = NULL, submitted_at = NOW(), reviewed_at = NULL WHERE id = ? AND booking_id = ? AND status = 'rejected'");
         if (!$stmt) throw new RuntimeException('Unable to update corrected payment proof.');
-        $stmt->bind_param('isdsssssisii', $userId, $method, $expectedAmount, $reference, $fingerprint, $stored['filename'], $stored['mime'], $stored['size'], $stored['sha256'], $submissionId, $bookingId);
+        $stmt->bind_param('isdssssisii', $userId, $method, $expectedAmount, $reference, $fingerprint, $stored['filename'], $stored['mime'], $stored['size'], $stored['sha256'], $submissionId, $bookingId);
         if (!$stmt->execute() || $stmt->affected_rows !== 1) throw new RuntimeException('The rejected payment proof changed before correction could be saved.');
     } else {
         $stmt = $conn->prepare("INSERT INTO manual_payment_submissions (booking_id, customer_user_id, payment_method, expected_amount, transaction_reference, reference_fingerprint, proof_filename, proof_mime, proof_size_bytes, proof_sha256, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
