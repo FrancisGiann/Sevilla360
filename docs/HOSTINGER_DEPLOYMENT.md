@@ -77,6 +77,8 @@ Backup and restore also depend on `proc_open`, `mysqldump` or `mariadb-dump`, an
 
 The database stores media paths, while the image files live separately under `assets/uploads`. Copy the complete source uploads directory, including files added through the CMS, and preserve those files across every redeploy. Confirm the intended release contains `assets/uploads/home-hero-expanded-pool.png` and every media path referenced by the imported database.
 
+For the virtual showroom, keep Hostinger's **Smart image optimisation** disabled for this website. It can resize an 8704×4352 panorama response to 1600×800 even when the origin file is intact, which makes the 360° view visibly soft. CDN/WebP delivery can remain enabled. After redeploying or replacing media, flush the site's CDN cache and verify a panorama URL is served at its original dimensions before investigating viewer code.
+
 Add the PHP cron jobs in **Websites → Dashboard → Cron Jobs**. Hostinger's PHP cron type takes an absolute PHP file path; its schedule uses UTC+0. The scripts are CLI-only, so do not call them through a browser URL:
 
 | Schedule | PHP file path | Purpose |

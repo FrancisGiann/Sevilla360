@@ -3711,22 +3711,14 @@ body.showroom-receptionist-open .showroom-container .details-box {
     height: 100dvh;
     max-height: 100dvh;
     min-height: 0;
-    padding: max(8.5rem, calc(env(safe-area-inset-top) + 7rem)) max(1rem, env(safe-area-inset-right)) max(.75rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    padding: max(4.75rem, calc(env(safe-area-inset-top, 0px) + 3.5rem)) max(1rem, env(safe-area-inset-right, 0px)) max(.75rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
     border: 0;
     border-radius: 0;
     transform: none;
   }
 
-  .showroom-receptionist.is-chat-open .receptionist-portrait-wrap {
-    inset: 0 auto auto 50%;
-    z-index: 2;
-    width: 6.5rem;
-    height: 8rem;
-    display: flex;
-    align-items: flex-end;
-    opacity: 1;
-    overflow: hidden;
-    transform: translateX(-50%);
+  #showroom-receptionist.is-chat-open .receptionist-portrait-wrap {
+    display: none;
   }
 
   .showroom-receptionist.is-chat-open .receptionist-portrait {

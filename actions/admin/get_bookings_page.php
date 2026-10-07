@@ -38,8 +38,11 @@ $bookingWhere = [
 ];
 $bookingParams = [$search, $search, $search, $search, $search, $search];
 $bookingTypes = 'ssssss';
+$historyText = static fn(string $expression): string => "CONVERT(({$expression}) USING utf8mb4) COLLATE utf8mb4_unicode_ci";
+// Normalize this generated label before LIKE so provider/session collations cannot conflict.
+$seminarSearchReference = $historyText("CONCAT('SEM-', s.id)");
 $seminarWhere = [
-    "(CONCAT('SEM-', s.id) LIKE ? OR CAST(s.id AS CHAR) LIKE ? OR s.name LIKE ? OR v.name LIKE ?)",
+    "({$seminarSearchReference} LIKE ? OR CAST(s.id AS CHAR) LIKE ? OR s.name LIKE ? OR v.name LIKE ?)",
 ];
 $seminarParams = [$search, $search, $search, $search];
 $seminarTypes = 'ssss';
@@ -66,7 +69,6 @@ if ($venueFilter !== 'All') {
 }
 
 $paidSeminarSql = "COALESCE((SELECT SUM(sp.amount) FROM seminar_payments sp WHERE sp.seminar_id=s.id AND sp.status='posted'),0)";
-$historyText = static fn(string $expression): string => "CONVERT(({$expression}) USING utf8mb4) COLLATE utf8mb4_unicode_ci";
 switch ($statusFilter) {
     case 'action_req':
         $bookingWhere[] = "b.booking_status <> 'Cancelled' AND NOT $bookingCompletionSql AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id=b.id AND cx.status='Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id=b.id AND rr.status='Pending') OR b.booking_status='Pending' OR (b.booking_status='Confirmed' AND b.payment_status='Unpaid') OR EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id=b.id AND mps_action.status='pending'))";

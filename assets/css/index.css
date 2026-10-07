@@ -674,7 +674,7 @@
 .idx-catalog-card-rate { margin: .55rem 0 0; color: var(--idx-ink); font-size: .95rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .idx-catalog-card-facts { margin: .45rem 0 0; color: #655e56; font-size: .82rem; line-height: 1.4; }
 .idx-catalog-card-rating, .idx-modal-rating { margin: .45rem 0 0; color: #9a6b21; font-size: .86rem; }
-.idx-modal-reviews { margin-top: 1.1rem; border-top: 1px solid rgba(42,37,34,.12); padding-top: .8rem; }
+.idx-modal-reviews { margin-top: 1.1rem; border-top: 1px solid rgba(42,37,34,.12); padding: .8rem 0 0; }
 .idx-modal-reviews h3 { font-size: 1rem; margin: 0 0 .5rem; }
 .idx-modal-review { padding: .55rem 0; border-bottom: 1px solid rgba(42,37,34,.08); }
 .idx-modal-review:last-child { border-bottom: 0; }
@@ -786,13 +786,51 @@
   .idx-catalog-stack { gap: 2.5rem; }
   .idx-catalog-heading { gap: .75rem; }
 
+  .idx-welcome-img-wrap img { height: auto; aspect-ratio: auto; }
+  .idx-welcome-badge {
+    display: block;
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: fit-content;
+    margin: .45rem 0 0 auto;
+    padding: .55rem .8rem;
+  }
+  .idx-welcome-badge strong { font-size: 1.25rem; }
+  .idx-welcome-badge span { font-size: .52rem; letter-spacing: .06em; }
+
   /* Mobile Modal Polish */
-  .idx-venue-modal { --idx-mobile-header-offset: calc(72px + env(safe-area-inset-top, 0px)); align-items: start; justify-items: center; padding: calc(var(--idx-mobile-header-offset) + 1rem) 1rem 1rem; }
-  .idx-venue-dialog { display: flex; flex-direction: column; width: 100%; height: calc(100vh - var(--idx-mobile-header-offset) - 2rem); max-height: calc(100vh - var(--idx-mobile-header-offset) - 2rem); overflow: auto; }
-  .idx-venue-dialog { height: calc(100svh - var(--idx-mobile-header-offset) - 2rem); max-height: calc(100svh - var(--idx-mobile-header-offset) - 2rem); overflow: auto; }
-  .idx-modal-gallery, .idx-modal-gallery > img { min-height: 10rem; height: 10rem; flex: 0 0 10rem; }
-  .idx-modal-copy { flex: 1; overflow-y: auto; padding-bottom: 5rem; } /* Leave space for sticky CTA */
-  .idx-modal-continue { position: absolute; bottom: 0; left: 0; right: 0; margin: 0; border-radius: 0 0 14px 14px; height: 4rem; z-index: 10; font-size: .8rem; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); }
+  .idx-venue-modal {
+    --idx-mobile-header-offset: calc(72px + env(safe-area-inset-top, 0px));
+    --idx-mobile-bottom-offset: max(1rem, env(safe-area-inset-bottom, 0px));
+    align-items: start;
+    justify-items: center;
+    padding: calc(var(--idx-mobile-header-offset) + 1rem) 1rem var(--idx-mobile-bottom-offset);
+  }
+  .idx-venue-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: calc(100vh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset));
+    max-height: calc(100vh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset));
+    overflow: auto;
+  }
+  .idx-venue-dialog {
+    height: calc(100svh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset));
+    max-height: calc(100svh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset));
+  }
+  .idx-venue-dialog { height: calc(100dvh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset)); max-height: calc(100dvh - var(--idx-mobile-header-offset) - 1rem - var(--idx-mobile-bottom-offset)); }
+  .idx-modal-gallery { min-height: 0; height: clamp(9rem, 32vh, 16rem); flex: 0 0 clamp(9rem, 32vh, 16rem); }
+  .idx-modal-gallery { height: clamp(9rem, 32svh, 16rem); flex-basis: clamp(9rem, 32svh, 16rem); }
+  .idx-modal-gallery > img { min-height: 0; height: 100%; flex: 0 0 auto; }
+  .idx-modal-thumbnails { gap: .5rem; }
+  .idx-modal-thumbnail { flex-basis: 3.5rem; width: 3.5rem !important; height: 3rem !important; min-width: 3.5rem; min-height: 3rem; }
+  .idx-modal-copy { flex: 1 1 auto; overflow-y: auto; padding-bottom: 5rem; } /* Keep the fixed booking action clear of the last detail. */
+  .idx-page .idx-modal-continue { position: absolute; bottom: 0; left: 0; right: 0; width: 100%; min-width: 0; max-width: none; box-sizing: border-box; margin: 0; border-radius: 0 0 14px 14px; height: 4rem; z-index: 10; font-size: .8rem; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); }
+}
+@media (max-width: 767px) and (max-height: 500px) {
+  .idx-modal-gallery { height: clamp(8rem, 32vh, 10rem); flex-basis: clamp(8rem, 32vh, 10rem); }
+  .idx-modal-gallery { height: clamp(8rem, 32svh, 10rem); flex-basis: clamp(8rem, 32svh, 10rem); }
 }
 @media (max-width: 860px) {
   .idx-catalog-card { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 0; }
