@@ -256,8 +256,6 @@
                 <span class="label">Payment Scheme:</span> <span class="value" id="vd-scheme">--</span>
                 <span class="label">Amount Paid:</span> <span class="value text-green-paid" id="vd-paid-amt">₱0.00</span>
             </div>
-            <div class="tax-receipt-notice"><strong>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</strong><span>Booking and payment details only. This document is not a tax invoice.</span></div>
-
             <div class="modal-actions vd-modal-actions">
                 <button class="btn-modal btn-modal-cancel close-modal">Close</button>
                 <button class="btn-modal btn-gold" id="btn-admin-print" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> <span>Open PDF Receipt</span></button>

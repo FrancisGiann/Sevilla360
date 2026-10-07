@@ -1306,7 +1306,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const rejectionReason = manualSubmissionStatus === 'rejected'
                         ? String(data.manual_rejection_reason || '').trim()
                         : '';
-                    reviewNoteRow.style.display = rejectionReason ? 'block' : 'none';
+                    reviewNoteRow.style.display = rejectionReason ? 'grid' : 'none';
                     reviewNoteEl.textContent = rejectionReason;
                 }
             } else if (manualSubmissionContainer) {

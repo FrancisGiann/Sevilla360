@@ -177,10 +177,6 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>$header_title</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>$customer_name</strong>,<br>$header_desc</p>
-                <div role='note' style='margin: 20px 0 0; padding: 12px 16px; border: 1px solid #d9b6a7; background: #fff8f5; color: #713c32; text-align: center; font-size: 13px; line-height: 1.5;'>
-                    <strong style='display: block; letter-spacing: .3px;'>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</strong>
-                    <span style='display: block; margin-top: 4px; font-size: 12px;'>Booking and payment details only. This document is not a tax invoice.</span>
-                </div>
                 <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 30px;'>
                     <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>

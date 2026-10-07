@@ -41,7 +41,6 @@ $stmt_upcoming = $conn->prepare("
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
         (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_rejection_reason,
         b.payment_due_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
@@ -83,8 +82,7 @@ $stmt_bookings = $conn->prepare("
         rr.status AS resched_status,
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        (SELECT mps.rejection_reason FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_rejection_reason
+        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
@@ -654,9 +652,6 @@ $manual_payment_action_label = static function (array $booking): string {
                                                 </div>
                                                 <?php endif; ?>
                                             </div>
-                                            <?php if (!$is_completed && ($b['manual_submission_status'] ?? '') === 'rejected' && !empty($b['manual_rejection_reason'])): ?>
-                                            <p class="payment-rejection-note">Reason: <?php echo htmlspecialchars($b['manual_rejection_reason'], ENT_QUOTES, 'UTF-8'); ?></p>
-                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -984,13 +979,12 @@ $manual_payment_action_label = static function (array $booking): string {
                     <p><span>Payment Scheme:</span> <span id="ud-scheme">--</span></p>
                     <p><span>Amount Paid:</span> <span id="ud-paid-amt" class="text-paid-green">₱0.00</span></p>
                     <p><span>Remaining Balance:</span> <span id="ud-balance-amt" class="text-balance-red">₱0.00</span></p>
-                    <div class="tax-receipt-notice"><strong>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX</strong><span>Booking and payment details only. This document is not a tax invoice.</span></div>
                     <div id="ud-payment-history-list" class="payment-history-list" aria-live="polite"></div>
                     <div id="ud-manual-submission-container" class="hidden-element">
                         <p><span>Submitted payment reference:</span> <span id="ud-submitted-payment-reference" class="text-mono-tid">--</span></p>
                         <p><span>Proof review status:</span> <span id="ud-proof-review-status">--</span></p>
                         <p><span>Proof submitted at:</span> <span id="ud-proof-submitted-at">--</span></p>
-                        <p id="ud-proof-review-note-row" class="hidden-element"><span>Proof review note:</span> <span id="ud-proof-review-note">--</span></p>
+                        <p id="ud-proof-review-note-row" class="hidden-element"><span>Rejection reason:</span> <span id="ud-proof-review-note">--</span></p>
                     </div>
                 </div>
             </div>

@@ -1056,7 +1056,6 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .modal-overlay.active .modal-box { transform: translateY(0); }
 
-.payment-rejection-note { flex-basis: 100%; margin: 2px 0; color: #8b302b; font-size: .74rem; line-height: 1.4; }
 
 .modal-title { font-family: var(--font-heading); font-size: 1.8rem; text-align: center; margin-bottom: 25px; }
 
@@ -1633,21 +1632,6 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   letter-spacing: 0.05em;
 }
 
-.tax-receipt-notice {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border: 1px solid #d9b6a7;
-  background: #fff8f5;
-  color: #713c32;
-  text-align: center;
-  font-size: 0.8rem;
-  line-height: 1.5;
-}
-.tax-receipt-notice strong,
-.tax-receipt-notice span { display: block; }
-.tax-receipt-notice strong { letter-spacing: 0.02em; }
-.tax-receipt-notice span { margin-top: 3px; }
-
 .details-subhead {
   display: block;
   margin: 8px 0 4px;
@@ -2098,15 +2082,6 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 }
 .action-cell .btn-details .vd-text { display: inline !important; }
 .action-cell .btn-details i { flex: 0 0 auto; }
-.action-cell .payment-rejection-note {
-  grid-column: 1 / -1;
-  min-width: 0;
-  margin: 0;
-  padding: 8px 10px;
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
 .payment-history-list { display: grid; gap: 8px; margin-top: 12px; }
 .payment-history-entry {
   min-width: 0;
@@ -2296,9 +2271,13 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   border-radius: 3px !important;
   line-height: 1.25;
   text-transform: none !important;
-  white-space: nowrap !important;
 }
-.action-cell .btn-action.booking-row-primary { flex: 1 1 auto; min-width: 0; }
+.action-cell .btn-action.booking-row-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
 .booking-row-more { flex: 0 0 44px; width: 44px; min-width: 44px; }
 .action-cell .booking-more-toggle {
   display: inline-flex;
@@ -2392,7 +2371,6 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   color: var(--ui-danger, #a94f4b) !important;
 }
 .booking-action-menu-panel .action-menu-item--destructive > i { color: currentColor; }
-.payment-rejection-note { margin: 5px 0 0; text-align: left; }
 
 .cancel-modal-box {
   width: min(94vw, 640px);
@@ -2472,6 +2450,8 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+#ud-proof-review-note-row { align-items: start; }
+#ud-proof-review-note { text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .booking-detail-section[hidden] { display: none !important; }
 .booking-detail-grid { display: grid; grid-template-columns: minmax(110px, .6fr) minmax(0, 1.4fr); gap: 8px 14px; font-size: .9rem; }
 .booking-detail-grid > span { color: #62584f; }
@@ -2553,4 +2533,13 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 @media (max-width: 560px) {
   .dashboard-overview .overview-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-overview .overview-kpis .dashboard-summary-card { padding-inline: 12px; }
+}
+
+/* Preserve usable booking actions when the desktop sidebar leaves a narrow
+   table viewport. The table's existing responsive wrapper handles the extra
+   width without expanding the page itself. */
+@media (min-width: 993px) {
+  .table-responsive { overflow-x: auto; }
+  .history-table th:last-child,
+  .history-table td[data-label="Actions"] { min-width: 190px; }
 }
