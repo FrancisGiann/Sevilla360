@@ -58,7 +58,8 @@ function receptionist_natural_state(array $raw, mysqli $conn, array $catalog): a
     $state['revision'] = max(0, (int)($raw['revision'] ?? 0));
     $state['turn_count'] = max(0, (int)($raw['turn_count'] ?? 0));
     $state['provider_turn_count'] = max(0, (int)($raw['provider_turn_count'] ?? 0));
-    $state['slots'] = receptionist_ai_recover_session_slots($conn, is_array($raw['slots'] ?? null) ? $raw['slots'] : [], $catalog);
+    $rawSlots = is_array($raw['slots'] ?? null) ? $raw['slots'] : [];
+    $state['slots'] = receptionist_ai_recover_session_slots($conn, $rawSlots, $catalog);
     $legacySlots = $state['slots'];
     if (($state['slots']['intent'] ?? null) === 'Hotel Room') {
         $state['slots']['preference'] ??= 'best_fit';
@@ -124,12 +125,13 @@ function receptionist_natural_state(array $raw, mysqli $conn, array $catalog): a
         $state['recommendation_snapshot']['nearby_dates'] = $nearbyDates;
         $snapshotSignature = $state['recommendation_snapshot']['criteria_signature'];
         $currentSignature = receptionist_natural_criteria_signature($state['slots']);
-        $legacySignature = receptionist_natural_criteria_signature($legacySlots);
-        if ($snapshotSignature !== '' && hash_equals($snapshotSignature, $legacySignature)
-            && !hash_equals($legacySignature, $currentSignature)) {
+        $legacySignature = receptionist_natural_legacy_criteria_signature($legacySlots);
+        $rawSignature = receptionist_natural_legacy_criteria_signature($rawSlots);
+        if ($snapshotSignature !== '' && (hash_equals($snapshotSignature, $legacySignature) || hash_equals($snapshotSignature, $rawSignature))
+            && !hash_equals($snapshotSignature, $currentSignature)) {
             // Older sessions did not persist the implicit hotel defaults.
-            // Carry their same-criteria result snapshot forward under the
-            // canonical defaulted criteria signature.
+            // Carry the same-criteria result snapshot forward under the
+            // normalized criteria signature.
             $state['recommendation_snapshot']['criteria_signature'] = $currentSignature;
         } elseif ($snapshotSignature === '' || !hash_equals($snapshotSignature, $currentSignature)) {
             $state['recommendation_snapshot'] = null;
@@ -140,6 +142,14 @@ function receptionist_natural_state(array $raw, mysqli $conn, array $catalog): a
 }
 
 function receptionist_natural_criteria_signature(array $slots): string
+{
+    $criteria = array_intersect_key($slots, array_flip(['intent', 'group_size', 'room_type_code', 'preference', 'start_date', 'end_date']));
+    ksort($criteria);
+    return hash('sha256', json_encode($criteria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}');
+}
+
+/** Recognize persisted signatures written before criteria keys were normalized. */
+function receptionist_natural_legacy_criteria_signature(array $slots): string
 {
     $criteria = array_intersect_key($slots, array_flip(['intent', 'group_size', 'room_type_code', 'preference', 'start_date', 'end_date']));
     return hash('sha256', json_encode($criteria, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}');
@@ -157,6 +167,30 @@ function receptionist_natural_public_state(array $state): array
     return ['revision' => (int)$state['revision'], 'slots' => $state['slots'], 'pending_question' => $state['pending_question'],
         'focused_room' => $state['focused_room'], 'focused_faq_id' => $state['focused_faq_id'],
         'recommendation_snapshot' => $state['recommendation_snapshot']];
+}
+
+/** Restore a clicked recommendation only when the server's current snapshot contains it. */
+function receptionist_natural_restore_selected_context(array $state, array $request, array $catalog): array
+{
+    $context = is_array($request['context'] ?? null) ? $request['context'] : [];
+    $venueId = filter_var($context['active_venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $groupId = filter_var($context['active_room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($venueId === false || $groupId === false || ($state['slots']['intent'] ?? null) !== 'Hotel Room') return $state;
+
+    $snapshot = $state['recommendation_snapshot'] ?? null;
+    if (!is_array($snapshot) || ($snapshot['intent'] ?? null) !== 'Hotel Room') return $state;
+    $catalogRoom = receptionist_ai_catalog_venue($catalog, $venueId, 'Hotel Room', $groupId);
+    if ($catalogRoom === null) return $state;
+
+    foreach ($snapshot['results'] ?? [] as $result) {
+        if (!is_array($result) || (int)($result['venue_id'] ?? 0) !== (int)$venueId
+            || (int)($result['room_group_id'] ?? 0) !== (int)$groupId) continue;
+        $state['slots']['active_venue_id'] = (int)$catalogRoom['id'];
+        $state['slots']['active_room_group_id'] = (int)$catalogRoom['room_group_id'];
+        $state['focused_room'] = ['venue_id' => (int)$catalogRoom['id'], 'room_group_id' => (int)$catalogRoom['room_group_id']];
+        break;
+    }
+    return $state;
 }
 
 function receptionist_natural_provider_schema(array $records, array $state = []): array
@@ -683,6 +717,100 @@ function receptionist_natural_snapshot_reply(array $result, string $message, str
     };
 }
 
+function receptionist_natural_selected_room_outcome_reply(array $outcome, string $language): string
+{
+    $title = receptionist_ai_safe_catalog_text($outcome['title'] ?? '') ?: 'The selected room';
+    $capacity = filter_var($outcome['capacity'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $groupSize = filter_var($outcome['group_size'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $doesNotFit = $capacity !== false && $groupSize !== false && $groupSize > $capacity;
+    $available = ($outcome['available'] ?? false) === true;
+    $options = max(0, (int)($outcome['options_count'] ?? 0));
+    $optionsChecked = ($outcome['options_checked'] ?? false) === true;
+
+    if (!$available && $doesNotFit) {
+        $lead = match ($language) {
+            'fil' => "Hindi available ang {$title} sa mga petsang iyon. Hanggang {$capacity} bisita ang published capacity nito, para sa grupong {$groupSize}.",
+            'taglish' => "Hindi available ang {$title} for those dates. Its published capacity is {$capacity} guests for your group of {$groupSize}.",
+            default => "{$title} is not available on those dates. Its published capacity is {$capacity} guests for your group of {$groupSize}.",
+        };
+    } elseif (!$available) {
+        $lead = match ($language) {
+            'fil' => "Hindi available ang {$title} sa mga petsang iyon.",
+            'taglish' => "Hindi available ang {$title} for those dates.",
+            default => "{$title} is not available on those dates.",
+        };
+    } elseif ($doesNotFit) {
+        $lead = match ($language) {
+            'fil' => "Available ang {$title} sa mga petsang iyon, pero hanggang {$capacity} bisita lang ang published capacity nito; {$groupSize} kayo.",
+            'taglish' => "Available ang {$title} for those dates, pero {$capacity} guests lang ang published capacity; {$groupSize} kayo.",
+            default => "{$title} is available on those dates, but its published capacity is {$capacity} guests and your group has {$groupSize}.",
+        };
+    } else {
+        $lead = match ($language) {
+            'fil' => "Available ang {$title} at pasok ito sa bilang ng bisita mo sa mga petsang iyon.",
+            'taglish' => "Available ang {$title} and it fits your group for those dates.",
+            default => "{$title} is available and fits your group for those dates.",
+        };
+    }
+
+    if ($optionsChecked && $options > 0) {
+        $followup = match ($language) {
+            'fil' => "May {$options} checked na room option sa ibaba.",
+            'taglish' => "May {$options} checked room options sa ibaba.",
+            default => "I found {$options} checked room options below.",
+        };
+    } elseif ($optionsChecked) {
+        $followup = match ($language) {
+            'fil' => 'Wala akong nakitang ibang checked na room option. Maaari mong baguhin ang petsa o room type.',
+            'taglish' => 'Wala akong nakitang ibang checked room option. Maaari mong baguhin ang dates o room type.',
+            default => 'I did not find another checked room option. You can change the dates or room type.',
+        };
+    } elseif ($groupSize === false) {
+        $followup = match ($language) {
+            'fil' => 'Ibigay ang bilang ng bisita kung gusto mong maghanap ako ng alternatives.',
+            'taglish' => 'Ibigay ang guest count para makahanap ako ng alternatives.',
+            default => 'Tell me the guest count and I can look for alternatives.',
+        };
+    } else {
+        $followup = match ($language) {
+            'fil' => 'Hindi ko ma-load ngayon ang alternatives; maaari mong baguhin ang petsa o subukan ulit.',
+            'taglish' => 'Hindi ko ma-load ngayon ang alternatives; puwede mong baguhin ang dates o subukan ulit.',
+            default => 'I could not load alternatives right now. You can change the dates or try again.',
+        };
+    }
+    return $lead . ' ' . $followup;
+}
+
+/** Build a selected-room answer only from a fresh exact result for this stay. */
+function receptionist_natural_selected_room_outcome_from_snapshot(
+    array $snapshot,
+    int $venueId,
+    int $groupId,
+    string $checkIn,
+    string $checkOut,
+    ?int $groupSize
+): ?array {
+    if ($venueId < 1 || $groupId < 1 || !receptionist_natural_snapshot_has_fresh_availability($snapshot)
+        || ($snapshot['check_in'] ?? null) !== $checkIn || ($snapshot['check_out'] ?? null) !== $checkOut) return null;
+
+    foreach ($snapshot['results'] ?? [] as $result) {
+        if (!is_array($result) || (int)($result['venue_id'] ?? 0) !== $venueId
+            || (int)($result['room_group_id'] ?? 0) !== $groupId) continue;
+        if (empty($result['availability_checked']) && empty($snapshot['availability_checked'])) return null;
+        $capacity = filter_var($result['capacity_value'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($groupSize !== null && $capacity === false) return null;
+        $status = (string)($result['status'] ?? '');
+        if (!in_array($status, ['Available', 'Unavailable for these dates'], true)) return null;
+        return [
+            'title' => (string)($result['title'] ?? 'The selected room'),
+            'available' => $status === 'Available',
+            'capacity' => $capacity === false ? null : $capacity,
+            'group_size' => $groupSize,
+        ];
+    }
+    return null;
+}
+
 function receptionist_natural_validate_proposal(array $payload, array $state, array $catalog, string $message, bool $trustedStructuredPatch = false): array
 {
     $kind = $payload['kind'] ?? null;
@@ -945,6 +1073,8 @@ function receptionist_natural_grounded_reply(string $reply, array $claims, array
         $verified[] = ['source_id' => $claim['source_id'], 'field' => $claim['field'], 'value' => $expected];
     }
 
+    if (!$verified && receptionist_knowledge_is_fact_request($message, $state['slots'])) return $reject('missing_factual_claims');
+
     $replyLower = mb_strtolower($clean, 'UTF-8');
     $assertsAvailability = preg_match('/\b(?:is|are|was|were|remains?|shows?)\s+(?:not\s+)?available\b|\bavailable\s+(?:for|on|from)\b|\b(?:fully\s+)?booked\b|\bwalang bakante\b|\bmay bakante\b/iu', $clean) === 1;
     if ($assertsAvailability && (!$allowAvailabilityClaims
@@ -1138,21 +1268,28 @@ function receptionist_natural_grounded_reply(string $reply, array $claims, array
         }
     }
 
-    $amenityTerms = ['jacuzzi', 'hot tub', 'breakfast', 'swimming pool', 'pool', 'wi-fi', 'wifi', 'parking', 'air conditioning', 'kitchen', 'balcony', 'cancellation', 'refund'];
+    $amenityTerms = ['jacuzzi', 'hot tub', 'breakfast', 'swimming pool', 'pool', 'wi-fi', 'wifi', 'parking', 'air conditioning', 'kitchen', 'balcony', 'cancellation', 'refund', 'spa', 'airport pickup', 'airport transfer', 'shuttle service'];
     foreach ($amenityTerms as $term) {
         if (!str_contains($replyLower, $term)) continue;
-        $assertsFeature = preg_match('/\b(?:has|have|includes?|offers?|features?|provides?|comes with|with|free|complimentary)\b.{0,70}' . preg_quote($term, '/') . '/iu', $clean) === 1;
-        if (!$assertsFeature) continue;
+        $quotedTerm = preg_quote($term, '/');
+        $denialPattern = '/\b(?:do\s+not|don[\'’]t|does\s+not|doesn[\'’]t|not|no|without|unavailable|not\s+(?:provided|offered|included))\b.{0,70}\b' . $quotedTerm . '\b/iu';
+        $postfixDenialPattern = '/\b' . $quotedTerm . '\b.{0,70}\b(?:(?:is|are)\s+)?(?:not\s+(?:available|provided|offered|included)|unavailable|isn[\'’]t\s+(?:available|provided|offered|included))\b/iu';
+        $replyDeniesFeature = preg_match($denialPattern, $clean) === 1 || preg_match($postfixDenialPattern, $clean) === 1;
+        $assertsFeature = !$replyDeniesFeature
+            && preg_match('/\b(?:has|have|includes?|offers?|features?|provides?|comes with|with|free|complimentary)\b.{0,70}\b' . $quotedTerm . '\b/iu', $clean) === 1;
+        if (!$assertsFeature && !$replyDeniesFeature) continue;
         $supported = false;
         $explicitlyFree = false;
-        $replyClaimsFree = preg_match('/\b(?:free|complimentary|no charge|at no (?:extra|additional) cost)\b.{0,50}' . preg_quote($term, '/') . '/iu', $clean) === 1;
+        $replyClaimsFree = preg_match('/\b(?:free|complimentary|no charge|at no (?:extra|additional) cost)\b.{0,50}\b' . $quotedTerm . '\b/iu', $clean) === 1;
         foreach ($verified as $claim) {
             $claimValue = mb_strtolower($claim['value'], 'UTF-8');
-            if (str_contains($claimValue, $term)
-                && (in_array($claim['field'], ['amenities', 'inclusions'], true)
-                    || (in_array($proposal['knowledge_property'] ?? null, ['policy', 'faq_answer'], true) && in_array($claim['field'], ['answer', 'text'], true)))) {
+            if (preg_match('/\b' . $quotedTerm . '\b/iu', $claimValue) !== 1
+                || !(in_array($claim['field'], ['amenities', 'inclusions'], true)
+                    || (in_array($proposal['knowledge_property'] ?? null, ['policy', 'faq_answer'], true) && in_array($claim['field'], ['answer', 'text'], true)))) continue;
+            $claimDeniesFeature = preg_match($denialPattern, $claimValue) === 1 || preg_match($postfixDenialPattern, $claimValue) === 1;
+            if ($replyDeniesFeature ? $claimDeniesFeature : !$claimDeniesFeature) {
                 $supported = true;
-                if (preg_match('/\b(?:free|complimentary|no charge|at no (?:extra|additional) cost)\b.{0,50}' . preg_quote($term, '/') . '/iu', $claimValue) === 1) $explicitlyFree = true;
+                if (preg_match('/\b(?:free|complimentary|no charge|at no (?:extra|additional) cost)\b.{0,50}\b' . $quotedTerm . '\b/iu', $claimValue) === 1) $explicitlyFree = true;
             }
         }
         if ($replyClaimsFree && !$explicitlyFree) $supported = false;
@@ -1214,6 +1351,13 @@ function receptionist_natural_group_count_values(string $message, array $state):
             if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
         }
     }
+    $taglishCountPattern = '/\\b(' . $number . ')\\s+(?:kami|tayo)\\b/iu';
+    if (preg_match_all($taglishCountPattern, $message, $matches, PREG_SET_ORDER)) {
+        foreach ($matches as $match) {
+            $value = $toInt($match[1]);
+            if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
+        }
+    }
     if (isset($state['slots']['group_size']) && preg_match('/\\A(?:actually|instead|make it|correction)\\s+(' . $number . ')[.!]?\\z/iu', trim($message), $match)) {
         $value = $toInt($match[1]);
         if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
@@ -1225,6 +1369,27 @@ function receptionist_natural_group_count_evidence(string $message, array $state
 {
     $values = receptionist_natural_group_count_values($message, $state);
     return $expected === null ? $values !== [] : in_array($expected, $values, true);
+}
+
+/** Apply one clearly stated party-size correction without depending on a model parse. */
+function receptionist_natural_local_group_count_patch(string $message, array $state): ?array
+{
+    if (!in_array($state['slots']['intent'] ?? null, ['Hotel Room', 'Event Hall', 'Resort Villa'], true)
+        || !isset($state['slots']['group_size'])) return null;
+    $explicitCategory = receptionist_natural_category_evidence($message);
+    if ($explicitCategory !== null && $explicitCategory !== $state['slots']['intent']) return null;
+    $values = receptionist_natural_group_count_values($message, $state);
+    if (count($values) !== 1 || $values[0] === (int)$state['slots']['group_size']) return null;
+
+    if (receptionist_natural_preference_evidence($message, $state['pending_question'] ?? null) !== null
+        || receptionist_natural_parse_room_type_choice($message) !== null
+        || receptionist_knowledge_booking_dates($message) !== []) return null;
+    $correctionCue = preg_match('/\\b(?:what if|paano kung|instead|actually|same dates?|same stay|change (?:it )?to|make it|we are|we\\x27re|there are|kami|tayo|party of|group of)\\b/i', $message) === 1;
+    if (!$correctionCue) return null;
+    $capacityQuestion = preg_match('/\\b(?:capacity|fit|accommodat|how many|maximum|max|kasya|ilang)\\b/i', $message) === 1;
+    if ($capacityQuestion && preg_match('/\\b(?:what if|paano kung|instead|actually|change (?:it )?to|make it|we are|we\\x27re|there are|kami|tayo|party of|group of)\\b/i', $message) !== 1) return null;
+
+    return ['slots_patch' => ['group_size' => $values[0]], 'clear_slots' => [], 'kind' => 'booking'];
 }
 
 function receptionist_natural_date_evidence(string $message, array $state, string $field, string $value): bool
@@ -1240,6 +1405,59 @@ function receptionist_natural_date_evidence(string $message, array $state, strin
     }
     if (count($dates) >= 2) return $dates[count($dates) - 1] === $value;
     return count($dates) === 1 && (($state['pending_question'] ?? null) === 'end_date' || ($checkOut && !$checkIn)) && $dates[0] === $value;
+}
+
+/** Apply only a clearly stated hotel availability search using the trusted slot parsers. */
+function receptionist_natural_local_availability_patch(string $message, array $state): ?array
+{
+    if (receptionist_knowledge_property_from_message($message) !== 'availability'
+        || preg_match('/\b(?:price|prices|rates?|cost|how\s+much|capacity|fit|amenit\w*|pool|wifi|parking|breakfast|spa|airport|shuttle|address|location|directions?|policy|policies|cancel\w*|refund|payment|pets?|children|kids|rules|catering|outside)\b/i', $message) === 1) {
+        return null;
+    }
+
+    $monthName = '(?:january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)';
+    $relativeDateCue = '/\b(?:today|tomorrow|bukas|yesterday|kahapon|(?:this|next)\s+(?:week|weekend|month|year|' . $monthName . '|sun(?:day)?|mon(?:day)?|t(?:ue|ues|uesday)|wed(?:nesday)?|thu(?:r|rs|sday|rsday)?|fri(?:day)?|sat(?:urday)?)|(?:this\s+)?(?:sun(?:day)?|mon(?:day)?|t(?:ue|ues|uesday)|wed(?:nesday)?|thu(?:r|rs|sday|rsday)?|fri(?:day)?|sat(?:urday)?)|in\s+\d{1,3}\s+(?:days?|weeks?|months?))\b/i';
+    if (preg_match($relativeDateCue, $message) === 1) return null;
+    $explicitDatePattern = '/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}|' . $monthName . '\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\d{1,2}\s+' . $monthName . '(?:\s+\d{4})?)\b/i';
+    $explicitDateCount = preg_match_all($explicitDatePattern, $message);
+    $explicitDateRangeCount = preg_match_all('/\b' . $monthName . '\s+\d{1,2}\s*[-–]\s*\d{1,2}(?:,?\s+\d{4})?\b/i', $message);
+    $dates = receptionist_knowledge_booking_dates($message, new DateTimeImmutable('today', new DateTimeZone('Asia/Manila')));
+    $twoExplicitDates = $explicitDateRangeCount === 1
+        ? $explicitDateCount === 1
+        : $explicitDateRangeCount === 0 && $explicitDateCount === 2;
+    if (!$twoExplicitDates || count($dates) !== 2 || $dates[0] >= $dates[1]
+        || receptionist_natural_preference_evidence($message, $state['pending_question'] ?? null) !== null
+        || receptionist_natural_parse_room_type_choice($message) !== null
+        || receptionist_natural_room_type_clarification_requested($message)) {
+        return null;
+    }
+
+    $category = receptionist_natural_category_evidence($message);
+    $mentionsOtherCategory = preg_match('/\b(?:villa|bilya|event|hall|venue|bulwagan)\b/i', $message) === 1;
+    if ($category !== null && ($category !== 'Hotel Room' || $mentionsOtherCategory)) return null;
+
+    $slots = is_array($state['slots'] ?? null) ? $state['slots'] : [];
+    $focused = is_array($state['focused_room'] ?? null) ? $state['focused_room'] : [];
+    $focusedVenueId = filter_var($focused['venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $focusedGroupId = filter_var($focused['room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $hasValidatedHotelFocus = ($slots['intent'] ?? null) === 'Hotel Room'
+        && $focusedVenueId !== false && $focusedGroupId !== false
+        && (int)($slots['active_venue_id'] ?? 0) === (int)$focusedVenueId
+        && (int)($slots['active_room_group_id'] ?? 0) === (int)$focusedGroupId;
+    if ($category !== 'Hotel Room' && !$hasValidatedHotelFocus) return null;
+
+    $counts = receptionist_natural_group_count_values($message, $state);
+    if (count($counts) > 1) return null;
+    $intentChanges = isset($slots['intent']) && $slots['intent'] !== 'Hotel Room';
+    $groupSize = $counts[0] ?? ($intentChanges ? null : ($slots['group_size'] ?? null));
+    if ($groupSize === null || (int)$groupSize < 1 || (int)$groupSize > 10000) return null;
+    if ($category === 'Hotel Room' && !isset($slots['group_size']) && $counts === []) return null;
+
+    $slotsPatch = ['start_date' => $dates[0], 'end_date' => $dates[1]];
+    if ($category === 'Hotel Room') $slotsPatch['intent'] = 'Hotel Room';
+    if ($counts) $slotsPatch['group_size'] = $counts[0];
+
+    return ['slots_patch' => $slotsPatch, 'clear_slots' => [], 'kind' => 'availability'];
 }
 
 function receptionist_natural_safe_social_reply(string $reply, string $language): string
@@ -1354,7 +1572,7 @@ function receptionist_natural_reply_log(string $requestId, string $replyType, st
 {
     $safe = ['request_id' => $requestId, 'reply_type' => $replyType, 'grounding_status' => $groundingStatus,
         'provider_call_count' => max(0, min(2, $providerCallCount)), 'fallback_class' => $fallbackClass,
-        'grounding_reason' => in_array($groundingReason, ['reply_shape', 'claim_shape', 'claim_value', 'entity_identity', 'claim_room_mismatch', 'availability_not_checked', 'unsupported_date', 'unsupported_price', 'unsupported_bed_count', 'unsupported_capacity', 'unsupported_number', 'unsupported_feature', 'missing_recommendation_reason', 'reason_not_explained', 'missing_availability', 'unverifiable_comparison', 'incorrect_comparison', 'language_mismatch'], true) ? $groundingReason : null];
+        'grounding_reason' => in_array($groundingReason, ['reply_shape', 'claim_shape', 'claim_value', 'entity_identity', 'claim_room_mismatch', 'availability_not_checked', 'unsupported_date', 'unsupported_price', 'unsupported_bed_count', 'unsupported_capacity', 'unsupported_number', 'unsupported_feature', 'missing_factual_claims', 'missing_recommendation_reason', 'reason_not_explained', 'missing_availability', 'unverifiable_comparison', 'incorrect_comparison', 'language_mismatch'], true) ? $groundingReason : null];
     error_log('receptionist_natural_reply ' . json_encode($safe, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 }
 
@@ -1412,6 +1630,7 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             : receptionist_ai_validate_slots($conn, $request['context'], [], $catalog); } catch (Throwable $error) { $state['slots'] = []; }
         if (($state['slots']['intent'] ?? null) === 'Hotel Room' && !isset($state['slots']['preference'])) $state['slots']['preference'] = 'best_fit';
     }
+    $state = receptionist_natural_restore_selected_context($state, $request, $catalog);
 
     if (preg_match('/\A(?:start over|reset|restart|new conversation|simulan ulit)\b/i', trim($message))) {
         $fresh = receptionist_natural_empty_state();
@@ -1423,7 +1642,9 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
     $actionId = is_string($request['action_id'] ?? null) ? $request['action_id'] : null;
     $localPatch = receptionist_natural_guided_context_patch($request, $state)
         ?? receptionist_natural_local_action_patch($actionId)
-        ?? receptionist_natural_local_pending_patch($message, $state);
+        ?? receptionist_natural_local_availability_patch($message, $state)
+        ?? receptionist_natural_local_pending_patch($message, $state)
+        ?? receptionist_natural_local_group_count_patch($message, $state);
     $requestRoomType = ($localPatch['request_room_type'] ?? false) === true;
     if (($localPatch['clarify_room_type'] ?? false) === true
         || (($localPatch['request_room_type'] ?? false) === true && ($localPatch['guided_sync'] ?? false) !== true)) {
@@ -1475,7 +1696,7 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
                 $limits = is_array($dependencies['provider_limits'] ?? null) ? $dependencies['provider_limits'] : receptionist_ai_limits();
                 $providerLimits = $limits;
                 $providerDeadline = $started + 12.0;
-                $timeout = min(6, max(1, (int)$limits['timeout']));
+                $timeout = min(10, max(1, (int)$limits['timeout']));
                 $naturalOutputTokens = min(1600, max(1400, (int)$limits['tokens']));
                 $schema = receptionist_natural_provider_schema($knowledgeCandidates, $state);
                 // Only model-bound turns consume the AI visit allowance. Local
@@ -1499,10 +1720,19 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             }
         }
         if ($providerError !== null) {
-            $fallback = is_callable($dependencies['fallback'] ?? null)
-                ? ($dependencies['fallback'])($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id'])
-                : receptionist_knowledge_local_fallback($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id']);
-            $reply = is_array($fallback) ? (string)($fallback['reply'] ?? '') : receptionist_natural_local_reply('outage', $language);
+            $failureMetadata = receptionist_ai_fallback_metadata($providerError);
+            if (($failureMetadata['retryable'] ?? false) === true) {
+                // Do not turn an unavailable model call into an unrelated
+                // booking follow-up based on stale session context. The
+                // canonical outage reply is also recognizable after history
+                // restoration, so the client can offer a manual retry.
+                $reply = receptionist_natural_local_reply('outage', $language);
+            } else {
+                $fallback = is_callable($dependencies['fallback'] ?? null)
+                    ? ($dependencies['fallback'])($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id'])
+                    : receptionist_knowledge_local_fallback($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id']);
+                $reply = is_array($fallback) ? (string)($fallback['reply'] ?? '') : receptionist_natural_local_reply('outage', $language);
+            }
             receptionist_natural_emit_reply_log($dependencies, $requestId, 'local_fallback', 'unavailable', $providerCallCount, $providerError);
             return receptionist_natural_finish($state, $message, $reply, 'keep',
                 ['slots' => $state['slots'], 'validated_slots' => $state['slots']], $providerError, $requestId);
@@ -1514,6 +1744,17 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
 
     $kind = (string)($proposal['kind'] ?? 'booking');
     $previous = $state['slots'];
+    $previousSelectedRoom = null;
+    $focusedRoom = is_array($state['focused_room'] ?? null) ? $state['focused_room'] : null;
+    $focusedVenueId = filter_var($focusedRoom['venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $focusedGroupId = filter_var($focusedRoom['room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if (($previous['intent'] ?? null) === 'Hotel Room'
+        && $focusedVenueId !== false && $focusedGroupId !== false
+        && (int)($previous['active_venue_id'] ?? 0) === (int)$focusedVenueId
+        && (int)($previous['active_room_group_id'] ?? 0) === (int)$focusedGroupId
+        && receptionist_ai_catalog_venue($catalog, (int)$focusedVenueId, 'Hotel Room', (int)$focusedGroupId) !== null) {
+        $previousSelectedRoom = ['venue_id' => (int)$focusedVenueId, 'room_group_id' => (int)$focusedGroupId];
+    }
     $previousPending = $state['pending_question'] ?? null;
     $rawPatch = is_array($proposal['slots_patch'] ?? null) ? $proposal['slots_patch'] : [];
     $clear = is_array($proposal['clear_slots'] ?? null) ? $proposal['clear_slots'] : [];
@@ -1546,16 +1787,21 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
     $availabilityRequested = $availabilityRequested || $kind === 'availability'
         || ($proposal['knowledge_property'] ?? null) === 'availability';
     $freshAvailabilityChecked = false;
+    $selectedRoomOutcome = null;
     $namedAvailability = $availabilityRequested ? receptionist_natural_named_availability_target($records, $message, $state['slots']) : ['target' => null, 'ambiguous' => false];
     if (is_array($namedAvailability['target'] ?? null) && !isset($state['slots']['intent'])) {
         $state['slots']['intent'] = (string)$namedAvailability['target']['category'];
         if ($state['slots']['intent'] === 'Hotel Room') $state['slots']['preference'] = 'best_fit';
     }
     $criteriaChanged = receptionist_natural_criteria_signature($previous) !== receptionist_natural_criteria_signature($state['slots']);
+    $selectionChanged = ($previous['intent'] ?? null) !== ($state['slots']['intent'] ?? null)
+        || ($previous['room_type_code'] ?? null) !== ($state['slots']['room_type_code'] ?? null);
     if ($criteriaChanged) {
         $state['recommendation_snapshot'] = null;
-        $state['focused_room'] = null;
-        unset($state['slots']['active_venue_id'], $state['slots']['active_room_group_id']);
+        if ($selectionChanged) {
+            $state['focused_room'] = null;
+            unset($state['slots']['active_venue_id'], $state['slots']['active_room_group_id']);
+        }
         $proposal['reference'] = null;
     }
 
@@ -1603,6 +1849,7 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
     $initialGroundedReplyAccepted = $firstGroundedReply !== null;
     if (trim((string)($proposal['social_reply'] ?? '')) !== '' && $firstGroundedReply === null) $groundingRejected = true;
     $quickReplies = [];
+    $showSupportContactCta = false;
     if (is_array($proposal['reference'] ?? null)) {
         $item = $proposal['reference'];
         $state['slots']['active_venue_id'] = (int)$item['venue_id'];
@@ -1623,14 +1870,32 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         } else unset($state['slots']['active_room_group_id']);
         if ($reply === '') $reply = receptionist_natural_snapshot_reply($item, $message, $language, $state['recommendation_snapshot'] ?? []);
     } elseif ($kind === 'social' || receptionist_knowledge_is_social_input($message)) {
-        if ($reply === '') $reply = receptionist_natural_safe_social_reply((string)($proposal['social_reply'] ?? ''), $language);
+        if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
+            $reply = receptionist_natural_safe_social_reply((string)($proposal['social_reply'] ?? ''), $language);
+        }
     } elseif ($kind === 'ambiguous') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Alin dito ang ibig mong sabihin?', 'taglish' => 'Alin dito ang ibig mong sabihin?', default => 'Which option did you mean?' };
     } elseif ($kind === 'reference') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Aling option ang gusto mong tingnan?', 'taglish' => 'Aling option ang gusto mong tingnan?', default => 'Which option would you like me to look at?' };
         $quickReplies = array_values(array_slice(array_unique(array_map(static fn(array $item): string => (string)($item['title'] ?? ''), $state['recommendation_snapshot']['results'] ?? [])), 0, 3));
     } elseif ($kind === 'question' && ($proposal['knowledge_property'] ?? null) === 'unknown') {
-        if ($reply === '') $reply = receptionist_natural_local_reply('unknown', $language);
+        if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
+            $reply = receptionist_natural_local_reply('unknown', $language);
+        }
+    }
+
+    if ($reply === '' && receptionist_knowledge_is_fact_request($message, $state['slots'])) {
+        $unsupportedFallback = receptionist_knowledge_local_fallback(
+            $records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id']
+        );
+        if (is_array($unsupportedFallback)) {
+            $reply = (string)($unsupportedFallback['reply'] ?? receptionist_natural_local_reply('unknown', $language));
+            $showSupportContactCta = ($unsupportedFallback['show_support_contact_cta'] ?? false) === true;
+            if (is_string($unsupportedFallback['faq_id'] ?? null)) $state['focused_faq_id'] = $unsupportedFallback['faq_id'];
+            if (!$quickReplies && is_array($unsupportedFallback['quick_replies'] ?? null)) $quickReplies = $unsupportedFallback['quick_replies'];
+        } else {
+            $reply = receptionist_natural_local_reply('unknown', $language);
+        }
     }
 
     $intent = $state['slots']['intent'] ?? null;
@@ -1725,6 +1990,46 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
                 && ($snapshot['check_in'] ?? null) === ($state['slots']['start_date'] ?? null)
                 && ($snapshot['check_out'] ?? null) === ($state['slots']['end_date'] ?? $state['slots']['start_date'] ?? null)
                 && hash_equals((string)$snapshot['criteria_signature'], receptionist_natural_criteria_signature($state['slots']));
+            if ($intent === 'Hotel Room' && isset($state['slots']['group_size'])) {
+                $selectedRoomOutcome = receptionist_natural_selected_room_outcome_from_snapshot(
+                    $snapshot, $targetVenueId, $targetGroupId, (string)$state['slots']['start_date'],
+                    (string)$state['slots']['end_date'], (int)$state['slots']['group_size']);
+                if ($selectedRoomOutcome !== null) {
+                    $capacity = $selectedRoomOutcome['capacity'];
+                    $fits = is_int($capacity) && (int)$state['slots']['group_size'] <= $capacity;
+                    if (!$selectedRoomOutcome['available'] || !$fits) {
+                        try {
+                            $range = receptionist_natural_guest_range((int)$state['slots']['group_size']);
+                            if ($range !== null) {
+                                $searchRequest = [
+                                    'guest_range' => $range, 'group_size' => (int)$state['slots']['group_size'],
+                                    'priority' => $state['slots']['preference'] ?? 'best_fit',
+                                    'room_type_code' => $state['slots']['room_type_code'] ?? 'any',
+                                    'check_in' => $state['slots']['start_date'], 'check_out' => $state['slots']['end_date'],
+                                ];
+                                $alternatives = is_callable($dependencies['hotel_search'] ?? null)
+                                    ? ($dependencies['hotel_search'])($conn, $searchRequest, session_id())
+                                    : hotel_recommendation_search($conn, $searchRequest, session_id());
+                                $alternatives['intent'] = 'Hotel Room';
+                                $alternatives['criteria_signature'] = receptionist_natural_criteria_signature($state['slots']);
+                                $alternativesFresh = receptionist_natural_snapshot_has_fresh_availability($alternatives)
+                                    && ($alternatives['check_in'] ?? null) === $state['slots']['start_date']
+                                    && ($alternatives['check_out'] ?? null) === $state['slots']['end_date'];
+                                if ($alternativesFresh) {
+                                    $state['recommendation_snapshot'] = $alternatives;
+                                    $selectedRoomOutcome['options_checked'] = true;
+                                    $selectedRoomOutcome['options_count'] = count($alternatives['results'] ?? []);
+                                }
+                            }
+                        } catch (Throwable $error) {
+                            // Keep the exact selected-room result if alternatives cannot be loaded.
+                        }
+                    } else {
+                        $selectedRoomOutcome['options_checked'] = true;
+                        $selectedRoomOutcome['options_count'] = count($snapshot['results'] ?? []);
+                    }
+                }
+            }
         } catch (Throwable $error) {
             $providerError = 'recommendation_unavailable';
             if ($availabilityRequested) { $state['recommendation_snapshot'] = null; $presentation = 'keep'; }
@@ -1750,6 +2055,35 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
                     && ($snapshot['check_in'] ?? null) === ($state['slots']['start_date'] ?? null)
                     && ($snapshot['check_out'] ?? null) === ($state['slots']['end_date'] ?? null)
                     && hash_equals((string)$snapshot['criteria_signature'], receptionist_natural_criteria_signature($state['slots']));
+                $selectedStillActive = $previousSelectedRoom !== null
+                    && (int)($state['slots']['active_venue_id'] ?? 0) === $previousSelectedRoom['venue_id']
+                    && (int)($state['slots']['active_room_group_id'] ?? 0) === $previousSelectedRoom['room_group_id'];
+                $stayOrPartyChanged = ($previous['group_size'] ?? null) !== ($state['slots']['group_size'] ?? null)
+                    || ($previous['start_date'] ?? null) !== ($state['slots']['start_date'] ?? null)
+                    || ($previous['end_date'] ?? null) !== ($state['slots']['end_date'] ?? null);
+                if ($criteriaChanged && !$selectionChanged && $selectedStillActive && $stayOrPartyChanged
+                    && isset($state['slots']['start_date'], $state['slots']['end_date'])) {
+                    try {
+                        $exactSelected = is_callable($dependencies['hotel_exact_search'] ?? null)
+                            ? ($dependencies['hotel_exact_search'])($conn, $previousSelectedRoom['venue_id'],
+                                $previousSelectedRoom['room_group_id'], (string)$state['slots']['start_date'],
+                                (string)$state['slots']['end_date'], session_id())
+                            : hotel_recommendation_exact_availability($conn, $previousSelectedRoom['venue_id'],
+                                $previousSelectedRoom['room_group_id'], (string)$state['slots']['start_date'],
+                                (string)$state['slots']['end_date'], session_id());
+                        $selectedRoomOutcome = receptionist_natural_selected_room_outcome_from_snapshot(
+                            $exactSelected, $previousSelectedRoom['venue_id'], $previousSelectedRoom['room_group_id'],
+                            (string)$state['slots']['start_date'], (string)$state['slots']['end_date'],
+                            (int)($state['slots']['group_size'] ?? 0));
+                        if ($selectedRoomOutcome !== null) {
+                            $selectedRoomOutcome['options_checked'] = $freshAvailabilityChecked;
+                            $selectedRoomOutcome['options_count'] = $freshAvailabilityChecked
+                                ? count($snapshot['results'] ?? []) : 0;
+                        }
+                    } catch (Throwable $error) {
+                        // Keep the category search result but do not make a selected-room claim.
+                    }
+                }
             } catch (Throwable $error) {
                 $providerError = 'recommendation_unavailable';
                 if ($availabilityRequested) { $state['recommendation_snapshot'] = null; $presentation = 'keep'; }
@@ -1932,6 +2266,11 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         $question = receptionist_natural_local_reply($followup, $language, $intent);
         $reply = trim($reply) === '' ? $question : rtrim($reply) . ' ' . $question;
     }
+    if (is_array($selectedRoomOutcome)) {
+        $reply = receptionist_natural_selected_room_outcome_reply($selectedRoomOutcome, $language);
+        $wordingReplyAccepted = false;
+        $initialGroundedReplyAccepted = false;
+    }
     $replyType = ($wordingReplyAccepted || $initialGroundedReplyAccepted) ? 'natural'
         : ($groundingRejected ? 'grounded_fallback' : (is_array($answer) ? 'server_answer' : 'local'));
     $groundingStatus = ($wordingReplyAccepted || $initialGroundedReplyAccepted) ? 'accepted'
@@ -1942,6 +2281,7 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
     if (is_array($answer)) $extra['answer'] = $answer;
     if (is_array($state['recommendation_snapshot'])) $extra['recommendation_snapshot'] = $state['recommendation_snapshot'];
     if ($quickReplies) $extra['quick_replies'] = $quickReplies;
+    if ($showSupportContactCta) $extra['show_support_contact_cta'] = true;
     if (($presentation === 'show_venue') && isset($state['slots']['active_venue_id'])) $extra['action'] = 'venue';
     $guidedSync = $actionId === 'guided_search_update';
     if ($guidedSync) {

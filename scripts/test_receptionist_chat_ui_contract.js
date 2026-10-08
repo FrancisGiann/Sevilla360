@@ -107,6 +107,39 @@ check("guided date history records validated selections and checkout calendars r
   assert.ok(chatSource.includes('if (userMessage) appendMessage("user", userMessage);'));
   assert.ok(showroomSource.includes('const targetFocus = preferredFocus && isSelectable(preferredFocus) ? preferredFocus : firstSelectableInMonth();'));
 });
+check("chat API requests have a bounded abort deadline and always clear its timer", () => {
+  assert.ok(chatSource.includes("const CHAT_REQUEST_TIMEOUT_MS = 35000;"));
+  assert.ok(chatSource.includes("new window.AbortController()"));
+  assert.ok(chatSource.includes("controller.abort()"));
+  assert.ok(chatSource.includes("request.finally(() => window.clearTimeout(timer))"));
+  assert.ok(chatSource.includes("async response => ({ response, data: await readChatResponse(response) })"), "the deadline includes reading and parsing response bodies");
+  assert.equal((chatSource.match(/\bfetch\(/g) || []).length, 2, "raw fetch calls stay inside the deadline wrapper");
+  assert.equal((chatSource.match(/fetchWithDeadline\(/g) || []).length, 3, "the shared wrapper serves history/send parsing, reset, and guided sync");
+  assert.equal((chatSource.match(/fetchJsonWithDeadline\(/g) || []).length, 2, "history and send include bounded JSON body parsing");
+  assert.ok(chatSource.includes("Promise.race([request, deadline])"));
+  assert.ok(chatSource.includes('error.name = "TimeoutError";'), "browsers without AbortController still get a UI deadline");
+});
+check("timeout recovery keeps the typed message and avoids resending a turn already committed by the server", () => {
+  assert.ok(chatSource.includes('const timedOut = error?.name === "AbortError" || error?.name === "TimeoutError";'));
+  assert.ok(chatSource.includes("The request may still be finishing. Use Retry once it is ready."));
+  assert.ok(chatSource.includes('const latestUserTurn = [...latestMessages].reverse().find(turn => turn.role === "user");'));
+  assert.ok(chatSource.includes("latestUserTurn?.content === clean && !isRetryableCommittedReply(latestAssistantTurn?.content)"));
+  assert.ok(chatSource.includes("Your earlier message was received; its latest reply is above."));
+});
+check("gateway HTML failures use generic user copy, stay retryable, and expose one manual retry action", () => {
+  assert.ok(chatSource.includes("body = await response.text();"));
+  assert.ok(chatSource.includes("error.httpStatus = Number(response.status) || 0;"));
+  assert.ok(chatSource.includes("The chat service is temporarily unavailable."));
+  assert.ok(!chatSource.includes("The server gateway returned") && !chatSource.includes("The chat server returned"));
+  assert.ok(chatSource.includes("pendingMessage = retryable ? clean : \"\";"));
+  assert.ok(chatSource.includes("guidedFallback({ quick_replies: [\"Event\", \"Hotel\", \"Villa\", \"Support FAQs\"] }, recoveryMessage, retryable);"));
+  assert.ok(chatSource.includes('retry.dataset.receptionistQuickAction = "retry_provider";'));
+});
+check("a stale-state duplicate is suppressed after success but manual retry remains available after a committed outage", () => {
+  assert.ok(chatSource.includes("!isRetryableCommittedReply(latestAssistantTurn?.content)"));
+  assert.ok(chatSource.includes("pendingMessage = clean;"));
+  assert.ok(chatSource.includes("The earlier reply was unavailable."));
+});
 check("mobile hotel cards and results grid stay inside their available column", () => {
   assert.ok(showroomCss.includes('.showroom-receptionist.is-hotel-results .receptionist-hotel-results-grid {\n    display: grid;\n    grid-template-columns: minmax(0, 1fr);\n    gap: .45rem;\n    width: 100%;\n    max-width: 100%;'));
   assert.ok(showroomCss.includes('.showroom-receptionist.is-hotel-results .receptionist-hotel-result > *,'));

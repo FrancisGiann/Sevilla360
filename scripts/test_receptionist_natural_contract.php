@@ -31,6 +31,7 @@ $future = new DateTimeImmutable('today', new DateTimeZone('Asia/Manila'));
 $date1 = $future->modify('+14 days')->format('Y-m-d');
 $date2 = $future->modify('+16 days')->format('Y-m-d');
 $date3 = $future->modify('+20 days')->format('Y-m-d');
+$date4 = $future->modify('+22 days')->format('Y-m-d');
 
 $hotelRecord = [
     'id' => 'venue-hotel-room-101-group-77', 'kind' => 'venue', 'venue_id' => 101, 'category' => 'Hotel Room',
@@ -87,7 +88,7 @@ $testConn = new mysqli();
 $legacyHotelSlots = ['intent' => 'Hotel Room', 'group_size' => 2, 'start_date' => $date1, 'end_date' => $date2];
 $legacyHotelState = receptionist_natural_state([
     'slots' => $legacyHotelSlots,
-    'recommendation_snapshot' => ['intent' => 'Hotel Room', 'criteria_signature' => receptionist_natural_criteria_signature($legacyHotelSlots),
+    'recommendation_snapshot' => ['intent' => 'Hotel Room', 'criteria_signature' => receptionist_natural_legacy_criteria_signature($legacyHotelSlots),
         'results' => [$resultItem(101, 77, 'Rafael Standard Room')]],
 ], $testConn, $catalog);
 $assert('legacy hotel state restores implicit defaults without discarding same-criteria room cards',
@@ -97,10 +98,14 @@ $assert('legacy hotel state restores implicit defaults without discarding same-c
 $run = static function (array $turnState, string $message, ReceptionistNaturalContractProvider $provider, array $extra = []) use ($testConn, $catalog, $records, $slots): array {
     $_SESSION['receptionist_natural_state'] = $turnState;
     $clockNow = 1000.0;
+    $stateLoader = $extra['_state_loader'] ?? null;
+    $testCatalog = is_array($extra['_catalog'] ?? null) ? $extra['_catalog'] : $catalog;
+    $testRecords = is_array($extra['_records'] ?? null) ? $extra['_records'] : $records;
+    unset($extra['_state_loader'], $extra['_catalog'], $extra['_records']);
     $deps = array_replace([
-        'state_loader' => static fn(array $raw): array => array_replace(receptionist_natural_empty_state(), $raw),
+        'state_loader' => is_callable($stateLoader) ? $stateLoader : static fn(array $raw, mysqli $db, array $publicCatalog): array => array_replace(receptionist_natural_empty_state(), $raw),
         'faq_loader' => static fn(): array => [],
-        'records' => $records,
+        'records' => $testRecords,
         'provider_factory' => static fn() => $provider,
         'provider_limits' => ['timeout' => 30, 'tokens' => 800],
         'rate_limit' => static fn(): bool => true,
@@ -114,7 +119,7 @@ $run = static function (array $turnState, string $message, ReceptionistNaturalCo
     unset($deps['_request']);
     $language = is_string($extra['_language'] ?? null) ? $extra['_language'] : 'en';
     unset($extra['_language']);
-    return receptionist_natural_handle_turn($testConn, $request, $message, $language, $catalog, 'test_request', $deps);
+    return receptionist_natural_handle_turn($testConn, $request, $message, $language, $testCatalog, 'test_request', $deps);
 };
 
 $baseState = receptionist_natural_empty_state();
@@ -141,10 +146,90 @@ $assert('full typed booking interprets multiple slots and makes a grounded wordi
     && ($searchRequest['room_type_code'] ?? null) === 'any'
     && count($provider->calls) === 2 && array_column($provider->calls, 'attempt_limit') === [1, 1]
     && array_column($provider->calls, 'max_tokens') === [1400, 1400]
-    && max(array_column($provider->calls, 'timeout')) <= 6 && str_contains((string)$result['reply'], 'Rafael')
+    && max(array_column($provider->calls, 'timeout')) <= 10 && str_contains((string)$result['reply'], 'Rafael')
     && str_contains((string)$result['reply'], 'enough room for your group') && !str_contains((string)$result['reply'], '4 beds')
     && str_contains($provider->calls[0]['messages'][0]['content'], 'Claimable evidence')
     && str_contains($provider->calls[0]['messages'][0]['content'], '₱1,200.00 per night'));
+
+$fullAvailabilityPrompt = sprintf('I need a hotel room for 2 guests from %s to %s. What is available?',
+    (new DateTimeImmutable($date1))->format('F j, Y'), (new DateTimeImmutable($date2))->format('F j, Y'));
+$fullAvailabilityProvider = new ReceptionistNaturalContractProvider([]);
+$fullAvailabilitySearch = null;
+[$fullAvailabilityResult, $fullAvailabilityStatus] = $run($baseState, $fullAvailabilityPrompt, $fullAvailabilityProvider, [
+    'hotel_search' => static function (mysqli $db, array $request) use (&$fullAvailabilitySearch, $fixtureSnapshot): array {
+        $fullAvailabilitySearch = $request;
+        return $fixtureSnapshot(['slots' => ['group_size' => $request['group_size']]],
+            (string)$request['check_in'], (string)$request['check_out']);
+    },
+]);
+$assert('a complete explicit hotel availability request uses trusted category count and date parsing before calling the model',
+    $fullAvailabilityStatus === 200 && $fullAvailabilityProvider->calls === []
+    && ($fullAvailabilitySearch['group_size'] ?? null) === 2
+    && ($fullAvailabilitySearch['check_in'] ?? null) === $date1 && ($fullAvailabilitySearch['check_out'] ?? null) === $date2
+    && ($fullAvailabilityResult['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($fullAvailabilityResult['slots']['group_size'] ?? null) === 2
+    && ($fullAvailabilityResult['recommendation_snapshot']['check_in'] ?? null) === $date1
+    && ($fullAvailabilityResult['recommendation_snapshot']['check_out'] ?? null) === $date2
+    && str_contains((string)$fullAvailabilityResult['reply'], 'matching options'));
+$oldVillaState = array_replace(receptionist_natural_empty_state(), [
+    'revision' => 9, 'slots' => ['intent' => 'Resort Villa', 'group_size' => 3, 'start_date' => '2026-11-20'],
+]);
+$oldVillaSearch = null;
+$oldVillaProvider = new ReceptionistNaturalContractProvider([]);
+[$oldVillaAvailability, $oldVillaAvailabilityStatus] = $run($oldVillaState, $fullAvailabilityPrompt, $oldVillaProvider, [
+    'hotel_search' => static function (mysqli $db, array $request) use (&$oldVillaSearch, $fixtureSnapshot): array {
+        $oldVillaSearch = $request;
+        return $fixtureSnapshot(['slots' => ['group_size' => $request['group_size']]],
+            (string)$request['check_in'], (string)$request['check_out']);
+    },
+]);
+$assert('a complete hotel request switches from an old villa stay without carrying stale dates or party size',
+    $oldVillaAvailabilityStatus === 200 && $oldVillaProvider->calls === []
+    && ($oldVillaSearch['group_size'] ?? null) === 2
+    && ($oldVillaSearch['check_in'] ?? null) === $date1 && ($oldVillaSearch['check_out'] ?? null) === $date2
+    && ($oldVillaAvailability['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($oldVillaAvailability['slots']['group_size'] ?? null) === 2
+    && ($oldVillaAvailability['slots']['start_date'] ?? null) === $date1
+    && ($oldVillaAvailability['slots']['end_date'] ?? null) === $date2);
+$localAvailabilityState = array_replace(receptionist_natural_empty_state(), [
+    'slots' => ['intent' => 'Hotel Room', 'group_size' => 2, 'active_venue_id' => 101, 'active_room_group_id' => 77],
+    'focused_room' => ['venue_id' => 101, 'room_group_id' => 77],
+]);
+$assert('the local availability parser requires exactly two dates and leaves mixed factual questions to interpretation',
+    receptionist_natural_local_availability_patch('Is this available from ' . $date3 . '?', $localAvailabilityState) === null
+    && receptionist_natural_local_availability_patch(
+        'Is this available from ' . $date3 . ' to ' . $date4 . ', and what is the nightly rate?', $localAvailabilityState) === null
+    && receptionist_natural_local_availability_patch(
+        'Is this available tomorrow from ' . $date3 . ' to ' . $date4 . '?', $localAvailabilityState) === null
+    && receptionist_natural_local_availability_patch(
+        'Is this available next November 12 to November 14, 2026?', $localAvailabilityState) === null
+    && receptionist_natural_local_availability_patch(
+        'Is this available from ' . $date3 . ' to ' . $date4 . ', and do you offer spa or airport pickup?', $localAvailabilityState) === null
+    && receptionist_natural_local_availability_patch(
+        'Is this available for a hotel room or villa for 2 guests from ' . $date3 . ' to ' . $date4 . '?', $localAvailabilityState) === null);
+
+$staleQuestionState = array_replace(receptionist_natural_empty_state(), [
+    'revision' => 3, 'slots' => ['intent' => 'Hotel Room'], 'pending_question' => 'group_size',
+]);
+$timeoutFallbackCalls = 0;
+$timeoutProvider = new ReceptionistNaturalContractProvider([
+    ['success' => false, 'error_class' => 'provider_timeout', 'diagnostic' => ['attempt_count' => 1]],
+]);
+[$timeoutFallbackResult, $timeoutFallbackStatus] = $run($staleQuestionState, 'Can you tell me about your resort?', $timeoutProvider, [
+    'fallback' => static function () use (&$timeoutFallbackCalls): array {
+        $timeoutFallbackCalls++;
+        return ['reply' => 'How many guests are included in the hotel stay?'];
+    },
+]);
+$assert('a retryable provider timeout records a canonical outage instead of repeating a stale pending question',
+    $timeoutFallbackStatus === 200 && $timeoutFallbackResult['success'] === true
+    && ($timeoutFallbackResult['fallback_code'] ?? null) === 'provider_timeout'
+    && ($timeoutFallbackResult['retryable'] ?? null) === true
+    && ($timeoutFallbackResult['revision'] ?? null) === 4
+    && ($timeoutFallbackResult['reply'] ?? null) === receptionist_natural_local_reply('outage', 'en')
+    && !str_contains((string)$timeoutFallbackResult['reply'], 'How many guests')
+    && $timeoutFallbackCalls === 0 && count($timeoutProvider->calls) === 1
+    && $timeoutProvider->calls[0]['timeout'] === 10);
 
 $seed = array_replace(receptionist_natural_empty_state(), [
     'revision' => 4, 'slots' => ['intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'save', 'room_type_code' => 'any', 'start_date' => $date1, 'end_date' => $date2],
@@ -163,7 +248,7 @@ $assert('count correction changes only count, retains dates and preference, and 
     && ($result['slots']['group_size'] ?? null) === 3 && ($result['slots']['start_date'] ?? null) === $date1
     && ($result['slots']['end_date'] ?? null) === $date2 && ($result['slots']['preference'] ?? null) === 'save'
     && ($searchRequest['guest_range'] ?? null) === '3-4' && ($searchRequest['group_size'] ?? null) === 3
-    && count($provider->calls) === 2);
+    && $provider->calls === []);
 
 $typeCorrectionState = array_replace(receptionist_natural_empty_state(), [
     'revision' => 9,
@@ -255,6 +340,268 @@ $assert('named hotel availability uses exact venue and group without requiring p
     && ($result['recommendation_snapshot']['exact_target'] ?? false) === true
     && ($result['recommendation_snapshot']['results'][0]['status'] ?? null) === 'Unavailable for these dates'
     && preg_match('/not available|unavailable/i', (string)$result['reply']) === 1);
+
+$selectedHotelSlots = ['intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'best_fit', 'room_type_code' => 'any',
+    'start_date' => $date1, 'end_date' => $date2, 'active_venue_id' => 101, 'active_room_group_id' => 77];
+$selectedHotelState = array_replace(receptionist_natural_empty_state(), [
+    'revision' => 2,
+    'slots' => $selectedHotelSlots,
+    'focused_room' => ['venue_id' => 101, 'room_group_id' => 77],
+    'recommendation_snapshot' => ['intent' => 'Hotel Room', 'group_size' => 2, 'check_in' => $date1, 'check_out' => $date2,
+        'availability_checked' => true, 'criteria_signature' => receptionist_natural_criteria_signature($selectedHotelSlots),
+        'total_matches' => 1, 'results' => [$resultItem(101, 77, 'Rafael Standard Room')]],
+]);
+$selectedAvailabilityProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('availability', ['intent' => 'Hotel Room', 'start_date' => $date1, 'end_date' => $date2], '', [], 101, 77)],
+    ['payload' => $payload('availability', [], 'Rafael Standard Room is available for those dates.', [], 101, 77, 'en', [
+        ['source_id' => 'recommendation-101-77', 'field' => 'name', 'value' => 'Rafael Standard Room'],
+        ['source_id' => 'recommendation-101-77', 'field' => 'availability', 'value' => 'Available'],
+    ])],
+]);
+[$selectedAvailabilityResult, $selectedAvailabilityStatus] = $run($selectedHotelState,
+    "Is Rafael Standard Room available from {$date1} to {$date2}?", $selectedAvailabilityProvider, [
+        'hotel_exact_search' => static function (mysqli $db, int $venue, int $group, string $start, string $end) use ($resultItem): array {
+            return ['success' => true, 'state' => 'matched', 'intent' => 'Hotel Room', 'exact_target' => true, 'group_size' => null,
+                'checked_at' => '2026-10-03T12:00:00+08:00', 'check_in' => $start, 'check_out' => $end,
+                'total_matches' => 1, 'results' => [$resultItem($venue, $group, 'Rafael Standard Room')]];
+        },
+    ]);
+$groupChangeProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('booking', ['group_size' => 3], '', [], 101, 77)],
+    ['payload' => $payload('booking', [], 'I’ll refresh the hotel options for three guests.')],
+]);
+$groupChangeSearch = null;
+[$groupChangeResult, $groupChangeStatus] = $run($_SESSION['receptionist_natural_state'], 'What if we are 3 people?', $groupChangeProvider, [
+    'hotel_search' => static function (mysqli $db, array $request) use (&$groupChangeSearch, $fixtureSnapshot): array {
+        $groupChangeSearch = $request;
+        return $fixtureSnapshot(['slots' => ['group_size' => $request['group_size']]], (string)$request['check_in'], (string)$request['check_out']);
+    },
+]);
+$selectedRoomFollowupProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('reference', [], '', [], 101, 77)],
+]);
+$followupSearches = 0;
+[$selectedRoomFollowup, $selectedRoomFollowupStatus] = $run($_SESSION['receptionist_natural_state'],
+    'Tell me more about that room.', $selectedRoomFollowupProvider, [
+        'hotel_search' => static function () use (&$followupSearches): array { $followupSearches++; return []; },
+    ]);
+$assert('availability followed by a count correction searches the same validated dates and keeps the selected room in pronoun follow-up',
+    $selectedAvailabilityStatus === 200 && $groupChangeStatus === 200 && $selectedRoomFollowupStatus === 200
+    && ($groupChangeSearch['group_size'] ?? null) === 3
+    && ($groupChangeSearch['check_in'] ?? null) === $date1 && ($groupChangeSearch['check_out'] ?? null) === $date2
+    && ($groupChangeResult['slots']['group_size'] ?? null) === 3
+    && receptionist_ai_canonical_date($groupChangeResult['slots']['start_date'] ?? null) === $date1
+    && receptionist_ai_canonical_date($groupChangeResult['slots']['end_date'] ?? null) === $date2
+    && ($selectedRoomFollowup['slots']['group_size'] ?? null) === 3
+    && ($selectedRoomFollowup['slots']['active_venue_id'] ?? null) === 101
+    && ($selectedRoomFollowup['slots']['active_room_group_id'] ?? null) === 77
+    && ($selectedRoomFollowup['slots']['start_date'] ?? null) === $date1
+    && ($selectedRoomFollowup['slots']['end_date'] ?? null) === $date2 && $followupSearches === 0);
+
+$selectedContextState = array_replace(receptionist_natural_empty_state(), [
+    'revision' => 6,
+    'slots' => ['intent' => 'Hotel Room', 'group_size' => 3, 'preference' => 'best_fit', 'room_type_code' => 'any',
+        'start_date' => $date1, 'end_date' => $date2],
+]);
+$selectionListProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('booking')]]);
+[$selectionListResult, $selectionListStatus] = $run($selectedContextState, 'Show me options for these dates.', $selectionListProvider, [
+    'hotel_search' => static fn(mysqli $db, array $request): array => $fixtureSnapshot(
+        ['slots' => ['group_size' => $request['group_size']]], (string)$request['check_in'], (string)$request['check_out']),
+]);
+$selectedContextProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('availability', ['start_date' => $date3, 'end_date' => $date4])],
+]);
+$selectedContextExactSearch = null;
+[$selectedContextResult, $selectedContextStatus] = $run($_SESSION['receptionist_natural_state'],
+    "Is this available from {$date3} to {$date4}?", $selectedContextProvider, [
+        '_request' => ['context' => ['active_venue_id' => 101, 'active_room_group_id' => 77]],
+        '_state_loader' => static fn(array $raw, mysqli $db, array $publicCatalog): array => receptionist_natural_state($raw, $db, $publicCatalog),
+        'hotel_exact_search' => static function (mysqli $db, int $venue, int $group, string $start, string $end) use (&$selectedContextExactSearch, $resultItem): array {
+            $selectedContextExactSearch = [$venue, $group, $start, $end];
+            return ['success' => true, 'state' => 'matched', 'intent' => 'Hotel Room', 'exact_target' => true,
+                'group_size' => null, 'checked_at' => '2026-10-03T12:00:00+08:00', 'check_in' => $start, 'check_out' => $end,
+                'availability_checked' => true, 'total_matches' => 1, 'results' => [$resultItem($venue, $group, 'Rafael Standard Room')]];
+        },
+    ]);
+$assert('a selected card in the prior server snapshot survives a context-bearing date availability request',
+    $selectionListStatus === 200 && $selectedContextStatus === 200
+    && $selectedContextProvider->calls === []
+    && $selectedContextExactSearch === [101, 77, $date3, $date4]
+    && ($selectedContextResult['slots']['active_venue_id'] ?? null) === 101
+    && ($selectedContextResult['slots']['active_room_group_id'] ?? null) === 77
+    && ($selectedContextResult['natural_state']['focused_room']['room_group_id'] ?? null) === 77
+    && ($selectedContextResult['recommendation_snapshot']['exact_target'] ?? false) === true
+    && str_contains((string)$selectedContextResult['reply'], 'Rafael Standard Room')
+    && str_contains((string)$selectedContextResult['reply'], 'fits your group'));
+
+$alternativeHotelRecord = [
+    'id' => 'venue-hotel-room-303-group-88', 'kind' => 'venue', 'venue_id' => 303, 'category' => 'Hotel Room',
+    'name' => 'Kristel', 'room_type' => 'Family Room', 'room_group_id' => 88,
+    'description' => 'Published alternative room description.', 'amenities' => ['Wi-Fi'], 'base_rate' => 1650,
+    'rate_unit' => 'per night', 'capacity_base' => 2, 'capacity_max' => 6,
+    'bed_count_min' => 2, 'bed_count_max' => 2, 'inclusions' => [],
+];
+$selectedAndAlternativeCatalog = array_map(static fn(array $record): array => [
+    'id' => $record['venue_id'], 'category' => $record['category'], 'name' => $record['name'],
+    'room_type' => $record['room_type'], 'room_group_id' => $record['room_group_id'],
+], [$hotelRecord, $alternativeHotelRecord]);
+$alternativeResult = array_replace($resultItem(303, 88, 'Kristel Family Room'), [
+    'capacity' => '6 guests maximum', 'capacity_value' => 6,
+]);
+$alternativeSearchSnapshot = static function (array $request, array $items): array {
+    return ['success' => true, 'state' => 'matched', 'intent' => 'Hotel Room',
+        'group_size' => $request['group_size'] ?? null, 'check_in' => $request['check_in'] ?? null,
+        'check_out' => $request['check_out'] ?? null, 'availability_checked' => true,
+        'checked_at' => '2026-10-03T12:00:00+08:00', 'total_matches' => count($items), 'results' => $items];
+};
+$makeSelectedState = static function (int $groupSize) use ($date1, $date2, $resultItem): array {
+    $slots = ['intent' => 'Hotel Room', 'group_size' => $groupSize, 'preference' => 'best_fit', 'room_type_code' => 'any',
+        'start_date' => $date1, 'end_date' => $date2, 'active_venue_id' => 101, 'active_room_group_id' => 77];
+    return array_replace(receptionist_natural_empty_state(), [
+        'revision' => 8, 'slots' => $slots, 'focused_room' => ['venue_id' => 101, 'room_group_id' => 77],
+        'recommendation_snapshot' => ['intent' => 'Hotel Room', 'group_size' => $groupSize,
+            'check_in' => $date1, 'check_out' => $date2, 'availability_checked' => true,
+            'criteria_signature' => receptionist_natural_criteria_signature($slots),
+            'total_matches' => 1, 'results' => [$resultItem(101, 77, 'Rafael Standard Room')]],
+    ]);
+};
+
+$selectedThreeSearch = null;
+$selectedThreeExact = null;
+$selectedThreeState = $makeSelectedState(2);
+[$selectedThreeResult, $selectedThreeStatus] = $run($selectedThreeState, 'What if we are 3 people instead?', new ReceptionistNaturalContractProvider([]), [
+    '_catalog' => $selectedAndAlternativeCatalog,
+    '_state_loader' => static fn(array $raw, mysqli $db, array $publicCatalog): array => receptionist_natural_state($raw, $db, $publicCatalog),
+    'hotel_search' => static function (mysqli $db, array $request) use (&$selectedThreeSearch, $alternativeSearchSnapshot, $alternativeResult): array {
+        $selectedThreeSearch = $request;
+        return $alternativeSearchSnapshot($request, [$alternativeResult]);
+    },
+    'hotel_exact_search' => static function (mysqli $db, int $venue, int $group, string $start, string $end) use (&$selectedThreeExact, $resultItem): array {
+        $selectedThreeExact = [$venue, $group, $start, $end];
+        return ['success' => true, 'intent' => 'Hotel Room', 'exact_target' => true, 'availability_checked' => true,
+            'checked_at' => '2026-10-03T12:00:00+08:00', 'check_in' => $start, 'check_out' => $end,
+            'total_matches' => 1, 'results' => [$resultItem($venue, $group, 'Rafael Standard Room')]];
+    },
+]);
+$assert('a three-person correction checks the clicked room itself and confirms its fresh capacity and dates',
+    $selectedThreeStatus === 200 && $selectedThreeSearch['group_size'] === 3
+    && $selectedThreeExact === [101, 77, $date1, $date2]
+    && str_contains((string)$selectedThreeResult['reply'], 'Rafael Standard Room')
+    && str_contains((string)$selectedThreeResult['reply'], 'fits your group')
+    && str_contains((string)$selectedThreeResult['reply'], 'checked room options')
+    && ($selectedThreeResult['recommendation_snapshot']['results'][0]['room_group_id'] ?? null) === 88);
+
+$selectedFiveExact = null;
+$selectedFiveSearch = null;
+[$selectedFiveResult, $selectedFiveStatus] = $run($makeSelectedState(2), 'What if we are 5 people instead? Same dates.', new ReceptionistNaturalContractProvider([]), [
+    '_catalog' => $selectedAndAlternativeCatalog,
+    '_state_loader' => static fn(array $raw, mysqli $db, array $publicCatalog): array => receptionist_natural_state($raw, $db, $publicCatalog),
+    'hotel_search' => static function (mysqli $db, array $request) use (&$selectedFiveSearch, $alternativeSearchSnapshot, $alternativeResult): array {
+        $selectedFiveSearch = $request;
+        return $alternativeSearchSnapshot($request, [$alternativeResult]);
+    },
+    'hotel_exact_search' => static function (mysqli $db, int $venue, int $group, string $start, string $end) use (&$selectedFiveExact, $resultItem): array {
+        $selectedFiveExact = [$venue, $group, $start, $end];
+        return ['success' => true, 'intent' => 'Hotel Room', 'exact_target' => true, 'availability_checked' => true,
+            'checked_at' => '2026-10-03T12:00:00+08:00', 'check_in' => $start, 'check_out' => $end,
+            'total_matches' => 1, 'results' => [$resultItem($venue, $group, 'Rafael Standard Room')]];
+    },
+]);
+$assert('a five-person correction says the selected room is available but too small and shows checked alternatives',
+    $selectedFiveStatus === 200 && ($selectedFiveSearch['group_size'] ?? null) === 5
+    && $selectedFiveExact === [101, 77, $date1, $date2]
+    && str_contains((string)$selectedFiveResult['reply'], 'Rafael Standard Room')
+    && str_contains((string)$selectedFiveResult['reply'], 'capacity is 4 guests')
+    && str_contains((string)$selectedFiveResult['reply'], 'group has 5')
+    && str_contains((string)$selectedFiveResult['reply'], 'checked room options')
+    && ($selectedFiveResult['recommendation_snapshot']['results'][0]['room_group_id'] ?? null) === 88);
+
+$unavailableSelectedExact = null;
+$unavailableSelectedResult = array_replace($resultItem(101, 77, 'Rafael Standard Room', 'Unavailable for these dates'), [
+    'availability_checked' => true,
+]);
+[$unavailableSelectedResponse, $unavailableSelectedStatus] = $run($makeSelectedState(2), 'What if we are 3 people instead?', new ReceptionistNaturalContractProvider([]), [
+    '_catalog' => $selectedAndAlternativeCatalog,
+    '_state_loader' => static fn(array $raw, mysqli $db, array $publicCatalog): array => receptionist_natural_state($raw, $db, $publicCatalog),
+    'hotel_search' => static fn(mysqli $db, array $request): array => $alternativeSearchSnapshot($request, [$alternativeResult]),
+    'hotel_exact_search' => static function (mysqli $db, int $venue, int $group, string $start, string $end) use (&$unavailableSelectedExact, $unavailableSelectedResult): array {
+        $unavailableSelectedExact = [$venue, $group, $start, $end];
+        return ['success' => true, 'intent' => 'Hotel Room', 'exact_target' => true, 'availability_checked' => true,
+            'checked_at' => '2026-10-03T12:00:00+08:00', 'check_in' => $start, 'check_out' => $end,
+            'total_matches' => 0, 'results' => [$unavailableSelectedResult]];
+    },
+]);
+$assert('an unavailable selected room is named clearly while only checked alternatives are shown',
+    $unavailableSelectedStatus === 200 && $unavailableSelectedExact === [101, 77, $date1, $date2]
+    && str_contains((string)$unavailableSelectedResponse['reply'], 'Rafael Standard Room is not available')
+    && str_contains((string)$unavailableSelectedResponse['reply'], 'checked room options')
+    && ($unavailableSelectedResponse['recommendation_snapshot']['results'][0]['room_group_id'] ?? null) === 88);
+
+$taglishCorrectionState = $selectedContextResult['natural_state'];
+$taglishCountValues = receptionist_natural_group_count_values('Paano kung 5 kami? Same dates.', $taglishCorrectionState);
+$taglishCountPatch = receptionist_natural_local_group_count_patch('Paano kung 5 kami? Same dates.', $taglishCorrectionState);
+$taglishCorrectionProvider = new ReceptionistNaturalContractProvider([]);
+$taglishGroupSearch = null;
+[$taglishCorrectionResult, $taglishCorrectionStatus] = $run($taglishCorrectionState, 'Paano kung 5 kami? Same dates.', $taglishCorrectionProvider, [
+    'hotel_search' => static function (mysqli $db, array $request) use (&$taglishGroupSearch): array {
+        $taglishGroupSearch = $request;
+        return ['success' => true, 'state' => 'no_match', 'intent' => 'Hotel Room', 'group_size' => $request['group_size'],
+            'check_in' => $request['check_in'], 'check_out' => $request['check_out'], 'availability_checked' => true,
+            'checked_at' => '2026-10-03T12:00:00+08:00', 'total_matches' => 0, 'results' => []];
+    },
+]);
+$assert('Taglish count correction is parsed once and rechecks the unchanged dates for the new party size',
+    $taglishCountValues === [5] && ($taglishCountPatch['slots_patch']['group_size'] ?? null) === 5
+    && $taglishCorrectionStatus === 200 && $taglishCorrectionProvider->calls === []
+    && ($taglishGroupSearch['group_size'] ?? null) === 5
+    && ($taglishGroupSearch['check_in'] ?? null) === $date3 && ($taglishGroupSearch['check_out'] ?? null) === $date4
+    && ($taglishCorrectionResult['slots']['group_size'] ?? null) === 5
+    && ($taglishCorrectionResult['slots']['start_date'] ?? null) === $date3
+    && ($taglishCorrectionResult['slots']['end_date'] ?? null) === $date4
+    && ($taglishCorrectionResult['slots']['active_venue_id'] ?? null) === 101);
+
+$villaSwitchProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('booking', ['intent' => 'Resort Villa', 'group_size' => 5], 'I’ll switch the search to a villa.')],
+]);
+[$villaSwitchResult, $villaSwitchStatus] = $run($taglishCorrectionState, 'Actually a villa for 5 people.', $villaSwitchProvider);
+$assert('an explicit villa category switch is not swallowed by the local hotel guest-count correction',
+    receptionist_natural_local_group_count_patch('Actually a villa for 5 people.', $taglishCorrectionState) === null
+    && $villaSwitchStatus === 200 && count($villaSwitchProvider->calls) === 1
+    && ($villaSwitchResult['slots']['intent'] ?? null) === 'Resort Villa'
+    && ($villaSwitchResult['slots']['group_size'] ?? null) === 5
+    && !isset($villaSwitchResult['slots']['start_date']) && !isset($villaSwitchResult['slots']['end_date'])
+    && !isset($villaSwitchResult['slots']['active_room_group_id']));
+
+$forgedContextProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('availability', ['start_date' => $date3, 'end_date' => $date4])],
+]);
+$forgedExactSearches = 0;
+$forgedBroadSearches = 0;
+[$forgedContextResult, $forgedContextStatus] = $run($selectionListResult['natural_state'],
+    "Is this available from {$date3} to {$date4}?", $forgedContextProvider, [
+        '_request' => ['context' => ['active_venue_id' => 999, 'active_room_group_id' => 999]],
+        'hotel_search' => static function () use (&$forgedBroadSearches): array { $forgedBroadSearches++; return []; },
+        'hotel_exact_search' => static function () use (&$forgedExactSearches): array { $forgedExactSearches++; return []; },
+    ]);
+$assert('client-selected IDs outside the public catalog and prior server snapshot cannot trigger exact availability lookups',
+    $forgedContextStatus === 200 && $forgedExactSearches === 0 && $forgedBroadSearches === 1
+    && !isset($forgedContextResult['slots']['active_venue_id'])
+    && !isset($forgedContextResult['slots']['active_room_group_id']));
+
+$staleFocusCatalog = [$selectedAndAlternativeCatalog[1]];
+$staleFocusExactCalls = 0;
+$staleFocusState = $makeSelectedState(2);
+[$staleFocusResult, $staleFocusStatus] = $run($staleFocusState, 'What if we are 3 people instead?', new ReceptionistNaturalContractProvider([]), [
+    '_catalog' => $staleFocusCatalog,
+    '_state_loader' => static fn(array $raw, mysqli $db, array $publicCatalog): array => receptionist_natural_state($raw, $db, $publicCatalog),
+    'hotel_search' => static fn(mysqli $db, array $request): array => $alternativeSearchSnapshot($request, [$alternativeResult]),
+    'hotel_exact_search' => static function () use (&$staleFocusExactCalls): array { $staleFocusExactCalls++; return []; },
+]);
+$assert('a stale session room ID removed from the active catalog is not exact-checked after a count correction',
+    $staleFocusStatus === 200 && $staleFocusExactCalls === 0
+    && !isset($staleFocusResult['slots']['active_venue_id'])
+    && !isset($staleFocusResult['slots']['active_room_group_id'])
+    && ($staleFocusResult['slots']['group_size'] ?? null) === 3);
 
 $eventAvailability = $payload('availability', ['intent' => 'Event Hall', 'start_date' => $date3]);
 $provider = new ReceptionistNaturalContractProvider([['payload' => $eventAvailability], ['payload' => $payload('availability', [], 'Infinity Hall is not available on that date.', [], 202, 0, 'en', [
@@ -426,6 +773,27 @@ $freeCancellationClaims = [...$identityClaims,
 $breakfastClaims = [...$identityClaims,
     ['source_id' => 'recommendation-101-77', 'field' => 'amenities', 'value' => 'Wi-Fi, Breakfast'],
 ];
+$unsupportedAmenityQuestion = 'Do you offer a spa and free airport pickup?';
+$unsupportedAmenityDenial = 'We do not offer a spa or free airport pickup.';
+$missingAmenityClaimsReason = null;
+$unrelatedAmenityClaimsReason = null;
+$unrelatedAmenityClaim = [['source_id' => 'venue-hotel-room-101-group-77', 'field' => 'amenities', 'value' => 'Wi-Fi']];
+$assert('unsupported amenity denials without approved claims are rejected as factual guesses',
+    receptionist_knowledge_is_fact_request($unsupportedAmenityQuestion)
+    && receptionist_natural_grounded_reply($unsupportedAmenityDenial, [], [], $groundState, [], $unsupportedAmenityQuestion, $missingAmenityClaimsReason) === null
+    && $missingAmenityClaimsReason === 'missing_factual_claims'
+    && receptionist_natural_grounded_reply($unsupportedAmenityDenial, $unrelatedAmenityClaim, $groundRecords, $groundState, [], $unsupportedAmenityQuestion, $unrelatedAmenityClaimsReason) === null
+    && $unrelatedAmenityClaimsReason === 'unsupported_feature');
+$unsupportedAmenityProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('social', [], $unsupportedAmenityDenial)],
+]);
+[$unsupportedAmenityResult, $unsupportedAmenityStatus] = $run(receptionist_natural_empty_state(), $unsupportedAmenityQuestion,
+    $unsupportedAmenityProvider, ['_records' => []]);
+$assert('unknown amenity questions use the published-knowledge/support fallback, not free smalltalk',
+    $unsupportedAmenityStatus === 200 && count($unsupportedAmenityProvider->calls) === 1
+    && !str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'do not offer')
+    && str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'can’t confirm')
+    && ($unsupportedAmenityResult['show_support_contact_cta'] ?? false) === true);
 $assert('natural claim accepts exact capacity, bed, and price facts',
     receptionist_natural_grounded_reply($groundedReply, [...$capacityClaims, ['source_id' => 'recommendation-101-77', 'field' => 'rate', 'value' => '₱1,200.00 /night']], $groundRecords, $groundState, $groundProposal, 'Tell me about Rafael.') === $groundedReply);
 $assert('natural claim rejects capacity recast as bed count',

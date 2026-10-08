@@ -2,10 +2,67 @@
   "use strict";
 
   const MAX_MESSAGE_LENGTH = 500;
+  // Natural mode is bounded to 12s and the legacy provider to 30s; leave room
+  // for server work while ensuring a stalled HTTP request cannot leave the
+  // chat spinner active forever.
+  const CHAT_REQUEST_TIMEOUT_MS = 35000;
   // This is intentionally client-owned; response text and model payloads never supply navigation URLs.
   const SUPPORT_FAQ_HREF = "support.php#faqs";
   const SUPPORT_CONTACT_HREF = "support.php#contact";
   let initializedRoot = null;
+
+  const fetchWithDeadline = (url, options, timeoutMs = CHAT_REQUEST_TIMEOUT_MS, consumeResponse = response => response) => {
+    if (typeof window.AbortController !== "function") {
+      let timer;
+      const deadline = new Promise((resolve, reject) => {
+        timer = window.setTimeout(() => {
+          const error = new Error("The chat request exceeded its deadline.");
+          error.name = "TimeoutError";
+          reject(error);
+        }, timeoutMs);
+      });
+      let request;
+      try {
+        request = fetch(url, options).then(consumeResponse);
+      } catch (error) {
+        window.clearTimeout(timer);
+        throw error;
+      }
+      return Promise.race([request, deadline]).finally(() => window.clearTimeout(timer));
+    }
+    const controller = new window.AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    let request;
+    try {
+      request = fetch(url, { ...options, signal: controller.signal }).then(consumeResponse);
+    } catch (error) {
+      window.clearTimeout(timer);
+      throw error;
+    }
+    return request.finally(() => window.clearTimeout(timer));
+  };
+
+  const readChatResponse = async response => {
+    let body;
+    try {
+      body = await response.text();
+    } catch (cause) {
+      const error = new Error("The chat response could not be read.");
+      error.name = cause?.name || "NetworkError";
+      error.httpStatus = Number(response.status) || 0;
+      throw error;
+    }
+    try {
+      return JSON.parse(body);
+    } catch {
+      const error = new Error("The response was not valid JSON.");
+      error.httpStatus = Number(response.status) || 0;
+      throw error;
+    }
+  };
+  const fetchJsonWithDeadline = (url, options) => fetchWithDeadline(url, options, CHAT_REQUEST_TIMEOUT_MS,
+    async response => ({ response, data: await readChatResponse(response) }));
+  const isRetryableCommittedReply = message => /(?:I’m having trouble understanding that just now|Nagkaproblema ako sa pag-intindi ngayon|Nagka-issue ako sa pag-intindi ngayon|chat service is unavailable right now|receptionist service timed out|temporary server problem|connection problem with the chat service|Hindi sumagot ang service sa oras|Hindi available ang chat service ngayon|May temporary server problem|May connection issue ang chat service)/iu.test(String(message || ""));
 
   const resolveBookingSuggestions = data => {
     const missing = Array.isArray(data?.missing_slots) ? data.missing_slots : [];
@@ -375,13 +432,12 @@
     const restoreServerHistory = async () => {
       const generation = conversationGeneration;
       try {
-        const response = await fetch("actions/public/receptionist_chat_history.php", {
+        const { response, data } = await fetchJsonWithDeadline("actions/public/receptionist_chat_history.php", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
           body: "{}"
         });
-        const data = await response.json();
         if (generation !== conversationGeneration || !response.ok || data?.success !== true) return;
         if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
         const messages = normalizeMessages(data.history);
@@ -390,8 +446,9 @@
         stored.messages = messages;
         stored.context = safeContext();
         messages.forEach(turn => appendMessage(turn.role, turn.content, false, null, false, false));
-        if (!messages.length) return;
+        return true;
       } catch (error) {}
+      return false;
     };
     const quickActionLabels = {
       category_event_hall: "Event halls",
@@ -555,6 +612,7 @@
       const context = safeContext();
       stored.context = context;
       save();
+      let requestResponseParsed = false;
       try {
         const resetReady = await serverResetPromise;
         if (requestGeneration !== conversationGeneration) return;
@@ -565,20 +623,38 @@
         }
         const requestBody = { message: clean, locale: locale?.value || "auto", context, expected_revision: stored.revision };
         if (["category_event_hall", "category_hotel_room", "category_resort_villa"].includes(actionId)) requestBody.action_id = actionId;
-        const response = await fetch("actions/public/receptionist_chat.php", {
+        const { response, data } = await fetchJsonWithDeadline("actions/public/receptionist_chat.php", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
           body: JSON.stringify(requestBody)
         });
-        const data = await response.json();
+        requestResponseParsed = true;
         if (requestGeneration !== conversationGeneration) return;
         if (response.status === 409 && data?.code === "stale_state") {
-          await restoreServerHistory();
+          const restored = await restoreServerHistory();
           if (requestGeneration !== conversationGeneration) return;
+          const latestMessages = normalizeMessages(stored.messages);
+          const latestUserTurn = [...latestMessages].reverse().find(turn => turn.role === "user");
+          const latestAssistantTurn = [...latestMessages].reverse().find(turn => turn.role === "assistant");
+          if (restored && latestUserTurn?.content === clean && !isRetryableCommittedReply(latestAssistantTurn?.content)) {
+            input.value = "";
+            pendingMessage = "";
+            renderQuickReplies([], []);
+            setStatus("Your earlier message was received; its latest reply is above.");
+            return;
+          }
           input.value = clean;
-          pendingMessage = "";
-          setStatus("Conversation refreshed. Send your message again to continue from the latest details.");
+          pendingMessage = clean;
+          if (restored && latestUserTurn?.content === clean) {
+            guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] },
+              "The previous reply could not be completed. Your message is still here; retry when you’re ready.", true);
+            setStatus("The earlier reply was unavailable. Retry keeps your message and uses the refreshed conversation.");
+          } else {
+            setStatus(restored
+              ? "Conversation refreshed. Your message is still in the box; send it again to continue."
+              : "I couldn’t refresh the latest chat just now. Your message is still in the box.");
+          }
           return;
         }
         if (response.status === 422 && data && data.code === "sensitive_input") {
@@ -601,15 +677,30 @@
           if (!handled) guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, data.message);
           return;
         }
+        const naturalFallbackCode = typeof data?.fallback_code === "string" ? data.fallback_code : "";
+        if (data?.mode === "natural" && naturalFallbackCode && data.retryable === true) {
+          if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
+          if (data.natural_state && typeof options.onNaturalState === "function") options.onNaturalState(data.natural_state);
+          const last = transcript.lastElementChild;
+          if (last?.dataset.role === "user") last.remove();
+          stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
+          input.value = clean;
+          pendingMessage = clean;
+          const message = fallbackCopy[naturalFallbackCode] || fallbackCopy.server_error;
+          guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, message, true);
+          setStatus("You can retry without losing your message.");
+          return;
+        }
         if (!response.ok || !data || data.success !== true) {
           const code = data?.fallback_code || data?.code || (response.status === 429 ? "busy" : response.status >= 500 ? "server_error" : "provider_unavailable");
           const codeCopy = fallbackCopy[code] || fallbackCopy.server_error;
+          const retryable = code !== "visit_limit";
           const last = transcript.lastElementChild;
           if (last?.dataset.role === "user") last.remove();
           stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
           input.value = pendingMessage;
-          pendingMessage = "";
-          guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, codeCopy, code !== "visit_limit");
+          pendingMessage = retryable ? clean : "";
+          guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, codeCopy, retryable);
           setStatus(code === "busy" || code === "visit_limit" ? codeCopy : "You can retry without losing your message.");
           return;
         }
@@ -651,10 +742,21 @@
         const last = transcript.lastElementChild;
         if (last?.dataset.role === "user") last.remove();
         stored.messages = normalizeMessages(stored.messages).filter(turn => !(turn.role === "user" && turn.content === visibleMessage));
-        input.value = pendingMessage;
-        pendingMessage = "";
-        guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, "A network problem interrupted the receptionist. Retry when you’re ready; your message is still here.");
-        setStatus("You can retry without losing your message.");
+        const timedOut = error?.name === "AbortError" || error?.name === "TimeoutError";
+        const status = Number(error?.httpStatus) || 0;
+        const serverFailure = status >= 500 && status <= 599;
+        const retryable = timedOut || serverFailure || (error?.name === "TypeError" && !requestResponseParsed);
+        input.value = clean;
+        pendingMessage = retryable ? clean : "";
+        const recoveryMessage = timedOut
+          ? "The receptionist is taking longer than expected. Your message is still here; retry when you’re ready."
+          : serverFailure
+            ? "The chat service is temporarily unavailable. Your message is still here; retry when you’re ready."
+            : "A network problem interrupted the receptionist. Retry when you’re ready; your message is still here.";
+        guidedFallback({ quick_replies: ["Event", "Hotel", "Villa", "Support FAQs"] }, recoveryMessage, retryable);
+        setStatus(serverFailure || timedOut
+          ? "The request may still be finishing. Use Retry once it is ready."
+          : "You can retry without losing your message.");
       } finally {
         removeTypingIndicator();
         form.dataset.busy = "false";
@@ -664,13 +766,12 @@
     };
     const resetServerSession = async () => {
       try {
-        const response = await fetch("actions/public/receptionist_chat_reset.php", {
+        const { response, data } = await fetchWithDeadline("actions/public/receptionist_chat_reset.php", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
           body: JSON.stringify({ expected_revision: stored.revision })
-        });
-        const data = await response.json().catch(() => ({}));
+        }, CHAT_REQUEST_TIMEOUT_MS, async response => ({ response, data: await response.json().catch(() => ({})) }));
         if (response.status === 409 && data?.code === "stale_state") {
           await restoreServerHistory();
           setStatus("Conversation refreshed. Start over again to clear the latest details.");
@@ -693,7 +794,7 @@
         await serverHistoryPromise;
         if (form.dataset.resetting === "true") return null;
         try {
-        const response = await fetch("actions/public/receptionist_chat.php", {
+        const { response, data } = await fetchWithDeadline("actions/public/receptionist_chat.php", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json", "Accept": "application/json", "X-CSRF-Token": csrf() },
@@ -705,8 +806,7 @@
             action_id: "guided_search_update",
             expected_revision: stored.revision
           })
-        });
-        const data = await response.json().catch(() => null);
+        }, CHAT_REQUEST_TIMEOUT_MS, async response => ({ response, data: await response.json().catch(() => null) }));
         if (response.status === 409 && data?.code === "stale_state") {
           await restoreServerHistory();
           setStatus("Conversation refreshed. Please retry the guided search action.");
