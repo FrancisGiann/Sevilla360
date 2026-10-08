@@ -230,6 +230,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => (int)$old_media['id'],
                     'path' => $old_path,
                     'thumbnail_path' => media_cms_thumbnail_file_path((string)$old_media['file_path']),
+                    'hero_path' => $website_slot === 'home-hero'
+                        ? media_cms_existing_hero_derivative_file_path((string)$old_media['file_path'])
+                        : null,
                 ];
             }
             $stmt_del = $conn->prepare("DELETE FROM media_cms WHERE slot_assignment = ?");
@@ -241,6 +244,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $new_files[] = $file['destination'];
             $new_files[] = media_cms_thumbnail_file_path($file['db_path']);
             media_cms_ensure_admin_thumbnail($file['db_path']);
+            if ($website_slot === 'home-hero') {
+                $new_files[] = media_cms_hero_derivative_file_path($file['db_path']);
+                media_cms_ensure_hero_derivative($file['db_path']);
+            }
             $stmt_insert = $conn->prepare("INSERT INTO media_cms (file_name, file_path, media_type, slot_assignment) VALUES (?, ?, ?, ?)");
             if (!$stmt_insert) throw new Exception('Could not record uploaded media.');
             $stmt_insert->bind_param('ssss', $file['filename'], $file['db_path'], $media_type, $website_slot);
@@ -259,7 +266,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cleanup_failures = [];
         $upload_root = media_cms_upload_root();
         foreach ($old_files as $old) {
-            foreach ([$old['path'], $old['thumbnail_path']] as $path) {
+            foreach ([$old['path'], $old['thumbnail_path'], $old['hero_path'] ?? null] as $path) {
+                if ($path === null) continue;
                 if (!media_cms_unlink_safe($path, $upload_root)) $cleanup_failures[] = $path;
             }
         }

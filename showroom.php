@@ -1,12 +1,13 @@
 <?php
-$page_title = 'Virtual Showroom | SEVILLA360';
-$extra_css = 'assets/css/showroom.css?v=' . time();
+$page_title = '360° Virtual Tour of M.I. Sevilla Resort | Sevilla360';
+$page_description = 'Explore the M.I. Sevilla Resort virtual showroom, browse available event halls, hotel rooms and villas, and view resort spaces in 360°.';
+$extra_css = 'assets/css/showroom.css';
 $extra_js = [
-    'assets/js/panorama-view-compat.js?v=' . time(),
-    'assets/js/hotspot-material.js?v=' . time(),
-    'assets/js/guide_tours.js?v=' . time(),
-    'assets/js/receptionist-chat.js?v=' . time(),
-    'assets/js/showroom.js?v=' . time(),
+    'assets/js/panorama-view-compat.js',
+    'assets/js/hotspot-material.js',
+    'assets/js/guide_tours.js',
+    'assets/js/receptionist-chat.js',
+    'assets/js/showroom.js',
 ];
 $active_page = 'showroom';
 
@@ -268,6 +269,7 @@ window.process = {
 <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
 <!-- Showroom Container -->
+<main>
 <section class="showroom-wrapper" id="showroom-wrapper">
     <div class="showroom-container">
 
@@ -424,7 +426,7 @@ window.process = {
         <!-- 2. The Details Block -->
         <div class="details-box">
             <div class="details-left">
-                <h3 class="details-title">VENUE DETAILS</h3>
+                <h1 class="details-title">M.I. Sevilla Resort Virtual Showroom</h1>
                 <!-- NEW: The Description -->
                 <p class="venue-description" id="val-desc">
                     Explore the selected venue in the Sevilla360 showroom. Details and media update when a venue is selected.
@@ -626,5 +628,6 @@ window.process = {
     </div>
 
 </section>
+</main>
 
 <?php include 'includes/footer.php'; ?>

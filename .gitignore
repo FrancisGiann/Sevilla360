@@ -9,6 +9,10 @@ vendor/
 # Ignore locally installed realtime gateway dependencies
 realtime/node_modules/
 
+# CMS WebP derivatives are generated from preserved uploads on each host.
+/assets/uploads/.cms-thumbnails/
+/assets/uploads/.cms-hero/
+
 # Ignore error logs
 error_log
 *.log

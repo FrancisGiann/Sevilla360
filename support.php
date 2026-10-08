@@ -1,6 +1,7 @@
 <?php
-$page_title = 'Support - SEVILLA360';
-$extra_css = 'assets/css/support.css?v=' . time();
+$page_title = 'Resort Contact, Policies & FAQs | M.I. Sevilla Resort';
+$page_description = 'Find contact details, booking policies, frequently asked questions, and privacy and terms information for M.I. Sevilla Resort & Events Place.';
+$extra_css = 'assets/css/support.css';
 $active_page = '';
 require_once 'config/db_connect.php';
 require_once __DIR__ . '/includes/receptionist_faq.php';

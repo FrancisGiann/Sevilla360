@@ -30,6 +30,19 @@ The application provides a digital resort experience that allows visitors to exp
 - A browser for local testing.
 - Composer 2 with the locked dependencies, including Dompdf for PDF receipts.
 
+The Apache rules add browser caching for versioned CSS/JavaScript and enable
+compression for static text styles/scripts and SVG when the corresponding
+modules are available. Dynamic HTML and JSON responses are not cached or
+compressed by these rules.
+
+On Apache, the active site configuration must honor this project's `.htaccess`
+and allow its rewrite, header/filter, access-control, and options directives
+(for example, an appropriate `AllowOverride` policy) or install equivalent
+rules in the virtual host. A server-wide `AllowOverride None` disables the
+robots/sitemap routes and upload access rules. Verify these responses on the
+deployed virtual host; passing Apache's global config check alone does not
+validate per-directory rules.
+
 ## Local Setup
 
 1. Clone the repository into your web server directory.
@@ -37,6 +50,39 @@ The application provides a digital resort experience that allows visitors to exp
 3. Update the database credentials in `config/db_connect.php` to match your local environment.
 4. Import the project database schema and seed data if available.
 5. Open `index.php` in your browser through the configured local server.
+
+## Search engine visibility
+
+Set `APP_BASE_URL` to the public HTTPS origin and application path, without a
+trailing slash (for example, the domain root or `/Sevilla360`). Page canonicals,
+social URLs, the XML sitemap, and password-reset links use this configured URL;
+they do not derive public links from incoming request host headers. Leave it
+unset or correct an invalid value before relying on generated canonical URLs.
+
+The application exposes `robots.txt` and `sitemap.xml` at its install path. The
+sitemap lists the homepage, virtual showroom, and support page. For a deployment
+in a subdirectory, search engines still look for `robots.txt` at the domain
+host's root. Place a host-root `robots.txt` there with `Allow: /` and a
+`Sitemap:` line pointing to the subdirectory's absolute `sitemap.xml` URL; the
+application's nested `robots.txt` cannot replace that host-root file. Submit
+the sitemap URL in Google Search Console after verifying the deployed property.
+Keep the supplied Google Search Console verification HTML file at the
+repository root in future deployments with its filename and contents
+unchanged; the verified property depends on that public file.
+Robots rules guide crawlers and do not protect private pages; authentication
+and authorization remain the access controls.
+
+The active homepage hero uses a bounded WebP derivative while retaining its
+original CMS upload. After deploying this change to a host with existing CMS
+media, run `php scripts/backfill_cms_thumbnails.php` once from the project root
+to create missing media derivatives and report the active hero size. New hero
+uploads create their derivative during the admin upload flow. ImageMagick CLI
+(`magick` or `convert` at a supported fixed path) is preferred; when it is not
+installed, the existing PHP Imagick extension with WebP support is used.
+Generated `.cms-thumbnails` and `.cms-hero` files are host-side artifacts and
+are intentionally excluded from future Git changes. If neither processor is
+available, the homepage falls back to the original image and CMS uploads that
+require a thumbnail fail safely.
 
 Eligible customer/staff receipts are generated server-side as inline A4 PDFs by
 `print_receipt.php`. Dompdf runs with remote resources and PHP execution

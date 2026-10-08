@@ -1,10 +1,16 @@
 <?php
 require_once __DIR__ . '/session_init.php';
 require_once __DIR__ . '/admin_notifications.php';
+require_once __DIR__ . '/site_metadata.php';
 $page_title  = isset($page_title) ? $page_title : 'SEVILLA360';
 $extra_css   = isset($extra_css) ? (array)$extra_css : [];
 $active_page = isset($active_page) ? $active_page : '';
-$current_route = basename((string)(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ''));
+$seo_base_url = site_metadata_app_base_url();
+$seo_base_path = $seo_base_url !== null ? (string)(parse_url($seo_base_url, PHP_URL_PATH) ?: '') : '';
+$request_path = (string)(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '');
+$current_route = rtrim($request_path, '/') === rtrim($seo_base_path, '/')
+    ? ''
+    : basename($request_path);
 if ($active_page === '') {
     $active_page = match ($current_route) {
         '', 'index.php' => 'home',
@@ -12,6 +18,23 @@ if ($active_page === '') {
         default => ''
     };
 }
+
+$public_canonical_paths = [
+    '' => '/',
+    'index.php' => '/',
+    'showroom.php' => 'showroom.php',
+    'support.php' => 'support.php',
+];
+$seo_canonical_url = isset($public_canonical_paths[$current_route])
+    ? site_metadata_absolute_url($public_canonical_paths[$current_route], $seo_base_url)
+    : null;
+$seo_description = trim((string)($page_description ?? ''));
+$seo_is_public = $seo_canonical_url !== null && $seo_description !== '';
+$seo_robots = $seo_is_public ? 'index, follow' : 'noindex, nofollow';
+if (!$seo_is_public && !headers_sent()) {
+    header('X-Robots-Tag: noindex, nofollow', true);
+}
+$seo_social_image = $seo_is_public ? site_metadata_absolute_url('assets/img/Logo.png', $seo_base_url) : null;
 
 $isLoggedIn = isset($_SESSION['logged_in']) || isset($_SESSION['user_id']);
 $firstName  = $_SESSION['first_name'] ?? ($_SESSION['username'] ?? 'Account');
@@ -79,6 +102,26 @@ $nav = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
     <title><?php echo htmlspecialchars($page_title); ?></title>
+    <?php if ($seo_description !== ''): ?>
+    <meta name="description" content="<?php echo htmlspecialchars($seo_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <?php endif; ?>
+    <meta name="robots" content="<?php echo htmlspecialchars($seo_robots, ENT_QUOTES, 'UTF-8'); ?>">
+    <?php if ($seo_canonical_url !== null): ?>
+    <link rel="canonical" href="<?php echo htmlspecialchars($seo_canonical_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="<?php echo htmlspecialchars($page_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <meta property="og:description" content="<?php echo htmlspecialchars($seo_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <meta property="og:url" content="<?php echo htmlspecialchars($seo_canonical_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <?php if ($seo_social_image !== null): ?>
+    <meta property="og:image" content="<?php echo htmlspecialchars($seo_social_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <?php endif; ?>
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="<?php echo htmlspecialchars($page_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <meta name="twitter:description" content="<?php echo htmlspecialchars($seo_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+    <?php endif; ?>
+    <?php if (!empty($page_preload_image) && is_string($page_preload_image)): ?>
+    <link rel="preload" as="image" href="<?php echo htmlspecialchars($page_preload_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" fetchpriority="high">
+    <?php endif; ?>
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -88,12 +131,19 @@ $nav = [
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <link rel="stylesheet" href="assets/css/style.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="assets/css/header.css?v=<?php echo time(); ?>">
-    <?php foreach ($extra_css as $stylesheet): if (empty($stylesheet)) continue; ?>
-    <link rel="stylesheet" href="<?php echo htmlspecialchars((string)$stylesheet, ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/header.css'), ENT_QUOTES, 'UTF-8'); ?>">
+    <?php foreach ($extra_css as $stylesheet):
+        $stylesheet = trim((string)$stylesheet);
+        if ($stylesheet === '') continue;
+        $stylesheet_url = preg_match('~\Ahttps?://~i', $stylesheet) === 1
+            ? $stylesheet
+            : site_metadata_asset_url($stylesheet);
+        if ($stylesheet_url === '') continue;
+    ?>
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($stylesheet_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
     <?php endforeach; ?>
-    <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/ui-refinement.css'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/ui-refinement.css'), ENT_QUOTES, 'UTF-8'); ?>">
 </head>
 
 <body>

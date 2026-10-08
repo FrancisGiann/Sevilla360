@@ -69,6 +69,7 @@ $hotspot_endpoint = $read('actions/admin/save_hotspot.php');
 $admin_hotspots = $read('assets/js/admin-page/admin_hotspots.js');
 $admin_cms = $read('assets/js/admin-page/admin_cms.js');
 $admin_dashboard_php = $read('admin_dashboard.php');
+$shared_footer_php = $read('includes/footer.php');
 $admin_cms_php = $read('includes/admin-page/admin_cms.php');
 $view_compat = $read('assets/js/panorama-view-compat.js');
 $public_php = $read('showroom.php');
@@ -160,8 +161,10 @@ $checks['shared view compatibility helper is loaded before both callers'] = str_
     && $admin_compat_position !== false
     && $admin_hotspots_script_position !== false
     && $admin_compat_position < $admin_hotspots_script_position
-    && str_contains($read('showroom.php'), 'assets/js/panorama-view-compat.js?v=')
-    && str_contains($read('showroom.php'), 'assets/js/showroom.js?v=');
+    && str_contains($public_php, "'assets/js/panorama-view-compat.js'")
+    && str_contains($public_php, "'assets/js/showroom.js'")
+    && strpos($public_php, "'assets/js/panorama-view-compat.js'") < strpos($public_php, "'assets/js/showroom.js'")
+    && str_contains($shared_footer_php, 'site_metadata_asset_url($script)');
 $checks['Panolens compatibility math negates only a cloned X for tween fallback'] = str_contains($view_compat, 'function toPanolensTweenCenter(worldCenter)')
     && str_contains($view_compat, 'const tweenCenter = worldCenter.clone();')
     && str_contains($view_compat, 'tweenCenter.x *= -1;')

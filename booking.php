@@ -1,12 +1,12 @@
 <?php
 $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = [
-    'assets/css/booking.css?v=' . time(),
-    'assets/css/manual_payment.css?v=' . filemtime(__DIR__ . '/assets/css/manual_payment.css'),
+    'assets/css/booking.css',
+    'assets/css/manual_payment.css',
 ];
 $extra_js = [
-    'assets/js/manual_payment.js?v=' . filemtime(__DIR__ . '/assets/js/manual_payment.js'),
-    'assets/js/booking.js?v=' . filemtime(__DIR__ . '/assets/js/booking.js'),
+    'assets/js/manual_payment.js',
+    'assets/js/booking.js',
 ];
 $active_page = 'booking';              
 require_once 'includes/session_init.php';

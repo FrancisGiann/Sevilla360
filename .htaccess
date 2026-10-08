@@ -7,6 +7,15 @@ RewriteCond %{REQUEST_FILENAME} -f
 RewriteCond %{REQUEST_FILENAME} !-l
 RewriteRule ^assets/uploads/\.cms-thumbnails/[a-f0-9]{64}\.webp$ - [END]
 
+# Only validated, existing public hero derivatives bypass the dot-path block.
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !-l
+RewriteRule ^assets/uploads/\.cms-hero/[a-f0-9]{64}\.webp$ - [END]
+
+# Public crawler metadata stays inside this application's rewrite scope.
+RewriteRule ^robots\.txt$ robots.php [END]
+RewriteRule ^sitemap\.xml$ sitemap.php [END]
+
 # Keep Hostinger's TLS challenge path available while denying other dot paths.
 RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L]
 
@@ -19,3 +28,22 @@ RewriteRule (^|/)(?:composer\.(?:json|lock)|README(?:\.[^/]*)?|AGENTS\.md|error_
 <FilesMatch "(?i)^(?:\.env(?:\..*)?|\.git(?:ignore|attributes|modules)?|\.htaccess|\.htpasswd|composer\.(?:json|lock)|README(?:\..*)?|AGENTS\.md|error_log|[^/]*\.(?:md|sql(?:\.gz)?|log|s360db|bak|backup|old|orig|swp))$">
     Require all denied
 </FilesMatch>
+
+# CSS and JavaScript URLs carry file versions, so browsers can reuse them safely.
+# Mutable uploads and all dynamic HTML (including logged-in pages) are untouched.
+RewriteCond %{REQUEST_URI} \.(?:css|js)$ [NC]
+RewriteCond %{QUERY_STRING} (?:^|&)v=[0-9]+(?:&|$)
+RewriteRule ^ - [E=SEVILLA_VERSIONED_ASSET:1]
+
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.(?:css|js)$">
+        Header set Cache-Control "public, max-age=2592000" env=SEVILLA_VERSIONED_ASSET
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.4's content-type filter uses both mod_filter and mod_deflate.
+<IfModule mod_filter.c>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/css text/javascript application/javascript image/svg+xml
+    </IfModule>
+</IfModule>

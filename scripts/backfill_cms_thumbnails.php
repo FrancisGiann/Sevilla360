@@ -1,5 +1,5 @@
 <?php
-/** Idempotently create admin-card derivatives for media currently in media_cms. */
+/** Idempotently create admin-card thumbnails and the active homepage hero WebP. */
 declare(strict_types=1);
 
 if (PHP_SAPI !== 'cli') {
@@ -10,7 +10,7 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../config/db_connect.php';
 require_once __DIR__ . '/../includes/media_helper.php';
 
-$result = $conn->query('SELECT id, file_path FROM media_cms ORDER BY id ASC');
+$result = $conn->query('SELECT id, file_path, slot_assignment FROM media_cms ORDER BY id ASC');
 if (!$result) {
     fwrite(STDERR, "Could not read CMS media rows.\n");
     exit(1);
@@ -18,6 +18,8 @@ if (!$result) {
 
 $processed = 0;
 $generated = 0;
+$heroGenerated = 0;
+$heroBytes = 0;
 $derivatives = [];
 $failures = 0;
 
@@ -41,6 +43,17 @@ while ($row = $result->fetch_assoc()) {
         $thumbnail = media_cms_ensure_admin_thumbnail($sourcePath);
         if (!$wasValid) $generated++;
         $derivatives[$thumbnailRelative] = (int)$thumbnail['size'];
+
+        if (($row['slot_assignment'] ?? '') === 'home-hero') {
+            $heroWasValid = media_cms_existing_hero_derivative_url($sourcePath) !== null;
+            $heroUrl = media_cms_ensure_hero_derivative($sourcePath);
+            $heroPath = media_cms_existing_hero_derivative_file_path($sourcePath);
+            if ($heroUrl === null || $heroPath === null) throw new RuntimeException('Active hero derivative could not be created or validated.');
+            if (!$heroWasValid) $heroGenerated++;
+            $heroFileSize = @filesize($heroPath);
+            if ($heroFileSize === false || $heroFileSize < 1) throw new RuntimeException('Active hero derivative size could not be read.');
+            $heroBytes += (int)$heroFileSize;
+        }
     } catch (Throwable $e) {
         $failures++;
         fwrite(STDERR, 'Failed media row ' . (int)$row['id'] . ': ' . $e->getMessage() . "\n");
@@ -54,6 +67,8 @@ echo json_encode([
     'thumbnail_files' => count($derivatives),
     'thumbnail_bytes' => $totalBytes,
     'thumbnail_mib' => round($totalBytes / 1048576, 3),
+    'active_hero_derivatives_created_or_repaired' => $heroGenerated,
+    'active_hero_derivative_bytes' => $heroBytes,
     'failures' => $failures,
 ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
 exit($failures === 0 ? 0 : 1);

@@ -4,11 +4,13 @@ if (!defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     require __DIR__ . '/includes/auth_guard.php';
 }
 require_once __DIR__ . '/config/db_connect.php';
+require_once __DIR__ . '/includes/site_metadata.php';
 require_once __DIR__ . '/includes/realtime.php';
 require_once __DIR__ . '/includes/booking_lifecycle.php';
 require_once __DIR__ . '/includes/manual_payment.php';
 require_once __DIR__ . '/includes/customer_booking_status.php';
 $realtime_client_config = realtime_client_config();
+header('X-Robots-Tag: noindex, nofollow', true);
 $booking_completion_sql = booking_completion_sql('b');
 
 // 1. Get the Customer ID associated with this User Account
@@ -267,6 +269,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <script>
         (function () {
             try {
@@ -288,8 +291,8 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
-    <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/user_dashboard.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
     <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css'); ?>">
@@ -297,7 +300,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 
 <body class="dashboard-body">
     <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
-    <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/realtime_notifications.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <div class="dashboard-layout">
         <!-- Sidebar Backdrop Overlay for Mobile -->
         <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
@@ -860,20 +863,20 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 
     <?php include __DIR__ . '/includes/partials/receipt_preview.php'; ?>
 
-    <script src="assets/js/calendar.js?v=<?= time() ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/calendar.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     
     <!-- Flatpickr Core -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/vn.js"></script>
     
     <!-- Global Custom Modals -->
-    <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
-    <script src="assets/js/password_policy.js?v=<?= time() ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/manual_payment.js?v=<?= filemtime(__DIR__ . '/assets/js/manual_payment.js'); ?>"></script>
     <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js'); ?>"></script>
-    <script src="assets/js/user_dashboard.js?v=<?= time() ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/user_dashboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
 </body>
 

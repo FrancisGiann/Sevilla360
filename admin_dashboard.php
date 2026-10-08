@@ -2,6 +2,7 @@
 $required_role = 'admin';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
+header('X-Robots-Tag: noindex, nofollow', true);
 require_once 'includes/realtime.php';
 $realtime_client_config = realtime_client_config();
 
@@ -35,6 +36,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <script>
         (function () {
             try {

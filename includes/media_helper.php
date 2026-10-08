@@ -134,6 +134,152 @@ function media_cms_thumbnail_url(string $thumbnailRelativePath, int $version): s
     return $version > 0 ? $normalized . '?v=' . $version : $normalized;
 }
 
+/** Return an existing public derivative URL, without creating or changing files. */
+function media_cms_existing_thumbnail_url(string $sourcePath): ?string
+{
+    try {
+        $source = media_cms_upload_relative_path($sourcePath);
+        $thumbnail = media_cms_thumbnail_relative_path($source);
+        $thumbnailFile = media_cms_upload_file_path($thumbnail, true);
+        $version = @filemtime($thumbnailFile);
+        return media_cms_thumbnail_url($thumbnail, $version === false ? 0 : (int)$version);
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+/** Return a separate deterministic path for the full-width public hero derivative. */
+function media_cms_hero_derivative_relative_path(string $sourcePath): string
+{
+    $normalized = media_cms_upload_relative_path($sourcePath);
+    return 'assets/uploads/.cms-hero/' . hash('sha256', $normalized) . '.webp';
+}
+
+/** Resolve a safe writable hero derivative path without touching the source image. */
+function media_cms_hero_derivative_file_path(string $sourcePath): string
+{
+    $relative = media_cms_hero_derivative_relative_path($sourcePath);
+    $root = media_cms_upload_root();
+    $directory = $root . DIRECTORY_SEPARATOR . '.cms-hero';
+    if (is_link($directory) || (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory))) {
+        throw new RuntimeException('CMS hero derivative directory is unavailable.');
+    }
+    $resolvedDirectory = realpath($directory);
+    if ($resolvedDirectory === false || $resolvedDirectory !== $directory) {
+        throw new RuntimeException('CMS hero derivative directory is invalid.');
+    }
+    $file = $directory . DIRECTORY_SEPARATOR . basename($relative);
+    if (is_link($file)) throw new InvalidArgumentException('CMS hero derivative path is invalid.');
+    return $file;
+}
+
+/** Resolve a derivative only when it already exists as a regular in-root file. */
+function media_cms_existing_hero_derivative_file_path(string $sourcePath): ?string
+{
+    try {
+        $relative = media_cms_hero_derivative_relative_path($sourcePath);
+        $file = media_cms_upload_file_path($relative, true);
+        if (is_link($file) || !is_file($file)) return null;
+        $resolved = realpath($file);
+        return $resolved === $file ? $file : null;
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+/** Return an existing validated hero WebP URL without doing image work. */
+function media_cms_existing_hero_derivative_url(string $sourcePath): ?string
+{
+    try {
+        $relative = media_cms_hero_derivative_relative_path($sourcePath);
+        $source = media_cms_upload_file_path($sourcePath, true);
+        $file = media_cms_existing_hero_derivative_file_path($sourcePath);
+        if ($file === null) return null;
+        $info = @getimagesize($file);
+        $size = @filesize($file);
+        $width = (int)($info[0] ?? 0);
+        $height = (int)($info[1] ?? 0);
+        $sourceModifiedAt = @filemtime($source);
+        $version = @filemtime($file);
+        if (!is_array($info) || ($info['mime'] ?? '') !== 'image/webp' || $size === false || $size < 1 || $size > 4194304
+            || $width < 1 || $height < 1 || $width > 1600 || $height > 1000
+            || $sourceModifiedAt === false || $version === false || $version < $sourceModifiedAt) return null;
+        return $relative . '?v=' . (int)$version;
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+/** Create or reuse a bounded full-width WebP; original CMS media stays unchanged. */
+function media_cms_ensure_hero_derivative(string $sourcePath): ?string
+{
+    $temporaryPath = null;
+    try {
+        $normalized = media_cms_upload_relative_path($sourcePath);
+        $source = media_cms_upload_file_path($normalized, true);
+        $sourceInfo = @getimagesize($source);
+        $sourceMime = is_array($sourceInfo) ? (string)($sourceInfo['mime'] ?? '') : '';
+        $sourceWidth = (int)($sourceInfo[0] ?? 0);
+        $sourceHeight = (int)($sourceInfo[1] ?? 0);
+        if (!in_array($sourceMime, ['image/jpeg', 'image/png', 'image/webp'], true)
+            || $sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 10000 || $sourceHeight > 10000
+            || $sourceWidth > intdiv(40000000, $sourceHeight)) return null;
+
+        $existing = media_cms_existing_hero_derivative_url($normalized);
+        if ($existing !== null) return $existing;
+
+        $destination = media_cms_hero_derivative_file_path($normalized);
+        $relative = media_cms_hero_derivative_relative_path($normalized);
+        $temporaryPath = $destination . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
+        $binary = media_cms_thumbnail_binary();
+        if ($binary === null) {
+            if (!media_cms_imagick_write_bounded_webp($source, $temporaryPath, 1600, 1000)) return null;
+        } else {
+            $pipes = [];
+            $process = proc_open([
+                $binary,
+                '-limit', 'memory', '128MiB',
+                '-limit', 'map', '256MiB',
+                '-limit', 'disk', '512MiB',
+                '-limit', 'time', '60',
+                $source,
+                '-auto-orient',
+                '-resize', '1600x1000>',
+                '-strip',
+                '-quality', '78',
+                '-define', 'webp:method=6',
+                $temporaryPath,
+            ], [
+                0 => ['file', '/dev/null', 'r'],
+                1 => ['file', '/dev/null', 'w'],
+                2 => ['file', '/dev/null', 'w'],
+            ], $pipes, dirname($source));
+            if (!is_resource($process)) return null;
+            if (proc_close($process) !== 0) return null;
+        }
+
+        $info = @getimagesize($temporaryPath);
+        $size = @filesize($temporaryPath);
+        $width = (int)($info[0] ?? 0);
+        $height = (int)($info[1] ?? 0);
+        if (!is_array($info) || ($info['mime'] ?? '') !== 'image/webp' || $size === false || $size < 1 || $size > 4194304
+            || $width < 1 || $height < 1 || $width > 1600 || $height > 1000) return null;
+        $tempRealPath = realpath($temporaryPath);
+        if ($tempRealPath === false || $tempRealPath !== $temporaryPath) return null;
+
+        if (!@rename($temporaryPath, $destination)) {
+            clearstatcache(true, $destination);
+            return media_cms_existing_hero_derivative_url($normalized);
+        }
+        clearstatcache(true, $destination);
+        return media_cms_existing_hero_derivative_url($normalized);
+    } catch (Throwable $error) {
+        return null;
+    } finally {
+        if ($temporaryPath !== null && (is_file($temporaryPath) || is_link($temporaryPath))) @unlink($temporaryPath);
+    }
+}
+
 /** Render an escaped, layout-stable image for a CMS card. */
 function media_cms_card_image_markup(array $media, string $alt = ''): string
 {
@@ -149,8 +295,19 @@ function media_cms_card_image_markup(array $media, string $alt = ''): string
     return '<img src="' . $safe($path) . '" alt="' . $safe($alt) . '" width="' . $width . '" height="' . $height . '" loading="lazy" decoding="async">';
 }
 
-/** Locate the fixed ImageMagick binary without consulting a user-controlled PATH. */
-function media_cms_thumbnail_binary(): string
+/** Return whether the loaded Imagick extension can write WebP files. */
+function media_cms_imagick_webp_available(): bool
+{
+    if (!class_exists('Imagick') || !method_exists('Imagick', 'queryFormats')) return false;
+    try {
+        return in_array('WEBP', array_map('strtoupper', Imagick::queryFormats('WEBP')), true);
+    } catch (Throwable $error) {
+        return false;
+    }
+}
+
+/** Locate a fixed ImageMagick binary, or signal that PHP Imagick must be used. */
+function media_cms_thumbnail_binary(): ?string
 {
     static $binary = null;
     if ($binary !== null) return $binary;
@@ -161,12 +318,96 @@ function media_cms_thumbnail_binary(): string
             return $binary;
         }
     }
+    if (media_cms_imagick_webp_available()) return null;
     throw new RuntimeException('Image processing is unavailable.');
 }
 
 /**
- * Create or reuse a bounded WebP derivative for an admin card. ImageMagick is
- * launched with an argument array, so media paths never pass through a shell.
+ * Write a bounded, metadata-free WebP through the already-loaded Imagick
+ * extension. Callers pass a validated source and a unique in-root temporary
+ * destination; their existing output validation and atomic rename still apply.
+ */
+function media_cms_imagick_write_bounded_webp(string $source, string $destination, int $maxWidth, int $maxHeight): bool
+{
+    if (!media_cms_imagick_webp_available() || $maxWidth < 1 || $maxHeight < 1
+        || $maxWidth > 1600 || $maxHeight > 1000 || is_link($destination)) return false;
+
+    $sourceInfo = @getimagesize($source);
+    $sourceMime = is_array($sourceInfo) ? (string)($sourceInfo['mime'] ?? '') : '';
+    $sourceWidth = (int)($sourceInfo[0] ?? 0);
+    $sourceHeight = (int)($sourceInfo[1] ?? 0);
+    if (!in_array($sourceMime, ['image/jpeg', 'image/png', 'image/webp'], true)
+        || $sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 10000 || $sourceHeight > 10000
+        || $sourceWidth > intdiv(40000000, $sourceHeight)) return false;
+
+    $limits = [
+        Imagick::RESOURCETYPE_MEMORY => 134217728,
+        Imagick::RESOURCETYPE_MAP => 268435456,
+        Imagick::RESOURCETYPE_DISK => 536870912,
+        Imagick::RESOURCETYPE_TIME => 60,
+    ];
+    $previousLimits = [];
+    $image = null;
+    try {
+        foreach ($limits as $resource => $maximum) {
+            $current = Imagick::getResourceLimit($resource);
+            $previousLimits[$resource] = $current;
+            $bounded = $current > 0 ? min($current, $maximum) : $maximum;
+            if (!Imagick::setResourceLimit($resource, $bounded)) return false;
+        }
+
+        $image = new Imagick();
+        $stream = @fopen($source, 'rb');
+        if (!is_resource($stream)) return false;
+        try {
+            $read = $image->readImageFile($stream);
+        } finally {
+            fclose($stream);
+        }
+        if (!$read) return false;
+        $image->setIteratorIndex(0);
+        $firstFrame = $image->getImage();
+        if (!$firstFrame instanceof Imagick) return false;
+        $image->clear();
+        $image = $firstFrame;
+        if (method_exists($image, 'autoOrientImage')) {
+            $orientationResult = $image->autoOrientImage();
+            if ($orientationResult === false) return false;
+        } elseif (method_exists($image, 'autoOrient')) {
+            $orientationResult = $image->autoOrient();
+            if ($orientationResult === false) return false;
+        } else {
+            return false;
+        }
+
+        $width = $image->getImageWidth();
+        $height = $image->getImageHeight();
+        if ($width < 1 || $height < 1 || $width > 10000 || $height > 10000
+            || $width > intdiv(40000000, $height)) return false;
+        if ($width > $maxWidth || $height > $maxHeight) {
+            if (!$image->thumbnailImage($maxWidth, $maxHeight, true)) return false;
+        }
+        if (!$image->stripImage() || !$image->setImageFormat('WEBP')) return false;
+        $image->setImageCompressionQuality(78);
+        $image->setOption('webp:method', '6');
+        return $image->writeImage($destination);
+    } catch (Throwable $error) {
+        return false;
+    } finally {
+        if ($image instanceof Imagick) {
+            try { $image->clear(); } catch (Throwable $error) {}
+            try { $image->destroy(); } catch (Throwable $error) {}
+        }
+        foreach ($previousLimits as $resource => $limit) {
+            try { Imagick::setResourceLimit($resource, $limit); } catch (Throwable $error) {}
+        }
+    }
+}
+
+/**
+ * Create or reuse a bounded WebP derivative for an admin card. ImageMagick
+ * CLI is launched with an argument array; the extension fallback reads only
+ * the already validated source and writes to a unique in-root temporary file.
  */
 function media_cms_ensure_admin_thumbnail(string $sourcePath): array
 {
@@ -206,29 +447,36 @@ function media_cms_ensure_admin_thumbnail(string $sourcePath): array
     $temporaryPath = $thumbnailPath . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
     $pipes = [];
     try {
-        $command = [
-            media_cms_thumbnail_binary(),
-            '-limit', 'memory', '128MiB',
-            '-limit', 'map', '256MiB',
-            '-limit', 'disk', '512MiB',
-            '-limit', 'time', '60',
-            $source,
-            '-auto-orient',
-            '-thumbnail', MEDIA_CMS_THUMBNAIL_WIDTH . 'x' . MEDIA_CMS_THUMBNAIL_HEIGHT . '>',
-            '-strip',
-            '-quality', '78',
-            '-define', 'webp:method=6',
-            $temporaryPath,
-        ];
-        $process = proc_open($command, [
-            0 => ['file', '/dev/null', 'r'],
-            1 => ['file', '/dev/null', 'w'],
-            2 => ['file', '/dev/null', 'w'],
-        ], $pipes, dirname($source));
-        if (!is_resource($process)) throw new RuntimeException('Thumbnail generation could not start.');
-        $exitCode = proc_close($process);
-        if ($exitCode !== 0) {
-            throw new RuntimeException('Thumbnail generation failed.');
+        $binary = media_cms_thumbnail_binary();
+        if ($binary === null) {
+            if (!media_cms_imagick_write_bounded_webp($source, $temporaryPath, MEDIA_CMS_THUMBNAIL_WIDTH, MEDIA_CMS_THUMBNAIL_HEIGHT)) {
+                throw new RuntimeException('Thumbnail generation failed.');
+            }
+        } else {
+            $command = [
+                $binary,
+                '-limit', 'memory', '128MiB',
+                '-limit', 'map', '256MiB',
+                '-limit', 'disk', '512MiB',
+                '-limit', 'time', '60',
+                $source,
+                '-auto-orient',
+                '-thumbnail', MEDIA_CMS_THUMBNAIL_WIDTH . 'x' . MEDIA_CMS_THUMBNAIL_HEIGHT . '>',
+                '-strip',
+                '-quality', '78',
+                '-define', 'webp:method=6',
+                $temporaryPath,
+            ];
+            $process = proc_open($command, [
+                0 => ['file', '/dev/null', 'r'],
+                1 => ['file', '/dev/null', 'w'],
+                2 => ['file', '/dev/null', 'w'],
+            ], $pipes, dirname($source));
+            if (!is_resource($process)) throw new RuntimeException('Thumbnail generation could not start.');
+            $exitCode = proc_close($process);
+            if ($exitCode !== 0) {
+                throw new RuntimeException('Thumbnail generation failed.');
+            }
         }
 
         $generated = $validThumbnail($temporaryPath);

@@ -1,4 +1,5 @@
 <?php
+header('X-Robots-Tag: noindex, nofollow', true);
 require_once __DIR__ . '/includes/auth_guard.php';
 require_once __DIR__ . '/config/db_connect.php';
 require_once __DIR__ . '/includes/receipt_itemization.php';

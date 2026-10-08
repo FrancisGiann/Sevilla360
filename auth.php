@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/session_init.php';
+require_once __DIR__ . '/includes/site_metadata.php';
+header('X-Robots-Tag: noindex, nofollow', true);
 if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); }
 
 require_once 'config/db_connect.php';
@@ -40,12 +42,13 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
     <link rel="icon" type="image/png" href="assets/img/Logo.png">
     <meta name="csrf-token" content="<?php echo $_SESSION['csrf_token']; ?>">
     <title>Authentication - SEVILLA360</title>
 
-    <link rel="stylesheet" href="assets/css/style.css">
-    <link rel="stylesheet" href="assets/css/auth.css?v=<?= time(); ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/auth.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
     <!-- FontAwesome for global alerts -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -293,9 +296,9 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
     </div>
 
     <!-- Scripts -->
-    <script src="assets/js/global_modals.js?v=<?= time(); ?>"></script>
-    <script src="assets/js/password_policy.js?v=<?= time(); ?>"></script>
-    <script src="assets/js/auth.js?v=<?= time(); ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/auth.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     
     <?php if (isset($_SESSION['auth_alert'])): ?>
         <script>

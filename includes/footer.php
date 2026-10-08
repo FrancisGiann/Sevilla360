@@ -71,16 +71,25 @@ $footer_social_links = array_values(array_filter($footer_social_links, static fu
     </div>
 </footer>
 
-<!-- Global Scripts (Nav Menu etc) -->
-<script src="assets/js/global_modals.js?v=<?php echo time(); ?>"></script>
-<script src="assets/js/index.js?v=<?php echo time(); ?>"></script>
-<script src="assets/js/calendar.js?v=<?php echo time(); ?>"></script>
+<!-- Shared and page-specific scripts -->
+<script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
+<?php if (($active_page ?? '') === 'home'): ?>
+<script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/index.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
+<?php endif; ?>
+<?php if (in_array(($active_page ?? ''), ['home', 'booking'], true)): ?>
+<script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/calendar.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
+<?php endif; ?>
 
 <!-- Page Specific Script (Loads dynamically) -->
-<?php foreach ((array)($extra_js ?? []) as $script): ?>
-<?php if (!empty($script) && $script !== 'assets/js/index.js'): ?>
-<script src="<?php echo htmlspecialchars((string)$script, ENT_QUOTES, 'UTF-8'); ?>"></script>
-<?php endif; ?>
+<?php foreach ((array)($extra_js ?? []) as $script):
+    $script = trim((string)$script);
+    if ($script === '' || $script === 'assets/js/index.js') continue;
+    $script_url = preg_match('~\Ahttps?://~i', $script) === 1
+        ? $script
+        : site_metadata_asset_url($script);
+    if ($script_url === '') continue;
+?>
+<script src="<?php echo htmlspecialchars($script_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"></script>
 <?php endforeach; ?>
 
 </body>

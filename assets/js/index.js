@@ -250,13 +250,17 @@ document.addEventListener("DOMContentLoaded", function () {
     article.className = 'idx-catalog-card';
     const media = document.createElement('div');
     media.className = 'idx-catalog-card-media';
-    const imageUrl = Array.isArray(venue.images)
-      ? venue.images.find(path => typeof path === 'string' && path.trim() && path.trim() !== placeholderImage)
+    const cardImages = Array.isArray(venue.thumbnails) && venue.thumbnails.length ? venue.thumbnails : venue.images;
+    const imageUrl = Array.isArray(cardImages)
+      ? cardImages.find(path => typeof path === 'string' && path.trim() && path.trim() !== placeholderImage)
       : '';
     if (imageUrl) {
       const image = document.createElement('img');
       image.alt = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Sevilla360 venue';
       image.loading = 'lazy';
+      image.decoding = 'async';
+      image.width = 480;
+      image.height = 270;
       image.addEventListener('error', () => image.replaceWith(makeCatalogImageFallback()), { once: true });
       image.src = imageUrl;
       media.appendChild(image);
@@ -269,6 +273,8 @@ document.addEventListener("DOMContentLoaded", function () {
     kind.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
     const rate = document.createElement('p'); rate.className = 'idx-catalog-card-rate'; rate.textContent = rateText(venue);
     const rating = document.createElement('p'); rating.className = 'idx-catalog-card-rating'; rating.textContent = ratingText(venue);
+    const descriptionText = String(venue.description ?? '').trim();
+    const description = document.createElement('p'); description.className = 'idx-catalog-card-description'; description.textContent = descriptionText;
     const factEntries = venue.facts && typeof venue.facts === 'object' ? Object.entries(venue.facts) : [];
     const factText = factEntries
       .filter(([, value]) => {
@@ -294,6 +300,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     actions.append(details, book); body.append(title, kind, rate, rating);
     if (factText) body.appendChild(facts);
+    if (descriptionText) body.appendChild(description);
     body.appendChild(actions); article.append(media, body);
     return article;
   };
@@ -494,6 +501,8 @@ document.addEventListener("DOMContentLoaded", function () {
       section.querySelector('.idx-carousel-controls')?.setAttribute('hidden', '');
       return;
     }
+    track.replaceChildren();
+    track.dataset.enhanced = 'true';
     const cards = venues.map(venue => track.appendChild(makeCard(venue)));
     let index = 0;
     const move = delta => { index = (index + delta + cards.length) % cards.length; updateCarousel(section, cards, index); };

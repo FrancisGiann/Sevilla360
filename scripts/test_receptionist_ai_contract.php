@@ -717,7 +717,8 @@ $checks['restored hotel context validates values and maps numeric ranges safely'
 $checks['server context is revalidated across turns and init does not reset it'] = str_contains($endpoint, "receptionist_ai_context")
     && str_contains($resetEndpoint, "receptionist_ai_context")
     && !str_contains($chatJs, 'serverResetPromise = resetServerSession();');
-$checks['showroom keeps the deterministic source of truth and adds the chat module'] = str_contains($showroomPhp, 'assets/js/receptionist-chat.js?v=')
+$checks['showroom keeps the deterministic source of truth and adds the chat module'] = str_contains($showroomPhp, "'assets/js/receptionist-chat.js'")
+    && str_contains($source('includes/footer.php'), 'site_metadata_asset_url($script)')
     && str_contains($showroomPhp, 'receptionist-chat-transcript')
     && str_contains($showroomJs, 'SevillaReceptionistChat.init')
     && str_contains($showroomJs, 'applyReceptionistChatAction')

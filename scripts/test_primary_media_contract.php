@@ -31,7 +31,10 @@ $checks += [
     'endpoint rolls back and hides database errors' => str_contains($primary_php, '$conn->rollback()') && str_contains($primary_php, "'Primary image could not be updated.'") && !str_contains($primary_php, "'message' => \$e->getMessage()"),
     'CMS omits obsolete category preview controls' => !array_filter($legacy_home_slots, static fn(string $slot): bool => str_contains($cms_php, $slot)),
     'upload allowlist omits obsolete category preview slots' => !array_filter($legacy_home_slots, static fn(string $slot): bool => str_contains($upload_php, "'$slot'")),
-    'homepage venue cards source standard media galleries in primary order' => str_contains($index_php, "WHERE media_type = 'standard' ORDER BY is_primary DESC, id ASC") && str_contains($index_php, '$public_images') && str_contains($index_php, "'images' => \$public_images"),
+    'homepage venue cards source standard media galleries in primary order' => str_contains($index_php, "WHERE media_type = 'standard' ORDER BY is_primary DESC, id ASC")
+        && str_contains($index_php, '$public_images')
+        && str_contains($index_php, "'images' => \$event_images = \$public_images")
+        && str_contains($index_php, "'thumbnails' => \$public_thumbnail_images(\$event_images)"),
     'upload progress uses a transform with a zero default' => str_contains($cms_php, 'transform-origin: left center; transform: scaleX(0); transition: transform 0.2s;') && str_contains($cms_js, "progBar.style.transform = 'scaleX(0)'") && str_contains($cms_js, 'Math.min(1, Math.max(0, percentComplete / 100))'),
 ];
 

@@ -1,6 +1,7 @@
 <?php
 $page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
-$extra_css = 'assets/css/index.css?v=' . time();
+$page_description = 'Discover M.I. Sevilla Resort & Events Place in Lucena City, browse available event halls, hotel rooms and villas, and explore the resort virtually.';
+$extra_css = 'assets/css/index.css';
 $active_page = 'home';
 
 require_once 'includes/session_init.php';
@@ -23,8 +24,19 @@ if ($public_media_query) {
 $public_slot_key = static fn(string $name): string => media_cms_venue_slot_key($name);
 $public_images = static function (string $displayName) use (&$public_media, $public_slot_key): array {
     $images = $public_media[$public_slot_key($displayName)] ?? [];
-    $images = array_values(array_filter(array_map(static fn($path) => trim((string)$path), $images)));
+    $images = array_values(array_filter(array_map(static function ($path): ?string {
+        try {
+            $relativePath = media_cms_upload_relative_path(trim((string)$path));
+            media_cms_upload_file_path($relativePath, true);
+            return $relativePath;
+        } catch (Throwable $error) {
+            return null;
+        }
+    }, $images)));
     return $images ?: ['assets/img/placeholder.jpg'];
+};
+$public_thumbnail_images = static function (array $images): array {
+    return array_map(static fn(string $path): string => media_cms_existing_thumbnail_url($path) ?? $path, $images);
 };
 $venue_reviews_table_result = $conn->query("SHOW TABLES LIKE 'venue_reviews'");
 $venue_reviews_available = $venue_reviews_table_result instanceof mysqli_result && $venue_reviews_table_result->num_rows > 0;
@@ -39,7 +51,7 @@ if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['base_rate'] ?? null) ? (float)$venue['base_rate'] : null,
         'facts' => ['Theater' => (int)$venue['capacity_theater'] . ' guests', 'Classroom' => (int)$venue['capacity_classroom'] . ' guests', 'Banquet' => (int)$venue['capacity_banquet'] . ' guests', 'Booking' => 'Inquiry, no date hold'],
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-        'images' => $public_images((string)$venue['name'])
+        'images' => $event_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($event_images)
     ];
 }
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
@@ -84,7 +96,7 @@ if ($hotel_group_schema_ready) {
             'rate_is_starting' => false, 'overnight_rate' => null,
             'facts' => ['Beds' => $bedCount . ' bed' . ($bedCount === 1 ? '' : 's'), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
             'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
-            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images
+            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images, 'thumbnails' => $public_thumbnail_images($images)
         ];
     }
 } else {
@@ -101,7 +113,7 @@ if ($hotel_group_schema_ready) {
             'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
             'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
             'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-            'images' => $public_images($displayName)
+            'images' => $hotel_images = $public_images($displayName), 'thumbnails' => $public_thumbnail_images($hotel_images)
         ];
     }
 }
@@ -113,7 +125,7 @@ if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
         'facts' => ['Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Day or overnight', 'Pool' => ((int)$venue['has_private_pool'] === 1 ? 'Private pool' : 'Pool access'), 'Day hours' => substr((string)$venue['day_check_in_time'], 0, 5) . '–' . substr((string)$venue['day_check_out_time'], 0, 5), 'Overnight hours' => substr((string)$venue['overnight_check_in_time'], 0, 5) . '–' . substr((string)$venue['overnight_check_out_time'], 0, 5)],
         'day_stay_inclusions' => (string)($venue['day_stay_inclusions'] ?? ''), 'overnight_stay_inclusions' => (string)($venue['overnight_stay_inclusions'] ?? ''),
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-        'images' => $public_images((string)$venue['name'])
+        'images' => $villa_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($villa_images)
     ];
 }
 
@@ -125,8 +137,20 @@ if ($cms_query) {
         $cms_images[$row['slot_assignment']] = $row['file_path'];
     }
 }
-function get_cms_image($slot_name, $default_url, $cms_images) {
-    return isset($cms_images[$slot_name]) ? htmlspecialchars($cms_images[$slot_name]) : $default_url;
+function get_cms_image($slot_name, $default_url, $cms_images, bool $preferThumbnail = false, bool $preferHero = false) {
+    if (isset($cms_images[$slot_name])) {
+        try {
+            $relativePath = media_cms_upload_relative_path((string)$cms_images[$slot_name]);
+            media_cms_upload_file_path($relativePath, true);
+            $imageUrl = $preferHero
+                ? (media_cms_existing_hero_derivative_url($relativePath) ?? $relativePath)
+                : ($preferThumbnail ? (media_cms_existing_thumbnail_url($relativePath) ?? $relativePath) : $relativePath);
+            return htmlspecialchars($imageUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        } catch (Throwable $error) {
+            // Invalid or retired CMS paths fall back to the fixed page image.
+        }
+    }
+    return htmlspecialchars((string)$default_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
 // Fetch business info for the location section.
@@ -138,6 +162,27 @@ if ($biz_query) {
     }
 }
 $normalized_map_embed = google_maps_normalize_embed($biz_info['biz_map_embed'] ?? '');
+$hero_image_url = get_cms_image('home-hero', 'assets/uploads/home-hero-expanded-pool.png', $cms_images, false, true);
+$page_preload_image = html_entity_decode($hero_image_url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+$build_catalog_booking_url = static function (array $venue): string {
+    $category = (string)($venue['category'] ?? '');
+    $tabs = ['Event Hall' => 'event-hall', 'Hotel Room' => 'hotel-rooms', 'Resort Villa' => 'resort-villa'];
+    if (!isset($tabs[$category])) return 'booking.php';
+
+    $params = [
+        'tab' => $tabs[$category],
+        'category' => $category,
+        'venue_name' => (string)($venue['venue_name'] ?? $venue['building_name'] ?? ''),
+    ];
+    if (!empty($venue['room_group_id']) && (int)$venue['room_group_id'] > 0) {
+        $params['room_group_id'] = (int)$venue['room_group_id'];
+    } elseif (!empty($venue['venue_id']) && (int)$venue['venue_id'] > 0) {
+        $params['venue_id'] = (int)$venue['venue_id'];
+    }
+    if (!empty($venue['room_type'])) $params['room_type'] = (string)$venue['room_type'];
+    return 'booking.php?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+};
 
 include 'includes/header.php';
 ?>
@@ -146,7 +191,7 @@ include 'includes/header.php';
 
     <!-- ===================== HERO ===================== -->
     <header class="idx-hero"
-        style="background-image: url('<?php echo get_cms_image('home-hero', 'assets/uploads/home-hero-expanded-pool.png', $cms_images); ?>');">
+        style="background-image: url('<?php echo $hero_image_url; ?>');">
         <div class="idx-hero-content reveal">
             <span class="idx-hero-script">M.I. Sevilla</span>
             <span class="idx-hero-rule"></span>
@@ -171,8 +216,8 @@ include 'includes/header.php';
         <span class="idx-welcome-divider"></span>
         <div class="idx-welcome-grid">
             <div class="idx-welcome-img-wrap reveal">
-                <img src="<?php echo get_cms_image('home-about', 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images); ?>"
-                    alt="Stone courtyard with tropical greenery at M.I. Sevilla Resort">
+                <img src="<?php echo get_cms_image('home-about', 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80', $cms_images, true); ?>"
+                    alt="Stone courtyard with tropical greenery at M.I. Sevilla Resort" width="800" height="1000" loading="lazy" decoding="async">
                 <div class="idx-welcome-badge">
                     <strong>18</strong>
                     <span>Years of Hosting</span>
@@ -229,8 +274,8 @@ include 'includes/header.php';
         <div class="idx-experiences-grid">
             <article class="idx-exp-card reveal" style="transition-delay: 0.1s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="<?php echo get_cms_image('home-exp-1', 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
-                        alt="Meetings & Conferences">
+                    <img src="<?php echo get_cms_image('home-exp-1', 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images, true); ?>"
+                        alt="Meetings & Conferences" width="800" height="600" loading="lazy" decoding="async">
                     <span class="idx-exp-num">01</span>
                 </div>
                 <div class="idx-exp-content"><h3>Meetings &amp; Conferences</h3>
@@ -241,8 +286,8 @@ include 'includes/header.php';
 
             <article class="idx-exp-card reveal" style="transition-delay: 0.2s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="<?php echo get_cms_image('home-exp-2', 'https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
-                        alt="Weddings">
+                    <img src="<?php echo get_cms_image('home-exp-2', 'https://images.unsplash.com/photo-1519741497674-611481863552?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images, true); ?>"
+                        alt="Weddings" width="800" height="600" loading="lazy" decoding="async">
                     <span class="idx-exp-num">02</span>
                 </div>
                 <div class="idx-exp-content"><h3>Weddings</h3>
@@ -253,8 +298,8 @@ include 'includes/header.php';
 
             <article class="idx-exp-card reveal" style="transition-delay: 0.3s;">
                 <div class="idx-exp-img-wrap">
-                    <img src="<?php echo get_cms_image('home-exp-3', 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images); ?>"
-                        alt="Debut">
+                    <img src="<?php echo get_cms_image('home-exp-3', 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80', $cms_images, true); ?>"
+                        alt="Debut" width="800" height="600" loading="lazy" decoding="async">
                     <span class="idx-exp-num">03</span>
                 </div>
                 <div class="idx-exp-content"><h3>Debut</h3>
@@ -278,7 +323,33 @@ include 'includes/header.php';
             </div>
             <div class="idx-catalog-shell">
                 <div class="idx-catalog-viewport">
-                    <div class="idx-catalog-track" tabindex="0"></div>
+                    <div class="idx-catalog-track" tabindex="0">
+                        <?php foreach (($public_venues[$category] ?? []) as $catalog_venue):
+                            $catalog_title = trim((string)($catalog_venue['display_name'] ?? $catalog_venue['title'] ?? $catalog_venue['venue_name'] ?? $catalog_venue['room_type'] ?? 'Venue'));
+                            $catalog_type = !empty($catalog_venue['room_type']) ? $category . ' · ' . (string)$catalog_venue['room_type'] : $category;
+                            $catalog_description = trim((string)preg_replace('/\s+/', ' ', strip_tags((string)($catalog_venue['description'] ?? ''))));
+                            $catalog_images = is_array($catalog_venue['thumbnails'] ?? null) ? $catalog_venue['thumbnails'] : ($catalog_venue['images'] ?? []);
+                            $catalog_image = (string)($catalog_images[0] ?? 'assets/img/placeholder.jpg');
+                            $catalog_facts = is_array($catalog_venue['facts'] ?? null) ? array_slice($catalog_venue['facts'], 0, 3, true) : [];
+                            $catalog_fact_text = implode(' · ', array_map(static fn($key, $value): string => (string)$key . ': ' . (string)$value, array_keys($catalog_facts), array_values($catalog_facts)));
+                            $catalog_booking_url = $build_catalog_booking_url($catalog_venue);
+                        ?>
+                        <article class="idx-catalog-card">
+                            <div class="idx-catalog-card-media">
+                                <img src="<?php echo htmlspecialchars($catalog_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($catalog_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" width="480" height="270" loading="lazy" decoding="async">
+                            </div>
+                            <div class="idx-catalog-card-body">
+                                <h4><?php echo htmlspecialchars($catalog_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h4>
+                                <p class="idx-catalog-card-category"><?php echo htmlspecialchars($catalog_type, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p>
+                                <?php if ($catalog_fact_text !== ''): ?><p class="idx-catalog-card-facts"><?php echo htmlspecialchars($catalog_fact_text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
+                                <?php if ($catalog_description !== ''): ?><p class="idx-catalog-card-description"><?php echo htmlspecialchars($catalog_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
+                                <div class="idx-catalog-card-actions">
+                                    <a class="idx-btn idx-btn-gold" href="<?php echo htmlspecialchars($catalog_booking_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo $category === 'Event Hall' ? 'Start inquiry' : ($category === 'Hotel Room' ? 'Choose dates' : 'Choose stay'); ?></a>
+                                </div>
+                            </div>
+                        </article>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
                 <div class="idx-carousel-controls" aria-label="<?php echo htmlspecialchars($label); ?> carousel controls">
                     <button type="button" class="idx-carousel-prev" aria-label="Previous <?php echo htmlspecialchars($label); ?>"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
