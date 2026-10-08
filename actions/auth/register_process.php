@@ -143,7 +143,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->commit();
 
         // =========================================================================
-        // PRODUCTION MODE: SEND OTP VIA PHPMAILER
+        // Send the verification code through the configured email provider.
         // =========================================================================
         require_once '../../includes/mailer.php';
         
@@ -174,9 +174,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit();
 
         } catch (Exception $mail_e) {
-            // If the email fails to send (e.g. invalid email address), rollback the account creation!
+            // Keep the existing cleanup behavior if verification delivery fails.
             $conn->query("DELETE FROM users WHERE id = $new_user_id");
-            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Failed to send verification email. Please check if your email address is valid.', 'type' => 'error'];
+            $mailDiagnostic = $mail_e instanceof ResendMailException
+                ? $mail_e->getMessage()
+                : 'Unexpected mail exception.';
+            error_log('Registration verification email delivery failed: ' . $mailDiagnostic);
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'We could not send your verification email. Please try again later or contact the resort for help.', 'type' => 'error'];
             header("Location: ../../auth.php");
             exit();
         }
