@@ -67,6 +67,9 @@ try {
     $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
     $validId = $createArchive('manual', $now);
     $validPath = database_backup_archive_path($validId, true);
+    $assert(database_backup_storage_visibility_issue($backupDir) === null, 'inspectable private backup entries pass storage visibility readiness.');
+    $visibilityIssue = database_backup_storage_visibility_issue($backupDir, static fn(string $path) => false);
+    $assert(is_string($visibilityIssue) && str_contains($visibilityIssue, 'cannot be inspected') && str_contains($visibilityIssue, 'storage setup'), 'uninspectable archive entries fail readiness with an actionable host-label repair message.');
     $metadata = database_backup_validate_archive($validPath);
     $assert($metadata['database'] === 'sevilla360_test' && $metadata['compression'] === 'gzip', 'signed archive metadata verifies against the configured database.');
     database_backup_remove_validation_temp($metadata);
@@ -116,7 +119,9 @@ try {
     $capabilities = database_backup_capabilities();
     $assert($capabilities['enabled'], 'backup creation remains available when dump, signing, and private storage capabilities exist.');
     $assert(!$capabilities['restore_enabled'] && str_contains((string)$capabilities['restore_message'], 'DB_STAGING_HOST'), 'restore is explicitly disabled until a dedicated staging database is configured.');
-    $throws(static fn() => database_backup_preflight($validPath), 'restore preflight fails closed when staging is unavailable.');
+    $staticReference = database_backup_normalize_schema_reference(database_backup_required_schema_columns(), array_keys(database_backup_required_schema_columns()));
+    $throws(static fn() => database_backup_preflight($validPath, $staticReference), 'restore preflight fails closed when staging is unavailable even with a valid schema reference.');
+    $throws(static fn() => database_backup_preflight($validPath, null), 'restore preflight cannot silently fall back to static-only schema checks.');
 
     $requiredSchema = database_backup_required_schema_columns();
     $baseTables = array_fill_keys(array_keys($requiredSchema), true);
@@ -128,10 +133,36 @@ try {
     $olderTables = $baseTables;
     unset($olderTables['manual_payment_submissions']);
     $assert(in_array('manual_payment_submissions (base table)', database_backup_schema_compatibility_errors($requiredSchema, $olderTables), true), 'archives missing the current manual-payment table are rejected.');
+    $olderTables = $baseTables;
+    unset($olderTables['seminar_payments']);
+    $assert(in_array('seminar_payments (base table)', database_backup_schema_compatibility_errors($requiredSchema, $olderTables), true), 'archives missing the current seminar-payment table are rejected.');
+    $olderSchema = $requiredSchema;
+    $olderSchema['seminar_payments'] = array_values(array_diff($olderSchema['seminar_payments'], ['idempotency_key', 'seminar_id', 'created_by']));
+    $seminarPaymentErrors = database_backup_schema_compatibility_errors($olderSchema, $baseTables);
+    $assert(in_array('seminar_payments.idempotency_key', $seminarPaymentErrors, true) && in_array('seminar_payments.seminar_id', $seminarPaymentErrors, true) && in_array('seminar_payments.created_by', $seminarPaymentErrors, true), 'seminar payment identity and parent-reference columns are mandatory.');
+    $viewTables = $baseTables;
+    unset($viewTables['seminar_payments']);
+    $assert(in_array('seminar_payments (base table)', database_backup_schema_compatibility_errors($requiredSchema, $viewTables), true), 'a view cannot substitute for the seminar-payment base table.');
     $olderSchema = $requiredSchema;
     $olderSchema['cancellations'] = array_values(array_diff($olderSchema['cancellations'], ['refund_transaction_id']));
     $assert(in_array('cancellations.refund_transaction_id', database_backup_schema_compatibility_errors($olderSchema, $baseTables), true), 'archives missing a field used by the current refund path are rejected.');
     $assert(!in_array('google_subject', $requiredSchema['users'], true) && !isset($requiredSchema['notification_outbox']) && !isset($requiredSchema['hotel_room_groups']), 'optional Google, realtime, and room-group migrations do not block compatible restores.');
+    $assert(!isset($requiredSchema['venue_reviews']) && !isset($requiredSchema['admin_notification_reads']), 'optional reviews and notification-read migrations are not static restore requirements.');
+
+    $productionColumns = $requiredSchema;
+    $productionColumns['users'][] = 'future_authentication_column';
+    $productionColumns['future_business_table'] = ['id', 'booking_id'];
+    $productionReference = database_backup_normalize_schema_reference($productionColumns, array_merge(array_keys($baseTables), ['future_business_table']));
+    $referenceErrors = database_backup_schema_compatibility_errors($requiredSchema, $baseTables, $productionReference);
+    $assert(in_array('users.future_authentication_column', $referenceErrors, true) && in_array('future_business_table (base table)', $referenceErrors, true), 'a live production table/column absent from an archive is rejected by the captured schema fingerprint.');
+
+    $optionalColumns = $requiredSchema;
+    $optionalColumns['venue_reviews'] = ['id', 'booking_id', 'customer_id'];
+    $optionalReference = database_backup_normalize_schema_reference($optionalColumns, array_merge(array_keys($baseTables), ['venue_reviews']));
+    $assert(in_array('venue_reviews (base table)', database_backup_schema_compatibility_errors($requiredSchema, $baseTables, $optionalReference), true), 'an optional migration is required when its table is enabled in the captured production schema.');
+    $throws(static fn() => database_backup_require_schema_reference(null), 'missing production schema references fail closed.');
+    $throws(static fn() => database_backup_normalize_schema_reference([], []), 'empty production schema references fail closed.');
+    $throws(static fn() => database_backup_normalize_schema_reference(['unlisted_table' => ['id']], array_keys($baseTables)), 'inconsistent production table and column references fail closed.');
 
     $assert(database_backup_admin_account_state(null) === 'unverifiable', 'a temporarily missing admin row is distinguished from a confirmed inactive account.');
     $assert(database_backup_admin_account_state(['role' => 'admin', 'staff_status' => null]) === 'unverifiable', 'a missing staff row during restore remains unverifiable, not confirmed inactive.');
@@ -202,8 +233,11 @@ try {
     $assert(str_contains((string)$statusSource, "'archives' => database_backup_list_archives()") && str_contains((string)$helperSource, 'database_backup_read_archive_header($path)') && str_contains((string)$helperSource, 'database_backup_list_archives(bool $verify = false)'), 'status archive listing uses a bounded header inspection; full payload checks remain opt-in.');
     $assert(str_contains((string)$uploadSource, 'database_backup_require_admin()') && str_contains((string)$uploadSource, 'database_backup_verify_request_admin()') && str_contains((string)$uploadSource, 'database_backup_validate_archive'), 'uploads require admin/CSRF, current account status, and signed archive validation.');
     $assert(str_contains((string)$restoreSource, 'password_verify') || str_contains((string)$helperSource, 'password_verify($password') && str_contains((string)$restoreSource, "hash_equals('RESTORE'"), 'restore requires password reauthentication and the explicit confirmation phrase.');
-    $assert(str_contains((string)$helperSource, 'database_backup_preflight($archivePath)') && str_contains((string)$helperSource, "database_backup_clear_database_objects(database_backup_connection_config('DB_'))"), 'web restore preflights staging before reconciling production objects.');
-    $assert(str_contains((string)$helperSource, 'database_backup_schema_compatibility_errors($availableColumns, $baseTables)') && str_contains((string)$helperSource, 'information_schema.COLUMNS'), 'staging and production verification check migration-backed schema columns, not just table names.');
+    $captureAt = strpos((string)$helperSource, '$schemaReference = database_backup_capture_schema_reference($conn);');
+    $preflightAt = strpos((string)$helperSource, 'database_backup_preflight($archivePath, $schemaReference);');
+    $clearAt = strpos((string)$helperSource, "database_backup_clear_database_objects(database_backup_connection_config('DB_'))");
+    $assert($captureAt !== false && $preflightAt !== false && $clearAt !== false && $captureAt < $preflightAt && $preflightAt < $clearAt, 'restore captures production schema and preflights staging against it before any production objects are cleared.');
+    $assert(str_contains((string)$helperSource, 'database_backup_schema_compatibility_errors($availableColumns, $baseTables, $schemaReference)') && str_contains((string)$helperSource, 'information_schema.COLUMNS'), 'staging and production verification check the migration minimum plus the captured production base-table/column fingerprint.');
     $assert(str_contains((string)$helperSource, 'database_backup_admin_status_fallback_allowed(database_backup_maintenance_state()') && str_contains((string)$helperSource, 'The administrator account is no longer active.'), 'status fallback is limited to maintenance and never masks a confirmed inactive account.');
     $assert(str_contains((string)$helperSource, 'Recovering from safety backup') && str_contains((string)$helperSource, 'recovery failed. The maintenance gate remains active') && str_contains((string)$workerSource, '--recover'), 'failed restore recovery preserves maintenance and exposes a CLI recovery path.');
     $assert(!str_contains((string)$workerSource, 'database_backup_preflight($archivePath)') && str_contains((string)$workerSource, 'database_backup_validate_archive($archivePath)'), 'operator recovery validates the signed artifact without depending on staging availability.');

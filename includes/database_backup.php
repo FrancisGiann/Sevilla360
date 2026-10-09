@@ -171,6 +171,22 @@ function database_backup_staging_config(): array
     return $config;
 }
 
+/** Fail closed when directory entries are visible but PHP cannot inspect them. */
+function database_backup_storage_visibility_issue(string $directory, ?callable $inspect = null): ?string
+{
+    $entries = @scandir($directory);
+    if (!is_array($entries)) return 'Private database backup storage cannot be inspected by PHP.';
+    $inspect ??= static fn(string $path) => @lstat($path);
+    foreach ($entries as $name) {
+        if (!preg_match('/\A(?:db-[a-f0-9]{32}\.s360db|scheduled-\d{8}\.done|maintenance\.json|worker\.lock|operation\.lock|jobs)\z/D', $name)) continue;
+        clearstatcache(true, $directory . DIRECTORY_SEPARATOR . $name);
+        if ($inspect($directory . DIRECTORY_SEPARATOR . $name) === false) {
+            return 'A private backup entry is visible but cannot be inspected by PHP. Rerun the database backup storage setup with administrator privileges to repair its host security label.';
+        }
+    }
+    return null;
+}
+
 /** Feature readiness is reported rather than taking the dashboard down. */
 function database_backup_capabilities(): array
 {
@@ -181,7 +197,9 @@ function database_backup_capabilities(): array
     if ($disabled !== []) $reasons[] = 'PHP process execution is disabled (' . implode(', ', $disabled) . ').';
     if (database_backup_app_key() === null) $reasons[] = 'APP_KEY must contain at least 32 characters.';
     try {
-        database_backup_directory(false);
+        $backupDirectory = database_backup_directory(false);
+        $visibilityIssue = database_backup_storage_visibility_issue($backupDirectory);
+        if ($visibilityIssue !== null) $reasons[] = $visibilityIssue;
     } catch (Throwable $error) {
         $reasons[] = $error->getMessage();
     }
@@ -621,7 +639,7 @@ function database_backup_clear_database_objects(array $config): void
     }
 }
 
-function database_backup_verify_database(array $config): void
+function database_backup_verify_database(array $config, ?array $schemaReference = null): void
 {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     $connection = new mysqli($config['host'], $config['user'], $config['password'], $config['name'], $config['port'] ?? 3306);
@@ -640,7 +658,7 @@ function database_backup_verify_database(array $config): void
             $availableColumns[$table][] = $column;
             if (strcasecmp((string)$row['TABLE_TYPE'], 'BASE TABLE') === 0) $baseTables[$table] = true;
         }
-        $incompatible = database_backup_schema_compatibility_errors($availableColumns, $baseTables);
+        $incompatible = database_backup_schema_compatibility_errors($availableColumns, $baseTables, $schemaReference);
         if ($incompatible !== []) {
             throw new RuntimeException('The restored database is missing current Sevilla360 schema fields: ' . implode(', ', array_slice($incompatible, 0, 12)) . '.');
         }
@@ -653,6 +671,59 @@ function database_backup_verify_database(array $config): void
     }
 }
 
+/** Build a normalized base-table/column fingerprint without reading business data. */
+function database_backup_normalize_schema_reference(array $columns, array $baseTables): array
+{
+    $normalizedColumns = [];
+    foreach ($columns as $table => $tableColumns) {
+        $name = strtolower((string)$table);
+        if ($name === '' || !is_array($tableColumns)) continue;
+        $normalizedColumns[$name] = array_values(array_unique(array_map(static fn($column): string => strtolower((string)$column), $tableColumns)));
+    }
+    $normalizedTables = array_values(array_unique(array_filter(array_map(static fn($table): string => strtolower((string)$table), $baseTables), static fn(string $table): bool => $table !== '')));
+    if ($normalizedTables === []) throw new RuntimeException('The production database schema reference is empty.');
+    $base = array_fill_keys($normalizedTables, true);
+    foreach (array_keys($normalizedColumns) as $table) {
+        if (!isset($base[$table])) throw new RuntimeException('The production database schema reference is inconsistent.');
+    }
+    foreach ($normalizedTables as $table) {
+        if (empty($normalizedColumns[$table])) throw new RuntimeException('The production database schema reference is incomplete.');
+    }
+    return ['base_tables' => $normalizedTables, 'columns' => $normalizedColumns];
+}
+
+function database_backup_require_schema_reference(?array $schemaReference): array
+{
+    if (!is_array($schemaReference) || !isset($schemaReference['base_tables'], $schemaReference['columns']) || !is_array($schemaReference['base_tables']) || !is_array($schemaReference['columns'])) {
+        throw new RuntimeException('The production database schema reference could not be read safely.');
+    }
+    return database_backup_normalize_schema_reference($schemaReference['columns'], $schemaReference['base_tables']);
+}
+
+/** Capture required compatibility from the current target before touching staging or production. */
+function database_backup_capture_schema_reference(mysqli $connection): array
+{
+    try {
+        $result = $connection->query("SELECT t.TABLE_NAME, c.COLUMN_NAME, t.TABLE_TYPE
+            FROM information_schema.TABLES t
+            INNER JOIN information_schema.COLUMNS c
+                ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA = DATABASE()");
+        $columns = [];
+        $baseTables = [];
+        while ($row = $result->fetch_assoc()) {
+            $table = strtolower((string)$row['TABLE_NAME']);
+            if (strcasecmp((string)$row['TABLE_TYPE'], 'BASE TABLE') === 0) {
+                $columns[$table][] = (string)$row['COLUMN_NAME'];
+                $baseTables[$table] = true;
+            }
+        }
+        return database_backup_normalize_schema_reference($columns, array_keys($baseTables));
+    } catch (Throwable $error) {
+        throw new RuntimeException('The production database schema reference could not be read safely.', 0, $error);
+    }
+}
+
 /** Minimum current business, authentication, payment, and cancellation schema. */
 function database_backup_required_schema_columns(): array
 {
@@ -661,7 +732,8 @@ function database_backup_required_schema_columns(): array
         // refund fields (007/012/022), and manual payments (020) are used by
         // current authentication and transaction flows. Optional integrations
         // such as Google sign-in, reviews, realtime delivery, and room groups
-        // are intentionally not part of this restore gate.
+        // do not block when absent; any such tables/columns enabled on live
+        // production are required by the captured schema reference.
         'users' => ['id', 'email', 'role', 'status', 'password_hash', 'reset_token_hash'],
         'staff' => ['user_id', 'status'],
         'customers' => ['id', 'user_id', 'first_name', 'last_name', 'email', 'phone'],
@@ -670,20 +742,32 @@ function database_backup_required_schema_columns(): array
         'payments' => ['id', 'booking_id', 'transaction_id', 'payment_method', 'amount', 'payment_date', 'status'],
         'cancellations' => ['id', 'booking_id', 'status', 'refund_transaction_id', 'fee_percent', 'refund_destination_method', 'refund_destination_account_name', 'refund_destination_account_identifier', 'refund_destination_bank_name'],
         'manual_payment_submissions' => ['id', 'booking_id', 'customer_user_id', 'reviewer_user_id', 'payment_id', 'payment_method', 'expected_amount', 'transaction_reference', 'reference_fingerprint', 'proof_filename', 'proof_mime', 'proof_size_bytes', 'proof_sha256', 'status', 'rejection_reason', 'submitted_at', 'reviewed_at'],
+        'seminars' => ['id', 'name', 'agreed_price', 'status', 'hall_venue_id', 'hall_start_date', 'hall_end_date', 'hotel_check_in', 'hotel_check_out', 'created_by', 'finalized_at'],
+        'seminar_reservations' => ['id', 'seminar_id', 'venue_id', 'resource_kind', 'start_date', 'end_date', 'floor_label', 'allow_mixed_gender'],
+        'seminar_attendees' => ['id', 'seminar_id', 'full_name', 'gender', 'location', 'contact', 'assigned_venue_id', 'solo_flag'],
+        'seminar_payments' => ['id', 'seminar_id', 'amount', 'payment_method', 'transaction_reference', 'reference_fingerprint', 'idempotency_key', 'status', 'created_by', 'created_at', 'voided_by', 'voided_at', 'void_reason'],
         'audit_logs' => ['id', 'user_id', 'created_at', 'module', 'action', 'ip_address'],
     ];
 }
 
 /** Return missing base tables and columns using case-insensitive schema names. */
-function database_backup_schema_compatibility_errors(array $availableColumns, array $baseTables): array
+function database_backup_schema_compatibility_errors(array $availableColumns, array $baseTables, ?array $schemaReference = null): array
 {
     $available = [];
     foreach ($availableColumns as $table => $columns) {
         $available[strtolower((string)$table)] = array_fill_keys(array_map(static fn($column): string => strtolower((string)$column), (array)$columns), true);
     }
+    $reference = $schemaReference === null ? null : database_backup_require_schema_reference($schemaReference);
+    // $baseTables describes the imported candidate only. The fingerprint is
+    // a list of production requirements; it must never make a missing table
+    // look present in the candidate.
     $base = array_fill_keys(array_map(static fn($table): string => strtolower((string)$table), array_keys(array_filter($baseTables))), true);
     $missing = [];
-    foreach (database_backup_required_schema_columns() as $table => $columns) {
+    $required = database_backup_required_schema_columns();
+    if ($reference !== null) {
+        foreach ($reference['columns'] as $table => $columns) $required[$table] = array_values(array_unique(array_merge($required[$table] ?? [], $columns)));
+    }
+    foreach ($required as $table => $columns) {
         $normalizedTable = strtolower($table);
         if (!isset($base[$normalizedTable])) {
             $missing[] = $table . ' (base table)';
@@ -696,15 +780,16 @@ function database_backup_schema_compatibility_errors(array $availableColumns, ar
     return $missing;
 }
 
-function database_backup_preflight(string $archivePath): array
+function database_backup_preflight(string $archivePath, array $schemaReference): array
 {
+    $schemaReference = database_backup_require_schema_reference($schemaReference);
     $metadata = database_backup_validate_archive($archivePath);
     try {
         $payload = database_backup_extract_payload($metadata);
         $staging = database_backup_staging_config();
         database_backup_reset_staging($staging);
         database_backup_import_payload($payload, $staging, $staging['name']);
-        database_backup_verify_database($staging);
+        database_backup_verify_database($staging, $schemaReference);
         return $metadata;
     } finally {
         database_backup_remove_validation_temp($metadata);
@@ -1156,6 +1241,7 @@ function database_backup_process_job(string $id): array
     $action = (string)($job['action'] ?? '');
     $conn = null;
     $lock = null;
+    $schemaReference = null;
     $restoreVerified = false;
     try {
         if (database_backup_maintenance_state() !== null) throw new RuntimeException('Database maintenance is already active; use the CLI recovery path before starting queued backup work.');
@@ -1172,13 +1258,14 @@ function database_backup_process_job(string $id): array
             return $job;
         }
         if (!in_array($action, ['restore', 'validate'], true)) throw new RuntimeException('Unsupported database backup job.');
+        $schemaReference = database_backup_capture_schema_reference($conn);
         if ($action === 'restore' && (($job['fresh_auth'] ?? false) !== true || !is_int($job['fresh_auth_at'] ?? null) || time() - $job['fresh_auth_at'] > 900)) {
             throw new RuntimeException('Fresh administrator authentication expired before the restore worker ran.');
         }
         $archiveId = (string)($job['archive_id'] ?? '');
         $archivePath = database_backup_archive_path($archiveId, true);
         database_backup_job_update($job, 'running', 'Preflight on staging database', 'Testing the signed archive against the dedicated staging database.');
-        database_backup_preflight($archivePath);
+        database_backup_preflight($archivePath, $schemaReference);
         if ($action === 'validate') {
             database_backup_job_update($job, 'succeeded', 'Preflight passed', 'The signed archive restores and contains the required Sevilla360 tables on staging.');
             return $job;
@@ -1200,7 +1287,7 @@ function database_backup_process_job(string $id): array
         } finally {
             database_backup_remove_validation_temp($metadata);
         }
-        database_backup_verify_database(database_backup_connection_config('DB_'));
+        database_backup_verify_database(database_backup_connection_config('DB_'), $schemaReference);
         $restoreVerified = true;
         $conn->close();
         $conn = database_backup_connect_production();
@@ -1242,7 +1329,7 @@ function database_backup_process_job(string $id): array
                 } finally {
                     database_backup_remove_validation_temp($safety);
                 }
-                database_backup_verify_database(database_backup_connection_config('DB_'));
+                database_backup_verify_database(database_backup_connection_config('DB_'), $schemaReference);
                 $recoveryVerified = true;
                 database_backup_job_update($job, 'failed_recovered', 'Recovered from safety backup', 'The restore failed. Production was recovered and verified; clearing the maintenance gate.', ['recovery_completed_at' => gmdate('Y-m-d\TH:i:s\Z')]);
                 try {

@@ -133,10 +133,12 @@
         try {
             const data = await requestJson(statusUrl, { method: 'GET' });
             const capability = document.getElementById('database-backup-capability');
-            const messages = [...(data.capabilities.messages || [])];
-            if (data.capabilities.restore_message) messages.push(data.capabilities.restore_message);
-            capability.textContent = messages.join(' ');
+            const restoreCapability = document.getElementById('database-backup-restore-capability');
+            const messages = data.capabilities.messages || [];
+            capability.textContent = messages.length ? `Backup creation is unavailable: ${messages.join(' ')}` : '';
             capability.hidden = messages.length === 0;
+            restoreCapability.textContent = data.capabilities.restore_message ? `Restore and upload validation are unavailable: ${data.capabilities.restore_message}` : '';
+            restoreCapability.hidden = !data.capabilities.restore_message;
             createButton.disabled = !data.capabilities.enabled;
             uploadButton.disabled = !data.capabilities.restore_enabled;
             if (data.maintenance) {

@@ -134,13 +134,33 @@ storage. Arbitrary SQL uploads are never accepted. Set `APP_KEY` to a random,
 deployment-specific value with at least 32 characters and keep the same key
 with off-host copies; archives are bound to the configured `DB_NAME`.
 
-Set `BACKUP_DIR` to a private absolute directory outside both the project and
-document root. On a VPS, provision it for the PHP and CLI account with mode
-`0700`; on Hostinger shared hosting, use an owned directory in the account's
-home directory, such as `/home/ACCOUNT/.sevilla360/backups`. Set
+Set `BACKUP_DIR` to a dedicated private absolute directory outside both the
+project and document root, owned by the same account that runs PHP-FPM and the
+CLI worker with mode `0700`. Run `php scripts/database_backup_setup.php
+--check` to see the current storage and worker readiness. On a root-managed
+Linux VPS with an Apache PHP-FPM pool, run
+`sudo php scripts/database_backup_setup.php --apply --service-user=apache` to
+create a new database-specific directory, point `.env` at it, and install a
+five-minute `/etc/cron.d` worker entry under that same service account. The
+setup preserves `.env` ownership, mode, and ACLs, keeps its log private, and
+leaves existing backup-directory contents and `APP_KEY` unchanged. On shared
+hosting, provision the private directory for the PHP account and configure
+the hosting scheduler to run `scripts/database_backup_worker.php` as that same
+account; the setup command does not change hosted service configuration.
+On SELinux enforcing or permissive hosts, `--apply` also installs a persistent
+`httpd_sys_rw_content_t` file-context rule scoped only to this dedicated backup
+directory and runs `restorecon` within it. This keeps the directory and files
+owner-only under Unix permissions while allowing PHP-FPM to read files created
+by the scheduled worker. If the dashboard can see a backup filename but cannot
+list or open it, rerun the same storage setup command as root to repair labels;
+it does not rewrite archive contents or change their Unix permissions. Set
 `BACKUP_MAX_BYTES` for the compressed archive and
 `BACKUP_MAX_UNCOMPRESSED_BYTES` for the expanded SQL limit. The runtime checks
 for `proc_open`, `mysqldump` or `mariadb-dump`, and `mysql` or `mariadb`.
+After applying on this VPS, check readiness under the worker identity with
+`sudo -u apache php scripts/database_backup_setup.php --check --service-user=apache`;
+a check run under a different account may not be able to access its private
+backup directory.
 Hostinger environments missing a capability show a disabled reason in the
 admin page; `MYSQLDUMP_BIN` and `MYSQL_BIN` can point to executable paths when
 the clients are not on PHP's `PATH`.
@@ -149,15 +169,46 @@ Restore is disabled until a dedicated, pre-provisioned staging database is
 configured with `DB_STAGING_HOST`, `DB_STAGING_USER`, `DB_STAGING_PASS`, and
 `DB_STAGING_NAME` (and optional `DB_STAGING_PORT`). It must be a separate,
 disposable database; every restore preflight clears its tables, views,
-triggers, routines, and events. Grant the staging user the object-management
-and import privileges needed inside that database. No global `DROP DATABASE`
-or `CREATE DATABASE` grant is required. Do not use a production database as
-staging. The worker restores each candidate there and checks the core
-authentication, booking, payment, and cancellation tables and required columns
-before production is touched; archives from an older, incompatible transaction
-schema are rejected. Optional integrations such as Google sign-in, realtime
-delivery, reviews, and hotel room groups do not block restore when their
-migrations are not enabled in a deployment.
+triggers, routines, and events. A local one-time setup can create a new staging
+schema and an account limited to that schema; it requires root for the
+ACL-preserving `.env` update and an existing local MariaDB administrator. With
+root socket authentication, run:
+
+```sh
+sudo /usr/bin/php /var/www/html/Sevilla360/scripts/database_backup_setup_staging.php --apply
+```
+
+If MariaDB uses a separate local administrator account, provide its account
+name and enter its password at the hidden terminal prompt (never in the
+command or chat):
+
+```sh
+sudo /usr/bin/php /var/www/html/Sevilla360/scripts/database_backup_setup_staging.php --apply --admin-user=DB_ADMIN_ACCOUNT
+```
+
+Do not use a production database as staging. The worker captures the current
+production base-table and column names before staging is cleared, then checks
+the archive against that live fingerprint plus migration-backed authentication,
+booking, transaction, cancellation, and seminar requirements (including
+`seminar_payments`) before production is touched. Optional integrations do not
+block restore when their tables are absent, but currently enabled production
+tables and columns must be present in an archive.
+
+An opt-in local integration test runs a real signed dump and restore against
+synthetic data in a disposable MariaDB container. It requires the already
+cached `mariadb:10.11` image and does not pull images or connect to production:
+
+```sh
+php scripts/test_database_backup_restore_isolated.php --run
+```
+
+This test verifies the worker restore path, an incompatible archive rejection,
+seminar-payment rows, a pre-restore safety archive, and maintenance-marker
+cleanup. It does not provision the deployment's restore staging database or
+replace a controlled acceptance test of that deployment. Backups contain the
+database only; uploaded proof files are excluded, so keep off-host archive
+copies and separately back up uploads. Describe restore as available only after
+the deployment has configured staging and passed its own restore test.
 
 Add a PHP cron job in Hostinger hPanel to run every five minutes. Manual backup
 and restore requests wait for this CLI-only worker. It also creates one daily

@@ -6,6 +6,7 @@
 
     <div class="database-backup-alert" id="database-backup-maintenance" role="status" hidden></div>
     <div class="database-backup-alert database-backup-alert-info" id="database-backup-capability" role="status" hidden></div>
+    <div class="database-backup-alert database-backup-alert-info" id="database-backup-restore-capability" role="status" hidden></div>
     <div class="database-backup-alert" id="database-backup-message" role="status" aria-live="polite" hidden></div>
 
     <section class="database-backup-section" aria-labelledby="database-backup-tools-title">
