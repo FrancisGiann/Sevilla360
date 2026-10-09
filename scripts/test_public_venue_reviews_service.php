@@ -95,7 +95,7 @@ final class FakeVenueReviewsDatabase
     public array $hotelRooms = [];
     public array $reviews = [];
     public string $lastGroupResolutionSql = '';
-    public string $lastNormalizedLegacySql = '';
+    public string $lastLegacyCandidateSql = '';
     public array $groupRoomLabels = [];
 
     public function prepare(string $sql): FakeVenueReviewsStatement
@@ -111,18 +111,26 @@ final class FakeVenueReviewsDatabase
 
     public function execute(string $sql, array $parameters): array
     {
-        if (str_contains($sql, 'COALESCE(NULLIF(g.legacy_room_type')) {
-            $this->lastNormalizedLegacySql = $sql;
-            $digest = (string)($parameters[0] ?? '');
-            $venueIds = [];
+        if (str_contains($sql, 'SELECT DISTINCT h.venue_id,') && str_contains($sql, 'AS venue_name')) {
+            $this->lastLegacyCandidateSql = $sql;
+            $candidates = [];
+            $hasGroupColumns = str_contains($sql, 'LEFT JOIN hotel_room_groups g');
             foreach ($this->hotelRooms as $room) {
                 $groupId = (int)($room['room_group_id'] ?? 0);
                 $venue = $this->venues[$room['venue_id']] ?? null;
-                $label = $this->groupRoomLabels[$groupId] ?? null;
-                if ($groupId < 1 || !$venue || $venue['category'] !== 'Hotel Room' || $venue['status'] !== 'Available' || !is_string($label)) continue;
-                if (md5($venue['name'] . ' - ' . $label) === $digest) $venueIds[(int)$room['venue_id']] = true;
+                if (!$venue || $venue['category'] !== 'Hotel Room' || $venue['status'] !== 'Available') continue;
+                $candidate = [
+                    'venue_id' => (string)$room['venue_id'],
+                    'venue_name' => $venue['name'],
+                    'room_type' => $room['room_type'] ?? null,
+                ];
+                if ($hasGroupColumns) {
+                    $candidate['group_legacy_room_type'] = $room['group_legacy_room_type'] ?? null;
+                    $candidate['type_display_name'] = $this->groupRoomLabels[$groupId] ?? null;
+                }
+                $candidates[serialize($candidate)] = $candidate;
             }
-            return array_map(static fn(int $id): array => ['venue_id' => $id], array_keys($venueIds));
+            return array_slice(array_values($candidates), 0, 1001);
         }
 
         if (str_contains($sql, 'WHERE h.room_group_id = ?')) {
@@ -137,17 +145,6 @@ final class FakeVenueReviewsDatabase
             }
             if (str_contains($sql, 'SELECT DISTINCT')) $venueIds = array_values(array_unique($venueIds));
             return array_map(static fn(int $id): array => ['venue_id' => $id], array_slice($venueIds, 0, 1001));
-        }
-
-        if (str_contains($sql, 'MD5(CONCAT(v.name, \' - \', h.room_type)) = ?')) {
-            $digest = (string)($parameters[0] ?? '');
-            $venueIds = [];
-            foreach ($this->hotelRooms as $room) {
-                $venue = $this->venues[$room['venue_id']] ?? null;
-                if (!$venue || $venue['category'] !== 'Hotel Room' || $venue['status'] !== 'Available') continue;
-                if (md5($venue['name'] . ' - ' . $room['room_type']) === $digest) $venueIds[(int)$room['venue_id']] = true;
-            }
-            return array_map(static fn(int $id): array => ['venue_id' => $id], array_keys($venueIds));
         }
 
         if (str_contains($sql, 'AVG(vr.rating)')) {
@@ -235,7 +232,13 @@ $assert($response['status'] === 200 && $body['success'] === true, 'valid hotel k
 $assert($body['rating_count'] === 4 && $body['rating_average'] === 3.3, 'aggregate should include only approved, non-cancelled, non-refunded reviews');
 $assert(count($body['reviews']) === 3 && $body['reviews'][0]['reviewer'] === 'Ana S.' && $body['reviews'][0]['review_text'] === 'Great stay', 'latest three reviews preserve the public name mask and strip markup');
 $assert(!in_array('Cancelled', array_column($body['reviews'], 'review_text'), true) && !in_array('Refunded', array_column($body['reviews'], 'review_text'), true), 'cancelled and refunded reviews must stay excluded');
-$assert(str_contains($database->lastNormalizedLegacySql, 'hotel_room_types t') && !str_contains($database->lastNormalizedLegacySql, 'h.room_type'), 'modern legacy hash resolution should use the normalized catalog instead of the physical room_type column');
+$assert(str_contains($database->lastLegacyCandidateSql, 'hotel_room_types t')
+    && str_contains($database->lastLegacyCandidateSql, 'CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name')
+    && str_contains($database->lastLegacyCandidateSql, 'CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type')
+    && str_contains($database->lastLegacyCandidateSql, 'CAST(CONVERT(g.legacy_room_type USING utf8mb4) AS BINARY) AS group_legacy_room_type')
+    && str_contains($database->lastLegacyCandidateSql, 'CAST(CONVERT(t.display_name USING utf8mb4) AS BINARY) AS type_display_name')
+    && !str_contains($database->lastLegacyCandidateSql, 'MD5(')
+    && !str_contains($database->lastLegacyCandidateSql, 'CONCAT('), 'legacy digest matching should hash fetched grouped and raw labels in PHP without SQL collation expressions');
 
 $invalid = venue_reviews_public_response($database, 'hotel-not-a-digest');
 $assert($invalid['status'] === 422 && $database->prepareCount === 3, 'invalid key must be rejected before any database query');
@@ -243,6 +246,18 @@ $assert($invalid['status'] === 422 && $database->prepareCount === 3, 'invalid ke
 $groupResponse = venue_reviews_public_response($database, 'hotel-group-5', null, static fn(object $conn): bool => true);
 $assert($groupResponse['status'] === 200 && $groupResponse['body']['rating_count'] === 4 && $groupResponse['body']['rating_average'] === 3.3, 'group key resolves distinct available venue ids and preserves review eligibility');
 $assert(str_contains($database->lastGroupResolutionSql, 'SELECT DISTINCT h.venue_id') && str_contains($database->lastGroupResolutionSql, 'LIMIT 1001'), 'group resolution must deduplicate venues and fetch only one row beyond the ceiling');
+$rawGroupedHash = venue_reviews_public_response($database, 'hotel-' . md5('Sevilla Hotel - Standard'), null, static fn(object $conn): bool => true);
+$assert($rawGroupedHash['status'] === 200 && $rawGroupedHash['body']['rating_count'] === 4, 'grouped records should preserve historic raw room_type digests alongside canonical catalog labels');
+
+$collationVariantDatabase = new FakeVenueReviewsDatabase();
+$collationVariantDatabase->venues[24] = ['id' => 24, 'name' => 'Case Sensitive Hotel', 'category' => 'Hotel Room', 'status' => 'Available'];
+$collationVariantDatabase->hotelRooms[] = ['venue_id' => 24, 'room_type' => 'Café'];
+$collationVariantDatabase->hotelRooms[] = ['venue_id' => 24, 'room_type' => 'Cafe'];
+$collationVariantDatabase->hotelRooms[] = ['venue_id' => 24, 'room_type' => 'Cafe'];
+$collationVariantResponse = venue_reviews_public_response($collationVariantDatabase, 'hotel-' . md5('Case Sensitive Hotel - Cafe'), null, static fn(object $conn): bool => false);
+$assert($collationVariantResponse['status'] === 200, 'exact-byte candidate DISTINCT must preserve an accent variant needed by a legacy digest');
+$assert(str_contains($collationVariantDatabase->lastLegacyCandidateSql, 'CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name')
+    && str_contains($collationVariantDatabase->lastLegacyCandidateSql, 'CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type'), 'ungrouped fallback candidate columns must use exact-byte DISTINCT semantics too');
 
 $groupSchemaLog = null;
 $groupSchemaUnavailable = venue_reviews_public_response(new FakeVenueReviewsDatabase(), 'hotel-group-5', static function (VenueReviewsQueryFailure $error) use (&$groupSchemaLog): void { $groupSchemaLog = $error; }, static fn(object $conn): bool => false);
@@ -252,8 +267,26 @@ $legacyDatabase = new FakeVenueReviewsDatabase();
 $legacyDatabase->venues = $database->venues;
 $legacyDatabase->reviews = $database->reviews;
 for ($id = 11; $id <= 14; $id++) $legacyDatabase->hotelRooms[] = ['venue_id' => $id, 'room_type' => 'Standard'];
-$legacyFallback = venue_reviews_public_response($legacyDatabase, 'hotel-' . md5('Sevilla Hotel - Standard'), null, static fn(object $conn): bool => true);
+$legacyFallback = venue_reviews_public_response($legacyDatabase, 'hotel-' . md5('Sevilla Hotel - Standard'), null, static fn(object $conn): bool => false);
 $assert($legacyFallback['status'] === 200 && $legacyFallback['body']['rating_count'] === 4, 'old room-label keys for ungrouped records should retain their prepared-query fallback');
+
+$unicodeDatabase = new FakeVenueReviewsDatabase();
+$unicodeDatabase->venues[21] = ['id' => 21, 'name' => 'Hôtel Ñandú', 'category' => 'Hotel Room', 'status' => 'Available'];
+$unicodeDatabase->hotelRooms[] = ['venue_id' => 21, 'room_type' => 'VIP Suite'];
+$unicodeResponse = venue_reviews_public_response($unicodeDatabase, 'hotel-' . md5('Hôtel Ñandú - VIP Suite'), null, static fn(object $conn): bool => false);
+$assert($unicodeResponse['status'] === 200 && $unicodeResponse['body']['rating_count'] === 0, 'Unicode legacy names should match the showroom producer digest exactly');
+
+$quotedDatabase = new FakeVenueReviewsDatabase();
+$quotedDatabase->venues[22] = ['id' => 22, 'name' => "King's Lodge", 'category' => 'Hotel Room', 'status' => 'Available'];
+$quotedDatabase->hotelRooms[] = ['venue_id' => 22, 'room_type' => "VIP ' Suite"];
+$quotedResponse = venue_reviews_public_response($quotedDatabase, 'hotel-' . md5("King's Lodge - VIP ' Suite"), null, static fn(object $conn): bool => false);
+$assert($quotedResponse['status'] === 200 && $quotedResponse['body']['rating_count'] === 0, 'quote characters in legacy labels should be hashed as data without SQL interpolation');
+
+$nullLabelDatabase = new FakeVenueReviewsDatabase();
+$nullLabelDatabase->venues[23] = ['id' => 23, 'name' => 'Null Room Type', 'category' => 'Hotel Room', 'status' => 'Available'];
+$nullLabelDatabase->hotelRooms[] = ['venue_id' => 23, 'room_type' => null];
+$nullLabelResponse = venue_reviews_public_response($nullLabelDatabase, 'hotel-' . md5('Null Room Type - '), null, static fn(object $conn): bool => false);
+$assert($nullLabelResponse['status'] === 404, 'null legacy type values must not be coerced into an empty-label digest');
 
 $overflowDatabase = new FakeVenueReviewsDatabase();
 for ($id = 1; $id <= 1001; $id++) {
@@ -264,6 +297,16 @@ $overflowLog = null;
 $overflow = venue_reviews_public_response($overflowDatabase, 'hotel-group-9', static function (VenueReviewsQueryFailure $error) use (&$overflowLog): void { $overflowLog = $error; }, static fn(object $conn): bool => true);
 $assert($overflow['status'] === 503 && $overflowLog instanceof VenueReviewsQueryFailure && $overflowLog->stage === 'venue_resolution_limit', 'more than 1000 resolved venues should fail safely instead of truncating ratings or building an unbounded IN clause');
 $assert($overflowDatabase->prepareCount === 1, 'overflow must be detected before aggregate and review queries');
+
+$legacyCandidateOverflow = new FakeVenueReviewsDatabase();
+for ($id = 1; $id <= 1001; $id++) {
+    $legacyCandidateOverflow->venues[$id] = ['id' => $id, 'name' => 'Hotel ' . $id, 'category' => 'Hotel Room', 'status' => 'Available'];
+    $legacyCandidateOverflow->hotelRooms[] = ['venue_id' => $id, 'room_type' => 'Standard'];
+}
+$candidateOverflowLog = null;
+$candidateOverflow = venue_reviews_public_response($legacyCandidateOverflow, 'hotel-' . md5('not a matching hotel'), static function (VenueReviewsQueryFailure $error) use (&$candidateOverflowLog): void { $candidateOverflowLog = $error; }, static fn(object $conn): bool => false);
+$assert($candidateOverflow['status'] === 503 && $candidateOverflowLog instanceof VenueReviewsQueryFailure && $candidateOverflowLog->stage === 'venue_resolution_limit', 'legacy candidate scans should fail closed when their bounded result exceeds the ceiling');
+$assert($legacyCandidateOverflow->prepareCount === 1, 'legacy candidate overflow must stop before review queries');
 
 $emptyDatabase = new FakeVenueReviewsDatabase();
 $emptyDatabase->venues = $database->venues;

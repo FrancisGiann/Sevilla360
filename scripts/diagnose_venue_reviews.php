@@ -78,18 +78,22 @@ $queryChecks = [
         INNER JOIN venues v ON v.id = h.venue_id
         WHERE h.room_group_id = 0 AND v.category = 'Hotel Room' AND v.status = 'Available'
         LIMIT 1001",
-    'venue_resolution_hotel_normalized_hash' => "EXPLAIN SELECT DISTINCT h.venue_id
+    'venue_resolution_hotel_grouped_hash_candidates' => "EXPLAIN SELECT DISTINCT h.venue_id,
+        CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name,
+        CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type,
+        CAST(CONVERT(g.legacy_room_type USING utf8mb4) AS BINARY) AS group_legacy_room_type,
+        CAST(CONVERT(t.display_name USING utf8mb4) AS BINARY) AS type_display_name
         FROM hotel_rooms h
-        INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
-        INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
         INNER JOIN venues v ON v.id = h.venue_id
+        LEFT JOIN hotel_room_groups g ON g.id = h.room_group_id
+        LEFT JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
         WHERE v.category = 'Hotel Room' AND v.status = 'Available'
-          AND MD5(CONCAT(v.name, ' - ', COALESCE(NULLIF(g.legacy_room_type, ''), t.display_name))) = '00000000000000000000000000000000'
         LIMIT 1001",
-    'venue_resolution_hotel_legacy_hash' => "EXPLAIN SELECT DISTINCT h.venue_id
+    'venue_resolution_hotel_legacy_hash_candidates' => "EXPLAIN SELECT DISTINCT h.venue_id,
+        CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name,
+        CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type
         FROM hotel_rooms h INNER JOIN venues v ON v.id = h.venue_id
         WHERE v.category = 'Hotel Room' AND v.status = 'Available'
-          AND MD5(CONCAT(v.name, ' - ', h.room_type)) = '00000000000000000000000000000000'
         LIMIT 1001",
     'review_aggregate' => "EXPLAIN SELECT COALESCE(AVG(vr.rating), 0) AS rating_average, COUNT(*) AS rating_count
         FROM venue_reviews vr INNER JOIN bookings b ON b.id = vr.booking_id

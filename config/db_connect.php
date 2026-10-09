@@ -16,7 +16,7 @@ $conn = new mysqli($host, $username, $password, $database);
 
 // 4. Check if the connection worked
 if ($conn->connect_error) {
-    if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH') || defined('SEVILLA_PUBLIC_VENUE_REVIEWS')) {
+    if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH') || defined('SEVILLA_PUBLIC_VENUE_REVIEWS') || defined('SEVILLA_CUSTOMER_SUSPENSION_ENDPOINT')) {
         throw new RuntimeException('Database connection unavailable.', (int)$conn->connect_errno);
     }
     die("Connection failed: " . $conn->connect_error);

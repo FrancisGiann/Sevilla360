@@ -145,26 +145,52 @@ function venue_reviews_public_response(object $conn, mixed $venueKey, ?callable 
         } elseif ($keyType === 'hotel') {
             $digest = substr($venueKey, 6);
             if (venue_reviews_hotel_group_schema_ready($conn, $hotelGroupSchemaReady)) {
-                $rows = venue_reviews_query_rows($conn, $stage, "SELECT DISTINCT h.venue_id
+                $rows = venue_reviews_query_rows($conn, $stage, "SELECT DISTINCT h.venue_id,
+                    CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name,
+                    CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type,
+                    CAST(CONVERT(g.legacy_room_type USING utf8mb4) AS BINARY) AS group_legacy_room_type,
+                    CAST(CONVERT(t.display_name USING utf8mb4) AS BINARY) AS type_display_name
                     FROM hotel_rooms h
-                    INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
-                    INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
                     INNER JOIN venues v ON v.id = h.venue_id
+                    LEFT JOIN hotel_room_groups g ON g.id = h.room_group_id
+                    LEFT JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
                     WHERE v.category = 'Hotel Room' AND v.status = 'Available'
-                      AND MD5(CONCAT(v.name, ' - ', COALESCE(NULLIF(g.legacy_room_type, ''), t.display_name))) = ?
-                    LIMIT 1001", 's', [$digest]);
-                $venueIds = array_map(static fn(array $row): int => (int)$row['venue_id'], $rows);
-            }
-            // Keep old keys working for ungrouped records and legacy aliases not
-            // represented by the normalized room-type catalog.
-            if (!$venueIds) {
-                $rows = venue_reviews_query_rows($conn, $stage, "SELECT DISTINCT h.venue_id
+                    LIMIT 1001");
+            } else {
+                $rows = venue_reviews_query_rows($conn, $stage, "SELECT DISTINCT h.venue_id,
+                    CAST(CONVERT(v.name USING utf8mb4) AS BINARY) AS venue_name,
+                    CAST(CONVERT(h.room_type USING utf8mb4) AS BINARY) AS room_type
                     FROM hotel_rooms h INNER JOIN venues v ON v.id = h.venue_id
                     WHERE v.category = 'Hotel Room' AND v.status = 'Available'
-                      AND MD5(CONCAT(v.name, ' - ', h.room_type)) = ?
-                    LIMIT 1001", 's', [$digest]);
-                $venueIds = array_map(static fn(array $row): int => (int)$row['venue_id'], $rows);
+                    LIMIT 1001");
             }
+            if (count($rows) > $maxResolvedVenueIds) {
+                $stage = 'venue_resolution_limit';
+                throw new RuntimeException('Hotel review candidate limit exceeded.');
+            }
+
+            // Hash decoded strings in PHP so the digest matches the showroom
+            // producer exactly and does not depend on SQL column collations.
+            $matchedVenueIds = [];
+            foreach ($rows as $row) {
+                $venueId = filter_var($row['venue_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                $venueName = $row['venue_name'] ?? null;
+                if ($venueId === false || !is_string($venueName)) continue;
+
+                $labels = [];
+                if (is_string($row['room_type'] ?? null)) $labels[] = $row['room_type'];
+                $groupLegacyType = $row['group_legacy_room_type'] ?? null;
+                $catalogType = $row['type_display_name'] ?? null;
+                $normalizedType = is_string($groupLegacyType) && $groupLegacyType !== '' ? $groupLegacyType : $catalogType;
+                if (is_string($normalizedType)) $labels[] = $normalizedType;
+
+                foreach (array_unique($labels) as $label) {
+                    if (hash_equals($digest, md5($venueName . ' - ' . $label))) {
+                        $matchedVenueIds[(int)$venueId] = true;
+                    }
+                }
+            }
+            $venueIds = array_map('intval', array_keys($matchedVenueIds));
         } else {
             $id = (int)substr($venueKey, strpos($venueKey, '-') + 1);
             $category = $keyType === 'event' ? 'Event Hall' : 'Resort Villa';
