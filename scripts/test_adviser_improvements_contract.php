@@ -11,6 +11,7 @@ $assert = static function (bool $condition, string $message): void {
 $reviewMigration = $read('migrations/018_venue_reviews.sql');
 $reviewSave = $read('actions/user/save_venue_review.php');
 $reviewPublic = $read('actions/public/get_venue_reviews.php');
+$reviewPublic .= "\n" . $read('includes/public_venue_reviews.php');
 $reviewFeatured = $read('actions/public/get_featured_reviews.php');
 $reviewModerate = $read('actions/admin/moderate_venue_review.php');
 $reviewAdminPage = $read('includes/admin-page/admin_reviews.php');
@@ -56,7 +57,7 @@ $assert(!str_contains($index, 'top_rated_venues') && !str_contains($index, 'publ
 $assert(str_contains($indexJs, 'No ratings yet') && str_contains($indexJs, 'out of 5') && str_contains($indexJs, 'textContent'), 'catalog has textual rating state and safe review rendering');
 $assert(str_contains($indexJs, 'scrollLock') && str_contains($indexJs, 'scrollY') && str_contains($indexJs, 'paddingRight') && str_contains($indexJs, 'body.style.position') && str_contains($indexJs, 'body.style.top') && str_contains($indexJs, 'body.style.width') && str_contains($indexJs, "body.style.position = 'fixed'") && str_contains($indexJs, 'body.style.position = scrollLock.bodyPosition') && str_contains($indexJs, 'body.style.top = scrollLock.bodyTop') && str_contains($indexJs, 'body.style.width = scrollLock.bodyWidth') && str_contains($indexJs, 'window.scrollTo({left: 0, top: scrollLock.y') && str_contains($read('assets/css/index.css'), 'overscroll-behavior'), 'homepage modal fixes and restores the body while preserving scroll position and containing scroll chaining');
 
-$assert(str_contains($overview, 'Monthly Sales') && str_contains($overview, '<div class="stat-card">') && !str_contains($overview, 'page=sales') && !str_contains($overview, 'Revenue Trend'), 'overview keeps Monthly Sales as a static metric without a Sales destination');
+$assert(str_contains($overview, 'Monthly Sales') && str_contains($overview, 'overview-sales-card') && str_contains($overview, 'if (($_SESSION[\'role\'] ?? \'\') === \'admin\'): ?>') && str_contains($overview, 'href="admin_dashboard.php?page=sales"') && !str_contains($overview, 'Revenue Trend'), 'overview exposes the Sales destination only to admin users while keeping Monthly Sales as its metric');
 $assert(str_contains($overview, 'overview-pipeline') && str_contains($overview, 'Schedule Snapshot') && str_contains($overview, 'Maintenance') && !str_contains($overview, 'charts-grid-2'), 'overview uses one responsive schedule, maintenance, and pipeline composition');
 $assert(str_contains($overviewJs, 'monthlySales') && !str_contains($overviewJs, 'revenueTrend') && str_contains($overviewJs, 'type: "doughnut"') && str_contains($overviewJs, 'cutout: "68%"') && str_contains($overviewJs, 'usePointStyle'), 'overview client uses monthlySales and a compact doughnut pipeline chart');
 
@@ -65,7 +66,9 @@ $assert(!preg_match('/\bDROP\s+COLUMN\b|\bDELETE\s+FROM\b/i', $resetMigration), 
 $assert(str_contains($resetHelper, 'APP_BASE_URL') && str_contains($resetHelper, 'password_reset_base_url') && str_contains($resetHelper, 'https'), 'base URL validation is centralized');
 $assert(str_contains($forgot, "hash('sha256'") && str_contains($forgot, 'reset_token_hash') && str_contains($forgot, 'error_log'), 'forgot password stores only a hash and logs configuration failures');
 $assert(str_contains($reset, "hash('sha256'") && str_contains($reset, 'reset_token_hash'), 'reset consumes hashed single-use tokens');
-$assert(str_contains($auth, 'data-origin="admin"') && str_contains($auth, 'data-origin="customer"'), 'both portals expose origin-preserving forgot links');
-$assert(str_contains($authJs, "if (forgotOrigin === 'admin') switchView(viewAdmin)"), 'admin-origin auth pages open the admin login view');
+$assert(str_contains($auth, 'in_array($_GET[\'origin\'] ?? \'\', [\'customer\', \'admin\'], true)')
+    && str_contains($auth, 'name="origin" id="forgot-origin" value="<?php echo htmlspecialchars($forgot_origin')
+    && str_contains($authJs, "event.currentTarget?.dataset.origin === 'admin' ? 'admin' : 'customer'")
+    && str_contains($authJs, 'forgotOriginInput.value = forgotOrigin'), 'forgot-password flow keeps only the allowlisted portal origin in its hidden request field');
 
 echo "Adviser improvements contract checks passed\n";

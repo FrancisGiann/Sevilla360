@@ -15,6 +15,7 @@ $adminDetails = $read('actions/admin/get_booking_details.php');
 $adminAction = $read('actions/admin/update_booking_status.php');
 $helper = $read('includes/refund_helper.php');
 $customerPage = $read('user_dashboard.php');
+$customerPage .= "\n" . $read('includes/customer-dashboard/booking_rows.php');
 $customerJs = $read('assets/js/user_dashboard.js');
 $customerCss = $read('assets/css/user_dashboard.css');
 $customerUiCss = $read('assets/css/ui-refinement.css');

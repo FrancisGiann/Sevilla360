@@ -24,6 +24,7 @@ require_once __DIR__ . '/../../includes/realtime.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
 require_once __DIR__ . '/../../includes/seminars.php';
+require_once __DIR__ . '/../../includes/site_metadata.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -303,18 +304,20 @@ try {
         }
 
         // 5. Send Notification Email
-        try {
-            // Generates a link straight to their dashboard
-            $domain = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https://" : "http://";
-            $dash_link = $domain . $_SERVER['HTTP_HOST'] . "/Sevilla360/user_dashboard.php";
-            send_invoice_ready_email($c_email, $c_name, $ref_no, $new_total, $dash_link);
-        } catch (Throwable $mail_e) {
-            error_log('Invoice email delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
+        $dash_link = site_metadata_absolute_url('user_dashboard.php');
+        if ($dash_link === null) {
+            error_log('Invoice email skipped: APP_BASE_URL is missing or invalid booking_id=' . (int)$booking_id);
+        } else {
+            try {
+                send_invoice_ready_email($c_email, $c_name, $ref_no, $new_total, $dash_link);
+            } catch (Throwable $mail_e) {
+                error_log('Invoice email delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
+            }
         }
 
         create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Review the amount and submit your payment reference and receipt from the dashboard within {$payment_hours} hours.");
 
-        $message = "Invoice finalized and sent to customer!";
+        $message = "Invoice finalized. The customer can review it in their dashboard.";
     }elseif ($action === 'add_payment') {
         if (!isset($data['amount']) || !is_scalar($data['amount']) || !is_numeric($data['amount'])) throw new Exception('Enter a valid payment amount.');
         $amount_to_add = (float)$data['amount'];

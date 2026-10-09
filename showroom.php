@@ -90,7 +90,7 @@ if ($venues_query) {
             'id' => $safe_id,
             'venue_id' => $v['id'],
             'review_key' => $v['category'] === 'Hotel Room'
-                ? 'hotel-' . md5($v['venue_name'] . ' - ' . ($v['room_type'] ?? ''))
+                ? hotel_public_review_key($v['room_group_id'] ?? null, (string)$v['venue_name'], (string)($v['room_type'] ?? ''))
                 : (strtolower((string)$v['category']) === 'event hall' ? 'event-' : 'villa-') . (int)$v['id'],
             'title' => strtoupper($display_name),
             'category' => $v['category'],

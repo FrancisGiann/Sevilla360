@@ -135,10 +135,13 @@ $assert(str_contains($guide, 'sevilla-guide-target-ring') && str_contains($guide
     && !str_contains($uiRefinement, '[data-guide-target="true"] { position: relative; z-index: 100001'), 'guide highlights stay in the modal stacking context without lifting the target container above the panel');
 $assert(str_contains($showroomPhp, 'btn-showroom-help') && str_contains($adminCms, 'btn-hotspot-help') && str_contains($adminCmsCss, '@media'), 'tutorial help controls and responsive styling are wired');
 
-$assert(!str_contains($adminDashboard, "'sales'") && !str_contains($adminDashboard, 'admin_sales')
-    && str_contains($overview, '<div class="stat-card">') && !str_contains($overview, 'page=sales')
-    && !is_file($root . '/includes/admin-page/admin_sales.php') && !is_file($root . '/assets/js/admin-page/admin_sales.js')
-    && !is_file($root . '/assets/css/admin-page/admin_sales.css') && !is_file($root . '/actions/admin/get_sales_report.php'), 'standalone Sales feature is removed while Overview Monthly Sales remains static');
+$assert(str_contains($adminDashboard, '$is_admin_user = (($_SESSION[\'role\'] ?? \'\') === \'admin\');')
+    && str_contains($adminDashboard, 'elseif ($page === \'sales\' && $is_admin_user):')
+    && str_contains($adminDashboard, 'elseif ($page === \'sales\' && $is_admin_user) include \'includes/admin-page/admin_sales.php\';')
+    && str_contains($overview, 'if (($_SESSION[\'role\'] ?? \'\') === \'admin\'): ?>')
+    && str_contains($overview, 'href="admin_dashboard.php?page=sales"')
+    && is_file($root . '/includes/admin-page/admin_sales.php') && is_file($root . '/assets/js/admin-page/admin_sales.js')
+    && is_file($root . '/assets/css/admin-page/admin_sales.css'), 'Sales page and overview link are restricted to admin users while staff retain the shared dashboard');
 $assert(str_contains($style, '.notif-section-label') && str_contains($style, '.notif-item.is-read'), 'notification read and Needs action states have visual affordances');
 
 exit($failures === 0 ? 0 : 1);

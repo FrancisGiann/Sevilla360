@@ -21,6 +21,14 @@ function hotel_room_type_label(string $code): ?string
     return $types[$code]['label'] ?? null;
 }
 
+/** Build the public review key for a hotel group, with a legacy room-label fallback. */
+function hotel_public_review_key(mixed $roomGroupId, string $venueName, string $roomType): string
+{
+    $validGroupId = filter_var($roomGroupId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($validGroupId !== false) return 'hotel-group-' . $validGroupId;
+    return 'hotel-' . md5($venueName . ' - ' . $roomType);
+}
+
 function hotel_validate_room_type_code(mixed $code): string
 {
     if (!is_string($code) || hotel_room_type_label($code) === null) {

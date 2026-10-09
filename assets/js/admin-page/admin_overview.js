@@ -1,3 +1,36 @@
+function escapeHTML(str) {
+    if (str === null || typeof str === 'undefined') return '';
+    return String(str).replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
+}
+
+function buildOverviewEventDetailsMarkup(specifics) {
+    const event = specifics && typeof specifics === 'object' ? specifics : {};
+    let markup = `<strong>${escapeHTML(event.event_type)}</strong> (${escapeHTML(event.event_style)})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${escapeHTML(event.custom_notes || 'No special requests.')}</span>`;
+    if (event.admin_notes) {
+        markup += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${escapeHTML(event.admin_notes)}</span>`;
+    }
+    return markup;
+}
+
+function buildOverviewExtrasMarkup(addons, roomAllocations) {
+    let html = '';
+    let hasExtras = false;
+    if (Array.isArray(addons) && addons.length > 0) {
+        hasExtras = true;
+        addons.forEach(addon => {
+            html += `<span class="label">&#8226; ${escapeHTML(addon?.name)} (x${escapeHTML(addon?.quantity)})</span> <span class="value">₱${parseFloat(addon?.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+        });
+    }
+    if (Array.isArray(roomAllocations) && roomAllocations.length > 0) {
+        hasExtras = true;
+        roomAllocations.forEach(room => {
+            const number = room?.room_number ? ` - Room ${room.room_number}` : '';
+            html += `<span class="label">&#8226; ${escapeHTML(room?.building_name)} — ${escapeHTML(room?.room_type)}${escapeHTML(number)}<br><small>${escapeHTML(room?.start_date)} to ${escapeHTML(room?.end_date)} (${escapeHTML(room?.nights)} nights)</small></span> <span class="value">₱${parseFloat(room?.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+        });
+    }
+    return { html, hasExtras };
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // Global Chart Configuration & Utilities
     const colors = { gold: "#d6a870", beige: "#fdf2e2", dark: "#2a2522", green: "#88a096", red: "#c27c7c", grid: "rgba(42, 37, 34, 0.05)" };
@@ -6,11 +39,6 @@ document.addEventListener("DOMContentLoaded", () => {
   
     const currencyFormatter = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
     let overviewBookingRequestSequence = 0;
-
-    function escapeHTML(str) {
-        if (!str) return '';
-        return str.toString().replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
-    }
 
     function renderOverviewPaymentHistory(payments) {
         const section = document.getElementById('ov-vd-payment-history-section');
@@ -426,11 +454,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     specValue.style.display = 'block';
                     if (data.venue_category === 'Event Hall') {
                         specLabel.innerText = "Event Details:";
-                        let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
-                        if (specifics.admin_notes) {
-                            notesHtml += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
-                        }
-                        specValue.innerHTML = notesHtml;
+                        specValue.innerHTML = buildOverviewEventDetailsMarkup(specifics);
                     } else if (data.venue_category === 'Resort Villa') {
                         specLabel.innerText = "Stay Type:";
                         specValue.innerText = specifics.stay_type;
@@ -446,24 +470,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const addonsContainer = document.getElementById('ov-vd-addons-container');
                 const addonsList = document.getElementById('ov-vd-addons-list');
-                addonsList.innerHTML = ''; 
-                let hasExtras = false;
-
-                if (addons && addons.length > 0) {
-                    hasExtras = true;
-                    addons.forEach(addon => {
-                        addonsList.innerHTML += `<span class="label">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                    });
-                }
-                if (roomAllocations.length > 0) {
-                    hasExtras = true;
-                    roomAllocations.forEach(room => {
-                        const number = room.room_number ? ` - Room ${room.room_number}` : '';
-                        addonsList.innerHTML += `<span class="label">&#8226; ${room.building_name} — ${room.room_type}${number}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                    });
-                }
-
-                addonsContainer.style.display = hasExtras ? 'block' : 'none';
+                const extras = buildOverviewExtrasMarkup(addons, roomAllocations);
+                addonsList.innerHTML = extras.html;
+                addonsContainer.style.display = extras.hasExtras ? 'block' : 'none';
 
                 document.getElementById('ov-vd-base-amt').innerText = currencyFormatter.format(data.base_amount);
                 document.getElementById('ov-vd-addons-amt').innerText = currencyFormatter.format(data.addons_amount);

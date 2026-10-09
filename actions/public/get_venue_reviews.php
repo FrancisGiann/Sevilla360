@@ -1,102 +1,44 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
-require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
+require_once __DIR__ . '/../../includes/public_venue_reviews.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
-function venue_reviews_public_error(int $status, string $message): never
+function venue_reviews_log_failure(VenueReviewsQueryFailure $failure): void
 {
-    http_response_code($status);
-    echo json_encode(['success' => false, 'message' => $message]);
+    $stage = preg_match('/\A[a-z_]+\z/', $failure->stage) === 1 ? $failure->stage : 'unknown';
+    $causeClass = preg_match('/\A[A-Za-z0-9_\\\\]+\z/', $failure->causeClass) === 1 ? $failure->causeClass : 'Throwable';
+    $sqlState = preg_match('/\A[A-Z0-9]{5}\z/', $failure->sqlState) === 1 ? $failure->sqlState : '00000';
+    error_log(sprintf('venue_reviews failure stage=%s exception=%s sqlstate=%s code=%d', $stage, $causeClass, $sqlState, $failure->errorCode));
+}
+
+function venue_reviews_send_failure(VenueReviewsQueryFailure $failure): never
+{
+    venue_reviews_log_failure($failure);
+    http_response_code(503);
+    echo '{"success":false,"message":"Reviews are temporarily unavailable."}';
     exit;
 }
 
+define('SEVILLA_PUBLIC_VENUE_REVIEWS', true);
+try {
+    require_once __DIR__ . '/../../config/db_connect.php';
+} catch (Throwable $cause) {
+    venue_reviews_send_failure(new VenueReviewsQueryFailure(
+        'db_connection',
+        get_class($cause),
+        method_exists($cause, 'getSqlState') ? (string)$cause->getSqlState() : '00000',
+        (int)$cause->getCode(),
+        $cause
+    ));
+}
+
 $venueKey = $_GET['venue_key'] ?? '';
-if (!is_string($venueKey) || !preg_match('/\A(?:event|villa)-[1-9][0-9]*\z|\Ahotel-[a-f0-9]{32}\z|\Ahotel-group-[1-9][0-9]*\z/', $venueKey)) {
-    venue_reviews_public_error(422, 'A valid venue key is required.');
+$response = venue_reviews_public_response($conn, $venueKey, 'venue_reviews_log_failure');
+http_response_code($response['status']);
+$json = json_encode($response['body'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+if ($json === false) {
+    venue_reviews_send_failure(new VenueReviewsQueryFailure('response_encoding', 'JsonException', '00000', json_last_error()));
 }
-
-$venueIds = [];
-$keyType = str_starts_with($venueKey, 'hotel-group-') ? 'hotel_group' : (str_starts_with($venueKey, 'hotel-') ? 'hotel' : (str_starts_with($venueKey, 'event-') ? 'event' : 'villa'));
-if ($keyType === 'hotel_group') {
-    if (!hotel_group_schema_ready($conn)) venue_reviews_public_error(503, 'Reviews are temporarily unavailable.');
-    $groupId = (int)substr($venueKey, strlen('hotel-group-'));
-    $stmt = $conn->prepare("SELECT h.venue_id FROM hotel_rooms h
-        INNER JOIN hotel_room_groups g ON g.id = h.room_group_id
-        INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
-        INNER JOIN venues v ON v.id = h.venue_id
-        WHERE h.room_group_id = ? AND v.category = 'Hotel Room' AND v.status = 'Available'");
-    $stmt->bind_param('i', $groupId);
-    $stmt->execute();
-    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    $venueIds = array_map(static fn($row) => (int)$row['venue_id'], $rows);
-} elseif ($keyType === 'hotel') {
-    $digest = substr($venueKey, 6);
-    $stmt = $conn->prepare("SELECT DISTINCT h.venue_id
-        FROM hotel_rooms h INNER JOIN venues v ON v.id = h.venue_id
-        WHERE v.category = 'Hotel Room' AND v.status = 'Available'
-          AND MD5(CONCAT(v.name, ' - ', h.room_type)) = ?");
-    $stmt->bind_param('s', $digest);
-    $stmt->execute();
-    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-    $venueIds = array_map(static fn($row) => (int)$row['venue_id'], $rows);
-} else {
-    $id = (int)substr($venueKey, strpos($venueKey, '-') + 1);
-    $category = $keyType === 'event' ? 'Event Hall' : 'Resort Villa';
-    $stmt = $conn->prepare('SELECT id FROM venues WHERE id = ? AND category = ? AND status = \'Available\' LIMIT 1');
-    $stmt->bind_param('is', $id, $category);
-    $stmt->execute();
-    if ($row = $stmt->get_result()->fetch_assoc()) $venueIds[] = (int)$row['id'];
-    $stmt->close();
-}
-if (!$venueIds) venue_reviews_public_error(404, 'Venue not found.');
-
-$placeholders = implode(',', array_fill(0, count($venueIds), '?'));
-$types = str_repeat('i', count($venueIds));
-$bindValues = $venueIds;
-$bindRefs = [];
-foreach ($bindValues as $index => &$bindValue) $bindRefs[$index] =& $bindValue;
-$bindRefs = array_values($bindRefs);
-$avgStmt = $conn->prepare("SELECT COALESCE(AVG(vr.rating), 0) AS rating_average, COUNT(*) AS rating_count
-    FROM venue_reviews vr INNER JOIN bookings b ON b.id = vr.booking_id
-    WHERE vr.moderation_status = 'Approved' AND b.booking_status <> 'Cancelled'
-      AND COALESCE(b.payment_status, '') <> 'Refunded' AND vr.venue_id IN ($placeholders)");
-$avgStmt->bind_param($types, ...$bindRefs);
-$avgStmt->execute();
-$aggregate = $avgStmt->get_result()->fetch_assoc() ?: ['rating_average' => 0, 'rating_count' => 0];
-$avgStmt->close();
-
-$reviewStmt = $conn->prepare("SELECT vr.rating, vr.review_text, vr.created_at, c.first_name, c.last_name
-    FROM venue_reviews vr INNER JOIN customers c ON c.id = vr.customer_id
-    INNER JOIN bookings b ON b.id = vr.booking_id
-    WHERE vr.moderation_status = 'Approved' AND b.booking_status <> 'Cancelled'
-      AND COALESCE(b.payment_status, '') <> 'Refunded' AND vr.venue_id IN ($placeholders)
-    ORDER BY vr.created_at DESC, vr.id DESC LIMIT 3");
-$reviewStmt->bind_param($types, ...$bindRefs);
-$reviewStmt->execute();
-$reviewResult = $reviewStmt->get_result();
-$reviews = [];
-while ($row = $reviewResult->fetch_assoc()) {
-    $lastName = trim((string)($row['last_name'] ?? ''));
-    $initial = function_exists('mb_substr') ? mb_substr($lastName, 0, 1) : substr($lastName, 0, 1);
-    $reviews[] = [
-        'rating' => (int)$row['rating'],
-        // Strip markup before JSON encoding; clients still render through
-        // textContent so a hostile review cannot become executable HTML.
-        'review_text' => trim(strip_tags((string)($row['review_text'] ?? ''))),
-        'reviewer' => trim((string)$row['first_name']) . ($lastName !== '' ? ' ' . $initial . '.' : ''),
-        'created_at' => (string)$row['created_at'],
-    ];
-}
-$reviewStmt->close();
-
-echo json_encode([
-    'success' => true,
-    'venue_key' => $venueKey,
-    'rating_average' => round((float)$aggregate['rating_average'], 1),
-    'rating_count' => (int)$aggregate['rating_count'],
-    'reviews' => $reviews,
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+echo $json;

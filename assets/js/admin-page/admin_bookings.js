@@ -5,6 +5,52 @@
  * ==========================================================================
  */
 
+function escapeAdminBookingDetailHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[character]));
+}
+
+function buildAdminEventDetailsMarkup(specifics) {
+    const event = specifics && typeof specifics === 'object' ? specifics : {};
+    let markup = `<strong>${escapeAdminBookingDetailHtml(event.event_type)}</strong> (${escapeAdminBookingDetailHtml(event.event_style)})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${escapeAdminBookingDetailHtml(event.custom_notes || 'No special requests.')}</span>`;
+    if (event.admin_notes) {
+        markup += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${escapeAdminBookingDetailHtml(event.admin_notes)}</span>`;
+    }
+    return markup;
+}
+
+function buildAdminBookingExtrasMarkup(addons, lineItems, roomAllocations) {
+    let html = '';
+    let hasExtras = false;
+    const rooms = Array.isArray(roomAllocations) ? roomAllocations : [];
+    if (Array.isArray(addons) && addons.length > 0) {
+        hasExtras = true;
+        addons.forEach(addon => {
+            html += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${escapeAdminBookingDetailHtml(addon?.name)} (x${escapeAdminBookingDetailHtml(addon?.quantity)})</span> <span class="value">₱${parseFloat(addon?.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+        });
+    }
+    if (Array.isArray(lineItems) && lineItems.length > 0) {
+        hasExtras = true;
+        lineItems.forEach(item => {
+            if (rooms.length && String(item?.item_name ?? '').startsWith('Room Add-on:')) return;
+            html += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${escapeAdminBookingDetailHtml(item?.item_name)}</span> <span class="value">₱${parseFloat(item?.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+        });
+    }
+    if (rooms.length > 0) {
+        hasExtras = true;
+        rooms.forEach(room => {
+            const roomNumber = room?.room_number ? ` - Rm ${room.room_number}` : '';
+            html += `<span class="label" style="font-weight:normal; color:#555;">&#8226; Room: ${escapeAdminBookingDetailHtml(room?.building_name)} - ${escapeAdminBookingDetailHtml(room?.room_type)}${escapeAdminBookingDetailHtml(roomNumber)}<br><small>${escapeAdminBookingDetailHtml(room?.start_date)} to ${escapeAdminBookingDetailHtml(room?.end_date)} (${escapeAdminBookingDetailHtml(room?.nights)} nights)</small></span> <span class="value">₱${parseFloat(room?.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
+        });
+    }
+    return { html, hasExtras };
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   
@@ -1494,11 +1540,7 @@ document.addEventListener("DOMContentLoaded", () => {
                       specValue.style.display = 'block';
                       if (data.venue_category === 'Event Hall') {
                           specLabel.innerText = "Event Details:";
-                          let notesHtml = `<strong>${specifics.event_type}</strong> (${specifics.event_style})<br><span class="notes-cust-box"><strong>Customer Requests:</strong> ${specifics.custom_notes || 'No special requests.'}</span>`;
-                          if (specifics.admin_notes) {
-                              notesHtml += `<span class="notes-prep-box"><strong>Internal Prep Notes (Admin Only):</strong> ${specifics.admin_notes}</span>`;
-                          }
-                          specValue.innerHTML = notesHtml;
+                          specValue.innerHTML = buildAdminEventDetailsMarkup(specifics);
                       } else if (data.venue_category === 'Resort Villa') {
                           specLabel.innerText = "Villa stay:";
                           specValue.innerText = specifics.summary || specifics.stay_type;
@@ -1516,33 +1558,10 @@ document.addEventListener("DOMContentLoaded", () => {
                   const addonsContainer = document.getElementById('vd-addons-container');
                   const addonsList = document.getElementById('vd-addons-list');
                   const roomAllocations = res.data.room_allocations;
-                  addonsList.innerHTML = ''; 
-                  let hasExtras = false;
+                  const extras = buildAdminBookingExtrasMarkup(addons, lineItems, roomAllocations);
+                  addonsList.innerHTML = extras.html;
       
-                  if (addons && addons.length > 0) {
-                      hasExtras = true;
-                      addons.forEach(addon => {
-                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${addon.name} (x${addon.quantity})</span> <span class="value">₱${parseFloat(addon.total_price).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                      });
-                  }
-      
-                  if (lineItems && lineItems.length > 0) {
-                      hasExtras = true;
-                      lineItems.forEach(item => {
-                          if (roomAllocations?.length && item.item_name.startsWith('Room Add-on:')) return;
-                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; ${item.item_name}</span> <span class="value">₱${parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                      });
-                  }
-
-                  if (roomAllocations && roomAllocations.length > 0) {
-                      hasExtras = true;
-                      roomAllocations.forEach(room => {
-                          const rNum = room.room_number ? ` - Rm ${room.room_number}` : '';
-                          addonsList.innerHTML += `<span class="label" style="font-weight:normal; color:#555;">&#8226; Room: ${room.building_name} - ${room.room_type}${rNum}<br><small>${room.start_date} to ${room.end_date} (${room.nights} nights)</small></span> <span class="value">₱${parseFloat(room.line_total).toLocaleString('en-US', {minimumFractionDigits:2})}</span>`;
-                      });
-                  }
-      
-                  if (hasExtras) addonsContainer.style.display = 'block';
+                  if (extras.hasExtras) addonsContainer.style.display = 'block';
                   else addonsContainer.style.display = 'none';
       
                   const formatCash = (amt) => `₱${parseFloat(amt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
