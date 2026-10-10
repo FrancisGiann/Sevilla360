@@ -24,8 +24,12 @@ function seminar_validate_dates(mixed $hallStart, mixed $hallEnd, mixed $checkIn
     return [$hallStart, $hallEnd, $checkIn, $checkOut];
 }
 
-/** Caller must lock the target venue row within its transaction before relying on this conflict check. */
-function seminar_has_resource_conflict(mysqli $conn, int $venueId, string $startDate, string $endDate, ?int $excludeSeminarId = null): bool
+/**
+ * Caller must lock the target venue row before relying on this conflict check.
+ * Pass $lockRows=false only when the caller holds the complete venue mutex set
+ * and uses READ COMMITTED; this avoids a venue→seminar-row lock inversion.
+ */
+function seminar_has_resource_conflict(mysqli $conn, int $venueId, string $startDate, string $endDate, ?int $excludeSeminarId = null, bool $lockRows = true): bool
 {
     $sql = "SELECT sr.id FROM seminar_reservations sr JOIN seminars s ON s.id = sr.seminar_id
         WHERE sr.venue_id = ? AND s.status IN ('draft','finalized')
@@ -38,7 +42,7 @@ function seminar_has_resource_conflict(mysqli $conn, int $venueId, string $start
         $types .= 'i';
         $values[] = $excludeSeminarId;
     }
-    $sql .= ' LIMIT 1 FOR UPDATE';
+    $sql .= ' LIMIT 1' . ($lockRows ? ' FOR UPDATE' : '');
     $stmt = $conn->prepare($sql);
     if (!$stmt) throw new RuntimeException('Unable to validate seminar availability.');
     $params = [$types];
@@ -173,23 +177,28 @@ function seminar_normalize_room_ids(mixed $value, int $maxRooms = 500): array
     return $ids;
 }
 
-/** Caller must hold the room's venues row lock before rechecking a hotel add-on for confirmation. */
-function seminar_assert_hotel_room_available(mysqli $conn, int $venueId, string $startDate, string $endDate, int $excludeBookingId): void
+/**
+ * Caller must hold the room's venues row lock before rechecking a hotel add-on.
+ * Pass $lockConflictRows=false only with the complete venue mutex set held in a
+ * READ COMMITTED transaction; other callers retain locking reads by default.
+ */
+function seminar_assert_hotel_room_available(mysqli $conn, int $venueId, string $startDate, string $endDate, int $excludeBookingId, bool $lockConflictRows = true): void
 {
     if ($endDate <= $startDate) throw new InvalidArgumentException('Hotel room checkout must be after check-in.');
-    if (seminar_has_resource_conflict($conn, $venueId, $startDate, $endDate)) {
+    if (seminar_has_resource_conflict($conn, $venueId, $startDate, $endDate, null, $lockConflictRows)) {
         throw new InvalidArgumentException('A hotel add-on room is reserved for a seminar.');
     }
+    $lockingClause = $lockConflictRows ? ' FOR UPDATE' : '';
     $checks = [
         ["SELECT id FROM bookings WHERE venue_id=? AND id<>? AND booking_status IN ('Pending','Confirmed','Completed')
-            AND COALESCE(source,'')<>'Maintenance' AND start_date < ? AND end_date > ? LIMIT 1 FOR UPDATE", 'iiss', 'The hotel add-on room is booked for those dates.'],
+            AND COALESCE(source,'')<>'Maintenance' AND start_date < ? AND end_date > ? LIMIT 1{$lockingClause}", 'iiss', 'The hotel add-on room is booked for those dates.'],
         ["SELECT br.id FROM booking_rooms br JOIN bookings b ON b.id=br.booking_id JOIN venues parent_v ON parent_v.id=b.venue_id
             WHERE br.venue_id=? AND br.booking_id<>? AND b.booking_status IN ('Pending','Confirmed','Completed')
             AND NOT (b.booking_status='Pending' AND parent_v.category='Event Hall') AND COALESCE(b.source,'')<>'Maintenance'
-            AND br.start_date < ? AND br.end_date > ? LIMIT 1 FOR UPDATE", 'iiss', 'The hotel add-on room is attached to another booking.'],
+            AND br.start_date < ? AND br.end_date > ? LIMIT 1{$lockingClause}", 'iiss', 'The hotel add-on room is attached to another booking.'],
         ["SELECT id FROM maintenance WHERE venue_id=? AND is_blocking=1 AND (status='Scheduled' OR status IS NULL)
-            AND start_date < ? AND end_date > ? LIMIT 1 FOR UPDATE", 'iss', 'The hotel add-on room is under maintenance.'],
-        ["SELECT id FROM booking_locks WHERE venue_id=? AND expires_at>NOW() AND start_date < ? AND end_date > ? LIMIT 1 FOR UPDATE", 'iss', 'The hotel add-on room is temporarily held by another booking.'],
+            AND start_date < ? AND end_date > ? LIMIT 1{$lockingClause}", 'iss', 'The hotel add-on room is under maintenance.'],
+        ["SELECT id FROM booking_locks WHERE venue_id=? AND expires_at>NOW() AND start_date < ? AND end_date > ? LIMIT 1{$lockingClause}", 'iss', 'The hotel add-on room is temporarily held by another booking.'],
     ];
     foreach ($checks as [$sql, $types, $message]) {
         $stmt = $conn->prepare($sql);

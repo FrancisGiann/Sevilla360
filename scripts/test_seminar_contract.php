@@ -673,11 +673,26 @@ $check('roster edits and assignments are submitted through the same atomic save 
     && str_contains($adminEndpoint, "if (\$op === 'save_assignments')")
     && str_contains($adminEndpoint, '$conn->begin_transaction();')
     && str_contains($adminEndpoint, 'foreach ($normalizedEdits as $attendeeId => $edit)'));
-$check('Event Hall invoice finalization locks and rechecks attached hotel rooms before confirming', str_contains($statusEndpoint, 'seminar_assert_hotel_room_available')
-    && str_contains($statusEndpoint, 'booking_rooms WHERE booking_id=? ORDER BY venue_id FOR UPDATE')
+$bookingTxnStart = strpos($statusEndpoint, 'booking_begin_mutation_transaction($conn)');
+$bookingRowLock = strpos($statusEndpoint, 'WHERE b.id = ? FOR UPDATE', $bookingTxnStart === false ? 0 : $bookingTxnStart);
+$venueUnionLock = strpos($statusEndpoint, 'booking_lock_venues_in_order($conn, $venueIdsToLock)', $bookingTxnStart === false ? 0 : $bookingTxnStart);
+$check('Event Hall invoice finalization plans and locks its complete venue union before fresh conflict checks', $bookingTxnStart !== false
+    && $bookingRowLock !== false && $venueUnionLock !== false && $bookingRowLock < $venueUnionLock
+    && str_contains($statusEndpoint, 'booking_rooms WHERE booking_id=? ORDER BY venue_id')
+    && str_contains($statusEndpoint, 'event_hall_addon_candidate_venue_ids($conn, $invoiceAddonPlan)')
+    && str_contains($statusEndpoint, 'reallocate_event_hall_addons($conn, $booking_id, $invoiceAddonPlan ?? [], $invoiceAddonCandidateIds)')
+    && str_contains($statusEndpoint, 'seminar_assert_hotel_room_available')
+    && str_contains($statusEndpoint, 'seminar_assert_hotel_room_available($conn, (int)$addon[\'venue_id\'], (string)$addon[\'start_date\'], (string)$addon[\'end_date\'], $booking_id, false)')
     && str_contains($statusEndpoint, "UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, payment_scheme = ?, booking_status = 'Confirmed'"));
 $check('online submission releases only its own primary and allocated add-on room locks', str_contains($onlineSubmit, 'venue_id IN (SELECT venue_id FROM booking_rooms WHERE booking_id = ?)')
     && str_contains($onlineSubmit, '$stmt_unlock->bind_param("sii", $session_id, $venue_id, $booking_id)'));
+
+if (getenv('SEVILLA360_CONTRACT_STATIC_ONLY') === '1') {
+    foreach ($checks as $label => $passed) echo ($passed ? 'PASS ' : 'FAIL ') . $label . PHP_EOL;
+    echo 'Passed ' . count($checks) . ' seminar contract checks.' . PHP_EOL;
+    if (in_array(false, $checks, true)) exit(1);
+    exit(0);
+}
 
 // Exercise transactional locking in a uniquely named throwaway database. The
 // runner never modifies the configured application database or its tables.

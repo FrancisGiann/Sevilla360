@@ -128,7 +128,48 @@ function get_event_style_capacity(mysqli $conn, int $venue_id, ?string $style): 
  * turns those requested building/type/date rows into concrete, authoritative
  * room allocations while the caller's transaction is active.
  */
-function reallocate_event_hall_addons(mysqli $conn, int $booking_id): float
+function booking_rules_bind_params(mysqli_stmt $statement, string $types, array $values): bool
+{
+    $params = [$types];
+    foreach ($values as $index => $value) $params[] = &$values[$index];
+    return call_user_func_array([$statement, 'bind_param'], $params);
+}
+
+/** Begin an admin booking mutation with a fresh read view after row-lock waits. */
+function booking_begin_mutation_transaction(mysqli $conn): void
+{
+    if (!$conn->query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED')) {
+        throw new RuntimeException('Unable to prepare a consistent booking update.');
+    }
+    if (!$conn->begin_transaction()) {
+        throw new RuntimeException('Unable to begin the booking update.');
+    }
+}
+
+/** Lock a complete resource set in the numeric venue-id order used by seminars. */
+function booking_lock_venues_in_order(mysqli $conn, array $venueIds): array
+{
+    $venueIds = array_values(array_unique(array_filter(array_map('intval', $venueIds), static fn($id) => $id > 0)));
+    sort($venueIds, SORT_NUMERIC);
+    foreach ($venueIds as $venueId) {
+        $stmt = $conn->prepare('SELECT id FROM venues WHERE id=? FOR UPDATE');
+        if (!$stmt) throw new RuntimeException('Unable to lock the reserved venue.');
+        $stmt->bind_param('i', $venueId);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            throw new RuntimeException('Venue not found.');
+        }
+        $result = $stmt->get_result();
+        $found = $result && $result->num_rows > 0;
+        if ($result) $result->free();
+        $stmt->close();
+        if (!$found) throw new RuntimeException('Venue not found.');
+    }
+    return $venueIds;
+}
+
+/** Load and normalize the provisional hotel add-ons while the parent booking is locked. */
+function event_hall_addon_reallocation_plan(mysqli $conn, int $booking_id): array
 {
     $groups_schema_ready = false;
     try {
@@ -183,14 +224,106 @@ function reallocate_event_hall_addons(mysqli $conn, int $booking_id): float
         $groups[$key]['quantity']++;
     }
 
+    return ['groups_schema_ready' => $groups_schema_ready, 'groups' => $groups];
+}
+
+/** Return the complete available hotel candidate set for room groups, without taking venue locks. */
+function booking_hotel_candidate_venue_ids(mysqli $conn, array $groups): array
+{
+    if (!$groups) return [];
+
+    $conditions = [];
+    $types = '';
+    $values = [];
+    foreach ($groups as $group) {
+        if (isset($group['room_group_id']) && (int)$group['room_group_id'] > 0) {
+            $conditions[] = 'h.room_group_id = ?';
+            $types .= 'i';
+            $values[] = (int)$group['room_group_id'];
+        } else {
+            $conditions[] = '(v.name = ? AND h.room_type = ?)';
+            $types .= 'ss';
+            $values[] = (string)$group['building_name'];
+            $values[] = (string)$group['room_type'];
+        }
+    }
+
+    $sql = "SELECT v.id FROM venues v
+        INNER JOIN hotel_rooms h ON h.venue_id = v.id
+        WHERE v.status = 'Available' AND (" . implode(' OR ', $conditions) . ')
+        ORDER BY v.id';
+    $stmt = $conn->prepare($sql);
+    if (!$stmt || !booking_rules_bind_params($stmt, $types, $values)) {
+        throw new RuntimeException('Unable to prepare hotel add-on inventory locks.');
+    }
+    if (!$stmt->execute()) throw new RuntimeException('Unable to load hotel add-on inventory locks.');
+    $ids = array_map('intval', array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'id'));
+    $stmt->close();
+    sort($ids, SORT_NUMERIC);
+    return array_values(array_unique($ids));
+}
+
+/** Return every available room candidate referenced by this invoice plan. */
+function event_hall_addon_candidate_venue_ids(mysqli $conn, array $plan): array
+{
+    $groups = is_array($plan['groups'] ?? null) ? array_values($plan['groups']) : [];
+    return booking_hotel_candidate_venue_ids($conn, $groups);
+}
+
+/** Collect current add-on rows and their available legacy-label candidate pool for rescheduling. */
+function booking_reschedule_addon_plan(mysqli $conn, int $bookingId): array
+{
+    $stmt = $conn->prepare("SELECT br.id, br.venue_id, v.name AS building_name, h.room_type
+        FROM booking_rooms br
+        INNER JOIN venues v ON v.id = br.venue_id
+        INNER JOIN hotel_rooms h ON h.venue_id = br.venue_id
+        WHERE br.booking_id = ?
+        ORDER BY v.name, h.room_type, br.id");
+    if (!$stmt) throw new RuntimeException('Unable to load room add-ons for rescheduling.');
+    $stmt->bind_param('i', $bookingId);
+    if (!$stmt->execute()) throw new RuntimeException('Unable to load room add-ons for rescheduling.');
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $groups = [];
+    $existingVenueIds = [];
+    foreach ($rows as $row) {
+        $building = (string)$row['building_name'];
+        $roomType = (string)$row['room_type'];
+        $key = $building . "\0" . $roomType;
+        $groups[$key] = [
+            'building_name' => $building,
+            'room_type' => $roomType,
+            'room_group_id' => null,
+        ];
+        $existingVenueIds[] = (int)$row['venue_id'];
+    }
+
+    return [
+        'rows' => $rows,
+        'existing_venue_ids' => array_values(array_unique($existingVenueIds)),
+        'candidate_venue_ids' => booking_hotel_candidate_venue_ids($conn, array_values($groups)),
+    ];
+}
+
+function reallocate_event_hall_addons(mysqli $conn, int $booking_id, array $plan, array $lockedCandidateIds): float
+{
+    $groups_schema_ready = !empty($plan['groups_schema_ready']);
+    $groups = is_array($plan['groups'] ?? null) ? $plan['groups'] : [];
     if (!$groups) return 0.0;
+
+    // The caller locks the hall and this full candidate union in one numeric
+    // venue-id order. Only allocate from that prelocked set; a newly inserted
+    // room is ignored until a later retry rather than locked out of order.
+    $lockedCandidateMap = array_fill_keys(array_map('intval', $lockedCandidateIds), true);
+    if (!$lockedCandidateMap) throw new RuntimeException('No hotel add-on inventory was locked. Please retry the invoice.');
     ksort($groups, SORT_STRING);
 
-    // Lock candidate venue rows in deterministic group/id order before
-    // checking occupancy. The caller already locks the Event Hall venue row.
+    // Candidate venue rows are already locked as a complete numeric union by
+    // the caller. This query only reads that bounded set and takes no new locks.
     $candidate_filter = $groups_schema_ready ? 'h.room_group_id = ?' : 'v.name = ? AND h.room_type = ?';
     $candidate_group_select = $groups_schema_ready ? 'h.room_group_id' : 'NULL AS room_group_id';
-    $stmt_candidates = $conn->prepare("\n        SELECT v.id, h.nightly_rate, {$candidate_group_select}\n        FROM venues v\n        INNER JOIN hotel_rooms h ON h.venue_id = v.id\n        WHERE {$candidate_filter} AND v.status = 'Available'\n        ORDER BY v.id\n        FOR UPDATE\n    ");
+    $stmt_candidates = $conn->prepare("\n        SELECT v.id, h.nightly_rate, {$candidate_group_select}\n        FROM venues v\n        INNER JOIN hotel_rooms h ON h.venue_id = v.id\n        WHERE {$candidate_filter} AND v.status = 'Available'\n        ORDER BY v.id\n    ");
     $stmt_direct = $conn->prepare("\n        SELECT id FROM bookings\n        WHERE venue_id = ? AND booking_status IN ('Pending', 'Confirmed', 'Completed')\n          AND COALESCE(source, '') <> 'Maintenance'\n          AND start_date < ? AND end_date > ?\n        LIMIT 1\n    ");
     $stmt_addon = $conn->prepare("\n        SELECT br.id\n        FROM booking_rooms br\n        INNER JOIN bookings b ON b.id = br.booking_id\n        INNER JOIN venues parent_v ON parent_v.id = b.venue_id\n        WHERE br.venue_id = ? AND b.id <> ?\n          AND b.booking_status IN ('Pending', 'Confirmed', 'Completed')\n          AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall')\n          AND COALESCE(b.source, '') <> 'Maintenance'\n          AND br.start_date < ? AND br.end_date > ?\n        LIMIT 1\n    ");
     $stmt_maintenance = $conn->prepare("\n        SELECT id FROM maintenance\n        WHERE venue_id = ? AND is_blocking = 1 AND (status = 'Scheduled' OR status IS NULL)\n          AND start_date <= ? AND end_date >= ?\n        LIMIT 1\n    ");
@@ -219,8 +352,9 @@ function reallocate_event_hall_addons(mysqli $conn, int $booking_id): float
         while ($room = $candidate_result->fetch_assoc()) {
             if (count($allocations[$allocation_group_key] ?? []) >= $quantity) break;
             $venue_id = (int)$room['id'];
+            if (!isset($lockedCandidateMap[$venue_id])) continue;
 
-            if (seminar_has_resource_conflict($conn, $venue_id, $start_date, $end_date)) continue;
+            if (seminar_has_resource_conflict($conn, $venue_id, $start_date, $end_date, null, false)) continue;
 
             $stmt_direct->bind_param('iss', $venue_id, $end_date, $start_date);
             if (!$stmt_direct->execute()) throw new RuntimeException('Hotel direct-booking availability could not be checked.');
