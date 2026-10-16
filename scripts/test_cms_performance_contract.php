@@ -14,8 +14,26 @@ $hotspotJs = $read('assets/js/admin-page/admin_hotspots.js');
 $backfill = $read('scripts/backfill_cms_thumbnails.php');
 $uploadAccess = $read('assets/uploads/.htaccess');
 $publicAccess = $read('.htaccess');
+$gitignore = $read('.gitignore');
 $landing = $read('index.php');
 $landingJs = $read('assets/js/index.js');
+$gitCommandSucceeds = static function (array $command) use ($root): bool {
+    $process = proc_open($command, [
+        0 => ['file', '/dev/null', 'r'],
+        1 => ['file', '/dev/null', 'w'],
+        2 => ['file', '/dev/null', 'w'],
+    ], $pipes, $root, null, ['bypass_shell' => true]);
+    return is_resource($process) && proc_close($process) === 0;
+};
+$uploadSourceIsIgnored = $gitCommandSucceeds([
+    'git', 'check-ignore', '--no-index', '--quiet', '--', 'assets/uploads/.cms-contract-source.jpg',
+]);
+$uploadDerivativeIsIgnored = $gitCommandSucceeds([
+    'git', 'check-ignore', '--no-index', '--quiet', '--', 'assets/uploads/.cms-card/' . str_repeat('a', 64) . '-800.webp',
+]);
+$fallbackIsTracked = $gitCommandSucceeds([
+    'git', 'ls-files', '--error-unmatch', '--', 'assets/uploads/home-hero-expanded-pool.png',
+]);
 
 $checks = [
     'CMS query selects only needed fields once' => substr_count($cms, 'FROM media_cms') === 1
@@ -89,6 +107,11 @@ $checks = [
     'Apache exposes only existing regular card WebPs at generated widths before the dot-path deny' => str_contains($publicAccess, 'RewriteRule ^assets/uploads/\\.cms-card/[a-f0-9]{64}-(?:480|800|1320)\\.webp$ - [END]')
         && str_contains($publicAccess, "RewriteCond %{REQUEST_FILENAME} -f\nRewriteCond %{REQUEST_FILENAME} !-l\nRewriteRule ^assets/uploads/\\.cms-card/")
         && strpos($publicAccess, 'RewriteRule ^assets/uploads/\\.cms-card/') < strpos($publicAccess, 'RewriteRule (^|/)\\.(?!well-known(?:/|$)) - [F,L]'),
+    'Hostinger deployment preservation covers source uploads and derivatives while retaining its tracked fallback' => str_contains($gitignore, "\n/assets/uploads/\n")
+        && is_file($root . '/assets/uploads/home-hero-expanded-pool.png')
+        && $uploadSourceIsIgnored
+        && $uploadDerivativeIsIgnored
+        && $fallbackIsTracked,
     'SSR and carousel cards use the same responsive source, candidates, and sizes' => str_contains($landing, "'card_image' => \$public_card_image(")
         && str_contains($landing, 'srcset=')
         && str_contains($landing, 'sizes=')

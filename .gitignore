@@ -9,10 +9,9 @@ vendor/
 # Ignore locally installed realtime gateway dependencies
 realtime/node_modules/
 
-# CMS WebP derivatives are generated from preserved uploads on each host.
-/assets/uploads/.cms-thumbnails/
-/assets/uploads/.cms-hero/
-/assets/uploads/.cms-card/
+# Hostinger's Git publisher preserves ignored paths between releases. Keep the
+# complete runtime media tree (CMS originals and generated derivatives) on host.
+/assets/uploads/
 
 # Ignore error logs
 error_log
