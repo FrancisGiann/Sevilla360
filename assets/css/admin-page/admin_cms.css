@@ -1226,6 +1226,8 @@
 .cms-hotel-option-count { flex: 0 0 auto; padding: .38rem .6rem; border: 1px solid #e6ddcf; border-radius: 999px; background: #f8f4ed; color: #554634; font-size: .82rem; font-weight: 650; line-height: 1.2; white-space: nowrap; }
 .cms-hotel-gallery-summary { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin: 0; color: #62594f; font-size: .9rem; line-height: 1.4; font-variant-numeric: tabular-nums; }
 .cms-hotel-type-card .cms-open-hotel-editor { width: 100%; min-height: 44px; }
+/* Do not let a neighboring populated card stretch the compact empty state vertically. */
+.cms-hotel-type-card-empty { align-self: start; }
 .cms-hotel-type-card .cms-hotel-empty-cover { display: flex; aspect-ratio: auto; min-height: 0; align-items: center; padding: .65rem .75rem; border-bottom: 1px solid rgba(42, 37, 34, .08); background: #f7f3ed; }
 .cms-hotel-empty-preview { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr) auto; align-items: center; gap: .55rem; width: 100%; color: #5b5249; text-align: left; }
 .cms-hotel-empty-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border: 1px solid #e4d8c8; border-radius: 8px; background: #fffdfa; color: #86653b; font-size: 1.05rem; }

@@ -79,11 +79,12 @@ $checks['hotspot editor changes exact source slot before loading panorama and sa
     && str_contains($hotspots, 'String(photo.slot_assignment) === source.slot')
     && str_contains($hotspots, 'initViewer(currentPhotosArray[0].file_path)');
 $checks['empty hotel type cards are compact, have an accessible shared-photo shortcut, and keep one clear editor action'] =
-    str_contains($cms, 'class="cms-card cms-hotel-type-card" data-type="hotel" data-types="standard 360"')
+    str_contains($cms, "class=\"cms-card cms-hotel-type-card<?php echo \$first_shared ? '' : ' cms-hotel-type-card-empty'; ?>\" data-type=\"hotel\"")
     && str_contains($cms, 'cms-hotel-empty-cover')
     && str_contains($cms, 'No shared photos yet')
     && str_contains($cms, 'class="btn cms-hotel-add-shared"')
     && str_contains($cms, 'Edit galleries')
+    && str_contains($cmsCss, '.cms-hotel-type-card-empty { align-self: start; }')
     && str_contains($cmsCss, '.cms-hotel-type-card .cms-hotel-empty-cover { display: flex; aspect-ratio: auto;')
     && str_contains($cmsCss, '.cms-hotel-add-shared { min-width: 82px; min-height: 44px;')
     && str_contains($cmsCss, '@media (max-width: 380px)')

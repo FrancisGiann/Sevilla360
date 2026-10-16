@@ -450,7 +450,7 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 $sharedHotspotOptions[] = ['slot' => $sourceGallery['slot'], 'label' => $sourceLabel];
             }
         ?>
-        <article class="cms-card cms-hotel-type-card" data-type="hotel" data-types="standard 360" data-category="hotel-room"
+        <article class="cms-card cms-hotel-type-card<?php echo $first_shared ? '' : ' cms-hotel-type-card-empty'; ?>" data-type="hotel" data-types="standard 360" data-category="hotel-room"
             data-hotel-canonical-slot="<?php echo htmlspecialchars($canonical_slot, ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-building="<?php echo htmlspecialchars((string)$editor_type['building_name'], ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-room-type-code="<?php echo htmlspecialchars((string)$editor_type['room_type_code'], ENT_QUOTES, 'UTF-8'); ?>"
