@@ -250,17 +250,22 @@ document.addEventListener("DOMContentLoaded", function () {
     article.className = 'idx-catalog-card';
     const media = document.createElement('div');
     media.className = 'idx-catalog-card-media';
-    const cardImages = Array.isArray(venue.thumbnails) && venue.thumbnails.length ? venue.thumbnails : venue.images;
-    const imageUrl = Array.isArray(cardImages)
-      ? cardImages.find(path => typeof path === 'string' && path.trim() && path.trim() !== placeholderImage)
-      : '';
+    const cardImage = venue.card_image && typeof venue.card_image === 'object' ? venue.card_image : {};
+    const sourceImages = Array.isArray(venue.images) ? venue.images : [];
+    const imageUrl = typeof cardImage.src === 'string' && cardImage.src.trim()
+      ? cardImage.src.trim()
+      : sourceImages.find(path => typeof path === 'string' && path.trim() && path.trim() !== placeholderImage) || '';
     if (imageUrl) {
       const image = document.createElement('img');
       image.alt = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Sevilla360 venue';
       image.loading = 'lazy';
       image.decoding = 'async';
-      image.width = 480;
-      image.height = 270;
+      const intrinsicWidth = Number.parseInt(cardImage.width, 10);
+      const intrinsicHeight = Number.parseInt(cardImage.height, 10);
+      image.width = Number.isFinite(intrinsicWidth) && intrinsicWidth > 0 ? intrinsicWidth : 4;
+      image.height = Number.isFinite(intrinsicHeight) && intrinsicHeight > 0 ? intrinsicHeight : 3;
+      if (typeof cardImage.srcset === 'string' && cardImage.srcset.trim()) image.setAttribute('srcset', cardImage.srcset.trim());
+      if (typeof cardImage.sizes === 'string' && cardImage.sizes.trim()) image.setAttribute('sizes', cardImage.sizes.trim());
       image.addEventListener('error', () => image.replaceWith(makeCatalogImageFallback()), { once: true });
       image.src = imageUrl;
       media.appendChild(image);
@@ -319,6 +324,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const reviewVisibleCount = () => window.innerWidth > 1024 ? 3 : (window.innerWidth >= 768 ? 2 : 1);
   const setReviewImageFallback = image => {
     image.onerror = null;
+    image.removeAttribute('srcset');
+    image.removeAttribute('sizes');
     image.src = placeholderImage;
   };
   const toPublicReview = review => {
@@ -341,16 +348,27 @@ document.addEventListener("DOMContentLoaded", function () {
       venueName: venueName || 'Sevilla360 venue',
       category,
       roomType,
-      image: String(venue.images?.[0] || placeholderImage),
+      image: venue.card_image && typeof venue.card_image === 'object'
+        ? venue.card_image
+        : {src: String(venue.images?.[0] || placeholderImage)},
     };
   };
   const makeTestimonialCard = review => {
     const article = document.createElement('article');
     article.className = 'idx-testimonial-card';
     const image = document.createElement('img');
-    image.src = review.image;
     image.alt = review.roomType ? `${review.venueName}, ${review.roomType}` : review.venueName;
+    image.decoding = 'async';
     image.loading = 'lazy';
+    const imageWidth = Number.parseInt(review.image.width, 10);
+    const imageHeight = Number.parseInt(review.image.height, 10);
+    if (Number.isFinite(imageWidth) && imageWidth > 0) image.width = imageWidth;
+    if (Number.isFinite(imageHeight) && imageHeight > 0) image.height = imageHeight;
+    if (typeof review.image.srcset === 'string' && review.image.srcset.trim()) image.srcset = review.image.srcset.trim();
+    if (typeof review.image.srcset === 'string' && review.image.srcset.trim()) {
+      image.sizes = '(max-width: 767px) calc(100vw - 2rem), (max-width: 1024px) calc(50vw - 2.125rem), (max-width: 1175px) calc(33.333vw - 1.833rem), 23.25rem';
+    }
+    image.src = review.image.src || placeholderImage;
     image.addEventListener('error', () => setReviewImageFallback(image), {once: true});
     const body = document.createElement('div');
     body.className = 'idx-testimonial-body';

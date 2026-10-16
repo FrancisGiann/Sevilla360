@@ -18,6 +18,8 @@ declare(strict_types=1);
 
 const MEDIA_CMS_THUMBNAIL_WIDTH = 480;
 const MEDIA_CMS_THUMBNAIL_HEIGHT = 270;
+const MEDIA_CMS_CARD_DERIVATIVE_WIDTHS = [480, 800, 1320];
+const MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT = 1600;
 
 /** Return the canonical assets/uploads root used by CMS media. */
 function media_cms_upload_root(): string
@@ -280,6 +282,220 @@ function media_cms_ensure_hero_derivative(string $sourcePath): ?string
     }
 }
 
+/** Return the deterministic public catalog derivative path for one width. */
+function media_cms_card_derivative_relative_path(string $sourcePath, int $width): string
+{
+    if (!in_array($width, MEDIA_CMS_CARD_DERIVATIVE_WIDTHS, true)) {
+        throw new InvalidArgumentException('CMS card derivative width is invalid.');
+    }
+    $normalized = media_cms_upload_relative_path($sourcePath);
+    return 'assets/uploads/.cms-card/' . hash('sha256', $normalized) . '-' . $width . '.webp';
+}
+
+/** Resolve a safe writable catalog derivative path. */
+function media_cms_card_derivative_file_path(string $sourcePath, int $width): string
+{
+    $relative = media_cms_card_derivative_relative_path($sourcePath, $width);
+    $root = media_cms_upload_root();
+    $directory = $root . DIRECTORY_SEPARATOR . '.cms-card';
+    if (is_link($directory) || (!is_dir($directory) && !@mkdir($directory, 0755, true) && !is_dir($directory))) {
+        throw new RuntimeException('CMS card derivative directory is unavailable.');
+    }
+    $resolvedDirectory = realpath($directory);
+    if ($resolvedDirectory === false || $resolvedDirectory !== $directory) {
+        throw new RuntimeException('CMS card derivative directory is invalid.');
+    }
+    $file = $directory . DIRECTORY_SEPARATOR . basename($relative);
+    if (is_link($file)) throw new InvalidArgumentException('CMS card derivative path is invalid.');
+    return $file;
+}
+
+/** Resolve a catalog derivative for post-commit cleanup only when it exists safely. */
+function media_cms_existing_card_derivative_file_path(string $sourcePath, int $width): ?string
+{
+    try {
+        $relative = media_cms_card_derivative_relative_path($sourcePath, $width);
+        $file = media_cms_upload_file_path($relative, true);
+        return realpath($file) === $file ? $file : null;
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+/** Return one existing derivative only if it matches the current safe source. */
+function media_cms_existing_card_derivative(string $sourcePath, int $width): ?array
+{
+    try {
+        $relative = media_cms_card_derivative_relative_path($sourcePath, $width);
+        $source = media_cms_upload_file_path($sourcePath, true);
+        $sourceModifiedAt = @filemtime($source);
+        $file = media_cms_upload_file_path($relative, true);
+        $info = @getimagesize($file);
+        $size = @filesize($file);
+        $version = @filemtime($file);
+        $imageWidth = (int)($info[0] ?? 0);
+        $imageHeight = (int)($info[1] ?? 0);
+        if (!is_array($info) || ($info['mime'] ?? '') !== 'image/webp'
+            || $size === false || $size < 1 || $size > 4194304
+            || $imageWidth < 1 || $imageWidth > $width
+            || $imageHeight < 1 || $imageHeight > MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT
+            || $sourceModifiedAt === false || $version === false || $version < $sourceModifiedAt) return null;
+        return [
+            'path' => $relative,
+            'url' => $relative . '?v=' . (int)$version,
+            'width' => $imageWidth,
+            'height' => $imageHeight,
+            'size' => (int)$size,
+        ];
+    } catch (Throwable $error) {
+        return null;
+    }
+}
+
+/** Create or reuse bounded, source-ratio-preserving public card derivatives. */
+function media_cms_ensure_card_derivatives(string $sourcePath): array
+{
+    $normalized = media_cms_upload_relative_path($sourcePath);
+    $source = media_cms_upload_file_path($normalized, true);
+    $sourceInfo = @getimagesize($source);
+    $sourceMime = is_array($sourceInfo) ? (string)($sourceInfo['mime'] ?? '') : '';
+    $sourceWidth = (int)($sourceInfo[0] ?? 0);
+    $sourceHeight = (int)($sourceInfo[1] ?? 0);
+    if (!in_array($sourceMime, ['image/jpeg', 'image/png', 'image/webp'], true)
+        || $sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 10000 || $sourceHeight > 10000
+        || $sourceWidth > intdiv(40000000, $sourceHeight)) {
+        throw new RuntimeException('CMS source is not a supported image within the configured dimensions.');
+    }
+
+    $derivatives = [];
+    foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+        $existing = media_cms_existing_card_derivative($normalized, $width);
+        if ($existing !== null) {
+            $derivatives[] = $existing;
+            continue;
+        }
+
+        $destination = media_cms_card_derivative_file_path($normalized, $width);
+        $temporaryPath = $destination . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
+        try {
+            $binary = media_cms_thumbnail_binary();
+            if ($binary === null) {
+                if (!media_cms_imagick_write_bounded_webp($source, $temporaryPath, $width, MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT)) {
+                    throw new RuntimeException('Card derivative generation failed.');
+                }
+            } else {
+                $process = proc_open([
+                    $binary,
+                    '-limit', 'memory', '128MiB',
+                    '-limit', 'map', '256MiB',
+                    '-limit', 'disk', '512MiB',
+                    '-limit', 'time', '60',
+                    $source,
+                    '-auto-orient',
+                    '-resize', $width . 'x' . MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT . '>',
+                    '-strip',
+                    '-quality', '80',
+                    '-define', 'webp:method=6',
+                    $temporaryPath,
+                ], [
+                    0 => ['file', '/dev/null', 'r'],
+                    1 => ['file', '/dev/null', 'w'],
+                    2 => ['file', '/dev/null', 'w'],
+                ], $pipes, dirname($source));
+                if (!is_resource($process)) throw new RuntimeException('Card derivative generation could not start.');
+                if (proc_close($process) !== 0) throw new RuntimeException('Card derivative generation failed.');
+            }
+
+            $info = @getimagesize($temporaryPath);
+            $size = @filesize($temporaryPath);
+            $imageWidth = (int)($info[0] ?? 0);
+            $imageHeight = (int)($info[1] ?? 0);
+            $temporaryRealPath = realpath($temporaryPath);
+            if (!is_array($info) || ($info['mime'] ?? '') !== 'image/webp'
+                || $size === false || $size < 1 || $size > 4194304
+                || $imageWidth < 1 || $imageWidth > $width
+                || $imageHeight < 1 || $imageHeight > MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT
+                || $temporaryRealPath === false || $temporaryRealPath !== $temporaryPath) {
+                throw new RuntimeException('Generated card derivative failed validation.');
+            }
+            if (!@rename($temporaryPath, $destination)) {
+                clearstatcache(true, $destination);
+                $existing = media_cms_existing_card_derivative($normalized, $width);
+                if ($existing === null) throw new RuntimeException('Generated card derivative could not be committed.');
+            }
+            clearstatcache(true, $destination);
+            $derivative = media_cms_existing_card_derivative($normalized, $width);
+            if ($derivative === null) throw new RuntimeException('Committed card derivative failed validation.');
+            $derivatives[] = $derivative;
+        } finally {
+            if (is_file($temporaryPath) || is_link($temporaryPath)) @unlink($temporaryPath);
+        }
+    }
+    return $derivatives;
+}
+
+/** Resolve responsive image attributes from cached derivatives, or a safe source fallback. */
+function media_cms_card_image_data(string $sourcePath): array
+{
+    $placeholder = 'assets/img/placeholder.jpg';
+    $sizes = '(max-width: 767px) calc(100vw - 2rem), (max-width: 860px) calc(100vw - 3rem), min(calc(57.5vw - 1.725rem), 41.5rem)';
+    if ($sourcePath === $placeholder) {
+        $placeholderInfo = @getimagesize(dirname(__DIR__) . '/assets/img/placeholder.jpg');
+        return [
+            'src' => $placeholder,
+            'srcset' => '',
+            'sizes' => $sizes,
+            'width' => max(1, (int)($placeholderInfo[0] ?? 4)),
+            'height' => max(1, (int)($placeholderInfo[1] ?? 3)),
+        ];
+    }
+
+    try {
+        $normalized = media_cms_upload_relative_path($sourcePath);
+        $source = media_cms_upload_file_path($normalized, true);
+        $sourceInfo = @getimagesize($source);
+        $sourceMime = is_array($sourceInfo) ? (string)($sourceInfo['mime'] ?? '') : '';
+        $sourceWidth = (int)($sourceInfo[0] ?? 0);
+        $sourceHeight = (int)($sourceInfo[1] ?? 0);
+        if (!in_array($sourceMime, ['image/jpeg', 'image/png', 'image/webp'], true)
+            || $sourceWidth < 1 || $sourceHeight < 1 || $sourceWidth > 10000 || $sourceHeight > 10000
+            || $sourceWidth > intdiv(40000000, $sourceHeight)) {
+            throw new RuntimeException('CMS source image is unavailable.');
+        }
+
+        $candidates = [];
+        foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+            $candidate = media_cms_existing_card_derivative($normalized, $width);
+            if ($candidate !== null && !isset($candidates[$candidate['width']])) {
+                $candidates[$candidate['width']] = $candidate;
+            }
+        }
+        ksort($candidates, SORT_NUMERIC);
+        $srcset = implode(', ', array_map(
+            static fn(array $candidate): string => $candidate['url'] . ' ' . $candidate['width'] . 'w',
+            array_values($candidates)
+        ));
+        $largestCandidate = $candidates ? end($candidates) : null;
+        $smallestCandidate = $candidates ? reset($candidates) : null;
+        return [
+            'src' => (string)($smallestCandidate['url'] ?? $normalized),
+            'srcset' => $srcset,
+            'sizes' => $sizes,
+            'width' => (int)($largestCandidate['width'] ?? $sourceWidth),
+            'height' => (int)($largestCandidate['height'] ?? $sourceHeight),
+        ];
+    } catch (Throwable $error) {
+        $placeholderInfo = @getimagesize(dirname(__DIR__) . '/assets/img/placeholder.jpg');
+        return [
+            'src' => $placeholder,
+            'srcset' => '',
+            'sizes' => $sizes,
+            'width' => max(1, (int)($placeholderInfo[0] ?? 4)),
+            'height' => max(1, (int)($placeholderInfo[1] ?? 3)),
+        ];
+    }
+}
+
 /** Render an escaped, layout-stable image for a CMS card. */
 function media_cms_card_image_markup(array $media, string $alt = ''): string
 {
@@ -330,7 +546,7 @@ function media_cms_thumbnail_binary(): ?string
 function media_cms_imagick_write_bounded_webp(string $source, string $destination, int $maxWidth, int $maxHeight): bool
 {
     if (!media_cms_imagick_webp_available() || $maxWidth < 1 || $maxHeight < 1
-        || $maxWidth > 1600 || $maxHeight > 1000 || is_link($destination)) return false;
+        || $maxWidth > 1600 || $maxHeight > MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT || is_link($destination)) return false;
 
     $sourceInfo = @getimagesize($source);
     $sourceMime = is_array($sourceInfo) ? (string)($sourceInfo['mime'] ?? '') : '';

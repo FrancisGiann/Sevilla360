@@ -279,7 +279,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
             } catch (error) { /* Storage may be disabled; keep the expanded baseline. */ }
         }());
     </script>
-    <link rel="icon" type="image/png" href="assets/img/Logo.png">
+    <link rel="icon" type="image/png" href="assets/img/favicon.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
     <meta name="dashboard-principal" content="<?= (int)$user_id; ?>">
     <title>Dashboard | SEVILLA360</title>

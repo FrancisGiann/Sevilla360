@@ -119,6 +119,10 @@ try {
         $media['_physical_path'] = media_cms_upload_file_path((string)$media['file_path']);
         $media['_thumbnail_path'] = media_cms_thumbnail_file_path((string)$media['file_path']);
         $media['_hero_path'] = media_cms_existing_hero_derivative_file_path((string)$media['file_path']);
+        $media['_card_paths'] = array_values(array_filter(array_map(
+            static fn(int $width): ?string => media_cms_existing_card_derivative_file_path((string)$media['file_path'], $width),
+            MEDIA_CMS_CARD_DERIVATIVE_WIDTHS
+        ), static fn(?string $path): bool => $path !== null));
         $files_to_delete[$media_index] = $media;
     }
 
@@ -146,7 +150,10 @@ try {
     $cleanupWarnings = [];
     $uploadRoot = media_cms_upload_root();
     foreach ($files_to_delete as $media) {
-        foreach ([$media['_physical_path'] ?? null, $media['_thumbnail_path'] ?? null, $media['_hero_path'] ?? null] as $physicalPath) {
+        foreach (array_merge(
+            [$media['_physical_path'] ?? null, $media['_thumbnail_path'] ?? null, $media['_hero_path'] ?? null],
+            $media['_card_paths'] ?? []
+        ) as $physicalPath) {
             if ($physicalPath !== null && !media_cms_unlink_safe($physicalPath, $uploadRoot)) {
                 $cleanupWarnings[] = basename((string)$media['file_path']);
             }

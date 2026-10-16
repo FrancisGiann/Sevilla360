@@ -30,8 +30,11 @@ $assert(site_metadata_absolute_url('showroom.php?venue=1', 'https://example.test
 $assert(str_contains($homeSource, 'foreach (($public_venues[$category] ?? []) as $catalog_venue)')
     && str_contains($homeSource, '<article class="idx-catalog-card">')
     && str_contains($homeSource, 'href="<?php echo htmlspecialchars($catalog_booking_url'), 'public venue names and crawlable booking links render on the server');
-$assert(str_contains($homeSource, "'thumbnails' =>") && str_contains($homeJs, 'Array.isArray(venue.thumbnails)')
-    && str_contains($homeJs, 'image.loading = \'lazy\''), 'homepage enhancement reuses server-selected thumbnails and lazy loading');
+$assert(str_contains($homeSource, "'card_image' => \$public_card_image(")
+    && str_contains($homeSource, 'srcset=') && str_contains($homeSource, 'sizes=')
+    && str_contains($homeJs, 'cardImage.srcset') && str_contains($homeJs, 'cardImage.sizes')
+    && str_contains($homeJs, 'review.image.srcset.trim()') && str_contains($homeJs, "image.sizes = '(max-width: 767px) calc(100vw - 2rem), (max-width: 1024px) calc(50vw - 2.125rem), (max-width: 1175px) calc(33.333vw - 1.833rem), 23.25rem'")
+    && str_contains($homeJs, 'image.loading = \'lazy\''), 'homepage enhancement reuses server-selected responsive derivatives and lazy loading');
 
 $assetUrl = site_metadata_asset_url('assets/css/style.css');
 $assert(preg_match('/\?v=[0-9]+\z/', $assetUrl) === 1, 'local CSS URLs use a stable file version');

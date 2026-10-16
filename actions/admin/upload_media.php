@@ -233,6 +233,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'hero_path' => $website_slot === 'home-hero'
                         ? media_cms_existing_hero_derivative_file_path((string)$old_media['file_path'])
                         : null,
+                    'card_paths' => array_values(array_filter(array_map(
+                        static fn(int $width): ?string => media_cms_existing_card_derivative_file_path((string)$old_media['file_path'], $width),
+                        MEDIA_CMS_CARD_DERIVATIVE_WIDTHS
+                    ), static fn(?string $path): bool => $path !== null)),
                 ];
             }
             $stmt_del = $conn->prepare("DELETE FROM media_cms WHERE slot_assignment = ?");
@@ -247,6 +251,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($website_slot === 'home-hero') {
                 $new_files[] = media_cms_hero_derivative_file_path($file['db_path']);
                 media_cms_ensure_hero_derivative($file['db_path']);
+            }
+            if ($media_type === 'standard') {
+                foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+                    $new_files[] = media_cms_card_derivative_file_path($file['db_path'], $width);
+                }
+                media_cms_ensure_card_derivatives($file['db_path']);
             }
             $stmt_insert = $conn->prepare("INSERT INTO media_cms (file_name, file_path, media_type, slot_assignment) VALUES (?, ?, ?, ?)");
             if (!$stmt_insert) throw new Exception('Could not record uploaded media.');
@@ -266,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cleanup_failures = [];
         $upload_root = media_cms_upload_root();
         foreach ($old_files as $old) {
-            foreach ([$old['path'], $old['thumbnail_path'], $old['hero_path'] ?? null] as $path) {
+            foreach (array_merge([$old['path'], $old['thumbnail_path'], $old['hero_path'] ?? null], $old['card_paths'] ?? []) as $path) {
                 if ($path === null) continue;
                 if (!media_cms_unlink_safe($path, $upload_root)) $cleanup_failures[] = $path;
             }

@@ -122,7 +122,7 @@ $nav = [
     <?php if (!empty($page_preload_image) && is_string($page_preload_image)): ?>
     <link rel="preload" as="image" href="<?php echo htmlspecialchars($page_preload_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" fetchpriority="high">
     <?php endif; ?>
-    <link rel="icon" type="image/png" href="assets/img/Logo.png">
+    <link rel="icon" type="image/png" href="assets/img/favicon.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

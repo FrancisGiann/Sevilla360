@@ -1,5 +1,5 @@
 <?php
-/** Idempotently create admin-card thumbnails and the active homepage hero WebP. */
+/** Idempotently create CMS thumbnails, public venue-card derivatives, and the active homepage hero WebP. */
 declare(strict_types=1);
 
 if (PHP_SAPI !== 'cli') {
@@ -10,7 +10,11 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../config/db_connect.php';
 require_once __DIR__ . '/../includes/media_helper.php';
 
-$result = $conn->query('SELECT id, file_path, slot_assignment FROM media_cms ORDER BY id ASC');
+$cardOnly = in_array('--cards-only', $argv ?? [], true);
+$query = $cardOnly
+    ? "SELECT id, file_path, slot_assignment, media_type FROM media_cms WHERE media_type = 'standard' ORDER BY id ASC"
+    : 'SELECT id, file_path, slot_assignment, media_type FROM media_cms ORDER BY id ASC';
+$result = $conn->query($query);
 if (!$result) {
     fwrite(STDERR, "Could not read CMS media rows.\n");
     exit(1);
@@ -20,6 +24,8 @@ $processed = 0;
 $generated = 0;
 $heroGenerated = 0;
 $heroBytes = 0;
+$cardGenerated = 0;
+$cardBytes = 0;
 $derivatives = [];
 $failures = 0;
 
@@ -27,6 +33,20 @@ while ($row = $result->fetch_assoc()) {
     $processed++;
     $sourcePath = (string)$row['file_path'];
     try {
+        if ($cardOnly) {
+            $cardWasValid = [];
+            foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+                $cardWasValid[$width] = media_cms_existing_card_derivative($sourcePath, $width) !== null;
+            }
+            $cardDerivatives = media_cms_ensure_card_derivatives($sourcePath);
+            foreach ($cardDerivatives as $index => $cardDerivative) {
+                $width = MEDIA_CMS_CARD_DERIVATIVE_WIDTHS[$index] ?? null;
+                if ($width !== null && empty($cardWasValid[$width])) $cardGenerated++;
+                $cardBytes += (int)$cardDerivative['size'];
+            }
+            continue;
+        }
+
         $thumbnailRelative = media_cms_thumbnail_relative_path($sourcePath);
         $thumbnailPath = media_cms_thumbnail_file_path($sourcePath);
         $existingRegularFile = !is_link($thumbnailPath) && is_file($thumbnailPath);
@@ -43,6 +63,19 @@ while ($row = $result->fetch_assoc()) {
         $thumbnail = media_cms_ensure_admin_thumbnail($sourcePath);
         if (!$wasValid) $generated++;
         $derivatives[$thumbnailRelative] = (int)$thumbnail['size'];
+
+        if (($row['media_type'] ?? '') === 'standard') {
+            $cardWasValid = [];
+            foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+                $cardWasValid[$width] = media_cms_existing_card_derivative($sourcePath, $width) !== null;
+            }
+            $cardDerivatives = media_cms_ensure_card_derivatives($sourcePath);
+            foreach ($cardDerivatives as $index => $cardDerivative) {
+                $width = MEDIA_CMS_CARD_DERIVATIVE_WIDTHS[$index] ?? null;
+                if ($width !== null && empty($cardWasValid[$width])) $cardGenerated++;
+                $cardBytes += (int)$cardDerivative['size'];
+            }
+        }
 
         if (($row['slot_assignment'] ?? '') === 'home-hero') {
             $heroWasValid = media_cms_existing_hero_derivative_url($sourcePath) !== null;
@@ -62,6 +95,7 @@ while ($row = $result->fetch_assoc()) {
 
 $totalBytes = array_sum($derivatives);
 echo json_encode([
+    'mode' => $cardOnly ? 'public-card-derivatives-only' : 'full-cms-thumbnail-backfill',
     'media_rows' => $processed,
     'thumbnails_created_or_repaired' => $generated,
     'thumbnail_files' => count($derivatives),
@@ -69,6 +103,8 @@ echo json_encode([
     'thumbnail_mib' => round($totalBytes / 1048576, 3),
     'active_hero_derivatives_created_or_repaired' => $heroGenerated,
     'active_hero_derivative_bytes' => $heroBytes,
+    'public_card_derivatives_created_or_repaired' => $cardGenerated,
+    'public_card_derivative_bytes' => $cardBytes,
     'failures' => $failures,
 ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
 exit($failures === 0 ? 0 : 1);

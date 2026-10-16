@@ -38,6 +38,9 @@ $public_images = static function (string $displayName) use (&$public_media, $pub
 $public_thumbnail_images = static function (array $images): array {
     return array_map(static fn(string $path): string => media_cms_existing_thumbnail_url($path) ?? $path, $images);
 };
+$public_card_image = static function (array $images): array {
+    return media_cms_card_image_data((string)($images[0] ?? 'assets/img/placeholder.jpg'));
+};
 $venue_reviews_table_result = $conn->query("SHOW TABLES LIKE 'venue_reviews'");
 $venue_reviews_available = $venue_reviews_table_result instanceof mysqli_result && $venue_reviews_table_result->num_rows > 0;
 $event_review_fields = $venue_reviews_available
@@ -51,7 +54,7 @@ if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['base_rate'] ?? null) ? (float)$venue['base_rate'] : null,
         'facts' => ['Theater' => (int)$venue['capacity_theater'] . ' guests', 'Classroom' => (int)$venue['capacity_classroom'] . ' guests', 'Banquet' => (int)$venue['capacity_banquet'] . ' guests', 'Booking' => 'Inquiry, no date hold'],
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-        'images' => $event_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($event_images)
+        'images' => $event_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($event_images), 'card_image' => $public_card_image($event_images)
     ];
 }
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
@@ -96,7 +99,7 @@ if ($hotel_group_schema_ready) {
             'rate_is_starting' => false, 'overnight_rate' => null,
             'facts' => ['Beds' => $bedCount . ' bed' . ($bedCount === 1 ? '' : 's'), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
             'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
-            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images, 'thumbnails' => $public_thumbnail_images($images)
+            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images, 'thumbnails' => $public_thumbnail_images($images), 'card_image' => $public_card_image($images)
         ];
     }
 } else {
@@ -114,7 +117,7 @@ if ($hotel_group_schema_ready) {
             'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
             'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
             'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-            'images' => $hotel_images = $public_images($displayName), 'thumbnails' => $public_thumbnail_images($hotel_images)
+            'images' => $hotel_images = $public_images($displayName), 'thumbnails' => $public_thumbnail_images($hotel_images), 'card_image' => $public_card_image($hotel_images)
         ];
     }
 }
@@ -126,7 +129,7 @@ if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
         'facts' => ['Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Day or overnight', 'Pool' => ((int)$venue['has_private_pool'] === 1 ? 'Private pool' : 'Pool access'), 'Day hours' => substr((string)$venue['day_check_in_time'], 0, 5) . '–' . substr((string)$venue['day_check_out_time'], 0, 5), 'Overnight hours' => substr((string)$venue['overnight_check_in_time'], 0, 5) . '–' . substr((string)$venue['overnight_check_out_time'], 0, 5)],
         'day_stay_inclusions' => (string)($venue['day_stay_inclusions'] ?? ''), 'overnight_stay_inclusions' => (string)($venue['overnight_stay_inclusions'] ?? ''),
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-        'images' => $villa_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($villa_images)
+        'images' => $villa_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($villa_images), 'card_image' => $public_card_image($villa_images)
     ];
 }
 
@@ -329,15 +332,21 @@ include 'includes/header.php';
                             $catalog_title = trim((string)($catalog_venue['display_name'] ?? $catalog_venue['title'] ?? $catalog_venue['venue_name'] ?? $catalog_venue['room_type'] ?? 'Venue'));
                             $catalog_type = !empty($catalog_venue['room_type']) ? $category . ' · ' . (string)$catalog_venue['room_type'] : $category;
                             $catalog_description = trim((string)preg_replace('/\s+/', ' ', strip_tags((string)($catalog_venue['description'] ?? ''))));
-                            $catalog_images = is_array($catalog_venue['thumbnails'] ?? null) ? $catalog_venue['thumbnails'] : ($catalog_venue['images'] ?? []);
-                            $catalog_image = (string)($catalog_images[0] ?? 'assets/img/placeholder.jpg');
+                            $catalog_card_image = is_array($catalog_venue['card_image'] ?? null)
+                                ? $catalog_venue['card_image']
+                                : media_cms_card_image_data((string)(($catalog_venue['images'][0] ?? null) ?: 'assets/img/placeholder.jpg'));
+                            $catalog_image = (string)($catalog_card_image['src'] ?? 'assets/img/placeholder.jpg');
+                            $catalog_srcset = trim((string)($catalog_card_image['srcset'] ?? ''));
+                            $catalog_sizes = (string)($catalog_card_image['sizes'] ?? '(max-width: 767px) calc(100vw - 2rem), (max-width: 860px) calc(100vw - 3rem), min(calc(57.5vw - 1.725rem), 41.5rem)');
+                            $catalog_image_width = max(1, (int)($catalog_card_image['width'] ?? 4));
+                            $catalog_image_height = max(1, (int)($catalog_card_image['height'] ?? 3));
                             $catalog_facts = is_array($catalog_venue['facts'] ?? null) ? array_slice($catalog_venue['facts'], 0, 3, true) : [];
                             $catalog_fact_text = implode(' · ', array_map(static fn($key, $value): string => (string)$key . ': ' . (string)$value, array_keys($catalog_facts), array_values($catalog_facts)));
                             $catalog_booking_url = $build_catalog_booking_url($catalog_venue);
                         ?>
                         <article class="idx-catalog-card">
                             <div class="idx-catalog-card-media">
-                                <img src="<?php echo htmlspecialchars($catalog_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars($catalog_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" width="480" height="270" loading="lazy" decoding="async">
+                                <img src="<?php echo htmlspecialchars($catalog_image, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"<?php if ($catalog_srcset !== ''): ?> srcset="<?php echo htmlspecialchars($catalog_srcset, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" sizes="<?php echo htmlspecialchars($catalog_sizes, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"<?php endif; ?> alt="<?php echo htmlspecialchars($catalog_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" width="<?php echo $catalog_image_width; ?>" height="<?php echo $catalog_image_height; ?>" loading="lazy" decoding="async">
                             </div>
                             <div class="idx-catalog-card-body">
                                 <h4><?php echo htmlspecialchars($catalog_title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h4>

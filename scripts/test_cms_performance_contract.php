@@ -1,5 +1,5 @@
 <?php
-/** Regression contract for CMS thumbnailing, hero delivery, and file lifecycle. */
+/** Regression contract for CMS image derivatives, public delivery, and file lifecycle. */
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
@@ -13,6 +13,8 @@ $cmsJs = $read('assets/js/admin-page/admin_cms.js');
 $hotspotJs = $read('assets/js/admin-page/admin_hotspots.js');
 $backfill = $read('scripts/backfill_cms_thumbnails.php');
 $uploadAccess = $read('assets/uploads/.htaccess');
+$landing = $read('index.php');
+$landingJs = $read('assets/js/index.js');
 
 $checks = [
     'CMS query selects only needed fields once' => substr_count($cms, 'FROM media_cms') === 1
@@ -35,15 +37,18 @@ $checks = [
         && !str_contains($cms, 'time()')
         && !preg_match('/(?:admin_cms|admin_hotspots|panorama-view-compat|hotspot-material|guide_tours)\.\w+\?v=<\?=\s*time\(\)/', $dashboard)
         && !str_contains($cmsJs, 'Date.now()'),
-    'upload requires derivative and tracks it for rollback/replacement cleanup' => str_contains($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
+    'upload requires derivatives and tracks them for rollback/replacement cleanup' => str_contains($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
         && str_contains($upload, "'thumbnail_path' => media_cms_thumbnail_file_path")
         && str_contains($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])')
         && str_contains($upload, "'hero_path' => \$website_slot === 'home-hero'")
+        && str_contains($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])')
+        && str_contains($upload, "'card_paths' => array_values(array_filter(array_map(")
         && strpos($upload, '$new_files[] = media_cms_thumbnail_file_path') < strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
         && str_contains($upload, 'foreach ($new_files as $path)')
         && strpos($upload, 'foreach ($old_files as $old)') > strpos($upload, '$conn->commit()'),
     'delete removes deterministic derivatives after safe DB commit' => str_contains($delete, '$media[\'_thumbnail_path\'] = media_cms_thumbnail_file_path')
         && str_contains($delete, '$media[\'_hero_path\'] = media_cms_existing_hero_derivative_file_path')
+        && str_contains($delete, '$media[\'_card_paths\'] = array_values(array_filter(array_map(')
         && strpos($delete, 'if (!$conn->commit())') < strpos($delete, 'media_cms_unlink_safe($physicalPath, $uploadRoot)')
         && str_contains($delete, 'media_cms_unlink_safe($physicalPath, $uploadRoot)'),
     'thumbnail helper bounds WebP dimensions and uses safe atomic ImageMagick execution' => str_contains($helper, 'MEDIA_CMS_THUMBNAIL_WIDTH = 480')
@@ -61,14 +66,34 @@ $checks = [
     'hero derivatives are separate, bounded, and generated outside public requests' => str_contains($helper, 'assets/uploads/.cms-hero/')
         && str_contains($helper, "'-resize', '1600x1000>'")
         && str_contains($helper, 'media_cms_existing_hero_derivative_url($normalized)')
-        && !str_contains($read('index.php'), 'media_cms_ensure_hero_derivative('),
+        && !str_contains($landing, 'media_cms_ensure_hero_derivative('),
+    'public card derivatives are bounded, cached, and exposed only when files validate' => str_contains($helper, 'assets/uploads/.cms-card/')
+        && str_contains($helper, 'MEDIA_CMS_CARD_DERIVATIVE_WIDTHS = [480, 800, 1320]')
+        && str_contains($helper, 'media_cms_existing_card_derivative($normalized, $width)')
+        && str_contains($helper, 'MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT = 1600')
+        && str_contains($helper, '(max-width: 767px) calc(100vw - 2rem)')
+        && str_contains($helper, 'min(calc(57.5vw - 1.725rem), 41.5rem)')
+        && !str_contains($landing, 'media_cms_ensure_card_derivatives('),
+    'SSR and carousel cards use the same responsive source, candidates, and sizes' => str_contains($landing, "'card_image' => \$public_card_image(")
+        && str_contains($landing, 'srcset=')
+        && str_contains($landing, 'sizes=')
+        && str_contains($landingJs, 'cardImage.srcset')
+        && str_contains($landingJs, 'cardImage.sizes')
+        && str_contains($landingJs, 'review.image.srcset.trim()')
+        && str_contains($landingJs, "image.sizes = '(max-width: 767px) calc(100vw - 2rem), (max-width: 1024px) calc(50vw - 2.125rem), (max-width: 1175px) calc(33.333vw - 1.833rem), 23.25rem'")
+        && str_contains($landingJs, 'image.removeAttribute(\'srcset\')')
+        && !str_contains($landingJs, 'venue.thumbnails'),
     'uploads script execution guard works with PHP-FPM and allows only image extensions' => str_contains($uploadAccess, '<IfModule mod_php.c>')
         && str_contains($uploadAccess, 'php_flag engine off')
         && str_contains($uploadAccess, '<FilesMatch "\\.(jpg|jpeg|png|gif|webp)$">')
         && str_contains($uploadAccess, 'SetHandler None'),
-    'backfill is idempotent and selects only CMS media rows' => str_contains($backfill, 'SELECT id, file_path, slot_assignment FROM media_cms')
+    'backfill is idempotent and creates public candidates for standard CMS media only' => str_contains($backfill, 'SELECT id, file_path, slot_assignment, media_type FROM media_cms')
+        && str_contains($backfill, "WHERE media_type = 'standard' ORDER BY id ASC")
+        && str_contains($backfill, "in_array('--cards-only'")
         && str_contains($backfill, 'media_cms_ensure_admin_thumbnail($sourcePath)')
         && str_contains($backfill, 'media_cms_ensure_hero_derivative($sourcePath)')
+        && str_contains($backfill, 'if (($row[\'media_type\'] ?? \'\') === \'standard\')')
+        && str_contains($backfill, 'media_cms_ensure_card_derivatives($sourcePath)')
         && !str_contains($backfill, 'payment-qrs'),
 ];
 
@@ -89,6 +114,9 @@ if ($failed === 0) {
     $sourcePath = $uploadRoot . DIRECTORY_SEPARATOR . $sourceName;
     $thumbnailPath = null;
     $heroPath = null;
+    $cardPaths = [];
+    $smallSourcePath = null;
+    $smallCardPaths = [];
     $outsidePath = tempnam(sys_get_temp_dir(), 'cms-thumb-outside-');
     $linkName = '.cms-contract-link-' . bin2hex(random_bytes(8)) . '.png';
     $linkPath = $uploadRoot . DIRECTORY_SEPARATOR . $linkName;
@@ -115,6 +143,65 @@ if ($failed === 0) {
 
         $sourceBytes = filesize($sourcePath);
         $sourceModifiedAt = filemtime($sourcePath);
+        $missingCardImage = media_cms_card_image_data($sourceRelative);
+        $assert($missingCardImage['src'] === $sourceRelative && $missingCardImage['srcset'] === ''
+            && $missingCardImage['width'] === 1600 && $missingCardImage['height'] === 900,
+            'missing derivatives fall back to the safe original with its actual dimensions');
+        $cardDerivatives = media_cms_ensure_card_derivatives($sourceRelative);
+        foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $index => $width) {
+            $cardPath = media_cms_card_derivative_file_path($sourceRelative, $width);
+            $cardPaths[] = $cardPath;
+            $cardInfo = @getimagesize($cardPath);
+            $assert(is_array($cardInfo) && ($cardInfo['mime'] ?? '') === 'image/webp'
+                && (int)$cardInfo[0] === $width && (int)$cardInfo[1] <= MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT,
+                'card derivative has its requested width and bounded WebP dimensions');
+            $assert(isset($cardDerivatives[$index]) && $cardDerivatives[$index]['path'] === media_cms_card_derivative_relative_path($sourceRelative, $width),
+                'card derivative path is deterministic');
+        }
+        $cardImage = media_cms_card_image_data($sourceRelative);
+        $assert(count(explode(', ', $cardImage['srcset'])) === count(MEDIA_CMS_CARD_DERIVATIVE_WIDTHS)
+            && $cardImage['src'] === $cardDerivatives[0]['url']
+            && $cardImage['width'] === $cardDerivatives[2]['width']
+            && $cardImage['height'] === $cardDerivatives[2]['height'],
+            'card image data exposes validated candidates and actual intrinsic dimensions');
+        foreach ($cardDerivatives as $candidate) {
+            $candidateFile = media_cms_upload_file_path($candidate['path'], true);
+            $assert(is_file($candidateFile) && str_contains($cardImage['srcset'], $candidate['url'] . ' ' . $candidate['width'] . 'w'),
+                'responsive source candidate points to an existing derivative with its real width descriptor');
+        }
+        $assert(media_cms_ensure_card_derivatives($sourceRelative) === $cardDerivatives,
+            'card derivatives are deterministic and reusable without repeated conversion');
+        clearstatcache(true, $cardPaths[1]);
+        $sourceModifiedAt = filemtime($sourcePath);
+        $assert(touch($cardPaths[1], max(1, $sourceModifiedAt - 10)), 'stale card derivative fixture can be created');
+        clearstatcache(true, $cardPaths[1]);
+        $assert(media_cms_existing_card_derivative($sourceRelative, MEDIA_CMS_CARD_DERIVATIVE_WIDTHS[1]) === null,
+            'older card derivative is not exposed');
+        $rebuiltCards = media_cms_ensure_card_derivatives($sourceRelative);
+        clearstatcache(true, $cardPaths[1]);
+        $assert(filemtime($cardPaths[1]) >= $sourceModifiedAt && $rebuiltCards[1]['size'] > 0,
+            'stale card derivative is rebuilt before reuse');
+        $assert(filesize($sourcePath) === $sourceBytes, 'card derivative generation leaves the original image unchanged');
+
+        $smallName = '.cms-contract-small-' . bin2hex(random_bytes(8)) . '.png';
+        $smallSourcePath = $uploadRoot . DIRECTORY_SEPARATOR . $smallName;
+        $smallRelative = 'assets/uploads/' . $smallName;
+        $smallProcess = proc_open([
+            media_cms_thumbnail_binary(), '-size', '320x240', 'xc:#ccddee', $smallSourcePath,
+        ], [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+        $assert(is_resource($smallProcess) && proc_close($smallProcess) === 0, 'small source fixture image can be generated');
+        $smallDerivatives = media_cms_ensure_card_derivatives($smallRelative);
+        foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) $smallCardPaths[] = media_cms_card_derivative_file_path($smallRelative, $width);
+        $smallCardImage = media_cms_card_image_data($smallRelative);
+        $assert(count($smallDerivatives) === count(MEDIA_CMS_CARD_DERIVATIVE_WIDTHS)
+            && count(explode(', ', $smallCardImage['srcset'])) === 1
+            && $smallDerivatives[2]['width'] === 320
+            && $smallCardImage['width'] === 320,
+            'small sources are never enlarged and duplicate candidates are removed');
+
+        $invalidCardImage = media_cms_card_image_data('assets/uploads/missing-card-image.jpg');
+        $assert($invalidCardImage['src'] === 'assets/img/placeholder.jpg' && $invalidCardImage['srcset'] === '',
+            'missing or invalid media uses the placeholder without broken srcset URLs');
         $heroUrl = media_cms_ensure_hero_derivative($sourceRelative);
         $heroPath = media_cms_existing_hero_derivative_file_path($sourceRelative);
         $heroInfo = $heroPath !== null ? @getimagesize($heroPath) : false;
@@ -132,6 +219,13 @@ if ($failed === 0) {
         $assert($rebuiltHeroUrl !== null && filemtime($heroPath) >= $sourceModifiedAt, 'stale hero derivative is rebuilt before reuse');
         $heroTraversalRejected = media_cms_ensure_hero_derivative('assets/uploads/../payment-qrs/not-a-cms-image.jpg') === null;
         $assert($heroTraversalRejected, 'hero derivative rejects path traversal');
+        $cardTraversalRejected = false;
+        try {
+            media_cms_ensure_card_derivatives('assets/uploads/../payment-qrs/not-a-cms-image.jpg');
+        } catch (InvalidArgumentException) {
+            $cardTraversalRejected = true;
+        }
+        $assert($cardTraversalRejected, 'card derivative rejects path traversal');
 
         $traversalRejected = false;
         try {
@@ -152,14 +246,16 @@ if ($failed === 0) {
         } else {
             $assert(false, 'symlink fixture can be created');
         }
-        echo "PASS|filesystem thumbnail, hero derivative, traversal, symlink, and markup checks\n";
+        echo "PASS|filesystem thumbnail, hero and card derivatives, responsive candidates, traversal, symlink, and fallback checks\n";
     } catch (Throwable $e) {
         fwrite(STDERR, 'FAIL|filesystem thumbnail checks: ' . $e->getMessage() . "\n");
         $failed++;
     } finally {
         if (is_string($thumbnailPath)) media_cms_unlink_safe($thumbnailPath, $uploadRoot);
         if (is_string($heroPath)) media_cms_unlink_safe($heroPath, $uploadRoot);
+        foreach (array_merge($cardPaths, $smallCardPaths) as $cardPath) media_cms_unlink_safe($cardPath, $uploadRoot);
         media_cms_unlink_safe($sourcePath, $uploadRoot);
+        if (is_string($smallSourcePath)) media_cms_unlink_safe($smallSourcePath, $uploadRoot);
         if (is_link($linkPath)) @unlink($linkPath);
         if (is_string($outsidePath)) @unlink($outsidePath);
     }

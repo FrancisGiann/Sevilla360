@@ -2,9 +2,11 @@
 $required_role = 'admin';
 require 'includes/auth_guard.php';
 require_once 'config/db_connect.php';
+require_once __DIR__ . '/includes/site_metadata.php';
 header('X-Robots-Tag: noindex, nofollow', true);
 require_once 'includes/realtime.php';
 $realtime_client_config = realtime_client_config();
+$admin_asset_url = static fn(string $path): string => htmlspecialchars(site_metadata_asset_url($path), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 // Get the requested page from the URL. If none is set, default to 'overview'
 $page = isset($_GET['page']) ? $_GET['page'] : 'overview';
@@ -46,7 +48,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
             } catch (error) { /* Storage may be disabled; keep the expanded baseline. */ }
         }());
     </script>
-    <link rel="icon" type="image/png" href="assets/img/Logo.png">
+    <link rel="icon" type="image/png" href="assets/img/favicon.png">
     <meta name="csrf-token" content="<?= $_SESSION['csrf_token'] ?? ''; ?>">
     <title>SEVILLA360 - <?= $is_admin_user ? 'Admin Dashboard' : 'Staff Dashboard' ?></title>
 
@@ -57,44 +59,44 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Base Stylesheets -->
-    <link rel="stylesheet" href="assets/css/style.css?v=<?= time() ?>">
-    <link rel="stylesheet" href="assets/css/admin-page/admin_overview.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/style.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_overview.css') ?>">
 
     <!-- Load specific assets based on the active page -->
     <?php if ($page === 'overview'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_bookings.css') ?>">
     <?php elseif ($page === 'calendar'): ?>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_calendar.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_calendar.css') ?>">
     <?php elseif ($page === 'bookings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_bookings.css?v=<?= time() ?>">
-    <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_bookings.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/receipt_preview.css') ?>">
     <?php elseif ($page === 'walkin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_walkin.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_walkin.css') ?>">
     <?php elseif ($page === 'maintenance'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_maintenance.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_maintenance.css') ?>">
     <?php elseif ($page === 'seminars'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_seminars.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_seminars.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_seminars.css') ?>">
     <?php elseif ($page === 'sales' && $is_admin_user): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_sales.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_sales.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_sales.css') ?>">
     <?php elseif ($page === 'settings'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_settings.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_settings.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_settings.css') ?>">
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_auditlog.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_auditlog.css') ?>">
     <?php elseif ($page === 'database_backups' && $is_admin_user): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_database_backups.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_database_backups.css') ?>">
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_usermanagement.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_usermanagement.css') ?>">
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_cms.css?v=<?= filemtime(__DIR__ . '/assets/css/admin-page/admin_cms.css') ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_cms.css') ?>">
     <?php endif; ?>
-    <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/ui-refinement.css') ?>">
 </head>
 
 <body class="admin-body">
     <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>; window.sevillaAdminUserId = <?php echo (int)$account_user_id; ?>;</script>
-    <script src="assets/js/realtime_notifications.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/realtime_notifications.js') ?>"></script>
     <div class="admin-layout">
         <!-- Left Sidebar -->
         <aside class="sidebar" id="admin-sidebar">
@@ -309,41 +311,41 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
 
 
     <!-- Shared Calendar Engine -->
-    <script src="assets/js/calendar.js?v=1"></script>
+    <script src="<?= $admin_asset_url('assets/js/calendar.js') ?>"></script>
     <!-- Notification Engine -->
-    <script src="assets/js/admin-page/admin_notifications.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_notifications.js') ?>"></script>
     <!-- Global Custom Modals -->
-    <script src="assets/js/global_modals.js?v=<?= time() ?>"></script>
-    <script src="assets/js/password_policy.js?v=<?= time() ?>"></script>
-    <script src="assets/js/admin-page/admin_navigation.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/global_modals.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/password_policy.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_navigation.js') ?>"></script>
 
     <!-- Specific JS for each page -->
     <?php if ($page === 'overview'): ?>
-    <script src="assets/js/admin-page/admin_overview.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_overview.js') ?>"></script>
     <?php elseif ($page === 'calendar'): ?>
-    <script src="assets/js/admin-page/admin_calendar.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_calendar.js') ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
-    <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js') ?>"></script>
-    <script src="assets/js/admin-page/admin_bookings.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/receipt_preview.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_bookings.js') ?>"></script>
     <?php elseif ($page === 'walkin'): ?>
-    <script src="assets/js/admin-page/admin_walkin.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_walkin.js') ?>"></script>
     <?php elseif ($page === 'maintenance'): ?>
-    <script src="assets/js/admin-page/admin_maintenance.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_maintenance.js') ?>"></script>
     <?php elseif ($page === 'seminars'): ?>
-    <script src="assets/js/admin-page/admin_seminars.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_seminars.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_seminars.js') ?>"></script>
     <?php elseif ($page === 'sales' && $is_admin_user): ?>
-    <script src="assets/js/admin-page/admin_sales.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_sales.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_sales.js') ?>"></script>
     <?php elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <link rel="stylesheet" href="assets/css/admin-page/admin_reviews.css?v=<?= time() ?>">
-    <script src="assets/js/admin-page/admin_reviews.js?v=<?= time() ?>"></script>
+    <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_reviews.css') ?>">
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_reviews.js') ?>"></script>
     <?php elseif ($page === 'settings'): ?>
-    <script src="assets/js/admin-page/admin_settings.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_settings.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_settings.js') ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <script src="assets/js/admin-page/admin_auditlog.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_auditlog.js') ?>"></script>
     <?php elseif ($page === 'database_backups' && $is_admin_user): ?>
-    <script src="assets/js/admin-page/admin_database_backups.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_database_backups.js') ?>"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
-    <script src="assets/js/admin-page/admin_usermanagement.js?v=<?= time() ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_usermanagement.js') ?>"></script>
     <?php elseif ($page === 'cms' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <!-- Three.js version required by Panolens -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/105/three.min.js"></script>
@@ -358,11 +360,11 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
     <!-- CMS Scripts -->
-    <script src="assets/js/panorama-view-compat.js?v=<?= filemtime(__DIR__ . '/assets/js/panorama-view-compat.js') ?>"></script>
-    <script src="assets/js/hotspot-material.js?v=<?= filemtime(__DIR__ . '/assets/js/hotspot-material.js') ?>"></script>
-    <script src="assets/js/guide_tours.js?v=<?= filemtime(__DIR__ . '/assets/js/guide_tours.js') ?>"></script>
-    <script src="assets/js/admin-page/admin_cms.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_cms.js') ?>"></script>
-    <script src="assets/js/admin-page/admin_hotspots.js?v=<?= filemtime(__DIR__ . '/assets/js/admin-page/admin_hotspots.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/panorama-view-compat.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/hotspot-material.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/guide_tours.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_cms.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/admin_hotspots.js') ?>"></script>
     <?php endif; ?>
 </body>
 

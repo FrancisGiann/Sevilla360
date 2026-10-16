@@ -16,6 +16,14 @@ $overview = $read('includes/admin-page/admin_overview.php');
 $overviewJs = $read('assets/js/admin-page/admin_overview.js');
 $notificationsJs = $read('assets/js/admin-page/admin_notifications.js');
 $overviewCss = $read('assets/css/admin-page/admin_overview.css');
+$versionedAssetCalls = preg_match_all('/\$admin_asset_url\(\'assets\/(?:css|js)\/[A-Za-z0-9_\/-]+\.(?:css|js)\'\)/', $shell);
+$assert(str_contains($shell, "require_once __DIR__ . '/includes/site_metadata.php';")
+    && str_contains($shell, 'site_metadata_asset_url($path)')
+    && $versionedAssetCalls > 10
+    && !str_contains($shell, 'time()')
+    && !str_contains($shell, 'filemtime(')
+    && !str_contains($shell, 'calendar.js?v=1')
+    && !preg_match('/(?:href|src)="assets\/(?:css|js)\/[^\"]*\\?v=/', $shell), 'admin local CSS and JavaScript use stable validated file versions instead of per-request cache busting');
 
 $navStart = strpos($shell, '<ul class="nav-list">');
 $navEnd = $navStart === false ? false : strpos($shell, '</ul>', $navStart);
