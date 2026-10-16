@@ -573,8 +573,9 @@ window.process = {
                 </section>
             </div>
             <button type="button" class="receptionist-sound" data-receptionist-sound-toggle
-                aria-pressed="false" aria-label="Turn on resort ambience">Sound off</button>
-            <audio id="receptionist-ambience" preload="none" loop src="assets/audio/receptionist-ambience.wav"></audio>
+                aria-pressed="false" aria-label="Turn on background music">Music off</button>
+            <audio id="receptionist-ambience" preload="none" loop
+                src="assets/audio/receptionist-ambience.wav?v=<?= (int)(@filemtime(__DIR__ . '/assets/audio/receptionist-ambience.wav') ?: 0); ?>"></audio>
         </div>
     </div>
     <button type="button" class="receptionist-reopen" id="receptionist-reopen" aria-label="Ask receptionist" hidden>
@@ -582,7 +583,7 @@ window.process = {
         <span>Ask receptionist</span>
     </button>
     <button type="button" class="receptionist-sound receptionist-sound-launcher" data-receptionist-sound-toggle
-        aria-pressed="false" aria-label="Turn on resort ambience" hidden>Sound off</button>
+        aria-pressed="false" aria-label="Turn on background music" hidden>Music off</button>
     <!-- Mobile Info Modal -->
     <div class="modal-overlay" id="info-modal" style="z-index: 999999;">
         <!-- Extremely high z-index to sit over fullscreen! -->

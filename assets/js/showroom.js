@@ -1704,7 +1704,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const createBackChoice = () => createChoice("Back to welcome", "receptionist-choice-secondary", { "data-receptionist-back": "true" });
     let audioCtx = null;
-    let droneNodes = null;
     const getAudioContext = () => {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1715,49 +1714,6 @@ document.addEventListener("DOMContentLoaded", () => {
         audioCtx.resume().catch(() => {});
       }
       return audioCtx;
-    };
-    const startSpaDrone = () => {
-      const ctx = getAudioContext();
-      if (!ctx || droneNodes) return;
-      const filter = ctx.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(500, ctx.currentTime);
-      filter.Q.setValueAtTime(1.0, ctx.currentTime);
-      const lfoFilter = ctx.createOscillator();
-      const lfoFilterGain = ctx.createGain();
-      lfoFilter.frequency.setValueAtTime(0.12, ctx.currentTime); // Faster LFO for 'fun' breathing
-      lfoFilterGain.gain.setValueAtTime(250, ctx.currentTime);
-      lfoFilter.connect(lfoFilterGain);
-      lfoFilterGain.connect(filter.frequency);
-      lfoFilter.start();
-      const droneGain = ctx.createGain();
-      droneGain.gain.setValueAtTime(0.35, ctx.currentTime);
-      // G Major 7 (G2, B2, D3, F#3) - Warm, mid-low, premium but happy/fun
-      const voices = [
-        { freq: 98.00, type: "sine", detune: 0, gain: 0.35 },    // G2
-        { freq: 123.47, type: "sine", detune: -4, gain: 0.25 },  // B2
-        { freq: 146.83, type: "triangle", detune: 3, gain: 0.2 },// D3
-        { freq: 185.00, type: "sine", detune: -2, gain: 0.15 },  // F#3
-        { freq: 196.00, type: "sine", detune: 5, gain: 0.1 }     // G3
-      ];
-      const oscs = voices.map(v => {
-        const osc = ctx.createOscillator();
-        const vGain = ctx.createGain();
-        osc.type = v.type;
-        osc.frequency.setValueAtTime(v.freq, ctx.currentTime);
-        osc.detune.setValueAtTime(v.detune, ctx.currentTime);
-        vGain.gain.setValueAtTime(v.gain, ctx.currentTime);
-        osc.connect(vGain);
-        vGain.connect(filter);
-        osc.start();
-        return osc;
-      });
-      const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(0, ctx.currentTime);
-      filter.connect(droneGain);
-      droneGain.connect(masterGain);
-      masterGain.connect(ctx.destination);
-      droneNodes = { filter, lfoFilter, lfoFilterGain, droneGain, oscs, masterGain };
     };
     const playTickSound = (isClick = false) => {
       if (!receptionistState.soundEnabled) return;
@@ -1829,23 +1785,15 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistSoundButtons.forEach(button => {
         button.setAttribute("aria-pressed", receptionistState.soundEnabled ? "true" : "false");
         button.setAttribute("aria-label", receptionistState.soundUnavailable
-          ? "Sound unavailable"
-          : receptionistState.soundEnabled ? "Turn off resort ambience" : "Turn on resort ambience");
-        button.textContent = receptionistState.soundUnavailable ? "Sound unavailable" : receptionistState.soundEnabled ? "Sound on" : "Sound off";
+          ? "Music unavailable"
+          : receptionistState.soundEnabled ? "Turn off background music" : "Turn on background music");
+        button.textContent = receptionistState.soundUnavailable ? "Music unavailable" : receptionistState.soundEnabled ? "Music on" : "Music off";
         button.disabled = receptionistState.soundUnavailable;
       });
     };
     const fadeAmbienceTo = (target, onComplete = null) => {
       if (!receptionistAmbience) return;
       window.clearTimeout(receptionistState.soundFadeTimer);
-      const ctx = getAudioContext();
-      if (droneNodes && ctx) {
-        const now = ctx.currentTime;
-        const currentGain = droneNodes.masterGain.gain.value;
-        droneNodes.masterGain.gain.cancelScheduledValues(now);
-        droneNodes.masterGain.gain.setValueAtTime(currentGain, now);
-        droneNodes.masterGain.gain.linearRampToValueAtTime(target, now + 0.35);
-      }
       const start = Number(receptionistAmbience.volume) || 0;
       const startedAt = Date.now();
       const duration = 260;
@@ -1864,9 +1812,34 @@ document.addEventListener("DOMContentLoaded", () => {
         try { receptionistAmbience.currentTime = 0; } catch (error) { /* media may be unavailable */ }
       });
     };
-    const toggleAmbience = async () => {
+    let soundPlaybackGeneration = 0;
+    const startAmbiencePlayback = generation => {
+      let playback;
+      try {
+        // Invoke play synchronously from the user's click so browsers accept
+        // the request under their autoplay policies.
+        playback = receptionistAmbience.play();
+      } catch (error) {
+        if (generation !== soundPlaybackGeneration || !receptionistState.soundEnabled) return;
+        receptionistState.soundEnabled = false;
+        stopAmbience();
+        updateSoundControls();
+        return;
+      }
+      Promise.resolve(playback).then(() => {
+        if (generation !== soundPlaybackGeneration || !receptionistState.soundEnabled) return;
+        fadeAmbienceTo(0.14);
+      }).catch(() => {
+        if (generation !== soundPlaybackGeneration || !receptionistState.soundEnabled) return;
+        receptionistState.soundEnabled = false;
+        stopAmbience();
+        updateSoundControls();
+      });
+    };
+    const toggleAmbience = () => {
       if (!receptionistAmbience || receptionistState.soundUnavailable) return;
       if (receptionistState.soundEnabled) {
+        soundPlaybackGeneration++;
         receptionistState.soundEnabled = false;
         stopAmbience();
         updateSoundControls();
@@ -1874,14 +1847,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       try {
         window.clearTimeout(receptionistState.soundFadeTimer);
-        startSpaDrone();
         receptionistAmbience.volume = 0;
         receptionistState.soundEnabled = true;
-        // Keep the optional ambience clearly below dialogue and viewer audio.
-        fadeAmbienceTo(0.14);
         updateSoundControls();
+        startAmbiencePlayback(++soundPlaybackGeneration);
       } catch (error) {
-        receptionistState.soundUnavailable = true;
         receptionistState.soundEnabled = false;
         stopAmbience();
         updateSoundControls();
@@ -1890,19 +1860,23 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSoundControls();
     receptionistSoundButtons.forEach(button => button.addEventListener("click", toggleAmbience));
     receptionistAmbience?.addEventListener("error", () => {
+      soundPlaybackGeneration++;
       receptionistState.soundUnavailable = true;
       receptionistState.soundEnabled = false;
+      stopAmbience();
       updateSoundControls();
     });
     document.addEventListener("visibilitychange", () => {
       if (!receptionistAmbience || !receptionistState.soundEnabled) return;
-      const ctx = getAudioContext();
       if (document.hidden) {
-        if (ctx && ctx.state === "running") ctx.suspend().catch(() => {});
+        soundPlaybackGeneration++;
+        window.clearTimeout(receptionistState.soundFadeTimer);
+        if (audioCtx && audioCtx.state === "running") audioCtx.suspend().catch(() => {});
         receptionistAmbience.pause();
       } else {
-        if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
-        fadeAmbienceTo(0.14);
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+        receptionistAmbience.volume = 0;
+        startAmbiencePlayback(++soundPlaybackGeneration);
       }
     });
     let lastHoverChoice = null;
