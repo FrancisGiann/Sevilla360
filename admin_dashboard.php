@@ -183,21 +183,9 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                             class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
                                 class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
                     </li>
-                    <?php else: ?>
-                    <li class="nav-group-label"><span>Account</span></li>
-                    <li class="nav-item">
-                        <a href="admin_dashboard.php?page=settings"
-                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
-                                class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
-                    </li>
                     <?php endif; ?>
                 </ul>
             </nav>
-
-            <div class="sidebar-footer">
-                <a href="actions/auth/logout.php" class="nav-link sign-out"><i
-                        class="fa-solid fa-arrow-right-from-bracket"></i> Sign out</a>
-            </div>
         </aside>
         <div class="mobile-nav-scrim" id="mobile-nav-scrim" aria-hidden="true"></div>
 
@@ -276,9 +264,6 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                             <div class="admin-profile-menu-links">
                                 <a href="admin_dashboard.php?page=settings#panel-profile" role="menuitem">
                                     <i class="fa-solid fa-user-gear" aria-hidden="true"></i><span>Profile &amp; Security</span>
-                                </a>
-                                <a href="admin_dashboard.php?page=overview" role="menuitem">
-                                    <i class="fa-solid fa-chart-pie" aria-hidden="true"></i><span>Dashboard Overview</span>
                                 </a>
                                 <a href="actions/auth/logout.php" class="admin-profile-sign-out" role="menuitem">
                                     <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i><span>Sign out</span>

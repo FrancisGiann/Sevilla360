@@ -37,6 +37,15 @@ document.addEventListener("DOMContentLoaded", () => {
     let hotspotListAbortController = null;
     let tourToastTimeout = null;
     const HOTSPOT_REQUEST_TIMEOUT_MS = 15000;
+    const HOTSPOT_GESTURE_MOVE_LIMIT_PX = 10;
+    const HOTSPOT_GESTURE_PAIR_DISTANCE_PX = 24;
+    const HOTSPOT_GESTURE_PAIR_INTERVAL_MS = 350;
+    let placementGestureTarget = null;
+    let placementGesturesReady = false;
+    let activePlacementPointers = new Map();
+    let placementMultiPointerGesture = false;
+    let pendingPlacementTap = null;
+    let pendingPlacementTapTimeout = null;
 
     // ============================================================
     // DOM ELEMENTS
@@ -79,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
         steps: [
             { title: 'Choose a panorama', copy: 'Select the 360 view you want to publish from the panorama chooser.', target: '#hs-admin-view-selector' },
             { title: 'Set the guest framing', copy: 'Drag and zoom the preview, then save the current guest view. Make a starting scene only when this should open first.', target: '#btn-save-panorama-view' },
-            { title: 'Place and publish hotspots', copy: 'Click the panorama, choose information or walk, set a destination when needed, then save the pin.', target: '#hotspot-pano-container' }
+            { title: 'Place and publish hotspots', copy: 'Double-click or double-tap the panorama to place a pin, choose information or walk, set a destination when needed, then save it.', target: '#hotspot-pano-container' }
         ],
         ready: () => hotspotModal.classList.contains('active') && Boolean(currentPanoMesh)
     });
@@ -227,6 +236,141 @@ document.addEventListener("DOMContentLoaded", () => {
         if (retryViewerButton) retryViewerButton.hidden = !isError;
         loadingEl?.classList.toggle('is-error', isError);
         if (visible) setEditorStatus(message, isError ? 'error' : 'loading');
+    }
+
+    function clearPendingPlacementTap() {
+        if (pendingPlacementTapTimeout !== null) {
+            window.clearTimeout(pendingPlacementTapTimeout);
+            pendingPlacementTapTimeout = null;
+        }
+        pendingPlacementTap = null;
+    }
+
+    function resetPlacementGestures() {
+        clearPendingPlacementTap();
+        activePlacementPointers.clear();
+        placementMultiPointerGesture = false;
+    }
+
+    function detachPlacementGestures() {
+        if (placementGestureTarget) {
+            placementGestureTarget.removeEventListener('pointerdown', handlePlacementPointerDown);
+            window.removeEventListener('pointermove', handlePlacementPointerMove);
+            window.removeEventListener('pointerup', handlePlacementPointerUp);
+            window.removeEventListener('pointercancel', handlePlacementPointerCancel);
+            window.removeEventListener('blur', resetPlacementGestures);
+        }
+        placementGestureTarget = null;
+        placementGesturesReady = false;
+        resetPlacementGestures();
+    }
+
+    function attachPlacementGestures(target) {
+        detachPlacementGestures();
+        if (!target?.addEventListener || !window.PointerEvent) {
+            return false;
+        }
+
+        placementGestureTarget = target;
+        target.addEventListener('pointerdown', handlePlacementPointerDown);
+        window.addEventListener('pointermove', handlePlacementPointerMove);
+        window.addEventListener('pointerup', handlePlacementPointerUp);
+        window.addEventListener('pointercancel', handlePlacementPointerCancel);
+        window.addEventListener('blur', resetPlacementGestures);
+        placementGesturesReady = true;
+        return true;
+    }
+
+    function isInsidePlacementTarget(target, clientX, clientY) {
+        const rect = target?.getBoundingClientRect?.();
+        return Boolean(rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom);
+    }
+
+    function invalidatePlacementGesture(pointer) {
+        if (pointer) pointer.valid = false;
+        clearPendingPlacementTap();
+    }
+
+    function handlePlacementPointerDown(event) {
+        if (!raycastEnabled || !viewer || !currentPanoMesh || tourBusy ||
+            (event.pointerType === 'mouse' && event.button !== 0)) return;
+
+        if (activePlacementPointers.size > 0 || event.isPrimary === false) {
+            placementMultiPointerGesture = true;
+            clearPendingPlacementTap();
+            activePlacementPointers.forEach(pointer => { pointer.valid = false; });
+        }
+
+        activePlacementPointers.set(event.pointerId, {
+            pointerType: event.pointerType || 'mouse',
+            startX: event.clientX,
+            startY: event.clientY,
+            valid: !placementMultiPointerGesture,
+            viewerToken: viewerRequestToken
+        });
+    }
+
+    function handlePlacementPointerMove(event) {
+        const pointer = activePlacementPointers.get(event.pointerId);
+        if (!pointer) return;
+        if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > HOTSPOT_GESTURE_MOVE_LIMIT_PX) {
+            invalidatePlacementGesture(pointer);
+        }
+    }
+
+    function handlePlacementPointerCancel(event) {
+        const pointer = activePlacementPointers.get(event.pointerId);
+        if (pointer) invalidatePlacementGesture(pointer);
+        activePlacementPointers.delete(event.pointerId);
+        if (activePlacementPointers.size === 0) placementMultiPointerGesture = false;
+    }
+
+    function handlePlacementPointerUp(event) {
+        const pointer = activePlacementPointers.get(event.pointerId);
+        if (!pointer) return;
+        if (Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) > HOTSPOT_GESTURE_MOVE_LIMIT_PX) {
+            invalidatePlacementGesture(pointer);
+        }
+        activePlacementPointers.delete(event.pointerId);
+
+        if (placementMultiPointerGesture) {
+            clearPendingPlacementTap();
+            if (activePlacementPointers.size === 0) placementMultiPointerGesture = false;
+            return;
+        }
+
+        if (!pointer.valid || pointer.viewerToken !== viewerRequestToken ||
+            !isInsidePlacementTarget(placementGestureTarget, event.clientX, event.clientY)) {
+            clearPendingPlacementTap();
+            return;
+        }
+
+        const now = window.performance?.now?.() ?? Date.now();
+        const currentTap = {
+            x: event.clientX,
+            y: event.clientY,
+            time: now,
+            pointerType: pointer.pointerType,
+            viewerToken: pointer.viewerToken
+        };
+        const previousTap = pendingPlacementTap;
+        const elapsed = previousTap ? now - previousTap.time : Infinity;
+        const distance = previousTap ? Math.hypot(currentTap.x - previousTap.x, currentTap.y - previousTap.y) : Infinity;
+
+        if (previousTap && previousTap.pointerType === currentTap.pointerType &&
+            previousTap.viewerToken === currentTap.viewerToken && elapsed >= 0 && elapsed <= HOTSPOT_GESTURE_PAIR_INTERVAL_MS &&
+            distance <= HOTSPOT_GESTURE_PAIR_DISTANCE_PX) {
+            clearPendingPlacementTap();
+            handlePanoPlacement(event.clientX, event.clientY);
+            return;
+        }
+
+        clearPendingPlacementTap();
+        pendingPlacementTap = currentTap;
+        pendingPlacementTapTimeout = window.setTimeout(() => {
+            if (pendingPlacementTap === currentTap) pendingPlacementTap = null;
+            pendingPlacementTapTimeout = null;
+        }, HOTSPOT_GESTURE_PAIR_INTERVAL_MS + 1);
     }
 
     function setButtonBusy(button, busy, busyText = 'Working…') {
@@ -548,7 +692,7 @@ document.addEventListener("DOMContentLoaded", () => {
         abortHotspotListRequest();
         destroyViewer(viewer);
         viewer = null;
-        panoContainer.onclick = null;
+        detachPlacementGestures();
         panoContainer.replaceChildren();
         currentPanoMesh = null;
         currentMediaId = null;
@@ -772,6 +916,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // INITIALIZE PANOLENS VIEWER
     // ============================================================
     function initViewer(imageUrl) {
+        detachPlacementGestures();
         abortHotspotListRequest();
         const requestToken = ++viewerRequestToken;
         if (viewer) {
@@ -814,7 +959,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Panolens.Viewer.add() selects the first panorama itself. Calling setPanorama()
         // again is a no-op and can hide initialization-order mistakes.
         viewer.add(pano);
-        panoContainer.onclick = handlePanoClick;
+        attachPlacementGestures(viewer.renderer?.domElement || panoContainer.querySelector('canvas'));
         syncPanoramaReadiness(pano, requestToken);
     }
 
@@ -828,7 +973,12 @@ document.addEventListener("DOMContentLoaded", () => {
             currentPanoMesh = pano;
             raycastEnabled = true;
             setLoading(false);
-            setEditorStatus('Panorama ready. Click the preview to place a hotspot.', 'success');
+            setEditorStatus(
+                placementGesturesReady
+                    ? 'Panorama ready. Double-click or double-tap the preview to place a hotspot.'
+                    : 'Panorama loaded, but hotspot placement could not start. Reload the page or use a current browser.',
+                placementGesturesReady ? 'success' : 'error'
+            );
             editorTour?.maybeAutoShow();
             savedView = photoSavedView(currentPhoto());
             if (savedView && applySavedFraming) applyView(savedView, 0);
@@ -839,16 +989,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ============================================================
-    // CLICK PANORAMA
+    // PLACE HOTSPOT
     // ============================================================
-    function handlePanoClick(event) {
-        if (!raycastEnabled || !viewer || !currentPanoMesh) return;
+    function handlePanoPlacement(clientX, clientY) {
+        if (!raycastEnabled || !viewer || !currentPanoMesh || tourBusy) return;
 
         const rect = panoContainer.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
         const mouse = new THREE.Vector2();
-        
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
 
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, viewer.camera);
@@ -885,6 +1036,7 @@ document.addEventListener("DOMContentLoaded", () => {
         hotspotDirty = true;
         toggleTypeFields();
         updateTourStatus('Hotspot changes are not saved');
+        setEditorStatus('Hotspot position set. Review the details, then save the pin.', 'success');
     }
 
     // ============================================================
@@ -958,7 +1110,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
         if (!pendingPoint) {
-            setEditorStatus('No position captured. Click the panorama preview to place the pin.', 'error');
+            setEditorStatus('No position captured. Double-click or double-tap the panorama preview to place the pin.', 'error');
             return;
         }
 
@@ -1109,7 +1261,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (data.hotspots.length === 0) {
                 const empty = document.createElement('p');
                 empty.className = 'hotspot-empty-state';
-                empty.textContent = 'No hotspots on this panorama yet. Click the preview to place one.';
+                empty.textContent = 'No hotspots on this panorama yet. Double-click or double-tap the preview to place one.';
                 listEl.appendChild(empty);
             }
 

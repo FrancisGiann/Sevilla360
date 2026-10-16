@@ -227,6 +227,86 @@ function manual_payment_expected_amount_cents(array $booking): int
     return min($balanceCents, (int)round($totalCents * $percentage / 100));
 }
 
+/** Treat deadlines as database-local Asia/Manila timestamps and expire at the exact deadline. */
+function manual_payment_deadline_has_expired(?string $deadline, ?DateTimeImmutable $now = null): bool
+{
+    if ($deadline === null || trim($deadline) === '') return false;
+    $timezone = new DateTimeZone('Asia/Manila');
+    try {
+        $deadlineAt = new DateTimeImmutable($deadline, $timezone);
+    } catch (Throwable $error) {
+        return false;
+    }
+    $now = ($now ?? new DateTimeImmutable('now', $timezone))->setTimezone($timezone);
+    return $deadlineAt <= $now;
+}
+
+/** Recheck expiry eligibility after locking the booking; pending proof always wins the race. */
+function manual_payment_expiry_candidate(array $booking, bool $hasPendingProof, ?DateTimeImmutable $now = null): bool
+{
+    if ($hasPendingProof
+        || ($booking['source'] ?? '') !== 'Online'
+        || !in_array((string)($booking['booking_status'] ?? ''), ['Pending', 'Confirmed'], true)
+        || (int)($booking['is_completed'] ?? 0) === 1
+        || (($booking['venue_category'] ?? '') === 'Event Hall' && ($booking['booking_status'] ?? '') === 'Pending')
+        || ($booking['payment_status'] ?? '') !== 'Unpaid'
+        || (int)round((float)($booking['amount_paid'] ?? 0) * 100) !== 0) {
+        return false;
+    }
+
+    return manual_payment_deadline_has_expired(
+        isset($booking['payment_due_at']) ? (string)$booking['payment_due_at'] : null,
+        $now
+    );
+}
+
+/** Validate a proof approval against the locked booking snapshot. */
+function manual_payment_assert_approval_eligible(array $booking, bool $eventEnded, bool $acknowledgedLateVerification): void
+{
+    $bookingStatus = (string)($booking['booking_status'] ?? '');
+    if (($booking['source'] ?? '') !== 'Online'
+        || !in_array($bookingStatus, ['Pending', 'Confirmed', 'Completed'], true)
+        || ($booking['payment_status'] ?? '') === 'Refunded'
+        || (!$eventEnded && ($bookingStatus === 'Completed' || (int)($booking['is_completed'] ?? 0) === 1))) {
+        throw new RuntimeException('This booking is no longer eligible for payment.');
+    }
+    if (($booking['venue_category'] ?? '') === 'Event Hall' && $bookingStatus === 'Pending') {
+        throw new RuntimeException('Finalize the Event Hall quotation before approving payment.');
+    }
+    if ($eventEnded && !$acknowledgedLateVerification) {
+        throw new RuntimeException('Acknowledge that this event has ended before verifying its payment.');
+    }
+}
+
+/** Only an ended, wholly-unpaid Pending reservation is cancelled when its proof is rejected. */
+function manual_payment_rejection_cancels_overdue_pending(array $booking, bool $eventEnded): bool
+{
+    return $eventEnded
+        && ($booking['booking_status'] ?? '') === 'Pending'
+        && ($booking['payment_status'] ?? '') === 'Unpaid'
+        && (int)round((float)($booking['amount_paid'] ?? 0) * 100) === 0;
+}
+
+/** Apply the ended-event rejection policy after the caller locks the booking row. */
+function manual_payment_apply_overdue_rejection_locked(mysqli $conn, array $booking, bool $eventEnded): bool
+{
+    if (!$eventEnded || empty($booking['id'])) throw new RuntimeException('Only a locked ended booking can use overdue proof rejection.');
+    $bookingId = (int)$booking['id'];
+    if (manual_payment_rejection_cancels_overdue_pending($booking, true)) {
+        $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ? AND booking_status = 'Pending' AND payment_status = 'Unpaid' AND amount_paid = 0");
+        if (!$stmt) throw new RuntimeException('Unable to close the overdue booking.');
+        $stmt->bind_param('i', $bookingId);
+        if (!$stmt->execute() || $stmt->affected_rows !== 1) throw new RuntimeException('Unable to close the overdue booking.');
+        return true;
+    }
+
+    $stmt = $conn->prepare('UPDATE bookings SET payment_due_at = NULL WHERE id = ?');
+    if (!$stmt) throw new RuntimeException('Unable to close the overdue payment window.');
+    $stmt->bind_param('i', $bookingId);
+    if (!$stmt->execute()) throw new RuntimeException('Unable to close the overdue payment window.');
+    return false;
+}
+
 function manual_payment_validate_reference(string $reference): string
 {
     $reference = trim($reference);
@@ -654,13 +734,17 @@ function manual_payment_assert_no_pending_for_quote(mysqli $conn, int $bookingId
 }
 
 /** Call inside a transaction after the booking row is already locked. */
-function manual_payment_credit_locked(mysqli $conn, array $booking, float $amount, string $method, string $transactionId, ?int $approvedSubmissionId = null): array
+function manual_payment_credit_locked(mysqli $conn, array $booking, float $amount, string $method, string $transactionId, ?int $approvedSubmissionId = null, bool $preserveBookingStatus = false): array
 {
     $bookingId = (int)$booking['id'];
     $method = manual_payment_validate_transaction_method($method);
     if (!is_finite($amount) || $amount <= 0) throw new RuntimeException('Payment amount must be greater than zero.');
     if ($transactionId === '' || strlen($transactionId) > 100 || preg_match('/[\x00-\x1F\x7F]/', $transactionId)) throw new RuntimeException('Enter a valid transaction reference.');
-    if (!in_array((string)$booking['booking_status'], ['Pending', 'Confirmed'], true) || ($booking['payment_status'] ?? '') === 'Refunded' || (int)($booking['is_completed'] ?? 0) === 1) {
+    if ($preserveBookingStatus && ($approvedSubmissionId === null || (int)($booking['event_ended'] ?? 0) !== 1)) {
+        throw new RuntimeException('Only an approved proof for an ended event can preserve the booking status during payment credit.');
+    }
+    $eligibleStatuses = $preserveBookingStatus ? ['Pending', 'Confirmed', 'Completed'] : ['Pending', 'Confirmed'];
+    if (!in_array((string)$booking['booking_status'], $eligibleStatuses, true) || ($booking['payment_status'] ?? '') === 'Refunded' || (!$preserveBookingStatus && (int)($booking['is_completed'] ?? 0) === 1)) {
         throw new RuntimeException('This booking is no longer eligible for payment.');
     }
     if (($booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] === 'Pending') throw new RuntimeException('Finalize the Event Hall invoice before recording payment.');
@@ -696,7 +780,10 @@ function manual_payment_credit_locked(mysqli $conn, array $booking, float $amoun
     if (!$stmt->execute()) throw new RuntimeException('Unable to record the payment.');
     $paymentId = (int)$conn->insert_id;
 
-    $stmt = $conn->prepare("UPDATE bookings SET payment_status = ?, amount_paid = ?, booking_status = 'Confirmed', payment_due_at = NULL WHERE id = ?");
+    $bookingUpdateSql = $preserveBookingStatus
+        ? 'UPDATE bookings SET payment_status = ?, amount_paid = ?, payment_due_at = NULL WHERE id = ?'
+        : "UPDATE bookings SET payment_status = ?, amount_paid = ?, booking_status = 'Confirmed', payment_due_at = NULL WHERE id = ?";
+    $stmt = $conn->prepare($bookingUpdateSql);
     if (!$stmt) throw new RuntimeException('Unable to prepare the booking payment update.');
     $stmt->bind_param('sdi', $newStatus, $newAmountPaid, $bookingId);
     if (!$stmt->execute()) throw new RuntimeException('Unable to update the booking payment status.');
@@ -726,7 +813,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
             $stmtBooking->bind_param('i', $bookingId);
             if (!$stmtBooking->execute()) throw new RuntimeException('Unable to lock an expired booking.');
             $booking = $stmtBooking->get_result()->fetch_assoc();
-            if (!$booking || $booking['source'] !== 'Online' || !in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || (int)$booking['is_completed'] === 1 || ($booking['venue_category'] === 'Event Hall' && $booking['booking_status'] === 'Pending') || $booking['payment_status'] !== 'Unpaid' || (float)$booking['amount_paid'] !== 0.0 || empty($booking['payment_due_at']) || strtotime((string)$booking['payment_due_at']) > time()) {
+            if (!$booking || !manual_payment_expiry_candidate($booking, false)) {
                 $conn->commit();
                 continue;
             }
@@ -734,7 +821,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
             if (!$stmtPending) throw new RuntimeException('Unable to check pending payment proof.');
             $stmtPending->bind_param('i', $bookingId);
             if (!$stmtPending->execute()) throw new RuntimeException('Unable to check pending payment proof.');
-            if ($stmtPending->get_result()->num_rows > 0) {
+            if (!manual_payment_expiry_candidate($booking, $stmtPending->get_result()->num_rows > 0)) {
                 $conn->commit();
                 continue;
             }

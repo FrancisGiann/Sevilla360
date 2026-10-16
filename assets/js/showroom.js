@@ -670,6 +670,14 @@ document.addEventListener("DOMContentLoaded", () => {
               window.SevillaHotspotMaterial?.configure(spot, isNav ? 'nav' : 'info', Number(h.arrow_rotation));
           }
 
+          // Panoramas are added to the viewer together, but only the first
+          // one enters immediately. Hide every pin until its own panorama is
+          // active so untouched scenes cannot leak sprites into the view.
+          spot.userData = spot.userData || {};
+          spot.userData.hotspotHidden = true;
+          if (spot.material) spot.material.opacity = 0;
+          spot.enableRaycast?.(false);
+
           if (isNav) {
               const rotation = Number(h.arrow_rotation);
               if (spot.material && Number.isInteger(rotation) && rotation >= 0 && rotation <= 359) {
@@ -913,10 +921,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 viewer,
                 panoramas,
                 room,
-                // A cached room may be revisited under a new load token. The
-                // room identity guards cross-room callbacks without disabling
-                // valid hotspot navigation on cached panoramas.
-                () => currentRoomId === roomId && !room.panoFailed,
+                () => currentRoomId === roomId && currentPanoIndex === index && viewer.panorama === pano && !room.panoFailed,
                 index
             );
 

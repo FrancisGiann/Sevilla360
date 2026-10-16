@@ -105,7 +105,7 @@ if ($venueFilter !== 'All') {
 $paidSeminarSql = "COALESCE((SELECT SUM(sp.amount) FROM seminar_payments sp WHERE sp.seminar_id=s.id AND sp.status='posted'),0)";
 switch ($statusFilter) {
     case 'action_req':
-        $bookingWhere[] = "b.booking_status <> 'Cancelled' AND NOT $bookingCompletionSql AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id=b.id AND cx.status='Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id=b.id AND rr.status='Pending') OR b.booking_status='Pending' OR (b.booking_status='Confirmed' AND b.payment_status='Unpaid') OR EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id=b.id AND mps_action.status='pending'))";
+        $bookingWhere[] = "b.booking_status <> 'Cancelled' AND (EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id=b.id AND mps_action.status='pending') OR (NOT {$bookingCompletionSql} AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id=b.id AND cx.status='Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id=b.id AND rr.status='Pending') OR b.booking_status='Pending' OR (b.booking_status='Confirmed' AND b.payment_status='Unpaid'))))";
         $seminarWhere[] = "s.status <> 'cancelled' AND (s.agreed_price IS NULL OR $paidSeminarSql < s.agreed_price)";
         break;
     case 'awaiting_verification':
@@ -162,6 +162,8 @@ try {
         SELECT {$historyText("'booking'")} AS record_type, b.id, {$historyText('b.reference_no')} AS reference_no, b.venue_id, b.start_date, b.end_date,
             b.total_amount, b.amount_paid, {$historyText('b.booking_status')} AS booking_status,
             {$historyText("CASE WHEN {$bookingCompletionSql} THEN 'Completed' ELSE b.booking_status END")} AS display_booking_status,
+            CASE WHEN b.end_date < CURDATE() THEN 1 ELSE 0 END AS event_ended,
+            CASE WHEN b.end_date < CURDATE() AND EXISTS (SELECT 1 FROM manual_payment_submissions mps_overdue WHERE mps_overdue.booking_id=b.id AND mps_overdue.status='pending') THEN 1 ELSE 0 END AS proof_overdue,
             {$historyText('b.payment_status')} AS payment_status, {$historyText("COALESCE(c.first_name, '')")} AS first_name,
             {$historyText("COALESCE(c.last_name, '')")} AS last_name, {$historyText('v.name')} AS venue_name,
             {$historyText('v.category')} AS venue_category, {$historyText('hr.room_type')} AS hotel_room_type,
@@ -190,6 +192,7 @@ try {
             s.hall_start_date AS start_date, s.hall_end_date AS end_date, s.agreed_price AS total_amount,
             {$paidSeminarSql} AS amount_paid, {$historyText('s.status')} AS booking_status,
             {$historyText("CASE s.status WHEN 'draft' THEN 'Draft' WHEN 'finalized' THEN 'Finalized' ELSE 'Cancelled' END")} AS display_booking_status,
+            0 AS event_ended, 0 AS proof_overdue,
             {$historyText("CASE WHEN s.agreed_price IS NULL THEN 'Unpriced' WHEN {$paidSeminarSql} >= s.agreed_price THEN 'Paid' WHEN {$paidSeminarSql} > 0 THEN 'Partial' ELSE 'Unpaid' END")} AS payment_status,
             {$historyText("''")} AS first_name, {$historyText("''")} AS last_name, {$historyText('v.name')} AS venue_name,
             {$historyText('v.category')} AS venue_category, {$historyText('NULL')} AS hotel_room_type,

@@ -385,6 +385,10 @@
 .status-refunded { background-color: #e5e7eb; color: var(--color-dark); }
 .status-pending-refund { background-color: #ef4444; color: white; }
 .status-reschedule { background-color: #e0f2fe; color: #1e40af; }
+.status-overdue { background-color: #fff0cf; color: #694613; border: 1px solid rgba(105, 70, 19, .2); }
+.booking-amount-unavailable { color: #74501c; font-size: inherit; font-style: normal; font-weight: 600; }
+.status-note--overdue { max-width: 24ch; white-space: normal !important; color: #694613 !important; line-height: 1.35 !important; }
+.status-note--overdue i { color: #8a5b13 !important; }
 
 /* --- Action Buttons --- */
 .action-cells {
@@ -1114,16 +1118,16 @@
   .action-cells .btn-action {
     width: 100%;
     min-width: 0;
-    font-size: .72rem;
-    padding: 9px 6px;
-    min-height: 34px;
+    font-size: .84rem;
+    padding: 10px 8px;
+    min-height: 44px;
     height: auto;
-    line-height: 1.2;
+    line-height: 1.3;
     white-space: normal;
     overflow-wrap: normal;
     word-break: normal;
     hyphens: none;
-    letter-spacing: .12em;
+    letter-spacing: normal;
     box-sizing: border-box;
   }
 
@@ -1532,8 +1536,13 @@
 .manual-proof-preview-wrap img[hidden] { display: none; }
 .manual-proof-preview-wrap figcaption { color: var(--color-dark-light); font-size: .78rem; }
 .manual-proof-review-modal > label { display: block; margin: 8px 0; }
+.manual-proof-late-ack { margin: 16px 0; padding: 14px 16px; border: 1px solid rgba(138, 91, 19, .26); border-radius: 5px; background: #fff8e9; color: #59411f; }
+.manual-proof-late-ack[hidden] { display: none !important; }
+.manual-proof-late-ack p { margin: 0 0 10px; font-size: .9rem; line-height: 1.5; }
+.manual-proof-late-ack label { display: flex; align-items: flex-start; gap: 10px; font-size: .92rem; font-weight: 600; line-height: 1.45; }
+.manual-proof-late-ack input { flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; accent-color: #80531f; }
 .manual-proof-review-modal textarea { width: 100%; min-height: 88px; padding: 10px; border: 1px solid rgba(42, 37, 34, .24); font: inherit; resize: vertical; }
-.manual-proof-review-modal :is(button, textarea):focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+.manual-proof-review-modal :is(button, textarea, input):focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
 .manual-proof-status { padding: 10px; border: 1px solid rgba(71, 115, 89, .32); background: rgba(71, 115, 89, .08); color: #31513d; font-size: .86rem; }
 .manual-proof-status[data-error="true"] { border-color: rgba(164, 56, 49, .35); background: rgba(164, 56, 49, .08); color: #802a24; }
 .manual-proof-review-modal .modal-actions button:disabled { cursor: wait; opacity: .65; }
@@ -1543,6 +1552,7 @@
   .manual-proof-summary { grid-template-columns: 1fr; gap: 4px; }
   .manual-proof-summary .value { margin-bottom: 8px; }
   .manual-proof-preview-wrap img { max-height: 40vh; }
+  .manual-proof-late-ack { padding: 12px; }
 }
 
 /* Shared hierarchy for booking details and manual refund processing. */
@@ -1802,38 +1812,81 @@
   min-width: 0;
 }
 
-.booking-action-menu > summary {
+.booking-action-menu-toggle {
   display: flex;
-  min-height: 40px;
+  width: 100%;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid rgba(42, 37, 34, 0.22);
   border-radius: 4px;
   color: #51483f;
   background: var(--color-white);
-  font-size: 0.82rem;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  list-style: none;
+  line-height: 1.3;
 }
 
-.booking-action-menu > summary::-webkit-details-marker { display: none; }
-.booking-action-menu > summary::marker { content: ''; }
-.booking-action-menu > summary:hover { border-color: var(--color-gold); background: #faf6f0; }
-.booking-action-menu[open] > summary { border-color: var(--color-gold); }
-.booking-action-menu[open] > summary i { transform: rotate(180deg); }
-.booking-action-menu > summary i { transition: transform 160ms ease; }
+.booking-action-menu-toggle:hover,
+.booking-action-menu-toggle[aria-expanded="true"] { border-color: var(--color-gold); background: #faf6f0; }
+.booking-action-menu-toggle:focus-visible { outline: 3px solid #80531f; outline-offset: 2px; }
+.booking-action-menu-toggle i { transition: transform 160ms ease; }
+.booking-action-menu-toggle[aria-expanded="true"] i { transform: rotate(180deg); }
 
-.booking-action-menu-items {
+.booking-action-menu-panel {
+  z-index: 2001;
   display: grid;
+  align-content: start;
   gap: 7px;
-  padding-top: 7px;
+  box-sizing: border-box;
+  padding: 9px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(42, 37, 34, .18);
+  border-radius: 6px;
+  background: var(--color-white);
+  box-shadow: 0 8px 22px rgba(42, 37, 34, .2);
 }
 
-.booking-action-menu-items .btn-action {
-  min-height: 40px;
+.booking-action-menu-panel[hidden] { display: none !important; }
+.booking-action-menu-panel .btn-action {
+  min-height: 44px;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  font-size: .9rem;
+  font-weight: 550;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+.booking-action-menu-panel .btn-action:hover:not(:disabled) { transform: none; }
+.booking-action-menu-panel .btn-action:focus-visible { outline: 3px solid #80531f; outline-offset: 1px; }
+.booking-action-menu-panel .btn-action--disabled,
+.btn-action--disabled:disabled {
+  color: #5d554c;
+  background: #eeeae4;
+  cursor: not-allowed;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.admin-bookings-container .action-cells .btn-action {
+  min-height: 44px !important;
+  padding: 9px 10px !important;
+  font-size: .84rem !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+}
+
+.admin-bookings-container .status-badge {
+  padding: 6px 10px !important;
+  font-size: .76rem !important;
+  letter-spacing: .02em !important;
+  text-transform: none !important;
 }
 
 .seminar-history-id__content,
@@ -1898,7 +1951,7 @@
   .admin-bookings-container .filter-control-group .search-bar input { width: 100%; box-sizing: border-box; }
   .booking-results-status { margin-top: -8px; }
   .bookings-table td.action-cells .action-buttons { display: flex; }
-  .booking-action-menu > summary { justify-content: space-between; padding-inline: 12px; }
+  .booking-action-menu-toggle { justify-content: space-between; }
 }
 
 @media (max-width: 480px) {

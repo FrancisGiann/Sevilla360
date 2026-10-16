@@ -52,12 +52,13 @@ try {
     // Lock the booking before reading the venue/customer context. With the
     // route-scoped READ COMMITTED transaction, reads after a lock wait see the
     // state committed by the transaction that released the resource mutex.
-    $stmt_booking_lock = $conn->prepare("SELECT b.id, b.venue_id, b.start_date, b.end_date, b.booking_status, b.payment_status, b.amount_paid, b.total_amount, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed FROM bookings b WHERE b.id = ? FOR UPDATE");
+    $stmt_booking_lock = $conn->prepare("SELECT b.id, b.venue_id, b.start_date, b.end_date, b.booking_status, b.payment_status, b.amount_paid, b.total_amount, CASE WHEN b.end_date < CURDATE() THEN 1 ELSE 0 END AS event_ended, CASE WHEN " . booking_completion_sql('b') . " THEN 1 ELSE 0 END AS is_completed FROM bookings b WHERE b.id = ? FOR UPDATE");
     if (!$stmt_booking_lock) throw new Exception('Booking lock unavailable.');
     $stmt_booking_lock->bind_param('i', $booking_id);
     if (!$stmt_booking_lock->execute()) throw new Exception('Booking lock unavailable.');
     $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
     if (!$locked_booking) throw new Exception('Booking not found.');
+    $event_ended = (int)$locked_booking['event_ended'] === 1;
 
     // ==========================================
     // FETCH CURRENT CUSTOMER AND VENUE DATA
@@ -153,6 +154,7 @@ try {
     // ACTIONS
     // ==========================================
     if ($action === 'confirm') {
+        if ($event_ended) throw new Exception('Bookings cannot be approved after the event has ended.');
         if ($is_pending_event_hall) {
             throw new Exception('Finalize the Event Hall invoice first before approving this inquiry.');
         }
@@ -201,6 +203,9 @@ try {
 
     }
     elseif ($action === 'finalize_event_invoice') {
+        if ($event_ended && $locked_booking['booking_status'] === 'Pending') {
+            throw new Exception('This Event Hall inquiry cannot be finalized after the event has ended.');
+        }
         if ($b_info['category'] !== 'Event Hall') throw new Exception('Only Event Hall bookings can receive an event quotation.');
         manual_payment_assert_no_pending_for_quote($conn, $booking_id);
 
@@ -351,6 +356,9 @@ try {
 
         $message = "Invoice finalized. The customer can review it in their dashboard.";
     }elseif ($action === 'add_payment') {
+        if ($event_ended && $locked_booking['booking_status'] === 'Pending') {
+            throw new Exception('A payment cannot approve a Pending booking after the event has ended.');
+        }
         if (!isset($data['amount']) || !is_scalar($data['amount']) || !is_numeric($data['amount'])) throw new Exception('Enter a valid payment amount.');
         $amount_to_add = (float)$data['amount'];
         $method = trim((string)($data['method'] ?? ''));

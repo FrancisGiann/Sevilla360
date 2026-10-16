@@ -9,6 +9,37 @@ document.addEventListener('DOMContentLoaded', () => {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[char]);
 
+  const cmsCategoryFilters = new Set(['venues', 'hotel-room', 'event-hall', 'villa', 'website']);
+  const cmsMediaFilters = new Set(['all', '360', 'standard']);
+  const cmsFilterStorage = (() => {
+    try {
+      return window.sessionStorage;
+    } catch (error) {
+      return null;
+    }
+  })();
+
+  function readCMSFilter(key, validValues, fallback) {
+    try {
+      const storedValue = cmsFilterStorage?.getItem(key);
+      return validValues.has(storedValue) ? storedValue : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  let activeCMSCategoryFilter = readCMSFilter('activeCMSCategoryFilter', cmsCategoryFilters, 'venues');
+  let activeCMSMediaFilter = readCMSFilter('activeCMSFilter', cmsMediaFilters, 'all');
+
+  function persistCMSFilterState() {
+    try {
+      cmsFilterStorage?.setItem('activeCMSCategoryFilter', activeCMSCategoryFilter);
+      cmsFilterStorage?.setItem('activeCMSFilter', activeCMSMediaFilter);
+    } catch (error) {
+      // Filtering remains available when session storage is disabled or full.
+    }
+  }
+
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
@@ -193,6 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true) {
                       resetUploadUi();
                       uploadModal.classList.remove('active');
+                      persistCMSFilterState();
                       showAlert("Success", serverMessage || "Media uploaded successfully.", "success", true);
                   } else {
                       showUploadError("Error", serverMessage || "Server Error: " + xhr.status);
@@ -513,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnCloseGalleryModal')?.addEventListener('click', () => {
       manageGalleryModal.classList.remove('active');
       if (window.needsCmsRefresh) {
-          sessionStorage.setItem('activeCMSFilter', document.querySelector('.cms-pill.active').getAttribute('data-filter'));
+          persistCMSFilterState();
           window.location.reload();
       }
   });
@@ -542,34 +574,62 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================
   // 7. Filter Pills (WITH SESSION STORAGE)
   // =========================================================
-  const filterPills = document.querySelectorAll('.cms-pill');
+  const categoryFilterPills = document.querySelectorAll('.cms-category-pill');
+  const mediaFilterPills = document.querySelectorAll('.cms-pill');
   const cmsCards = document.querySelectorAll('.cms-card');
+  const cmsEmptyState = document.getElementById('cms-empty-state');
 
-  function applyFilter(filterValue) {
-      filterPills.forEach(p => {
-          if (p.getAttribute('data-filter') === filterValue) p.classList.add('active');
-          else p.classList.remove('active');
+  function applyCMSFilters() {
+      categoryFilterPills.forEach(pill => {
+          const isActive = pill.getAttribute('data-category') === activeCMSCategoryFilter;
+          pill.classList.toggle('active', isActive);
+          pill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
-      
+
+      mediaFilterPills.forEach(pill => {
+          const isActive = pill.getAttribute('data-filter') === activeCMSMediaFilter;
+          pill.classList.toggle('active', isActive);
+          pill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+
+      let visibleCardCount = 0;
       cmsCards.forEach(card => {
-          if (filterValue === 'all' || card.getAttribute('data-type') === filterValue) card.style.display = 'flex';
-          else card.style.display = 'none';
+          const cardCategory = card.getAttribute('data-category');
+          const matchesCategory = activeCMSCategoryFilter === 'venues'
+              ? cardCategory !== 'website'
+              : cardCategory === activeCMSCategoryFilter;
+          const matchesMedia = activeCMSMediaFilter === 'all'
+              || card.getAttribute('data-type') === activeCMSMediaFilter;
+          const isVisible = matchesCategory && matchesMedia;
+
+          card.style.display = isVisible ? 'flex' : 'none';
+          if (isVisible) visibleCardCount++;
       });
+
+      if (cmsEmptyState) cmsEmptyState.hidden = visibleCardCount > 0;
   }
 
-  // Click listener
-  filterPills.forEach(pill => {
+  categoryFilterPills.forEach(pill => {
     pill.addEventListener('click', function() {
-      const filter = this.getAttribute('data-filter');
-      sessionStorage.setItem('activeCMSFilter', filter); // Save state
-      applyFilter(filter);
+      const filter = this.getAttribute('data-category');
+      if (!cmsCategoryFilters.has(filter)) return;
+      activeCMSCategoryFilter = filter;
+      applyCMSFilters();
+      persistCMSFilterState();
     });
   });
 
-  // On Load, check if we saved a tab previously!
-  const savedFilter = sessionStorage.getItem('activeCMSFilter');
-  if (savedFilter) {
-      applyFilter(savedFilter);
-  }
+  mediaFilterPills.forEach(pill => {
+    pill.addEventListener('click', function() {
+      const filter = this.getAttribute('data-filter');
+      if (!cmsMediaFilters.has(filter)) return;
+      activeCMSMediaFilter = filter;
+      applyCMSFilters();
+      persistCMSFilterState();
+    });
+  });
+
+  applyCMSFilters();
+  persistCMSFilterState();
 
 });

@@ -275,6 +275,13 @@
                 <img id="manual-proof-preview" src="assets/img/Logo.png" alt="Customer-submitted payment receipt" hidden>
                 <figcaption>Protected customer receipt preview</figcaption>
             </figure>
+            <div class="manual-proof-late-ack" id="manual-proof-late-ack-wrap" hidden>
+                <p>This event has ended. Verifying proof records payment only and will not change the booking status or mark attendance.</p>
+                <label for="manual-proof-late-ack">
+                    <input type="checkbox" id="manual-proof-late-ack">
+                    I acknowledge this is a late payment verification.
+                </label>
+            </div>
             <label class="form-label-med" for="manual-proof-rejection-reason">Rejection reason <span>(required when rejecting)</span></label>
             <textarea id="manual-proof-rejection-reason" class="form-input-padded" rows="3" maxlength="500" aria-describedby="manual-proof-status" placeholder="Explain what needs to be corrected"></textarea>
             <p class="manual-proof-status" id="manual-proof-status" role="status" aria-live="polite" hidden></p>

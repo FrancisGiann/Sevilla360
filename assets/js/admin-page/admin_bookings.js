@@ -149,6 +149,131 @@ document.addEventListener("DOMContentLoaded", () => {
     const manualProofModal = document.getElementById('manualPaymentReviewModal');
     const manualProofStatus = document.getElementById('manual-proof-status');
     let proofReviewInvoker = null;
+    const bookingActionPanelOrigins = new WeakMap();
+
+    function closeBookingActionMenu(restoreFocus = false) {
+        document.querySelectorAll('.booking-action-menu-toggle[aria-expanded="true"]').forEach(toggle => {
+            const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+            toggle.setAttribute('aria-expanded', 'false');
+            if (!panel) return;
+            panel.hidden = true;
+            panel.removeAttribute('style');
+            panel.querySelectorAll('[role="menuitem"]').forEach(item => { item.tabIndex = -1; });
+            const origin = bookingActionPanelOrigins.get(panel);
+            if (origin?.parent?.isConnected) {
+                if (origin.nextSibling?.parentNode === origin.parent) origin.parent.insertBefore(panel, origin.nextSibling);
+                else origin.parent.appendChild(panel);
+            } else if (panel.isConnected) {
+                panel.remove();
+            }
+            bookingActionPanelOrigins.delete(panel);
+            if (restoreFocus && toggle.isConnected) toggle.focus();
+        });
+    }
+
+    function positionBookingActionMenu(toggle, panel) {
+        if (!bookingActionPanelOrigins.has(panel)) {
+            bookingActionPanelOrigins.set(panel, { parent: panel.parentNode, nextSibling: panel.nextSibling });
+        }
+        document.body.appendChild(panel);
+        panel.hidden = false;
+        panel.style.position = 'fixed';
+        panel.style.left = '0px';
+        panel.style.top = '0px';
+        panel.style.visibility = 'hidden';
+        const viewportWidth = Math.max(0, document.documentElement.clientWidth || window.innerWidth);
+        const viewportHeight = Math.max(0, window.visualViewport?.height || window.innerHeight);
+        const gutter = Math.min(12, viewportWidth / 2);
+        const verticalGutter = Math.min(12, viewportHeight / 2);
+        const width = Math.max(0, Math.min(272, viewportWidth - gutter * 2));
+        panel.style.width = `${width}px`;
+        panel.style.maxWidth = `${width}px`;
+        panel.style.maxHeight = `${Math.max(120, viewportHeight - verticalGutter * 2)}px`;
+        const buttonRect = toggle.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        const maxLeft = Math.max(gutter, viewportWidth - panelRect.width - gutter);
+        const left = Math.min(Math.max(gutter, buttonRect.right - panelRect.width), maxLeft);
+        const below = viewportHeight - buttonRect.bottom - verticalGutter;
+        const above = buttonRect.top - verticalGutter;
+        const top = below >= Math.min(panelRect.height, 220) || below >= above
+            ? Math.min(buttonRect.bottom + 6, viewportHeight - panelRect.height - verticalGutter)
+            : Math.max(verticalGutter, buttonRect.top - panelRect.height - 6);
+        panel.style.left = `${left}px`;
+        panel.style.top = `${Math.max(verticalGutter, top)}px`;
+        panel.style.visibility = '';
+    }
+
+    function openBookingActionMenu(toggle, focusLast = false) {
+        closeBookingActionMenu(false);
+        const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+        if (!panel) return;
+        toggle.setAttribute('aria-expanded', 'true');
+        positionBookingActionMenu(toggle, panel);
+        const items = Array.from(panel.querySelectorAll('[role="menuitem"]:not([disabled])'));
+        items.forEach(item => { item.tabIndex = -1; });
+        const target = focusLast ? items.at(-1) : items[0];
+        if (target) {
+            target.tabIndex = 0;
+            target.focus({ preventScroll: true });
+        } else {
+            toggle.focus({ preventScroll: true });
+        }
+    }
+
+    document.addEventListener('click', event => {
+        const toggle = event.target.closest?.('.booking-action-menu-toggle');
+        if (toggle) {
+            const wasExpanded = toggle.getAttribute('aria-expanded') === 'true';
+            closeBookingActionMenu(false);
+            if (!wasExpanded) openBookingActionMenu(toggle);
+            return;
+        }
+        if (event.target.closest?.('.booking-action-menu-panel [role="menuitem"]')) {
+            closeBookingActionMenu(false);
+            return;
+        }
+        closeBookingActionMenu(false);
+    }, true);
+
+    document.addEventListener('keydown', event => {
+        const toggle = event.target.closest?.('.booking-action-menu-toggle');
+        if (toggle && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault();
+            openBookingActionMenu(toggle, event.key === 'ArrowUp');
+            return;
+        }
+        const panel = event.target.closest?.('.booking-action-menu-panel');
+        if (!panel) return;
+        const toggleButton = document.querySelector(`.booking-action-menu-toggle[aria-controls="${CSS.escape(panel.id)}"]`);
+        const items = Array.from(panel.querySelectorAll('[role="menuitem"]:not([disabled])'));
+        const currentIndex = items.indexOf(event.target.closest('[role="menuitem"]'));
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && items.length) {
+            event.preventDefault();
+            const nextIndex = event.key === 'Home' ? 0
+                : event.key === 'End' ? items.length - 1
+                : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            items.forEach(item => { item.tabIndex = -1; });
+            items[nextIndex].tabIndex = 0;
+            items[nextIndex].focus({ preventScroll: true });
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            closeBookingActionMenu(true);
+        } else if (event.key === 'Tab') {
+            event.preventDefault();
+            const tabStops = Array.from(document.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                .filter(element => !panel.contains(element) && !element.hidden && element.getClientRects().length > 0);
+            const toggleIndex = tabStops.indexOf(toggleButton);
+            const destination = tabStops[toggleIndex + (event.shiftKey ? -1 : 1)];
+            closeBookingActionMenu(false);
+            destination?.focus();
+        }
+    }, true);
+
+    window.addEventListener('resize', () => closeBookingActionMenu(false));
+    window.addEventListener('scroll', event => {
+        if (event.target instanceof Element && event.target.closest('.booking-action-menu-panel')) return;
+        closeBookingActionMenu(false);
+    }, true);
 
     function renderAdminPaymentHistory(payments, prefix) {
         const section = document.getElementById(`${prefix}-payment-history-section`);
@@ -335,6 +460,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function adminBookingsInteractionOpen() {
         if (modalOverlay?.classList.contains('active')) return true;
+        if (document.querySelector('.booking-action-menu-panel:not([hidden])')) return true;
         const active = document.activeElement;
         return Boolean(active && tbody?.contains(active)
             && /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(active.tagName));
@@ -389,6 +515,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderTableMessage(message, actionLabel = '', actionName = '') {
         if (!tbody) return;
+        closeBookingActionMenu(false);
         const row = document.createElement('tr');
         const cell = document.createElement('td');
         cell.colSpan = 7;
@@ -732,6 +859,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const displayStatus = String(b?.display_booking_status || b?.booking_status || 'Pending');
             const isCompleted = displayStatus === 'Completed';
             const hasPendingProof = Number(b.pending_payment_submission_id) > 0;
+            const eventEnded = Number(b.event_ended) === 1;
+            const proofOverdue = hasPendingProof && Number(b.proof_overdue) === 1;
             const actualRoomType = (b.venue_category === 'Hotel Room') ? String(b.hotel_room_type || '') : String(b.venue_category || '');
             const rawTotal = Number.parseFloat(b.total_amount);
             const rawPaid = Number.parseFloat(b.amount_paid);
@@ -740,7 +869,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const balanceDue = totalAmt - amtPaid;
   
             const isPendingInquiry = (b.venue_category === 'Event Hall' && displayStatus === 'Pending');
-            const displayAmount = isPendingInquiry ? '<span style="color:#b5884e; font-style:italic;">To Be Arranged</span>' : `₱${totalAmt.toLocaleString('en-US', {minimumFractionDigits:2})}`;
+            const displayAmount = isPendingInquiry ? '<span class="booking-amount-unavailable">To Be Arranged</span>' : `₱${totalAmt.toLocaleString('en-US', {minimumFractionDigits:2})}`;
   
             // Badges
             let badgeClass = 'status-pending'; 
@@ -762,6 +891,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 else if (b.resched_status === 'Pending') { badgeClass = 'status-reschedule'; statusText = 'Resched Req.'; }
             }
             if (hasPendingProof && displayStatus !== 'Cancelled' && !isCompleted) { badgeClass = 'status-pending'; statusText = 'Awaiting Verification'; }
+            if (proofOverdue) { badgeClass = 'status-overdue'; statusText = 'Overdue Verification'; }
   
             const fadeClass = (displayStatus === 'Cancelled') ? 'faded-text' : '';
   
@@ -776,14 +906,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const addSecondary = action => secondaryActions.push(action);
             const rowId = `data-id="${bookingId}"`;
             if (!isCompleted && displayStatus === 'Pending') {
-                if (isPendingInquiry) {
-                    setPrimary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price / Finalize</button>`);
+                if (eventEnded) {
+                    addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>${isPendingInquiry ? 'Quotation unavailable after event end' : 'Approval unavailable after event end'}</button>`);
+                    addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
+                } else if (isPendingInquiry) {
+                    if (hasPendingProof) {
+                        addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>Finalize after proof review</button>`);
+                    } else {
+                        setPrimary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price / Finalize</button>`);
+                    }
                     addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
                 } else {
                     setPrimary(`<button type="button" class="btn-action btn-confirm open-approve" ${rowId}>Approve</button>`);
                     if (!hasPendingProof) addSecondary(`<button type="button" class="btn-action btn-confirm open-payment" ${rowId} data-due="${balanceDue}">Collect Pay</button>`);
                     addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
-                    addSecondary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price</button>`);
+                    addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>Price editing unavailable</button>`);
                 }
             } 
             else if (!isCompleted && displayStatus === 'Confirmed') {
@@ -801,13 +938,15 @@ document.addEventListener("DOMContentLoaded", () => {
             if (hasPendingProof) {
                 const submissionIdValue = Number(b.pending_payment_submission_id);
                 const submissionId = Number.isSafeInteger(submissionIdValue) && submissionIdValue > 0 ? submissionIdValue : 0;
-                setPrimary(`<button type="button" class="btn-action btn-confirm open-manual-proof" ${rowId} data-submission-id="${submissionId}" data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}">Review Proof</button>`);
+                setPrimary(`<button type="button" class="btn-action btn-confirm open-manual-proof" ${rowId} data-submission-id="${submissionId}" data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}" data-event-ended="${eventEnded ? '1' : '0'}">Review Proof</button>`);
             }
             const viewAction = `<button type="button" class="btn-action btn-view" ${rowId}>View Details</button>`;
             if (primaryAction) addSecondary(viewAction);
             else primaryAction = viewAction;
-            const actionMenu = secondaryActions.length
-                ? `<details class="booking-action-menu"><summary aria-label="More actions for booking ${attr(referenceNo)}"><span>More actions</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></summary><div class="booking-action-menu-items">${secondaryActions.join('')}</div></details>`
+            const menuId = `booking-actions-${attr(String(b.record_type || 'booking'))}-${bookingId}`;
+            const menuItems = secondaryActions.map(action => action.replace('<button type="button"', '<button type="button" role="menuitem" tabindex="-1"'));
+            const actionMenu = menuItems.length
+                ? `<div class="booking-action-menu"><button type="button" class="booking-action-menu-toggle" aria-label="More actions for booking ${attr(referenceNo)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}"><span>More actions</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button><div id="${menuId}" class="booking-action-menu-panel" role="menu" aria-label="More actions for booking ${attr(referenceNo)}" hidden>${menuItems.join('')}</div></div>`
                 : '';
 
             html += `
@@ -817,11 +956,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Customer">${attr(customerName)}</td>
                 <td data-label="Date">${attr(dateStr)}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
-                <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${!isCompleted && Number(b.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
+                <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${proofOverdue ? ' <span class="status-note status-note--overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Event ended — payment still unverified</span></span>' : ''}${!isCompleted && Number(b.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
                 <td data-label="Actions" class="action-cells"><div class="action-buttons">${primaryAction}${actionMenu}</div></td>
             </tr>`;
         });
 
+        closeBookingActionMenu(false);
         tbody.innerHTML = html;
     }
   
@@ -1020,7 +1160,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (proofImage) { proofImage.hidden = true; proofImage.removeAttribute('src'); }
       const rejectionReason = document.getElementById('manual-proof-rejection-reason');
       if (rejectionReason) rejectionReason.value = '';
-      if (manualProofModal) delete manualProofModal.dataset.submissionId;
+      const lateAck = document.getElementById('manual-proof-late-ack');
+      const lateAckWrap = document.getElementById('manual-proof-late-ack-wrap');
+      if (lateAck) lateAck.checked = false;
+      if (lateAckWrap) lateAckWrap.hidden = true;
+      if (manualProofModal) {
+        delete manualProofModal.dataset.submissionId;
+        delete manualProofModal.dataset.eventEnded;
+      }
       proofReviewInvoker = null;
       if (restoreProofFocus?.isConnected) window.requestAnimationFrame(() => restoreProofFocus.focus());
     };
@@ -1031,7 +1178,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const reviewManualProof = async decision => {
       const submissionId = manualProofModal?.dataset.submissionId;
       const reason = document.getElementById('manual-proof-rejection-reason')?.value.trim() || '';
+      const lateAck = document.getElementById('manual-proof-late-ack');
+      const lateAckRequired = manualProofModal?.dataset.eventEnded === '1';
       if (!submissionId) return;
+      if (decision === 'approve' && lateAckRequired && !lateAck?.checked) {
+        manualProofStatus.textContent = 'Acknowledge that this event has ended before approving payment proof.';
+        manualProofStatus.hidden = false;
+        manualProofStatus.dataset.error = 'true';
+        lateAck?.focus();
+        return;
+      }
       if (decision === 'reject' && (!reason || reason.length > 500)) {
         manualProofStatus.textContent = 'Enter a rejection reason between 1 and 500 characters.';
         manualProofStatus.hidden = false;
@@ -1053,7 +1209,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const response = await fetch('actions/admin/review_manual_payment.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'Accept': 'application/json' },
-          body: JSON.stringify({ submission_id: submissionId, decision, rejection_reason: reason })
+          body: JSON.stringify({ submission_id: submissionId, decision, rejection_reason: reason, acknowledge_late_verification: lateAck?.checked === true })
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || 'Payment review could not be completed.');
@@ -1076,7 +1232,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!manualProofModal?.classList.contains('active')) return;
       if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
       if (event.key !== 'Tab') return;
-      const focusable = Array.from(manualProofModal.querySelectorAll('button:not([disabled]), textarea:not([disabled])')).filter(item => item.offsetParent !== null);
+      const focusable = Array.from(manualProofModal.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')).filter(item => item.offsetParent !== null);
       if (!focusable.length) { event.preventDefault(); manualProofModal.focus(); return; }
       if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1).focus(); }
       else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
@@ -1395,6 +1551,11 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.addEventListener('click', function() {
                 proofReviewInvoker = this;
                 manualProofModal.dataset.submissionId = this.dataset.submissionId;
+                manualProofModal.dataset.eventEnded = this.dataset.eventEnded === '1' ? '1' : '0';
+                const lateAckWrap = document.getElementById('manual-proof-late-ack-wrap');
+                const lateAck = document.getElementById('manual-proof-late-ack');
+                if (lateAckWrap) lateAckWrap.hidden = manualProofModal.dataset.eventEnded !== '1';
+                if (lateAck) lateAck.checked = false;
                 document.getElementById('manual-proof-context').textContent = `Booking ${this.dataset.ref || `#${this.dataset.id}`} · ${this.dataset.customer || 'Customer'} · ${this.dataset.venue || 'Venue'} · ${this.dataset.date || 'Date'}`;
                 document.getElementById('manual-proof-amount').textContent = `₱${Number(this.dataset.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 document.getElementById('manual-proof-method').textContent = this.dataset.method || '—';
@@ -1417,7 +1578,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 proofImage.hidden = false;
                 modalOverlay.classList.add('active');
                 manualProofModal.classList.add('active');
-                window.requestAnimationFrame(() => manualProofModal.focus());
+                window.requestAnimationFrame(() => {
+                    if (manualProofModal.dataset.eventEnded === '1') lateAck?.focus();
+                    else manualProofModal.focus();
+                });
             });
         });
        // REVIEW RESCHEDULE REQUEST MODAL

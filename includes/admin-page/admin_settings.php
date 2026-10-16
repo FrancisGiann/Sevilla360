@@ -589,13 +589,13 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             </div>
 
             <div class="form-group" style="margin-bottom: 15px;">
-                <label for="vm-desc">Description (Showroom + Online/Admin booking)</label>
+                <label for="vm-desc">Description</label>
                 <textarea id="vm-desc" name="description" class="form-control" rows="3"
                     placeholder="Experience ultimate luxury..."></textarea>
             </div>
 
             <div class="form-group" style="margin-bottom: 25px;">
-                <label for="vm-amenities">Amenities (Online/Admin booking; comma or newline separated)</label>
+                <label for="vm-amenities">Amenities</label>
                 <textarea id="vm-amenities" name="amenities" class="form-control" rows="3"
                     placeholder="Free Wi-Fi, Pool, Smart TV"></textarea>
             </div>

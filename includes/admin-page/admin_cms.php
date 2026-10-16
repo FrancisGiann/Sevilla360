@@ -30,6 +30,11 @@ $website_slots = [
 $venue_standard_slots = []; // Distinct array for venue standard slots
 $venue_360_slots = [];
 $venue_categories = []; 
+$venue_category_filters = [
+    'Hotel Room' => 'hotel-room',
+    'Event Hall' => 'event-hall',
+    'Resort Villa' => 'villa'
+];
 
 // Automatically create picture slots per unique building/room combination
 if ($venues_query) {
@@ -42,6 +47,7 @@ if ($venues_query) {
         }
         
         $clean_name = htmlspecialchars($display_name);
+        $category_filter = $venue_category_filters[$v['category']] ?? 'venue';
         
         $slot_key = media_cms_venue_slot_key($display_name);
         
@@ -51,7 +57,8 @@ if ($venues_query) {
         $venue_standard_slots[$slot_key] = [
             'title' => $clean_name . ' (Standard Photo)',
             'badge' => $v['category'],
-            'type' => 'standard'
+            'type' => 'standard',
+            'category_filter' => $category_filter
         ];
         
         // Slot for 360 panorama
@@ -59,6 +66,7 @@ if ($venues_query) {
             'title' => $clean_name . ' (360 View)',
             'badge' => '360 Panorama',
             'type' => '360',
+            'category_filter' => $category_filter,
             'category_badge' => $v['category']
         ];
     }
@@ -154,10 +162,25 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
 
 <div class="cms-container">
     <div class="cms-toolbar">
-        <div class="cms-filters">
-            <button class="cms-pill active" data-filter="all">All Media</button>
-            <button class="cms-pill" data-filter="360">360 Showroom</button>
-            <button class="cms-pill" data-filter="standard">Standard Photos</button>
+        <div class="cms-filter-groups">
+            <div class="cms-filter-row">
+                <span class="cms-filter-label" id="cms-category-filter-label">Category</span>
+                <div class="cms-category-filters" role="group" aria-labelledby="cms-category-filter-label">
+                    <button type="button" class="cms-category-pill active" data-category="venues" aria-pressed="true">All Venues</button>
+                    <button type="button" class="cms-category-pill" data-category="hotel-room" aria-pressed="false">Hotel Rooms</button>
+                    <button type="button" class="cms-category-pill" data-category="event-hall" aria-pressed="false">Event Halls</button>
+                    <button type="button" class="cms-category-pill" data-category="villa" aria-pressed="false">Villas</button>
+                    <button type="button" class="cms-category-pill" data-category="website" aria-pressed="false">Website &amp; Gallery</button>
+                </div>
+            </div>
+            <div class="cms-filter-row">
+                <span class="cms-filter-label" id="cms-media-filter-label">Media type</span>
+                <div class="cms-filters" role="group" aria-labelledby="cms-media-filter-label">
+                    <button type="button" class="cms-pill active" data-filter="all" aria-pressed="true">All Media</button>
+                    <button type="button" class="cms-pill" data-filter="360" aria-pressed="false">360 Showroom</button>
+                    <button type="button" class="cms-pill" data-filter="standard" aria-pressed="false">Standard Photos</button>
+                </div>
+            </div>
         </div>
         <div class="cms-controls">
             <button class="btn btn-primary" id="btnOpenUpload">+ Upload Media</button>
@@ -171,7 +194,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
         <?php foreach($website_slots as $slot_key => $slot_info): 
             $has_img = isset($uploaded_media[$slot_key]);
         ?>
-        <div class="cms-card" data-type="standard">
+        <div class="cms-card" data-type="standard" data-category="website">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
@@ -203,7 +226,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
             $ordered_photos_array = isset($pano_venue_photos_ordered[$slot_key]) ? $pano_venue_photos_ordered[$slot_key] : $photos_array;
             $first_photo = $has_img ? $ordered_photos_array[0] : null;
         ?>
-        <div class="cms-card" data-type="360">
+        <div class="cms-card" data-type="360" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
@@ -250,7 +273,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
             $has_img = $photo_count > 0;
             $first_photo = $has_img ? $photos_array[0] : null;
         ?>
-        <div class="cms-card" data-type="standard">
+        <div class="cms-card" data-type="standard" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>">
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
@@ -286,7 +309,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
 
         <!-- 4. GENERAL GALLERY ITEMS -->
         <?php foreach($gallery_items as $item): ?>
-        <div class="cms-card" data-type="<?php echo htmlspecialchars((string)$item['media_type'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
+        <div class="cms-card" data-type="<?php echo htmlspecialchars((string)$item['media_type'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" data-category="website">
             <div class="cms-img-wrapper">
                 <?php echo media_cms_card_image_markup($item, (string)$item['file_name']); ?>
             </div>
@@ -304,6 +327,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
         <?php endforeach; ?>
 
     </div>
+    <p class="cms-empty-state" id="cms-empty-state" role="status" hidden>No media slots match these filters.</p>
 </div>
 
 <!-- ==============================================
@@ -495,7 +519,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                     <h4 id="hotspot-step-3-title"><span class="hotspot-step-number" aria-hidden="true">3</span><span>Place and manage hotspots</span></h4>
                     <div class="hotspot-step-support">
                         <span id="hs-hotspot-count" class="hotspot-state-pill">0 hotspots</span>
-                        <p>Click the panorama to place an information or walk marker, then save it from the form.</p>
+                        <p>Double-click or double-tap the panorama to place an information or walk marker. Review its details, then save it from the form.</p>
                     </div>
                 </section>
             </div>
@@ -552,7 +576,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                     <section class="hotspot-list-section" aria-labelledby="hotspot-list-title">
                         <h4 id="hotspot-list-title">Placed Hotspots</h4>
                         <div id="hotspot-list" aria-live="polite" aria-busy="false">
-                            <p class="hotspot-empty-state">No hotspots placed yet.</p>
+                            <p class="hotspot-empty-state">No hotspots placed yet. Double-click or double-tap the panorama to add one.</p>
                         </div>
                     </section>
                 </div>
