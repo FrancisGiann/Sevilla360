@@ -13,6 +13,7 @@ $cmsJs = $read('assets/js/admin-page/admin_cms.js');
 $hotspotJs = $read('assets/js/admin-page/admin_hotspots.js');
 $backfill = $read('scripts/backfill_cms_thumbnails.php');
 $uploadAccess = $read('assets/uploads/.htaccess');
+$publicAccess = $read('.htaccess');
 $landing = $read('index.php');
 $landingJs = $read('assets/js/index.js');
 
@@ -46,6 +47,17 @@ $checks = [
         && strpos($upload, '$new_files[] = media_cms_thumbnail_file_path') < strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
         && str_contains($upload, 'foreach ($new_files as $path)')
         && strpos($upload, 'foreach ($old_files as $old)') > strpos($upload, '$conn->commit()'),
+    'CMS upload connects and starts its transaction only after CPU-heavy derivatives finish' => strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';") > max(
+            strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])'),
+            strpos($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])'),
+            strpos($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])')
+        )
+        && strpos($upload, '$conn->begin_transaction()') > strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';")
+        && str_contains($read('config/db_connect.php'), 'defined(\'SEVILLA_CMS_MEDIA_UPLOAD\')'),
+    'CMS upload preserves the original failure when rollback fails and retains staged files after an uncertain commit' => str_contains($upload, 'catch (Throwable $rollback_error)')
+        && str_contains($upload, 'if (!$commit_attempted) {')
+        && strpos($upload, 'if (!$commit_attempted) {') < strpos($upload, 'throw $e;')
+        && str_contains($upload, '$commit_attempted = true;'),
     'delete removes deterministic derivatives after safe DB commit' => str_contains($delete, '$media[\'_thumbnail_path\'] = media_cms_thumbnail_file_path')
         && str_contains($delete, '$media[\'_hero_path\'] = media_cms_existing_hero_derivative_file_path')
         && str_contains($delete, '$media[\'_card_paths\'] = array_values(array_filter(array_map(')
@@ -74,6 +86,9 @@ $checks = [
         && str_contains($helper, '(max-width: 767px) calc(100vw - 2rem)')
         && str_contains($helper, 'min(calc(57.5vw - 1.725rem), 41.5rem)')
         && !str_contains($landing, 'media_cms_ensure_card_derivatives('),
+    'Apache exposes only existing regular card WebPs at generated widths before the dot-path deny' => str_contains($publicAccess, 'RewriteRule ^assets/uploads/\\.cms-card/[a-f0-9]{64}-(?:480|800|1320)\\.webp$ - [END]')
+        && str_contains($publicAccess, "RewriteCond %{REQUEST_FILENAME} -f\nRewriteCond %{REQUEST_FILENAME} !-l\nRewriteRule ^assets/uploads/\\.cms-card/")
+        && strpos($publicAccess, 'RewriteRule ^assets/uploads/\\.cms-card/') < strpos($publicAccess, 'RewriteRule (^|/)\\.(?!well-known(?:/|$)) - [F,L]'),
     'SSR and carousel cards use the same responsive source, candidates, and sizes' => str_contains($landing, "'card_image' => \$public_card_image(")
         && str_contains($landing, 'srcset=')
         && str_contains($landing, 'sizes=')

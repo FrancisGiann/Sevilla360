@@ -12,6 +12,11 @@ RewriteCond %{REQUEST_FILENAME} -f
 RewriteCond %{REQUEST_FILENAME} !-l
 RewriteRule ^assets/uploads/\.cms-hero/[a-f0-9]{64}\.webp$ - [END]
 
+# Only existing, regular CMS card WebPs at the exact generated widths are public.
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteCond %{REQUEST_FILENAME} !-l
+RewriteRule ^assets/uploads/\.cms-card/[a-f0-9]{64}-(?:480|800|1320)\.webp$ - [END]
+
 # Public crawler metadata stays inside this application's rewrite scope.
 RewriteRule ^robots\.txt$ robots.php [END]
 RewriteRule ^sitemap\.xml$ sitemap.php [END]

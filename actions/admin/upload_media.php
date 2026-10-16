@@ -1,7 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
-require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/media_helper.php';
 
@@ -213,10 +212,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $validated[] = ['tmp' => $tmp_path, 'destination' => $upload_dir . $new_filename, 'filename' => $new_filename, 'db_path' => 'assets/uploads/' . $new_filename];
         }
 
-        $new_files = []; $old_files = []; $successful_uploads = 0; $transaction_started = false; $committed = false;
+        $new_files = []; $old_files = []; $successful_uploads = 0; $transaction_started = false; $commit_attempted = false; $committed = false;
         try {
+        // Image conversion can take several seconds. Stage every file before
+        // opening a database connection so the server cannot expire an idle
+        // connection or transaction while derivatives are being generated.
+        foreach ($validated as $file) {
+            if (!move_uploaded_file($file['tmp'], $file['destination'])) throw new Exception('Failed to move uploaded image.');
+            $new_files[] = $file['destination'];
+            $new_files[] = media_cms_thumbnail_file_path($file['db_path']);
+            media_cms_ensure_admin_thumbnail($file['db_path']);
+            if ($website_slot === 'home-hero') {
+                $new_files[] = media_cms_hero_derivative_file_path($file['db_path']);
+                media_cms_ensure_hero_derivative($file['db_path']);
+            }
+            if ($media_type === 'standard') {
+                foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+                    $new_files[] = media_cms_card_derivative_file_path($file['db_path'], $width);
+                }
+                media_cms_ensure_card_derivatives($file['db_path']);
+            }
+        }
+
+        // Connect only after CPU-heavy image work is complete. The marker makes
+        // database connection failures throwable so staged files are cleaned up.
+        if (!defined('SEVILLA_CMS_MEDIA_UPLOAD')) define('SEVILLA_CMS_MEDIA_UPLOAD', true);
+        require_once __DIR__ . '/../../config/db_connect.php';
         if (!$conn->begin_transaction()) throw new Exception('Could not start upload transaction.');
         $transaction_started = true;
+
         // Keep old DB records until the transaction includes the new records;
         // old physical files are deleted only after commit below.
         if ($is_strict_slot) {
@@ -244,20 +268,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_del->bind_param('s', $website_slot); if (!$stmt_del->execute()) throw new Exception('Could not replace existing media records.');
         }
         foreach ($validated as $file) {
-            if (!move_uploaded_file($file['tmp'], $file['destination'])) throw new Exception('Failed to move uploaded image.');
-            $new_files[] = $file['destination'];
-            $new_files[] = media_cms_thumbnail_file_path($file['db_path']);
-            media_cms_ensure_admin_thumbnail($file['db_path']);
-            if ($website_slot === 'home-hero') {
-                $new_files[] = media_cms_hero_derivative_file_path($file['db_path']);
-                media_cms_ensure_hero_derivative($file['db_path']);
-            }
-            if ($media_type === 'standard') {
-                foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
-                    $new_files[] = media_cms_card_derivative_file_path($file['db_path'], $width);
-                }
-                media_cms_ensure_card_derivatives($file['db_path']);
-            }
             $stmt_insert = $conn->prepare("INSERT INTO media_cms (file_name, file_path, media_type, slot_assignment) VALUES (?, ?, ?, ?)");
             if (!$stmt_insert) throw new Exception('Could not record uploaded media.');
             $stmt_insert->bind_param('ssss', $file['filename'], $file['db_path'], $media_type, $website_slot);
@@ -271,6 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$audit_stmt) throw new Exception('Could not record media audit entry.');
             $audit_stmt->bind_param('isss', $log_user, $log_module, $log_action, $log_ip); if (!$audit_stmt->execute()) throw new Exception('Could not record media audit entry.');
         }
+        $commit_attempted = true;
         if (!$conn->commit()) throw new Exception('Could not commit uploaded media.');
         $committed = true; $transaction_started = false;
         $cleanup_failures = [];
@@ -284,8 +295,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($cleanup_failures) error_log('Media replacement committed but old-file cleanup failed: ' . implode(', ', $cleanup_failures));
         echo json_encode(['success' => true, 'message' => "Successfully uploaded $successful_uploads file(s)!", 'cleanup_warning' => $cleanup_failures ? 'Old media files were retained because physical cleanup failed.' : null]);
     } catch (Throwable $e) {
-        if ($transaction_started && !$committed) $conn->rollback();
-        foreach ($new_files as $path) { if (is_file($path)) unlink($path); }
+        if ($transaction_started && !$committed) {
+            try {
+                if (!$conn->rollback()) error_log('CMS media upload rollback failed.');
+            } catch (Throwable $rollback_error) {
+                error_log('CMS media upload rollback failed: ' . $rollback_error->getMessage());
+            }
+        }
+        // If commit was attempted but the connection failed before its result
+        // arrived, the DB outcome is unknown. Retain staged files rather than
+        // risk deleting files referenced by a commit that reached the server.
+        if (!$commit_attempted) {
+            foreach ($new_files as $path) {
+                try {
+                    if (is_file($path)) @unlink($path);
+                } catch (Throwable $cleanup_error) {
+                    error_log('CMS media upload staged-file cleanup failed: ' . $cleanup_error->getMessage());
+                }
+            }
+        }
         throw $e;
     }
     } catch (Throwable $e) {
