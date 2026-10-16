@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/hotel_rooms.php';
+
 /**
  * SEVILLA360 - CMS Media Helper
  * 
@@ -435,10 +437,12 @@ function media_cms_ensure_card_derivatives(string $sourcePath): array
 }
 
 /** Resolve responsive image attributes from cached derivatives, or a safe source fallback. */
-function media_cms_card_image_data(string $sourcePath): array
+function media_cms_card_image_data(string $sourcePath, ?string $sizesOverride = null): array
 {
     $placeholder = 'assets/img/placeholder.jpg';
-    $sizes = '(max-width: 767px) calc(100vw - 2rem), (max-width: 860px) calc(100vw - 3rem), min(calc(57.5vw - 1.725rem), 41.5rem)';
+    $sizes = is_string($sizesOverride) && trim($sizesOverride) !== ''
+        ? trim($sizesOverride)
+        : '(max-width: 767px) calc(100vw - 2rem), (max-width: 860px) calc(100vw - 3rem), min(calc(57.5vw - 1.725rem), 41.5rem)';
     if ($sourcePath === $placeholder) {
         $placeholderInfo = @getimagesize(dirname(__DIR__) . '/assets/img/placeholder.jpg');
         return [
@@ -507,8 +511,26 @@ function media_cms_card_image_markup(array $media, string $alt = ''): string
     }
     $width = max(1, min(MEDIA_CMS_THUMBNAIL_WIDTH, (int)($media['thumbnail_width'] ?? MEDIA_CMS_THUMBNAIL_WIDTH)));
     $height = max(1, min(MEDIA_CMS_THUMBNAIL_HEIGHT, (int)($media['thumbnail_height'] ?? MEDIA_CMS_THUMBNAIL_HEIGHT)));
+    $srcset = '';
+    $sizes = '';
+    // Standard CMS photos have cached responsive card derivatives created by
+    // upload/backfill. Use those when present, but retain the bounded admin
+    // thumbnail as fallback; never make a grid card fetch a full source image.
+    if (($media['media_type'] ?? '') === 'standard' && is_string($media['file_path'] ?? null)) {
+        $cardImage = media_cms_card_image_data($media['file_path'], '(max-width: 767px) calc(100vw - 2rem), (max-width: 1100px) calc(50vw - 2rem), 400px');
+        if ($cardImage['srcset'] !== '') {
+            $path = $cardImage['src'];
+            $srcset = $cardImage['srcset'];
+            $sizes = $cardImage['sizes'];
+            $width = max(1, (int)$cardImage['width']);
+            $height = max(1, (int)$cardImage['height']);
+        }
+    }
     $safe = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    return '<img src="' . $safe($path) . '" alt="' . $safe($alt) . '" width="' . $width . '" height="' . $height . '" loading="lazy" decoding="async">';
+    $responsiveAttributes = $srcset !== ''
+        ? ' srcset="' . $safe($srcset) . '" sizes="' . $safe($sizes) . '"'
+        : '';
+    return '<img src="' . $safe($path) . '"' . $responsiveAttributes . ' alt="' . $safe($alt) . '" width="' . $width . '" height="' . $height . '" loading="lazy" decoding="async">';
 }
 
 /** Return whether the loaded Imagick extension can write WebP files. */
@@ -747,15 +769,173 @@ function hotel_room_group_media_slot_key(array $group): ?string
     return media_cms_venue_slot_key($building . ' - ' . $roomType);
 }
 
+/** Stable upload slot for the canonical building/type presentation gallery. */
+function hotel_room_group_canonical_media_slot_key(array $group): ?string
+{
+    $building = trim((string)($group['building_name'] ?? ''));
+    $roomType = trim((string)($group['room_type'] ?? ''));
+    if ($roomType === '') $roomType = trim((string)($group['legacy_room_type'] ?? ''));
+    if ($building === '' || $roomType === '') return null;
+    $typeCode = trim((string)($group['room_type_code'] ?? ''));
+    $typeIdentity = $typeCode !== '' ? 'code:' . $typeCode : 'legacy:' . $roomType;
+    return 'hotel_type_' . substr(hash('sha256', $building . "\x1f" . $typeIdentity), 0, 40);
+}
+
+/**
+ * Return every CMS slot that can contain photos for a canonical room type.
+ * Existing explicit and legacy assignments remain readable; the canonical
+ * slot is added so new uploads can be shared by every commercial variant.
+ */
+function hotel_room_group_media_slot_keys(array $group): array
+{
+    $keys = [];
+    $explicit = trim((string)($group['media_slot_key'] ?? ''));
+    if ($explicit !== '' && preg_match('/\A[A-Za-z0-9][A-Za-z0-9_-]{0,79}\z/D', $explicit)) {
+        $keys[] = $explicit;
+    }
+
+    $building = trim((string)($group['building_name'] ?? ''));
+    if ($building !== '') {
+        $legacyRoomTypes = $group['legacy_media_room_types'] ?? [];
+        if (is_string($legacyRoomTypes)) $legacyRoomTypes = preg_split('/\r?\n/', $legacyRoomTypes) ?: [];
+        if (!is_array($legacyRoomTypes)) $legacyRoomTypes = [];
+        $singleLegacyRoomType = trim((string)($group['legacy_media_room_type'] ?? ''));
+        if ($singleLegacyRoomType !== '') $legacyRoomTypes[] = $singleLegacyRoomType;
+        if (!$legacyRoomTypes) $legacyRoomTypes[] = trim((string)($group['legacy_room_type'] ?? ''));
+        foreach (array_unique(array_filter(array_map(static fn($label): string => trim((string)$label), $legacyRoomTypes))) as $legacyRoomType) {
+            $keys[] = media_cms_venue_slot_key($building . ' - ' . $legacyRoomType);
+        }
+
+        $canonicalRoomType = trim((string)($group['room_type'] ?? ''));
+        if ($canonicalRoomType === '') $canonicalRoomType = trim((string)($group['legacy_room_type'] ?? ''));
+        if ($canonicalRoomType !== '') {
+            $keys[] = media_cms_venue_slot_key($building . ' - ' . $canonicalRoomType);
+            $canonicalSlot = hotel_room_group_canonical_media_slot_key($group);
+            if ($canonicalSlot !== null) $keys[] = $canonicalSlot;
+        }
+    }
+
+    return array_values(array_unique($keys));
+}
+
+/** Return only real, source-owned panorama galleries referenced by a room type's aliases. */
+function hotel_room_group_source_panorama_galleries(array $alias_slots, array $source_panoramas_by_slot): array
+{
+    $galleries = [];
+    $seen_slots = [];
+    $seen_media_ids = [];
+    foreach ($alias_slots as $alias_slot) {
+        $alias_slot = trim((string)$alias_slot);
+        if ($alias_slot === '' || preg_match('/\A[A-Za-z0-9][A-Za-z0-9_-]{0,79}\z/D', $alias_slot) !== 1) continue;
+        $source_slot = $alias_slot . '_360';
+        if (isset($seen_slots[$source_slot])) continue;
+        $seen_slots[$source_slot] = true;
+        $source_photos = $source_panoramas_by_slot[$source_slot] ?? [];
+        if (!is_array($source_photos)) continue;
+
+        $photos = [];
+        foreach ($source_photos as $photo) {
+            if (!is_array($photo)) continue;
+            $media_id = filter_var($photo['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (!$media_id || isset($seen_media_ids[$media_id])) continue;
+            // A canonical display aggregate may contain a source photo, but it
+            // must never create another editor source or change target scope.
+            if ((string)($photo['slot_assignment'] ?? '') !== $source_slot) continue;
+            $seen_media_ids[$media_id] = true;
+            $photos[] = $photo;
+        }
+        if ($photos) $galleries[] = ['slot' => $source_slot, 'photos' => $photos];
+    }
+    return $galleries;
+}
+
+/** Deterministic fallback order for historical duplicate primaries: primary first, then newest media ID. */
+function hotel_public_media_candidate_compare(array $left, array $right): int
+{
+    return ((int)($right['is_primary'] ?? 0) <=> (int)($left['is_primary'] ?? 0))
+        ?: ((int)($right['id'] ?? 0) <=> (int)($left['id'] ?? 0))
+        ?: strcmp((string)($left['path'] ?? ''), (string)($right['path'] ?? ''));
+}
+
+/** Return all public media for a room group's presentation aliases. */
+function hotel_room_group_public_image_candidates(array $group, array $mediaBySlot): array
+{
+    $images = [];
+    foreach (hotel_room_group_media_slot_keys($group) as $slotKey) {
+        if (!isset($mediaBySlot[$slotKey]) || !is_array($mediaBySlot[$slotKey])) continue;
+        foreach ($mediaBySlot[$slotKey] as $media) {
+            $path = trim((string)(is_array($media) ? ($media['file_path'] ?? $media['path'] ?? '') : $media));
+            if ($path === '') continue;
+            $isPrimary = is_array($media) && (int)($media['is_primary'] ?? 0) === 1;
+            $mediaId = is_array($media) ? max(0, (int)($media['id'] ?? 0)) : 0;
+            if (!isset($images[$path]) || ($isPrimary && !$images[$path]['is_primary'])
+                || ($isPrimary === $images[$path]['is_primary'] && $mediaId > 0 && ($images[$path]['id'] === 0 || $mediaId < $images[$path]['id']))) {
+                $images[$path] = ['path' => $path, 'is_primary' => $isPrimary, 'id' => $mediaId];
+            }
+        }
+    }
+    $images = array_values($images);
+    usort($images, 'hotel_public_media_candidate_compare');
+    return $images;
+}
+
+/** Resolve the exact room option's images, falling back to its shared type gallery when empty. */
+function hotel_room_group_public_effective_image_candidates(array $group, array $mediaBySlot, bool $overrideEnabled): array
+{
+    if ($overrideEnabled) {
+        $optionSlot = hotel_room_group_option_media_slot_key($group['room_group_id'] ?? $group['id'] ?? null);
+        if ($optionSlot !== null) {
+            $own = array_values(array_filter(
+                hotel_room_group_public_slot_image_candidates($mediaBySlot[$optionSlot] ?? []),
+                static function (array $candidate): bool {
+                    try { media_cms_upload_file_path((string)($candidate['path'] ?? ''), true); return true; }
+                    catch (Throwable $error) { return false; }
+                }
+            ));
+            if ($own) return $own;
+        }
+    }
+    return hotel_room_group_public_image_candidates($group, $mediaBySlot);
+}
+
+/** Keep the unselected room-type presentation on shared media, with one ordered option as its empty-shared fallback. */
+function hotel_public_presentation_gallery(array $sharedGallery, array $orderedVariants): array
+{
+    $shared = array_values(array_filter(array_map('strval', $sharedGallery), static fn(string $path): bool => $path !== '' && $path !== 'assets/img/placeholder.jpg'));
+    if ($shared) return $shared;
+    foreach ($orderedVariants as $variant) {
+        if (!is_array($variant)) continue;
+        $representative = array_values(array_filter(array_map('strval', (array)($variant['images'] ?? [])), static fn(string $path): bool => $path !== '' && $path !== 'assets/img/placeholder.jpg'));
+        if ($representative) return $representative;
+    }
+    return ['assets/img/placeholder.jpg'];
+}
+
+/** Normalize and order the media rows already scoped to one slot. */
+function hotel_room_group_public_slot_image_candidates(array $mediaRows): array
+{
+    $images = [];
+    foreach ($mediaRows as $media) {
+        $path = trim((string)(is_array($media) ? ($media['file_path'] ?? $media['path'] ?? '') : $media));
+        if ($path === '') continue;
+        $isPrimary = is_array($media) && (int)($media['is_primary'] ?? 0) === 1;
+        $mediaId = is_array($media) ? max(0, (int)($media['id'] ?? 0)) : 0;
+        if (!isset($images[$path]) || ($isPrimary && !$images[$path]['is_primary'])
+            || ($isPrimary === $images[$path]['is_primary'] && $mediaId > 0 && ($images[$path]['id'] === 0 || $mediaId < $images[$path]['id']))) {
+            $images[$path] = ['path' => $path, 'is_primary' => $isPrimary, 'id' => $mediaId];
+        }
+    }
+    $images = array_values($images);
+    usort($images, 'hotel_public_media_candidate_compare');
+    return $images;
+}
+
 /** Resolve homepage media without excluding inventory that has no photo. */
 function hotel_room_group_public_images(array $group, array $mediaBySlot): array
 {
-    $slotKey = hotel_room_group_media_slot_key($group);
-    $images = $slotKey !== null && isset($mediaBySlot[$slotKey]) && is_array($mediaBySlot[$slotKey])
-        ? $mediaBySlot[$slotKey]
-        : [];
-    $images = array_values(array_filter(array_map(static fn($path): string => trim((string)$path), $images)));
-    return $images ?: ['assets/img/placeholder.jpg'];
+    $images = hotel_room_group_public_image_candidates($group, $mediaBySlot);
+    $paths = array_map(static fn(array $image): string => $image['path'], $images);
+    return $paths ?: ['assets/img/placeholder.jpg'];
 }
 
 function get_venue_image(mysqli $conn, string $display_name): string {
@@ -784,7 +964,11 @@ function get_venue_image(mysqli $conn, string $display_name): string {
 /** Resolve a room-group image through its explicit mapping or exact legacy CMS slot. */
 function get_hotel_room_group_image(mysqli $conn, int $room_group_id): string {
     if ($room_group_id < 1) return 'assets/img/placeholder.jpg';
-    $groupStmt = $conn->prepare("SELECT g.media_slot_key, g.building_name, g.legacy_room_type,
+    $overrideFields = hotel_group_media_overrides_schema_ready($conn)
+        ? 'g.standard_media_override_enabled, g.tour_media_override_enabled'
+        : '0 AS standard_media_override_enabled, 0 AS tour_media_override_enabled';
+    $groupStmt = $conn->prepare("SELECT g.id AS room_group_id, g.media_slot_key, g.building_name, g.legacy_room_type, g.room_type_code,
+            {$overrideFields},
             COALESCE(NULLIF(t.display_name, ''), g.legacy_room_type) AS room_type,
             (SELECT CASE WHEN COUNT(DISTINCT h.room_type) = 1 THEN MIN(h.room_type) ELSE NULL END
              FROM hotel_rooms h
@@ -799,14 +983,54 @@ function get_hotel_room_group_image(mysqli $conn, int $room_group_id): string {
     $group = $groupStmt->get_result()->fetch_assoc();
     $groupStmt->close();
     if (!is_array($group)) return 'assets/img/placeholder.jpg';
-    $slotKey = hotel_room_group_media_slot_key($group);
-    if ($slotKey === null) return 'assets/img/placeholder.jpg';
+    $labelStmt = $conn->prepare("SELECT h.room_type
+        FROM hotel_rooms h
+        INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+        WHERE h.room_group_id = ?
+        GROUP BY h.room_type");
+    if ($labelStmt) {
+        $labelStmt->bind_param('i', $room_group_id);
+        if ($labelStmt->execute()) {
+            $labels = [];
+            $labelResult = $labelStmt->get_result();
+            while ($labelRow = $labelResult->fetch_assoc()) {
+                $label = trim((string)($labelRow['room_type'] ?? ''));
+                if ($label !== '') $labels[] = $label;
+            }
+            $group['legacy_media_room_types'] = $labels;
+        }
+        $labelStmt->close();
+    }
+    if ((int)($group['standard_media_override_enabled'] ?? 0) === 1) {
+        $optionSlot = hotel_room_group_option_media_slot_key($room_group_id);
+        if ($optionSlot !== null) {
+            $ownStmt = $conn->prepare("SELECT file_path FROM media_cms WHERE slot_assignment = ? AND media_type = 'standard' ORDER BY is_primary DESC, id DESC LIMIT 1");
+            if ($ownStmt) {
+                $ownStmt->bind_param('s', $optionSlot);
+                if ($ownStmt->execute()) {
+                    $ownRow = $ownStmt->get_result()->fetch_assoc();
+                    $ownStmt->close();
+                    if (is_array($ownRow) && !empty($ownRow['file_path'])) {
+                        try { media_cms_upload_file_path((string)$ownRow['file_path'], true); return (string)$ownRow['file_path']; }
+                        catch (Throwable $error) { /* use the shared room-type gallery */ }
+                    }
+                } else {
+                    $ownStmt->close();
+                }
+            }
+        }
+    }
+    $slotKeys = hotel_room_group_media_slot_keys($group);
+    if (!$slotKeys) return 'assets/img/placeholder.jpg';
 
+    $placeholders = implode(',', array_fill(0, count($slotKeys), '?'));
     $stmt = $conn->prepare("SELECT file_path FROM media_cms
-        WHERE slot_assignment = ? AND media_type = 'standard'
+        WHERE slot_assignment IN ({$placeholders}) AND media_type = 'standard'
         ORDER BY is_primary DESC, id DESC LIMIT 1");
     if (!$stmt) return 'assets/img/placeholder.jpg';
-    $stmt->bind_param('s', $slotKey);
+    $bindArgs = [str_repeat('s', count($slotKeys))];
+    foreach ($slotKeys as $index => $_slotKey) $bindArgs[] = &$slotKeys[$index];
+    call_user_func_array([$stmt, 'bind_param'], $bindArgs);
     if (!$stmt->execute()) return 'assets/img/placeholder.jpg';
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();

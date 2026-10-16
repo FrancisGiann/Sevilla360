@@ -1939,6 +1939,7 @@
 
 .overview-glance-grid .overview-sales-card { color: inherit; }
 .overview-glance-grid .overview-sales-card:focus-visible { outline: 3px solid rgba(160, 112, 50, .42); outline-offset: 2px; }
+.overview-glance-grid .overview-sales-card .stat-number { overflow-wrap: anywhere; }
 
 .overview-glance-grid .stat-number { font-size: 2.25rem; }
 .overview-glance-grid .dashboard-metric-pending { font-size: 1.15rem; color: #746c65; }
@@ -2065,6 +2066,12 @@
   .overview-support-grid .maintenance-summary-list { max-height: 260px; }
   .overview-glance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-glance-grid .stat-card:first-child { grid-column: auto; }
+  .overview-glance-grid .overview-sales-card { grid-column: 1 / -1; }
+  .overview-glance-grid .overview-sales-card .stat-number {
+    font-size: clamp(1rem, 6vw, 1.9rem);
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
   .overview-last-grid .widget-card,
   .overview-recent-bookings { padding: 16px; }
   .overview-recent-bookings { margin-top: 0; }

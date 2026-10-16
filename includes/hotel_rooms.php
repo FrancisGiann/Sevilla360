@@ -29,6 +29,39 @@ function hotel_public_review_key(mixed $roomGroupId, string $venueName, string $
     return 'hotel-' . md5($venueName . ' - ' . $roomType);
 }
 
+/** Stable presentation identity for a building and canonical room type. */
+function hotel_public_room_type_key(string $buildingName, string $roomTypeCode, string $roomType): string
+{
+    $identity = trim($roomTypeCode) !== ''
+        ? "code\x1f" . trim($roomTypeCode)
+        : "legacy\x1f" . trim($roomType);
+    return hash('sha256', trim($buildingName) . "\x1f" . $identity);
+}
+
+/** Guest-facing facts that make commercial variants distinguishable. */
+function hotel_public_variant_label(array $variant): string
+{
+    $baseCapacity = filter_var($variant['base_capacity'] ?? null, FILTER_VALIDATE_INT);
+    $maxCapacity = filter_var($variant['max_capacity'] ?? null, FILTER_VALIDATE_INT);
+    $capacityLabel = '';
+    if ($baseCapacity !== false && $maxCapacity !== false && $baseCapacity > 0 && $maxCapacity >= $baseCapacity) {
+        $capacityLabel = $baseCapacity === $maxCapacity
+            ? $baseCapacity . ' guest' . ($baseCapacity === 1 ? '' : 's')
+            : $baseCapacity . '–' . $maxCapacity . ' guests';
+    }
+
+    $bedCount = filter_var($variant['bed_count'] ?? $variant['max_bed_count'] ?? null, FILTER_VALIDATE_INT);
+    $bedLabel = $bedCount !== false && $bedCount > 0
+        ? $bedCount . ' bed' . ($bedCount === 1 ? '' : 's')
+        : '';
+    $rate = $variant['nightly_rate'] ?? $variant['rate'] ?? null;
+    $rateLabel = is_numeric($rate) && (float)$rate >= 0
+        ? '₱' . number_format((float)$rate, 2) . '/night'
+        : 'Rate on request';
+
+    return implode(' · ', array_filter([$capacityLabel, $bedLabel, $rateLabel], static fn(string $value): bool => $value !== ''));
+}
+
 function hotel_validate_room_type_code(mixed $code): string
 {
     if (!is_string($code) || hotel_room_type_label($code) === null) {
@@ -173,6 +206,63 @@ function hotel_group_schema_ready(mysqli $conn): bool
         $cache[$key] = false;
     }
     return $cache[$key];
+}
+
+/** Whether additive per-option media switches are available on this connection. */
+function hotel_group_media_overrides_schema_ready(mysqli $conn): bool
+{
+    static $cache = [];
+    $key = spl_object_id($conn);
+    if (array_key_exists($key, $cache)) return $cache[$key];
+    if (!hotel_group_schema_ready($conn)) return $cache[$key] = false;
+    try {
+        $result = $conn->query("SELECT column_name FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'hotel_room_groups'
+              AND column_name IN ('standard_media_override_enabled', 'tour_media_override_enabled')");
+        $found = [];
+        if ($result) while ($row = $result->fetch_assoc()) $found[(string)$row['column_name']] = true;
+        return $cache[$key] = isset($found['standard_media_override_enabled'], $found['tour_media_override_enabled']);
+    } catch (Throwable $error) {
+        return $cache[$key] = false;
+    }
+}
+
+/** Stable option-owned CMS slot; shared group mappings remain untouched. */
+function hotel_room_group_option_media_slot_key(mixed $roomGroupId, bool $tour = false): ?string
+{
+    $id = filter_var($roomGroupId, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($id === false) return null;
+    return 'hotel_option_' . (int)$id . ($tour ? '_360' : '');
+}
+
+/** Parse only the deterministic option-owned slot form. */
+function hotel_room_group_option_media_slot_group_id(string $slot): ?int
+{
+    if (preg_match('/\\Ahotel_option_([1-9][0-9]*)(_360)?\\z/D', $slot, $matches) !== 1) return null;
+    $id = filter_var($matches[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    return $id === false ? null : (int)$id;
+}
+
+/** Validate an option slot against a real, active room group and its physical inventory. */
+function hotel_room_group_option_media_identity(mysqli $conn, int $roomGroupId, bool $lock = false): ?array
+{
+    if ($roomGroupId < 1 || !hotel_group_media_overrides_schema_ready($conn)) return null;
+    $sql = "SELECT g.id AS room_group_id, g.building_name, g.room_type_code, g.legacy_room_type,
+                   COALESCE(NULLIF(t.display_name, ''), g.legacy_room_type, h.room_type) AS room_type,
+                   g.standard_media_override_enabled, g.tour_media_override_enabled
+            FROM hotel_room_groups g
+            INNER JOIN hotel_rooms h ON h.room_group_id = g.id
+            INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status <> 'Inactive'
+            LEFT JOIN hotel_room_types t ON t.type_code = g.room_type_code
+            WHERE g.id = ? AND (g.room_type_code IS NULL OR g.room_type_code = '' OR t.active = 1)
+            LIMIT 1" . ($lock ? ' FOR UPDATE' : '');
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) throw new RuntimeException('Unable to validate this room option.');
+    $stmt->bind_param('i', $roomGroupId);
+    if (!$stmt->execute()) throw new RuntimeException('Unable to validate this room option.');
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return is_array($row) ? $row : null;
 }
 
 /** Validate a canonical type against the active database catalogue once migration 023 is available. */

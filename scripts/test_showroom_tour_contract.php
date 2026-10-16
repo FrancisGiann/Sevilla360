@@ -8,6 +8,13 @@ $read = static fn(string $path): string => (string)file_get_contents($root . '/'
 $checks = [];
 $checks['admin authorization is role-scoped'] = showroom_tour_is_admin('admin') && !showroom_tour_is_admin('customer') && !showroom_tour_is_admin(null);
 $checks['only 360 media can accept a saved view'] = showroom_tour_is_panorama('360') && !showroom_tour_is_panorama('standard') && !showroom_tour_is_panorama(null);
+$shared_tour_fixture = ['pano_urls' => ['shared-tour.jpg'], 'pano_media_ids' => [10], 'hotspots_by_pano_index' => [0 => [['type' => 'info', 'id' => 1]]]];
+$own_tour_fixture = ['pano_urls' => ['option-tour.jpg'], 'pano_media_ids' => [20], 'hotspots_by_pano_index' => [0 => [['type' => 'nav', 'id' => 2]]]];
+$checks['option photo and tour overrides are independent and fall back when disabled or empty'] = showroom_tour_select_option_media(['gallery' => ['shared.jpg']], ['gallery' => ['own.jpg']], true, 'standard') === ['gallery' => ['own.jpg']]
+    && showroom_tour_select_option_media($shared_tour_fixture, $own_tour_fixture, true, '360') === $own_tour_fixture
+    && showroom_tour_select_option_media($shared_tour_fixture, $own_tour_fixture, false, '360') === $shared_tour_fixture
+    && showroom_tour_select_option_media($shared_tour_fixture, ['pano_urls' => [], 'pano_media_ids' => [], 'hotspots_by_pano_index' => []], true, '360') === $shared_tour_fixture
+    && showroom_tour_select_option_media(['gallery' => ['shared.jpg']], ['gallery' => []], true, 'standard') === ['gallery' => ['shared.jpg']];
 $hotel_fixture = [
     'hotel_standard_zeta' => ['room_type' => 'Standard', 'venue_name' => 'Zeta Building'],
     'hotel_suite' => ['room_type' => 'Suite', 'venue_name' => 'Suite Building'],
@@ -61,6 +68,11 @@ $checks['arrow rotations reject negative, 360, fractional and string values'] = 
 $checks['stable target IDs survive primary-first display reordering'] = showroom_tour_resolve_target_media_id(101, 303, 0, [101, 202, 303], [303, 101, 202]) === 303;
 $checks['invalid stable targets do not fall back to a stale positional target'] = showroom_tour_resolve_target_media_id(101, 999, 2, [101, 202, 303], [303, 101, 202]) === null;
 $checks['legacy positional targets resolve only when no stable ID exists'] = showroom_tour_resolve_target_media_id(101, null, '2', [101, 202, 303], [303, 101, 202]) === 303;
+$primaryFirstSourceIds = [202, 101];
+sort($primaryFirstSourceIds, SORT_NUMERIC);
+$checks['legacy per-slot positions stay ID-ascending when another panorama is primary'] = showroom_tour_resolve_target_media_id(101, null, 1, $primaryFirstSourceIds, [202, 101]) === 202
+    && str_contains($read('showroom.php'), 'foreach ($legacy_pano_media_ids_by_slot as &$source_slots)')
+    && str_contains($read('showroom.php'), 'sort($legacy_ids, SORT_NUMERIC)');
 $checks['self-target and missing legacy targets are rejected'] = showroom_tour_resolve_target_media_id(101, 101, 1, [101, 202, 303], [101, 202, 303]) === null
     && showroom_tour_resolve_target_media_id(101, null, 9, [101, 202, 303], [101, 202, 303]) === null;
 
@@ -85,6 +97,9 @@ $flat_branch = $hotel_flat_branch_start === false || $flat_branch_end === false 
 $open_start = strpos($admin_hotspots, 'document.querySelectorAll(".btn-place-hotspots")');
 $open_end = $open_start === false ? false : strpos($admin_hotspots, '// REFRESH WALK-TO TARGET DROPDOWN', $open_start);
 $open_handler = $open_start === false || $open_end === false ? '' : substr($admin_hotspots, $open_start, $open_end - $open_start);
+$gallery_loader_start = strpos($admin_hotspots, 'function loadGallerySource(');
+$gallery_loader_end = $gallery_loader_start === false ? false : strpos($admin_hotspots, 'document.querySelectorAll(".btn-place-hotspots")', $gallery_loader_start);
+$gallery_loader = $gallery_loader_start === false || $gallery_loader_end === false ? '' : substr($admin_hotspots, $gallery_loader_start, $gallery_loader_end - $gallery_loader_start);
 $switch_start = strpos($admin_hotspots, 'adminViewSelector?.addEventListener("change"');
 $switch_end = $switch_start === false ? false : strpos($admin_hotspots, '// CLOSE MODAL', $switch_start);
 $switch_handler = $switch_start === false || $switch_end === false ? '' : substr($admin_hotspots, $switch_start, $switch_end - $switch_start);
@@ -179,7 +194,10 @@ $checks['tour editor handles cached or missed panorama load events from real vie
     && !str_contains($admin_hotspots, 'viewer.setPanorama(pano)');
 $checks['open, view switch and retry each initialize exactly one panorama viewer'] = $open_start !== false
     && $open_end !== false
-    && substr_count($open_handler, 'initViewer(') === 1
+    && substr_count($open_handler, 'loadGallerySource(currentGallerySources[0])') === 1
+    && $gallery_loader_start !== false
+    && $gallery_loader_end !== false
+    && substr_count($gallery_loader, 'initViewer(') === 1
     && $switch_start !== false
     && $switch_end !== false
     && substr_count($switch_handler, 'initViewer(') === 1
@@ -301,7 +319,7 @@ $checks['guest destinations, saved camera view and reset control are wired'] = s
     && str_contains($public_js, 'spot.material.rotation = rotation * Math.PI / 180');
 $enter_reset_listener_position = strpos($public_js, "pano.addEventListener('enter-fade-start'");
 $viewer_add_position = strpos($public_js, 'viewer.add(pano);');
-$initial_cache_assignment = strpos($public_js, 'panoCache[roomId] = panoramas;');
+$initial_cache_assignment = strpos($public_js, 'panoCache[panoCacheKey] = panoramas;');
 $initial_activation_position = strpos($public_js, 'if (!canApplyImmediately) enterPanorama(initialPanorama);');
 $checks['public framing waits until Panolens resets controls at entry and avoids duplicate tweening'] = str_contains($public_js, 'function synchronizePanoramaState(')
     && str_contains($public_js, 'transitionReady = false')
@@ -309,7 +327,10 @@ $checks['public framing waits until Panolens resets controls at entry and avoids
     && str_contains($public_js, 'lastFramedActivationToken === activationToken')
     && str_contains($public_js, 'viewer.panorama !== pano')
     && str_contains($public_js, "pano.addEventListener('enter-fade-start'")
-    && str_contains($public_js, 'synchronizePanoramaState(roomId, room, index, pano, panoramas, venueActivationToken, true);')
+    && str_contains($public_js, 'synchronizePanoramaState(roomId, room, index, pano, panoramas, panoCacheKey, venueActivationToken, true);')
+    && str_contains($public_js, 'function applyHotelVariantMedia(room, variant)')
+    && str_contains($public_js, 'const panoCacheKey = showroomPanoCacheKey(roomId, room, activeHotelVariant);')
+    && str_contains($public_js, 'activateVenue(currentRoomId, true)')
     && str_contains($public_js, 'const panoramaControlReady = new WeakSet();')
     && str_contains($public_js, 'panoramaControlReady.add(pano);')
     && str_contains($public_js, 'function enterPanorama(pano, viewerRef = viewer)')
@@ -328,6 +349,11 @@ $checks['public framing waits until Panolens resets controls at entry and avoids
     && str_contains($view_compat, 'Panolens 0.12.1')
     && !str_contains($public_apply_view, 'center.x *= -1')
     && str_contains($public_js, 'scheduleAutoRotation();');
+$checks['hotel showroom option media maps to one exact room group and scopes tour hotspots per option'] = str_contains($public_php, '$hotel_showroom_option_map[$tourSlot]')
+    && str_contains($public_php, '$hotel_showroom_option_tour_scopes[$scope]')
+    && str_contains($public_php, '$optionTourScope[\'variant_key\']')
+    && str_contains($public_php, 'showroom_tour_select_option_media(')
+    && str_contains($public_php, '$destination[\'shared_tour\']');
 $checks['admin reports per-panorama entry behavior and shows non-blocking success toasts'] = str_contains($admin_hotspots, "'View Set · Applies on entry'")
     && str_contains($admin_hotspots, "showTourToast(successMessage, viewDetail)")
     && str_contains($admin_hotspots, "showTourToast('Starting scene updated.')")

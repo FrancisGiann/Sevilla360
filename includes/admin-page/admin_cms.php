@@ -1,5 +1,6 @@
 <?php
 require_once 'config/db_connect.php';
+require_once 'includes/hotel_rooms.php';
 require_once 'includes/media_helper.php';
 
 // 1. Fetch DISTINCT venues by grouping by BOTH Building Name AND Room Type
@@ -10,7 +11,7 @@ $venues_query = $conn->query("
         hr.room_type 
     FROM venues v
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
-    WHERE v.status != 'Inactive'
+    WHERE v.status != 'Inactive' AND v.category <> 'Hotel Room'
     GROUP BY 
         v.id,
         v.category, 
@@ -29,6 +30,7 @@ $website_slots = [
 
 $venue_standard_slots = []; // Distinct array for venue standard slots
 $venue_360_slots = [];
+$hotel_gallery_alias_slots = []; // Canonical standard slot => original slot assignments to aggregate for display.
 $venue_categories = []; 
 $venue_category_filters = [
     'Hotel Room' => 'hotel-room',
@@ -36,15 +38,11 @@ $venue_category_filters = [
     'Resort Villa' => 'villa'
 ];
 
-// Automatically create picture slots per unique building/room combination
+// Keep the existing event/villa slots, and create one canonical slot per hotel
+// building/type. Commercial variants appear in the card details, not as separate galleries.
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
-        
-        if ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) {
-            $display_name = $v['venue_name'] . ' - ' . $v['room_type'];
-        } else {
-            $display_name = $v['venue_name']; 
-        }
+        $display_name = (string)$v['venue_name'];
         
         $clean_name = htmlspecialchars($display_name);
         $category_filter = $venue_category_filters[$v['category']] ?? 'venue';
@@ -71,6 +69,144 @@ if ($venues_query) {
         ];
     }
 }
+
+$hotel_group_schema_ready = hotel_group_schema_ready($conn);
+$hotel_media_overrides_ready = hotel_group_media_overrides_schema_ready($conn);
+$hotel_variant_rows = [];
+$hotel_legacy_labels_by_group = [];
+$hotel_editor_types = [];
+if ($hotel_group_schema_ready) {
+    $legacyLabelsResult = $conn->query("SELECT room_group_id, room_type FROM hotel_rooms WHERE room_group_id IS NOT NULL GROUP BY room_group_id, room_type");
+    if ($legacyLabelsResult) while ($labelRow = $legacyLabelsResult->fetch_assoc()) {
+        $groupId = (int)$labelRow['room_group_id'];
+        $label = trim((string)$labelRow['room_type']);
+        if ($groupId > 0 && $label !== '') $hotel_legacy_labels_by_group[$groupId][] = $label;
+    }
+    $hotelOverrideSelect = $hotel_media_overrides_ready
+        ? 'MAX(g.standard_media_override_enabled) AS standard_media_override_enabled, MAX(g.tour_media_override_enabled) AS tour_media_override_enabled'
+        : '0 AS standard_media_override_enabled, 0 AS tour_media_override_enabled';
+    $hotelRowsResult = $conn->query("SELECT g.id AS room_group_id, g.building_name, g.media_slot_key, g.legacy_room_type,
+            COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room') AS room_type, g.room_type_code,
+            g.base_capacity, g.max_capacity, g.bed_count, g.nightly_rate, g.extra_pax_rate,
+            g.check_in_time, g.check_out_time, {$hotelOverrideSelect}, COUNT(DISTINCT h.venue_id) AS inventory_count
+        FROM hotel_room_groups g
+        LEFT JOIN hotel_room_types t ON t.type_code = g.room_type_code
+        INNER JOIN hotel_rooms h ON h.room_group_id = g.id
+        INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status <> 'Inactive'
+        GROUP BY g.id, g.building_name, g.media_slot_key, g.legacy_room_type, g.room_type_code,
+            t.display_name, g.base_capacity, g.max_capacity, g.bed_count, g.nightly_rate,
+            g.extra_pax_rate, g.check_in_time, g.check_out_time
+        ORDER BY g.building_name, t.sort_order, g.sort_order, g.id");
+    if ($hotelRowsResult) while ($hotelRow = $hotelRowsResult->fetch_assoc()) $hotel_variant_rows[] = $hotelRow;
+} else {
+    $hotelRowsResult = $conn->query("SELECT v.name AS building_name, h.room_type, h.nightly_rate, h.base_capacity,
+            h.max_capacity, h.bed_count, h.extra_pax_rate, h.check_in_time, h.check_out_time, COUNT(*) AS inventory_count
+        FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id
+        WHERE v.category = 'Hotel Room' AND v.status <> 'Inactive'
+        GROUP BY v.name, h.room_type, h.nightly_rate, h.base_capacity, h.max_capacity, h.bed_count,
+            h.extra_pax_rate, h.check_in_time, h.check_out_time
+        ORDER BY v.name, h.room_type, h.nightly_rate, h.max_capacity");
+    if ($hotelRowsResult) while ($hotelRow = $hotelRowsResult->fetch_assoc()) $hotel_variant_rows[] = $hotelRow;
+}
+
+foreach ($hotel_variant_rows as $hotelRow) {
+    $building = trim((string)($hotelRow['building_name'] ?? ''));
+    $roomType = trim((string)($hotelRow['room_type'] ?? 'Hotel Room'));
+    if ($building === '' || $roomType === '') continue;
+    $typeCode = (string)($hotelRow['room_type_code'] ?? '');
+    $group = [
+        'building_name' => $building,
+        'room_type' => $roomType,
+        'room_type_code' => $typeCode,
+        'legacy_room_type' => (string)($hotelRow['legacy_room_type'] ?? ''),
+        'media_slot_key' => (string)($hotelRow['media_slot_key'] ?? ''),
+    ];
+    $slotKey = hotel_room_group_canonical_media_slot_key($group);
+    if ($slotKey === null) continue;
+    if (!isset($hotel_editor_types[$slotKey])) {
+        $hotel_editor_types[$slotKey] = [
+            'canonical_slot' => $slotKey,
+            'shared_tour_slot' => $slotKey . '_360',
+            'building_name' => $building,
+            'room_type' => $roomType,
+            'room_type_code' => $typeCode,
+            'options' => [],
+        ];
+    }
+    $cleanName = htmlspecialchars($building . ' — ' . $roomType, ENT_QUOTES, 'UTF-8');
+    $categoryFilter = 'hotel-room';
+    if (!isset($venue_standard_slots[$slotKey])) {
+        $venue_categories[$slotKey] = $cleanName;
+        $venue_standard_slots[$slotKey] = [
+            'title' => $cleanName . ' (Shared Standard Gallery)',
+            'badge' => 'Hotel Room',
+            'type' => 'standard',
+            'category_filter' => $categoryFilter,
+            'canonical_room_type' => true,
+            'hotel_building_name' => $building,
+            'hotel_room_type_code' => $typeCode,
+            'hotel_room_type_label' => $roomType,
+            'variant_labels' => [],
+        ];
+        $venue_360_slots[$slotKey . '_360'] = [
+            'title' => $cleanName . ' (Shared 360 Gallery)',
+            'badge' => '360 Panorama',
+            'type' => '360',
+            'category_filter' => $categoryFilter,
+            'category_badge' => 'Hotel Room',
+            'canonical_room_type' => true,
+            'variant_labels' => [],
+        ];
+        $hotel_gallery_alias_slots[$slotKey] = [];
+    }
+    $variantLabel = hotel_public_variant_label($hotelRow);
+    $variantIdentity = is_numeric($hotelRow['room_group_id'] ?? null)
+        ? 'group-' . (int)$hotelRow['room_group_id']
+        : hotel_commercial_variant_key($hotelRow + ['building_name' => $building, 'legacy_room_type' => $roomType]);
+    if (!isset($venue_standard_slots[$slotKey]['_variant_keys'][$variantIdentity])) {
+        $venue_standard_slots[$slotKey]['_variant_keys'][$variantIdentity] = true;
+        $venue_standard_slots[$slotKey]['variant_labels'][] = $variantLabel;
+        $venue_360_slots[$slotKey . '_360']['variant_labels'][] = $variantLabel;
+    }
+    $groupId = (int)($hotelRow['room_group_id'] ?? 0);
+    if ($groupId > 0) {
+        $hotel_editor_types[$slotKey]['options'][$groupId] = [
+            'room_group_id' => $groupId,
+            'label' => $variantLabel,
+            'base_capacity' => (int)($hotelRow['base_capacity'] ?? 0),
+            'max_capacity' => (int)($hotelRow['max_capacity'] ?? 0),
+            'bed_count' => (int)($hotelRow['bed_count'] ?? 0),
+            'nightly_rate' => (float)($hotelRow['nightly_rate'] ?? 0),
+            'inventory_count' => max(0, (int)($hotelRow['inventory_count'] ?? 0)),
+            'standard_override_enabled' => (int)($hotelRow['standard_media_override_enabled'] ?? 0) === 1,
+            'tour_override_enabled' => (int)($hotelRow['tour_media_override_enabled'] ?? 0) === 1,
+            'standard_slot' => hotel_room_group_option_media_slot_key($groupId),
+            'tour_slot' => hotel_room_group_option_media_slot_key($groupId, true),
+        ];
+    }
+    $aliases = hotel_room_group_media_slot_keys($group);
+    $groupId = (int)($hotelRow['room_group_id'] ?? 0);
+    foreach ($hotel_legacy_labels_by_group[$groupId] ?? [] as $legacyLabel) {
+        $aliases = array_merge($aliases, hotel_room_group_media_slot_keys($group + ['legacy_media_room_type' => $legacyLabel]));
+    }
+    $hotel_gallery_alias_slots[$slotKey] = array_values(array_unique(array_merge($hotel_gallery_alias_slots[$slotKey], $aliases)));
+}
+
+foreach ($hotel_editor_types as &$hotelEditorType) {
+    $hotelEditorType['options'] = array_values($hotelEditorType['options']);
+    usort($hotelEditorType['options'], static fn(array $left, array $right): int =>
+        ($left['nightly_rate'] <=> $right['nightly_rate'])
+        ?: ($left['max_capacity'] <=> $right['max_capacity'])
+        ?: ($left['bed_count'] <=> $right['bed_count'])
+        ?: ($left['room_group_id'] <=> $right['room_group_id'])
+    );
+}
+unset($hotelEditorType);
+
+foreach ($venue_standard_slots as &$slotInfo) unset($slotInfo['_variant_keys']);
+unset($slotInfo);
+foreach ($venue_360_slots as &$slotInfo) unset($slotInfo['_variant_keys']);
+unset($slotInfo);
 
 // One narrow, stable query powers cards, galleries, and hotspot editing.
 $query = "SELECT id, file_name, file_path, media_type, slot_assignment, is_primary,
@@ -123,6 +259,51 @@ if ($result && $result->num_rows > 0) {
     }
 }
 
+// Keep the exact per-slot panorama sets intact for hotspot editing. The
+// canonical management gallery below is an aggregate and may cross slots.
+$hotel_source_pano_venue_photos = $pano_venue_photos;
+$hotel_source_pano_venue_photos_ordered = [];
+foreach ($hotel_source_pano_venue_photos as $slot => $photos) {
+    usort($photos, static fn(array $left, array $right): int =>
+        ((int)$right['is_primary'] <=> (int)$left['is_primary']) ?: ((int)$left['id'] <=> (int)$right['id'])
+    );
+    $hotel_source_pano_venue_photos_ordered[$slot] = $photos;
+}
+$hotel_gallery_hotspot_sources = [];
+foreach ($hotel_gallery_alias_slots as $canonical_slot => $alias_slots) {
+    $hotel_gallery_hotspot_sources[$canonical_slot] = hotel_room_group_source_panorama_galleries(
+        $alias_slots,
+        $hotel_source_pano_venue_photos_ordered
+    );
+}
+
+// Present every historical/explicit source gallery under the canonical type
+// card while preserving each photo's actual slot_assignment for management.
+foreach ($hotel_gallery_alias_slots as $canonical_slot => $alias_slots) {
+    $standardById = [];
+    $panoramasById = [];
+    foreach ($alias_slots as $alias_slot) {
+        foreach ($standard_venue_photos[$alias_slot] ?? [] as $photo) {
+            $standardById[(int)$photo['id']] = $photo;
+        }
+        $panoSlot = $alias_slot . '_360';
+        foreach ($pano_venue_photos[$panoSlot] ?? [] as $photo) {
+            $panoramasById[(int)$photo['id']] = $photo;
+        }
+    }
+    $canonicalStandard = array_values($standardById);
+    usort($canonicalStandard, static fn(array $left, array $right): int => hotel_public_media_candidate_compare(
+        ['id' => (int)$left['id'], 'is_primary' => (int)$left['is_primary'], 'path' => (string)$left['file_path']],
+        ['id' => (int)$right['id'], 'is_primary' => (int)$right['is_primary'], 'path' => (string)$right['file_path']]
+    ));
+    $canonicalPanoramas = array_values($panoramasById);
+    usort($canonicalPanoramas, static fn(array $left, array $right): int =>
+        ((int)$right['is_primary'] <=> (int)$left['is_primary']) ?: ((int)$left['id'] <=> (int)$right['id'])
+    );
+    $standard_venue_photos[$canonical_slot] = $canonicalStandard;
+    $pano_venue_photos[$canonical_slot . '_360'] = $canonicalPanoramas;
+}
+
 // Keep a PHP-only ordered view for the card's Hotspots button. The editor
 // derives the same order from galleryData, so no duplicate panorama payload is
 // emitted and View 1/2/3 stays aligned with showroom.php's pano_urls order.
@@ -151,6 +332,7 @@ foreach (array_merge($standard_venue_photos, $pano_venue_photos) as $slot => $ph
             'showroom_view_y' => $photo['showroom_view_y'],
             'showroom_view_z' => $photo['showroom_view_z'],
             'showroom_fov' => $photo['showroom_fov'],
+            'slot_assignment' => (string)$photo['slot_assignment'],
         ];
     }, $photos);
 }
@@ -158,6 +340,39 @@ foreach (array_merge($standard_venue_photos, $pano_venue_photos) as $slot => $ph
 
 <script>
 window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+window.hotelGalleryEditorData = <?php echo json_encode(array_values($hotel_editor_types), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+window.hotelGalleryOverridesAvailable = <?php echo $hotel_media_overrides_ready ? 'true' : 'false'; ?>;
+window.hotelSourcePanoData = <?php
+$hotel_source_pano_payload = [];
+foreach ($hotel_gallery_hotspot_sources as $source_galleries) foreach ($source_galleries as $source_gallery) {
+    $source_pano_slot = $source_gallery['slot'];
+    $hotel_source_pano_payload[$source_pano_slot] = array_map(static fn(array $photo): array => [
+            'id' => (int)$photo['id'],
+            'file_name' => (string)$photo['file_name'],
+            'file_path' => (string)$photo['file_path'],
+            'is_primary' => (int)$photo['is_primary'],
+            'slot_assignment' => (string)$photo['slot_assignment'],
+            'showroom_view_x' => $photo['showroom_view_x'],
+            'showroom_view_y' => $photo['showroom_view_y'],
+            'showroom_view_z' => $photo['showroom_view_z'],
+            'showroom_fov' => $photo['showroom_fov'],
+        ], $source_gallery['photos']);
+}
+foreach ($hotel_editor_types as $editor_type) foreach ($editor_type['options'] as $option) {
+    $source_pano_slot = (string)($option['tour_slot'] ?? '');
+    if ($source_pano_slot === '' || isset($hotel_source_pano_payload[$source_pano_slot])) continue;
+    $option_panoramas = $pano_venue_photos_ordered[$source_pano_slot] ?? [];
+    if (!$option_panoramas) continue;
+    $hotel_source_pano_payload[$source_pano_slot] = array_map(static fn(array $photo): array => [
+        'id' => (int)$photo['id'], 'file_name' => (string)$photo['file_name'],
+        'file_path' => (string)$photo['file_path'], 'is_primary' => (int)$photo['is_primary'],
+        'slot_assignment' => (string)$photo['slot_assignment'],
+        'showroom_view_x' => $photo['showroom_view_x'], 'showroom_view_y' => $photo['showroom_view_y'],
+        'showroom_view_z' => $photo['showroom_view_z'], 'showroom_fov' => $photo['showroom_fov'],
+    ], $option_panoramas);
+}
+echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+?>;
 </script>
 
 <div class="cms-container">
@@ -217,8 +432,78 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
         </div>
         <?php endforeach; ?>
 
+        <!-- Hotel room types use one editor per building and canonical room type. -->
+        <?php foreach ($hotel_editor_types as $canonical_slot => $editor_type):
+            $shared_standard = $standard_venue_photos[$canonical_slot] ?? [];
+            $shared_tour_slot = $canonical_slot . '_360';
+            $shared_panoramas = $pano_venue_photos_ordered[$shared_tour_slot] ?? [];
+            $first_shared = $shared_standard[0] ?? null;
+            $hotelTitle = (string)$editor_type['building_name'] . ' — ' . (string)$editor_type['room_type'];
+            $sharedHotspotSources = $hotel_gallery_hotspot_sources[$canonical_slot] ?? [];
+            $sharedHotspotOptions = [];
+            foreach ($sharedHotspotSources as $sourceGallery) {
+                $sourceKey = preg_replace('/_360$/', '', (string)$sourceGallery['slot']);
+                $sourceKey = preg_replace('/^venue_/', '', $sourceKey);
+                $sourceLabel = preg_match('/^hotel_type_[a-f0-9]{40}$/', $sourceKey)
+                    ? 'Shared gallery'
+                    : ucwords(str_replace('_', ' ', $sourceKey)) . ' photos';
+                $sharedHotspotOptions[] = ['slot' => $sourceGallery['slot'], 'label' => $sourceLabel];
+            }
+        ?>
+        <article class="cms-card cms-hotel-type-card" data-type="hotel" data-types="standard 360" data-category="hotel-room"
+            data-hotel-canonical-slot="<?php echo htmlspecialchars($canonical_slot, ENT_QUOTES, 'UTF-8'); ?>"
+            data-hotel-building="<?php echo htmlspecialchars((string)$editor_type['building_name'], ENT_QUOTES, 'UTF-8'); ?>"
+            data-hotel-room-type-code="<?php echo htmlspecialchars((string)$editor_type['room_type_code'], ENT_QUOTES, 'UTF-8'); ?>"
+            data-hotel-room-type="<?php echo htmlspecialchars((string)$editor_type['room_type'], ENT_QUOTES, 'UTF-8'); ?>">
+            <div class="cms-img-wrapper">
+                <?php if ($first_shared): ?>
+                    <?php echo media_cms_card_image_markup($first_shared, $hotelTitle); ?>
+                <?php else: ?>
+                    <span class="cms-hotel-empty-preview">Shared room photos will appear here.</span>
+                <?php endif; ?>
+            </div>
+            <div class="cms-card-content">
+                <div class="cms-card-header">
+                    <h4 class="cms-title"><?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?></h4>
+                    <span class="badge badge-gray"><?php echo count($editor_type['options']); ?> room option<?php echo count($editor_type['options']) === 1 ? '' : 's'; ?></span>
+                </div>
+                <p class="cms-size">Shared photos: <?php echo count($shared_standard); ?> · Shared tour: <?php echo count($shared_panoramas); ?> scene<?php echo count($shared_panoramas) === 1 ? '' : 's'; ?></p>
+                <button type="button" class="btn btn-primary cms-open-hotel-editor" data-default-tab="photos">
+                    Edit room galleries
+                </button>
+            </div>
+            <div class="cms-hotel-hidden-actions" hidden aria-hidden="true">
+                <button type="button" class="btn-cms-modal" data-type="standard" data-slot="<?php echo htmlspecialchars($canonical_slot, ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <button type="button" class="btn-cms-modal" data-type="360" data-slot="<?php echo htmlspecialchars($shared_tour_slot, ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <button type="button" class="btn-manage-gallery" data-media-type="standard" data-slot="<?php echo htmlspecialchars($canonical_slot, ENT_QUOTES, 'UTF-8'); ?>" data-hotel-shared="true"></button>
+                <button type="button" class="btn-manage-gallery" data-media-type="360" data-slot="<?php echo htmlspecialchars($shared_tour_slot, ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <?php if ($sharedHotspotOptions): ?>
+                <button type="button" class="btn-place-hotspots"
+                    data-slot="<?php echo htmlspecialchars((string)$sharedHotspotOptions[0]['slot'], ENT_QUOTES, 'UTF-8'); ?>"
+                    data-gallery-title="<?php echo htmlspecialchars($hotelTitle . ' shared 360 tour', ENT_QUOTES, 'UTF-8'); ?>"
+                    data-gallery-sources="<?php echo htmlspecialchars(json_encode($sharedHotspotOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <?php endif; ?>
+                <?php foreach ($editor_type['options'] as $option):
+                    $optionStandardPhotos = $standard_venue_photos[$option['standard_slot']] ?? [];
+                    $optionPanoramas = $hotel_source_pano_venue_photos_ordered[$option['tour_slot']] ?? [];
+                ?>
+                <button type="button" class="btn-cms-modal" data-type="standard" data-slot="<?php echo htmlspecialchars($option['standard_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <button type="button" class="btn-cms-modal" data-type="360" data-slot="<?php echo htmlspecialchars($option['tour_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <button type="button" class="btn-manage-gallery" data-media-type="standard" data-slot="<?php echo htmlspecialchars($option['standard_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
+                <button type="button" class="btn-manage-gallery" data-media-type="360" data-slot="<?php echo htmlspecialchars($option['tour_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
+                    <?php if ($optionPanoramas): ?>
+                <button type="button" class="btn-place-hotspots" data-slot="<?php echo htmlspecialchars($option['tour_slot'], ENT_QUOTES, 'UTF-8'); ?>"
+                    data-gallery-title="<?php echo htmlspecialchars($hotelTitle . ' · ' . $option['label'] . ' tour', ENT_QUOTES, 'UTF-8'); ?>"
+                    data-gallery-sources="<?php echo htmlspecialchars(json_encode([['slot' => $option['tour_slot'], 'label' => 'Room option tour']], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8'); ?>"></button>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+        </article>
+        <?php endforeach; ?>
+
         <!-- 2. 360 PANORAMA SLOTS -->
         <?php foreach($venue_360_slots as $slot_key => $slot_info): 
+            if (!empty($slot_info['canonical_room_type'])) continue;
             $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
             $has_img = $photo_count > 0;
@@ -242,6 +527,9 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                         <?php echo $has_img ? $photo_count . ' Panoramas' : $slot_info['category_badge']; ?>
                     </span>
                 </div>
+                <?php if (!empty($slot_info['canonical_room_type'])): ?>
+                <p class="cms-size">Shared by <?php echo count($slot_info['variant_labels']); ?> booking option<?php echo count($slot_info['variant_labels']) === 1 ? '' : 's'; ?><?php if (!empty($slot_info['variant_labels'])): ?>: <?php echo htmlspecialchars(implode(' · ', $slot_info['variant_labels']), ENT_QUOTES, 'UTF-8'); ?><?php endif; ?></p>
+                <?php endif; ?>
                 <?php if (!$has_img): ?>
                 <p class="cms-size">No 360 view uploaded yet.</p>
                 <?php else: ?>
@@ -255,10 +543,38 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                     <?php if ($has_img): ?>
                     <button class="btn btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">Manage</button>
+                    <?php if (!empty($slot_info['canonical_room_type'])): ?>
+                        <?php
+                            $canonical_slot = substr($slot_key, 0, -4);
+                            $hotspot_sources = $hotel_gallery_hotspot_sources[$canonical_slot] ?? [];
+                            $hotspot_source_options = [];
+                            foreach ($hotspot_sources as $source_gallery) {
+                                $source_label_key = preg_replace('/_360$/', '', (string)$source_gallery['slot']);
+                                $source_label_key = preg_replace('/^venue_/', '', $source_label_key);
+                                if (preg_match('/^hotel_type_[a-f0-9]{40}$/', $source_label_key)) {
+                                    $source_label = 'Canonical gallery';
+                                } else {
+                                    $source_label = ucwords(str_replace('_', ' ', $source_label_key)) . ' gallery';
+                                }
+                                $hotspot_source_options[] = ['slot' => $source_gallery['slot'], 'label' => $source_label];
+                            }
+                            $hotspot_gallery_title = preg_replace('/ \(Shared 360 Gallery\)$/', '', (string)$slot_info['title']);
+                        ?>
+                        <?php if ($hotspot_source_options): ?>
+                        <button class="btn btn-outline btn-place-hotspots"
+                            data-slot="<?php echo htmlspecialchars($hotspot_source_options[0]['slot'], ENT_QUOTES, 'UTF-8'); ?>"
+                            data-gallery-title="<?php echo htmlspecialchars($hotspot_gallery_title, ENT_QUOTES, 'UTF-8'); ?>"
+                            data-gallery-sources="<?php echo htmlspecialchars(json_encode($hotspot_source_options, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8'); ?>"
+                            aria-label="Edit hotspots for <?php echo htmlspecialchars($hotspot_gallery_title, ENT_QUOTES, 'UTF-8'); ?>"
+                            style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
+                            <i class="fa-solid fa-map-pin" aria-hidden="true"></i> Hotspots</button>
+                        <?php endif; ?>
+                    <?php else: ?>
                     <button class="btn btn-outline btn-place-hotspots" data-media-id="<?php echo $ordered_photos_array[0]['id']; ?>"
                         data-slot="<?php echo $slot_key; ?>"
                         style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <i class="fa-solid fa-map-pin"></i> Hotspots</button>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -268,12 +584,13 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
         <!-- 3. STANDARD VENUE PHOTOS -->
         <!-- FIX: Iterate via $venue_standard_slots (includes empty ones), not just photos that exist -->
         <?php foreach($venue_standard_slots as $slot_key => $slot_info): 
+            if (!empty($slot_info['canonical_room_type'])) continue;
             $photos_array = isset($standard_venue_photos[$slot_key]) ? $standard_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
             $has_img = $photo_count > 0;
             $first_photo = $has_img ? $photos_array[0] : null;
         ?>
-        <div class="cms-card" data-type="standard" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>">
+        <div class="cms-card" data-type="standard" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>"<?php if (!empty($slot_info['canonical_room_type'])): ?> data-hotel-building="<?php echo htmlspecialchars((string)$slot_info['hotel_building_name'], ENT_QUOTES, 'UTF-8'); ?>" data-hotel-room-type-code="<?php echo htmlspecialchars((string)$slot_info['hotel_room_type_code'], ENT_QUOTES, 'UTF-8'); ?>" data-hotel-room-type="<?php echo htmlspecialchars((string)$slot_info['hotel_room_type_label'], ENT_QUOTES, 'UTF-8'); ?>"<?php endif; ?>>
             <div class="cms-img-wrapper"
                 style="background:#e0e0e0; display:flex; align-items:center; justify-content:center;">
                 <?php if ($has_img): ?>
@@ -288,6 +605,9 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                     <span
                         class="badge badge-gray"><?php echo $has_img ? $photo_count . ' Photos' : $slot_info['badge']; ?></span>
                 </div>
+                <?php if (!empty($slot_info['canonical_room_type'])): ?>
+                <p class="cms-size">Shared by <?php echo count($slot_info['variant_labels']); ?> booking option<?php echo count($slot_info['variant_labels']) === 1 ? '' : 's'; ?><?php if (!empty($slot_info['variant_labels'])): ?>: <?php echo htmlspecialchars(implode(' · ', $slot_info['variant_labels']), ENT_QUOTES, 'UTF-8'); ?><?php endif; ?></p>
+                <?php endif; ?>
                 <?php if (!$has_img): ?>
                 <p class="cms-size">No standard photos uploaded yet.</p>
                 <?php else: ?>
@@ -328,6 +648,38 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
 
     </div>
     <p class="cms-empty-state" id="cms-empty-state" role="status" hidden>No media slots match these filters.</p>
+</div>
+
+<div class="cms-modal-overlay hotel-editor-overlay" id="hotelGalleryEditor" hidden>
+    <section class="cms-modal-content hotel-editor-content" role="dialog" aria-modal="true" aria-labelledby="hotel-editor-title" tabindex="-1">
+        <header class="hotel-editor-header">
+            <div>
+                <h2 id="hotel-editor-title">Room galleries</h2>
+                <p id="hotel-editor-subtitle">Manage shared photos, tour scenes, and room options.</p>
+            </div>
+            <button type="button" class="btn cms-btn-outline hotel-editor-close" aria-label="Close room gallery editor">Close</button>
+        </header>
+        <div class="hotel-editor-tabs" role="tablist" aria-label="Room gallery sections">
+            <button type="button" role="tab" id="hotel-tab-photos" aria-controls="hotel-panel-photos" aria-selected="true" tabindex="0" data-hotel-tab="photos">Photos</button>
+            <button type="button" role="tab" id="hotel-tab-tour" aria-controls="hotel-panel-tour" aria-selected="false" tabindex="-1" data-hotel-tab="tour">360 Tour</button>
+            <button type="button" role="tab" id="hotel-tab-options" aria-controls="hotel-panel-options" aria-selected="false" tabindex="-1" data-hotel-tab="options">Room Options</button>
+        </div>
+        <div class="hotel-editor-body">
+            <section id="hotel-panel-photos" role="tabpanel" aria-labelledby="hotel-tab-photos" data-hotel-panel="photos" tabindex="0">
+                <div id="hotel-shared-photos-panel"></div>
+            </section>
+            <section id="hotel-panel-tour" role="tabpanel" aria-labelledby="hotel-tab-tour" data-hotel-panel="tour" tabindex="0" hidden>
+                <div id="hotel-shared-tour-panel"></div>
+            </section>
+            <section id="hotel-panel-options" role="tabpanel" aria-labelledby="hotel-tab-options" data-hotel-panel="options" tabindex="0" hidden>
+                <p id="hotel-options-migration-notice" class="hotel-editor-notice" hidden>Room-option galleries need migration 032. Shared room photos and tours are still available.</p>
+                <div id="hotel-room-options-list" class="hotel-room-options-list"></div>
+            </section>
+        </div>
+        <footer class="hotel-editor-footer">
+            <button type="button" class="btn btn-primary hotel-editor-close">Done</button>
+        </footer>
+    </section>
 </div>
 
 <!-- ==============================================
@@ -384,6 +736,18 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
                         </option>
                         <?php endforeach; ?>
                     </optgroup>
+                    <?php if ($hotel_editor_types): ?>
+                    <optgroup label="Room option galleries">
+                        <?php foreach ($hotel_editor_types as $editor_type): foreach ($editor_type['options'] as $option): ?>
+                        <option value="<?php echo htmlspecialchars($option['standard_slot'], ENT_QUOTES, 'UTF-8'); ?>" data-type="standard" style="display:none;">
+                            <?php echo htmlspecialchars($editor_type['building_name'] . ' — ' . $editor_type['room_type'] . ' · ' . $option['label'] . ' · Own photos', ENT_QUOTES, 'UTF-8'); ?>
+                        </option>
+                        <option value="<?php echo htmlspecialchars($option['tour_slot'], ENT_QUOTES, 'UTF-8'); ?>" data-type="360" style="display:none;">
+                            <?php echo htmlspecialchars($editor_type['building_name'] . ' — ' . $editor_type['room_type'] . ' · ' . $option['label'] . ' · Own 360 tour', ENT_QUOTES, 'UTF-8'); ?>
+                        </option>
+                        <?php endforeach; endforeach; ?>
+                    </optgroup>
+                    <?php endif; ?>
                 </select>
             </div>
 
@@ -411,6 +775,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
 <div class="cms-modal-overlay" id="manageGalleryModal">
     <div class="cms-modal-content manage-gallery-content" style="max-width: 800px;">
         <h3 class="cms-modal-title" id="mg-title">Manage Gallery</h3>
+        <p id="mg-hint" class="cms-size" hidden></p>
 
         <!-- NEW: BULK DELETE CONTROLS -->
         <div id="mg-bulk-controls" class="manage-gallery-bulk"
@@ -429,6 +794,7 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
             style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; max-height: 50vh; overflow-y: auto; padding-right: 5px; margin-bottom: 20px;">
             <!-- JavaScript will inject photos here -->
         </div>
+        <p id="mg-empty-state" class="cms-size" hidden></p>
 
         <div class="cms-modal-actions manage-gallery-actions" style="justify-content: space-between;">
             <button type="button" class="btn cms-btn-outline" id="btnCloseGalleryModal">Close</button>
@@ -491,6 +857,11 @@ window.galleryData = <?php echo json_encode($cms_gallery_data, JSON_HEX_TAG | JS
             <div class="hotspot-steps" aria-label="Tour setup steps">
                 <section class="hotspot-step" data-hotspot-step="1" aria-labelledby="hotspot-step-1-title">
                     <h4 id="hotspot-step-1-title"><span class="hotspot-step-number" aria-hidden="true">1</span><span>Choose panorama</span></h4>
+                    <div class="hotspot-view-selector" id="hs-source-gallery-picker" hidden>
+                        <label for="hs-admin-gallery-selector">Gallery source</label>
+                        <select id="hs-admin-gallery-selector" aria-describedby="hs-gallery-description"></select>
+                        <p id="hs-gallery-description" class="hotspot-view-description">Choose which existing gallery to edit. Each gallery keeps its own saved hotspots and navigation targets.</p>
+                    </div>
                     <div class="hotspot-view-selector">
                         <label for="hs-admin-view-selector">Tour panorama</label>
                         <select id="hs-admin-view-selector" aria-describedby="hs-view-description"></select>

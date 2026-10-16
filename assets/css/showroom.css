@@ -3823,3 +3823,40 @@ body.showroom-receptionist-open .showroom-container .details-box {
 .receptionist-guest-count-actions .receptionist-choice-primary {
   margin-left: auto;
 }
+
+.showroom-room-option-summary {
+  display: block;
+  margin-top: .2rem;
+  color: #51483f;
+  font-size: .78rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.showroom-hotel-variant {
+  display: grid;
+  gap: .4rem;
+  margin-top: 1rem;
+  max-width: 32rem;
+}
+
+.showroom-hotel-variant[hidden] { display: none; }
+.showroom-hotel-variant label { font-weight: 700; }
+.showroom-hotel-variant select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: .65rem .75rem;
+  border: 1px solid #bcae9d;
+  border-radius: .4rem;
+  background: #fff;
+  color: #28231f;
+  font: inherit;
+}
+.showroom-hotel-variant select:focus-visible { outline: 3px solid #a8793d; outline-offset: 2px; }
+.showroom-hotel-variant small { color: #51483f; line-height: 1.45; }
+.btn-book.is-disabled { opacity: .55; cursor: not-allowed; }
+
+@media (max-width: 767px) {
+  .showroom-hotel-variant { max-width: none; }
+  .showroom-room-option-summary { font-size: .72rem; }
+}

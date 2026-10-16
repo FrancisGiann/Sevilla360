@@ -27,6 +27,36 @@ const showroomIsSelectableDate = (value, category, step, checkInDate, instant = 
   return showroomIsCanonicalDate(checkInDate, instant) && value > checkInDate;
 };
 
+function showroomBuildBookingUrl(room, startDate = null, endDate = null, guestRange = null, guestCount = null, currentRoomId = null, activeHotelVariant = null, selectedVariant = null) {
+  if (!room) return "booking.php";
+  const params = new URLSearchParams({ category: String(room.category || "") });
+  const variant = selectedVariant
+    || (currentRoomId === room.id ? activeHotelVariant : null)
+    || (room.room_group_id ? { room_group_id: room.room_group_id, variant_key: room.variant_key || '' } : null);
+  const isHotel = room.category === 'Hotel Room';
+  if (isHotel) {
+    params.set("venue_name", String(room.venue_name || ""));
+    params.set("room_type", String(room.room_type || ""));
+    if (room.room_type_code) params.set("room_type_code", String(room.room_type_code));
+    if (variant?.room_group_id) params.set("room_group_id", String(variant.room_group_id));
+    if (variant?.variant_key) params.set("variant_key", String(variant.variant_key));
+  } else if (room.venue_id !== undefined && room.venue_id !== null) {
+    params.set("venue_id", String(room.venue_id));
+    params.set("room_type", String(room.room_type || ""));
+    params.set("venue_name", String(room.venue_name || ""));
+  } else {
+    return "booking.php";
+  }
+  if (startDate && endDate) {
+    const exactGroup = Boolean(variant?.room_group_id || room.room_group_id);
+    params.set(exactGroup ? "check_in" : "start_date", String(startDate));
+    params.set(exactGroup ? "check_out" : "end_date", String(endDate));
+  }
+  if ((variant?.room_group_id || room.room_group_id) && guestRange) params.set("guest_range", String(guestRange));
+  if ((variant?.room_group_id || room.room_group_id) && guestCount) params.set("guest_count", String(guestCount));
+  return `booking.php?${params.toString()}`;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   if (window.__sevilla360ShowroomInitialized === true) return;
   window.__sevilla360ShowroomInitialized = true;
@@ -41,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentRoomId = null; 
   let currentPanoIndex = 0; 
   let activePanoramas = []; 
+  let activeHotelVariant = null;
   let roomLoadToken = 0;
   let venueActivationToken = 0;
   let lastFramedPanorama = null;
@@ -71,6 +102,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const valBeds = document.getElementById("val-beds");
   const valStatus = document.getElementById("val-status");
   const valRate = document.getElementById("val-rate");
+  const hotelVariantWrapper = document.getElementById('showroom-hotel-variant');
+  const hotelVariantSelect = document.getElementById('showroom-hotel-variant-select');
   const valRating = document.getElementById("val-rating");
   const valDesc = document.getElementById("val-desc");
   const amenitiesGrid = document.querySelector(".amenities-grid");
@@ -511,9 +544,9 @@ document.addEventListener("DOMContentLoaded", () => {
       window.PanoramaViewCompat?.applyControlCenter(viewer, center, reducedMotionQuery.matches ? 0 : duration);
   }
 
-  function synchronizePanoramaState(roomId, room, index, pano, panoramasRef, activationToken = venueActivationToken, transitionReady = false) {
+  function synchronizePanoramaState(roomId, room, index, pano, panoramasRef, cacheKey, activationToken = venueActivationToken, transitionReady = false) {
       if (activationToken !== venueActivationToken || currentRoomId !== roomId || room.panoFailed || viewer.panorama !== pano ||
-          panoCache[roomId] !== panoramasRef || activePanoramas !== panoramasRef || panoramasRef[index] !== pano) return false;
+          panoCache[cacheKey] !== panoramasRef || activePanoramas !== panoramasRef || panoramasRef[index] !== pano) return false;
 
       currentPanoIndex = index;
       updateDestinations(room, index);
@@ -563,7 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
           retryButton.onclick = () => {
               room.panoFailed = false;
               room.panoRetryCount = (Number(room.panoRetryCount) || 0) + 1;
-              activateVenue(currentRoomId);
+              activateVenue(currentRoomId, true);
           };
       }
       panoContainer.style.visibility = "hidden";
@@ -584,14 +617,14 @@ document.addEventListener("DOMContentLoaded", () => {
       valTitle.textContent = room.title;
   }
 
-  function handlePanoLoadFailure(roomId, loadToken, failedPano, panoramasRef) {
+  function handlePanoLoadFailure(roomId, loadToken, failedPano, panoramasRef, cacheKey) {
       const room = dataMap[roomId];
       if (!room) return;
 
       const isCurrentLoad = currentRoomId === roomId && roomLoadToken === loadToken;
-      const cachedPanoramas = panoCache[roomId];
+      const cachedPanoramas = panoCache[cacheKey];
       const ownsCache = cachedPanoramas === panoramasRef;
-      if (ownsCache) delete panoCache[roomId];
+      if (ownsCache) delete panoCache[cacheKey];
 
       // Dispose every panorama from this load, but never tear down a newer
       // load for the same room after a stale callback races with switching.
@@ -741,32 +774,57 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- 7. Main Room Loading Logic ---
-  function getBookingUrl(room) {
-    if (!room) return "booking.php";
-    const params = new URLSearchParams({ category: String(room.category || "") });
-    if (room.room_group_id) {
-      params.set("room_group_id", String(room.room_group_id));
-      params.set("room_type", String(room.room_type || ""));
-      params.set("venue_name", String(room.building_name || room.venue_name || ""));
-    } else if (room.venue_id !== undefined && room.venue_id !== null) {
-      params.set("venue_id", String(room.venue_id));
-      params.set("room_type", String(room.room_type || ""));
-      params.set("venue_name", String(room.venue_name || ""));
-    } else {
-      return "booking.php";
-    }
-    const startDate = arguments[1] || null;
-    const endDate = arguments[2] || null;
-    if (startDate && endDate) {
-      params.set(room.room_group_id ? "check_in" : "start_date", String(startDate));
-      params.set(room.room_group_id ? "check_out" : "end_date", String(endDate));
-    }
-    if (room.room_group_id && arguments[3]) params.set("guest_range", String(arguments[3]));
-    if (room.room_group_id && arguments[4]) params.set("guest_count", String(arguments[4]));
-    return `booking.php?${params.toString()}`;
+  function getBookingUrl(room, startDate = null, endDate = null, guestRange = null, guestCount = null, selectedVariant = null) {
+    return showroomBuildBookingUrl(room, startDate, endDate, guestRange, guestCount, currentRoomId, activeHotelVariant, selectedVariant);
   }
 
-  function activateVenue(roomId) {
+  function updateHotelVariantDetails(room) {
+    if (!room || room.category !== 'Hotel Room') return;
+    const variant = activeHotelVariant;
+    valCapacity.textContent = variant
+      ? `${Number(variant.base_capacity) === Number(variant.max_capacity) ? variant.max_capacity : `${variant.base_capacity}–${variant.max_capacity}`} pax`
+      : room.capacity || 'N/A';
+    if (valBeds) valBeds.textContent = variant
+      ? `${variant.bed_count} ${Number(variant.bed_count) === 1 ? 'bed' : 'beds'}`
+      : (room.beds || 'Not applicable');
+    valRate.textContent = variant
+      ? `₱${Number(variant.nightly_rate || 0).toLocaleString('en-PH')} /night`
+      : (room.rate || 'N/A');
+    const bookBtn = document.querySelector('.btn-book');
+    const needsChoice = Array.isArray(room.variants) && room.variants.length > 1 && !variant;
+    if (bookBtn) {
+      bookBtn.href = variant ? getBookingUrl(room, null, null, null, null, variant) : '#';
+      bookBtn.setAttribute('aria-disabled', needsChoice || !variant ? 'true' : 'false');
+      bookBtn.classList.toggle('is-disabled', needsChoice || !variant);
+      bookBtn.textContent = needsChoice || !variant ? 'CHOOSE A ROOM OPTION' : 'BOOK THIS ROOM';
+    }
+  }
+
+  function applyHotelVariantMedia(room, variant) {
+    if (room?.category !== 'Hotel Room') return;
+    const sharedGallery = Array.isArray(room.shared_gallery) ? room.shared_gallery : (Array.isArray(room.gallery) ? room.gallery : []);
+    const sharedTour = room.shared_tour && typeof room.shared_tour === 'object' ? room.shared_tour : {
+      pano_urls: room.pano_urls || [], pano_media_ids: room.pano_media_ids || [],
+      showroom_views: room.showroom_views || {}, hotspots_by_pano_index: room.hotspots_by_pano_index || {},
+      legacy_pano_media_ids: room.legacy_pano_media_ids || []
+    };
+    const tour = variant?.tour && typeof variant.tour === 'object' && Array.isArray(variant.tour.pano_urls) && variant.tour.pano_urls.length
+      ? variant.tour : sharedTour;
+    room.gallery = Array.isArray(variant?.gallery) && variant.gallery.length ? variant.gallery : sharedGallery;
+    room.pano_urls = Array.isArray(tour.pano_urls) ? tour.pano_urls : [];
+    room.pano_media_ids = Array.isArray(tour.pano_media_ids) ? tour.pano_media_ids : [];
+    room.showroom_views = tour.showroom_views || {};
+    room.hotspots_by_pano_index = tour.hotspots_by_pano_index || {};
+    room.legacy_pano_media_ids = tour.legacy_pano_media_ids || [];
+    room.panoFailed = false;
+  }
+
+  function showroomPanoCacheKey(roomId, room, variant) {
+    if (room?.category !== 'Hotel Room') return String(roomId);
+    return `${roomId}::${variant?.room_group_id || variant?.variant_key || 'shared'}`;
+  }
+
+  function activateVenue(roomId, preserveVariant = false) {
     clearInteractionHint();
     pauseAutoRotation();
     closeDestinations();
@@ -777,6 +835,8 @@ document.addEventListener("DOMContentLoaded", () => {
     currentRoomId = roomId; 
     const room = dataMap[roomId];
     if (!room) return;
+    const requestedVariant = preserveVariant ? activeHotelVariant : null;
+    activeHotelVariant = null;
 
     // Keep every venue entry point on the same active state and renderer.
     document.querySelectorAll(".dropdown-item").forEach(item => {
@@ -797,10 +857,41 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update Text Data
     valTitle.textContent = room.title;
     valCategory.textContent = room.category;
-    valCapacity.textContent = room.capacity;
+    valCapacity.textContent = room.capacity || 'N/A';
     if (valBeds) valBeds.textContent = room.beds || 'Not applicable';
     valStatus.textContent = room.status;
     valRate.textContent = room.rate;
+    if (hotelVariantWrapper && hotelVariantSelect) {
+      const variants = Array.isArray(room.variants) ? room.variants : [];
+      hotelVariantWrapper.hidden = room.category !== 'Hotel Room' || variants.length === 0;
+      hotelVariantSelect.replaceChildren();
+      const prompt = document.createElement('option');
+      prompt.value = '';
+      prompt.textContent = variants.length > 1 ? 'Choose capacity, beds and nightly price' : 'Select room option';
+      hotelVariantSelect.appendChild(prompt);
+      variants.forEach((variant, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        const units = Number(variant.inventory_count || 0);
+        option.textContent = `${variant.label || 'Room option'} · ${units} ${units === 1 ? 'unit' : 'units'}`;
+        hotelVariantSelect.appendChild(option);
+      });
+      const requestedIndex = requestedVariant
+        ? variants.findIndex(variant => String(variant.room_group_id || variant.variant_key || '') === String(requestedVariant.room_group_id || requestedVariant.variant_key || ''))
+        : -1;
+      if (requestedIndex >= 0) {
+        hotelVariantSelect.value = String(requestedIndex);
+        activeHotelVariant = variants[requestedIndex];
+      } else if (variants.length === 1) {
+        hotelVariantSelect.value = '0';
+        activeHotelVariant = variants[0];
+      } else {
+        hotelVariantSelect.value = '';
+      }
+    }
+    applyHotelVariantMedia(room, activeHotelVariant);
+    const panoCacheKey = showroomPanoCacheKey(roomId, room, activeHotelVariant);
+    if (room.category === 'Hotel Room') updateHotelVariantDetails(room);
     setReviewsLoading();
     loadVenueReviews(room);
     galleryTitle.textContent = room.title + " Gallery";
@@ -809,7 +900,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update Book Button URL
     const bookBtn = document.querySelector('.btn-book');
-    if (bookBtn) bookBtn.href = getBookingUrl(room);
+    if (bookBtn && room.category !== 'Hotel Room') {
+      bookBtn.href = getBookingUrl(room);
+      bookBtn.setAttribute('aria-disabled', 'false');
+      bookBtn.classList.remove('is-disabled');
+      bookBtn.textContent = 'BOOK VENUE';
+    }
 
     // Dynamic Amenities Icons
     if (amenitiesGrid && room.amenities) {
@@ -879,7 +975,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (resetViewButton) resetViewButton.disabled = false;
       if (btnSwitch) btnSwitch.disabled = false;
 
-      if (!panoCache[roomId]) {
+      if (!panoCache[panoCacheKey]) {
         valTitle.textContent = "Loading 360...";
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "flex";
 
@@ -892,14 +988,14 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 pano = new PANOLENS.ImagePanorama(requestUrl);
             } catch (e) {
-                handlePanoLoadFailure(roomId, loadToken, null, panoramas);
+                handlePanoLoadFailure(roomId, loadToken, null, panoramas, panoCacheKey);
                 return;
             }
             let failureHandled = false;
             const handleError = () => {
                 if (failureHandled) return;
                 failureHandled = true;
-                handlePanoLoadFailure(roomId, loadToken, pano, panoramas);
+                handlePanoLoadFailure(roomId, loadToken, pano, panoramas, panoCacheKey);
             };
             // Panolens forwards Three/ImageLoader texture failures as an
             // `error` event on the panorama.  Keep this listener separate from
@@ -926,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
             );
 
             pano.addEventListener('enter', () => {
-                synchronizePanoramaState(roomId, room, index, pano, panoramas);
+                synchronizePanoramaState(roomId, room, index, pano, panoramas, panoCacheKey);
             });
 
             pano.addEventListener("load", function () {
@@ -948,27 +1044,27 @@ document.addEventListener("DOMContentLoaded", () => {
             // enter-fade-start listener resets the orbit-control target.
             pano.addEventListener('enter-fade-start', () => {
                 panoramaControlReady.add(pano);
-                synchronizePanoramaState(roomId, room, index, pano, panoramas, venueActivationToken, true);
+                synchronizePanoramaState(roomId, room, index, pano, panoramas, panoCacheKey, venueActivationToken, true);
             });
             panoramas.push(pano);
         });
         if (roomLoadToken !== loadToken) return;
         if (room.panoFailed) {
-            if (panoCache[roomId] === panoramas) delete panoCache[roomId];
+            if (panoCache[panoCacheKey] === panoramas) delete panoCache[panoCacheKey];
             activePanoramas = [];
         } else {
-            panoCache[roomId] = panoramas;
-            activePanoramas = panoCache[roomId];
+            panoCache[panoCacheKey] = panoramas;
+            activePanoramas = panoCache[panoCacheKey];
             currentPanoIndex = 0;
             const initialPanorama = activePanoramas[currentPanoIndex];
             const alreadyCurrent = viewer.panorama === initialPanorama;
             const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);
             if (!canApplyImmediately) enterPanorama(initialPanorama);
-            synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, activationToken, canApplyImmediately);
+            synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, panoCacheKey, activationToken, canApplyImmediately);
         }
       } else {
         if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
-        activePanoramas = panoCache[roomId];
+        activePanoramas = panoCache[panoCacheKey];
         // Re-add cached panoramas to the viewer scene (they were removed when
         // leaving this room).  viewer.add() also calls addPanoramaEventListener
         // which would stack listeners on every re-entry, so use the guard set.
@@ -986,7 +1082,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const alreadyCurrent = viewer.panorama === initialPanorama;
         const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);
         if (!canApplyImmediately) enterPanorama(initialPanorama);
-        synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, activationToken, canApplyImmediately);
+        synchronizePanoramaState(roomId, room, currentPanoIndex, initialPanorama, activePanoramas, panoCacheKey, activationToken, canApplyImmediately);
         queueInteractionHint(room.id);
       }
 
@@ -1071,6 +1167,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const openHotelMenu = document.querySelector('.hotel-room-dropdown.open');
       if (openHotelMenu) positionHotelMenu(openHotelMenu);
   }
+
+  hotelVariantSelect?.addEventListener('change', () => {
+      const room = dataMap[currentRoomId];
+      const variants = Array.isArray(room?.variants) ? room.variants : [];
+      const index = Number.parseInt(hotelVariantSelect.value, 10);
+      activeHotelVariant = Number.isInteger(index) && index >= 0 ? variants[index] || null : null;
+      if (room) activateVenue(currentRoomId, true);
+  });
+  document.querySelector('.btn-book')?.addEventListener('click', event => {
+      if (event.currentTarget.getAttribute('aria-disabled') === 'true') event.preventDefault();
+  });
 
   // A. Master Category Click (Toggle Menus)
   masterPills.forEach(master => {

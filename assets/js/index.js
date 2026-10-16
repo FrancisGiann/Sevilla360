@@ -153,6 +153,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const catalog = window.publicVenueCatalog || {};
   const modal = document.getElementById('idx-venue-modal');
   let activeVenue = null;
+  let activeHotelVariant = null;
   let activeImageIndex = 0;
   let previousFocus = null;
   let modalCalendar = null;
@@ -199,6 +200,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const amount = Number(value);
     return Number.isFinite(amount) ? '₱' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'Rate on request';
   };
+  const hotelPublicCapacityLabel = variant => {
+    const base = Number(variant?.base_capacity || 0);
+    const max = Number(variant?.max_capacity || 0);
+    if (!Number.isInteger(base) || !Number.isInteger(max) || base < 1 || max < base) return 'Capacity not listed';
+    return base === max ? `${max} guest${max === 1 ? '' : 's'}` : `${base}–${max} guests`;
+  };
+  const hotelPublicBedsLabel = variant => {
+    const beds = Number(variant?.bed_count || variant?.max_bed_count || 0);
+    return Number.isInteger(beds) && beds > 0 ? `${beds} bed${beds === 1 ? '' : 's'}` : 'Beds not listed';
+  };
   const tabFor = category => category === 'Event Hall' ? 'event-hall' : (category === 'Hotel Room' ? 'hotel-rooms' : 'resort-villa');
   const hasRate = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
   const hotelRateText = (venue, showStarting = true) => {
@@ -219,15 +230,18 @@ document.addEventListener("DOMContentLoaded", function () {
       ? 'Base rate ' + money(venue.rate) + ' · final quote after consultation'
       : 'Rate on request · final quote after consultation';
   };
-  const bookingUrl = (venue, dates, villaStayType = 'Day Time Stay') => {
+  const bookingUrl = (venue, dates, villaStayType = 'Day Time Stay', hotelVariant = null) => {
     const params = new URLSearchParams({ tab: tabFor(venue.category), category: venue.category, venue_name: venue.venue_name });
-    if (venue.room_group_id) {
-      params.set('room_group_id', String(venue.room_group_id));
+    const selectedVariant = hotelVariant || venue;
+    if (selectedVariant.room_group_id) {
+      params.set('room_group_id', String(selectedVariant.room_group_id));
     } else if (venue.venue_id) params.set('venue_id', venue.venue_id);
     if (venue.room_type) params.set('room_type', venue.room_type);
+    if (venue.room_type_code) params.set('room_type_code', venue.room_type_code);
+    if (venue.category === 'Hotel Room' && selectedVariant.variant_key) params.set('variant_key', String(selectedVariant.variant_key));
     if (dates && dates.startDate && dates.endDate) {
-      params.set(venue.room_group_id ? 'check_in' : 'start_date', dates.startDate);
-      params.set(venue.room_group_id ? 'check_out' : 'end_date', dates.endDate);
+      params.set(selectedVariant.room_group_id ? 'check_in' : 'start_date', dates.startDate);
+      params.set(selectedVariant.room_group_id ? 'check_out' : 'end_date', dates.endDate);
     }
     if (venue.category === 'Resort Villa') params.set('stay_type', villaStayType);
     return 'booking.php?' + params.toString();
@@ -318,7 +332,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const reviewNext = document.querySelector('.idx-review-next');
   const placeholderImage = 'assets/img/placeholder.jpg';
   const catalogVenues = Object.values(catalog).flatMap(categoryVenues => Array.isArray(categoryVenues) ? categoryVenues : []);
-  const catalogByReviewKey = new Map(catalogVenues.map(venue => [String(venue.review_key || venue.key || ''), venue]));
+  const catalogByReviewKey = new Map();
+  catalogVenues.forEach(venue => {
+    const reviewKeys = [venue.review_key, venue.key, ...(Array.isArray(venue.review_keys) ? venue.review_keys : [])];
+    reviewKeys.forEach(key => {
+      const normalizedKey = String(key || '').trim();
+      if (normalizedKey) catalogByReviewKey.set(normalizedKey, venue);
+    });
+  });
   const reviewCarouselState = { cards: [], page: 0, visible: 1, pageCount: 1 };
 
   const reviewVisibleCount = () => window.innerWidth > 1024 ? 3 : (window.innerWidth >= 768 ? 2 : 1);
@@ -547,11 +568,35 @@ document.addEventListener("DOMContentLoaded", function () {
   const selectedVillaStayType = () => modal?.querySelector('input[name="idx-villa-stay"]:checked')?.value || 'Day Time Stay';
   const updateContinue = () => {
     const link = modal?.querySelector('.idx-modal-continue');
-    if (link && activeVenue) link.href = bookingUrl(activeVenue, modalDates(), selectedVillaStayType());
+    if (!link || !activeVenue) return;
+    const needsHotelChoice = activeVenue.category === 'Hotel Room' && !activeHotelVariant;
+    link.href = needsHotelChoice ? '#' : bookingUrl(activeVenue, modalDates(), selectedVillaStayType(), activeHotelVariant);
+    link.setAttribute('aria-disabled', needsHotelChoice ? 'true' : 'false');
+    link.classList.toggle('is-disabled', needsHotelChoice);
+    link.textContent = needsHotelChoice ? 'Choose a room option' : 'Continue booking';
+  };
+  const renderModalFacts = (facts, venue, variant = null) => {
+    if (!facts) return;
+    facts.replaceChildren();
+    const values = variant ? {
+      Capacity: hotelPublicCapacityLabel(variant),
+      Beds: hotelPublicBedsLabel(variant),
+      Inventory: `${Number(variant.inventory_count || 0)} ${Number(variant.inventory_count || 0) === 1 ? 'unit' : 'units'}`,
+      'Check-in': String(variant.check_in_time || '').slice(0, 5) || 'To be confirmed',
+      'Check-out': String(variant.check_out_time || '').slice(0, 5) || 'To be confirmed',
+      Stay: 'Per night'
+    } : venue.facts || {};
+    Object.entries(values).forEach(([label, value]) => {
+      const item = document.createElement('div'); item.className = 'idx-modal-fact';
+      const name = document.createElement('span'); name.textContent = label;
+      const amount = document.createElement('strong'); amount.textContent = value; item.append(name, amount); facts.appendChild(item);
+    });
   };
   const setModalImage = index => {
     if (!activeVenue) return;
-    const images = activeVenue.images && activeVenue.images.length ? activeVenue.images : ['assets/img/placeholder.jpg'];
+    const images = activeHotelVariant?.images?.length
+      ? activeHotelVariant.images
+      : (activeVenue.images && activeVenue.images.length ? activeVenue.images : ['assets/img/placeholder.jpg']);
     activeImageIndex = (index + images.length) % images.length;
     const image = document.getElementById('idx-modal-image');
     if (image) { image.src = images[activeImageIndex]; image.alt = (activeVenue.display_name || activeVenue.title || activeVenue.venue_name || 'Venue') + ' image ' + (activeImageIndex + 1); }
@@ -560,7 +605,7 @@ document.addEventListener("DOMContentLoaded", function () {
   };
   const openVenueModal = (venue, source) => {
     if (!modal) return;
-    activeVenue = venue; previousFocus = source || document.activeElement; activeImageIndex = 0;
+    activeVenue = venue; activeHotelVariant = null; previousFocus = source || document.activeElement; activeImageIndex = 0;
     const title = document.getElementById('idx-modal-title');
     const category = modal.querySelector('.idx-modal-category');
     const rate = modal.querySelector('.idx-modal-rate');
@@ -570,10 +615,50 @@ document.addEventListener("DOMContentLoaded", function () {
     const amenities = modal.querySelector('.idx-modal-amenities');
     const checkoutBoundaryLegend = modal.querySelector('[data-calendar-legend="checkout-boundary"]');
     const villaStayOptions = modal.querySelector('.idx-modal-villa-stay');
+    const hotelVariantFieldset = modal.querySelector('.idx-modal-hotel-variant');
+    const hotelVariantOptions = modal.querySelector('#idx-modal-hotel-variant-options');
+
+    if (hotelVariantFieldset && hotelVariantOptions) {
+      const variants = Array.isArray(venue.variants) ? venue.variants : [];
+      hotelVariantFieldset.hidden = venue.category !== 'Hotel Room' || variants.length === 0;
+      hotelVariantOptions.replaceChildren();
+      variants.forEach((variant, index) => {
+        const option = document.createElement('label');
+        option.className = 'idx-room-option';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'idx-hotel-room-option';
+        radio.value = String(index);
+        radio.disabled = Number(variant.inventory_count || 0) < 1;
+        radio.checked = variants.length === 1;
+        radio.setAttribute('aria-label', `${hotelPublicCapacityLabel(variant)}, ${hotelPublicBedsLabel(variant)}, ${money(variant.nightly_rate)} per night`);
+        const details = document.createElement('span');
+        details.className = 'idx-room-option-details';
+        const facts = document.createElement('strong');
+        facts.textContent = `${hotelPublicCapacityLabel(variant)} · ${hotelPublicBedsLabel(variant)}`;
+        const price = document.createElement('span');
+        price.className = 'idx-room-option-price';
+        price.textContent = `${money(variant.nightly_rate)} / night`;
+        const units = document.createElement('small');
+        const unitCount = Number(variant.inventory_count || 0);
+        units.textContent = unitCount > 0 ? `${unitCount} ${unitCount === 1 ? 'unit' : 'units'}` : 'Unavailable';
+        details.append(facts, price, units);
+        option.append(radio, details);
+        const count = Number(variant.inventory_count || 0);
+        option.setAttribute('aria-label', `${variant.label || 'Room option'} · ${count} ${count === 1 ? 'unit' : 'units'}`);
+        hotelVariantOptions.appendChild(option);
+      });
+      if (variants.length === 1) {
+        activeHotelVariant = variants[0];
+      }
+    }
     
     if (title) title.textContent = venue.display_name || venue.title || venue.venue_name || venue.room_type || 'Venue details';
     if (category) category.textContent = venue.room_type ? venue.category + ' · ' + venue.room_type : venue.category;
-    if (rate) rate.textContent = rateText(venue, false);
+    const initialRateVenue = activeHotelVariant
+      ? { ...venue, rate: activeHotelVariant.nightly_rate, max_nightly_rate: activeHotelVariant.nightly_rate }
+      : venue;
+    if (rate) rate.textContent = rateText(initialRateVenue, false);
     if (rating) rating.textContent = ratingText(venue);
 
     const reviewsList = document.getElementById('idx-modal-reviews-list');
@@ -612,28 +697,23 @@ document.addEventListener("DOMContentLoaded", function () {
       if (dayRadio) dayRadio.checked = true;
     }
     if (description) description.textContent = venue.description || 'Details will be confirmed by the resort team.';
-    if (facts) {
-      facts.replaceChildren();
-      Object.entries(venue.facts || {}).forEach(([label, value]) => {
-        const item = document.createElement('div'); item.className = 'idx-modal-fact';
-        const name = document.createElement('span'); name.textContent = label;
-        const amount = document.createElement('strong'); amount.textContent = value; item.append(name, amount); facts.appendChild(item);
-      });
-    }
+    renderModalFacts(facts, venue, activeHotelVariant);
     if (amenities) {
       amenities.replaceChildren();
       const items = String(venue.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
       (items.length ? items : ['No amenities listed.']).forEach(item => { const li = document.createElement('li'); li.textContent = item; amenities.appendChild(li); });
     }
-    const thumbnails = modal.querySelector('.idx-modal-thumbnails');
-    if (thumbnails) {
+    const renderThumbnails = images => {
+      const thumbnails = modal.querySelector('.idx-modal-thumbnails');
+      if (!thumbnails) return;
       thumbnails.replaceChildren();
-      (venue.images && venue.images.length ? venue.images : ['assets/img/placeholder.jpg']).forEach((image, i) => {
+      (images && images.length ? images : ['assets/img/placeholder.jpg']).forEach((image, i) => {
         const thumb = document.createElement('button'); thumb.type = 'button'; thumb.className = 'idx-modal-thumbnail'; thumb.setAttribute('aria-label', 'Show image ' + (i + 1));
         const preview = document.createElement('img'); preview.src = image; preview.alt = ''; preview.loading = i === 0 ? 'eager' : 'lazy'; thumb.appendChild(preview);
         thumb.addEventListener('click', () => setModalImage(i)); thumbnails.appendChild(thumb);
       });
-    }
+    };
+    renderThumbnails(activeHotelVariant?.images?.length ? activeHotelVariant.images : venue.images);
     if (typeof SevillaCalendar !== 'undefined') {
       if (!modalCalendar) modalCalendar = new SevillaCalendar('idx-modal-calendar', { onRangeSelected: updateContinue });
       modalCalendar.clearSelection();
@@ -642,7 +722,15 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.inclusiveRangeGuard = false;
       modalCalendar.minimumRangeNights = 0;
       modalCalendar.requireHotelRules = venue.category === 'Hotel Room';
-      modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null, venue.category === 'Hotel Room', venue.room_group_id || null);
+      modalCalendar.selectionLocked = venue.category === 'Hotel Room' && !activeHotelVariant;
+      modalCalendar.render();
+      const calendarNote = modal?.querySelector('.idx-modal-calendar-note');
+      if (calendarNote) calendarNote.textContent = venue.category === 'Hotel Room' && !activeHotelVariant
+        ? 'Choose a room option before checking dates.'
+        : 'Select your dates here to pre-fill your booking. No hold is placed until checkout.';
+      if (venue.category !== 'Hotel Room' || activeHotelVariant) {
+        modalCalendar.fetchBookedDates(venue.category === 'Hotel Room' ? venue.room_type : venue.category, venue.venue_name, venue.venue_id || null, venue.category === 'Hotel Room', activeHotelVariant?.room_group_id || null);
+      }
     }
     setModalImage(0); updateContinue();
     modal.hidden = false; modal.setAttribute('aria-hidden', 'false'); lockPageScroll();
@@ -657,6 +745,55 @@ document.addEventListener("DOMContentLoaded", function () {
   modal?.addEventListener('click', event => { if (event.target === modal) closeVenueModal(); });
   modal?.querySelector('.idx-modal-gallery-prev')?.addEventListener('click', () => setModalImage(activeImageIndex - 1));
   modal?.querySelector('.idx-modal-gallery-next')?.addEventListener('click', () => setModalImage(activeImageIndex + 1));
+  modal?.querySelector('#idx-modal-hotel-variant-options')?.addEventListener('change', event => {
+    const radio = event.target.closest('input[name="idx-hotel-room-option"]');
+    if (!radio) return;
+    if (!activeVenue || activeVenue.category !== 'Hotel Room') return;
+    const variants = Array.isArray(activeVenue.variants) ? activeVenue.variants : [];
+    const index = Number.parseInt(radio.value, 10);
+    activeHotelVariant = Number.isInteger(index) && index >= 0 ? variants[index] || null : null;
+    activeImageIndex = 0;
+    renderModalFacts(modal?.querySelector('.idx-modal-facts'), activeVenue, activeHotelVariant);
+    const selectedImages = activeHotelVariant?.images?.length ? activeHotelVariant.images : activeVenue.images;
+    const thumbnails = modal.querySelector('.idx-modal-thumbnails');
+    if (thumbnails) {
+      thumbnails.replaceChildren();
+      (selectedImages?.length ? selectedImages : ['assets/img/placeholder.jpg']).forEach((imagePath, imageIndex) => {
+        const thumb = document.createElement('button'); thumb.type = 'button'; thumb.className = 'idx-modal-thumbnail'; thumb.setAttribute('aria-label', 'Show image ' + (imageIndex + 1));
+        const preview = document.createElement('img'); preview.src = imagePath; preview.alt = ''; preview.loading = imageIndex === 0 ? 'eager' : 'lazy'; thumb.appendChild(preview);
+        thumb.addEventListener('click', () => setModalImage(imageIndex)); thumbnails.appendChild(thumb);
+      });
+    }
+    setModalImage(0);
+    const rate = modal?.querySelector('.idx-modal-rate');
+    if (rate) rate.textContent = activeHotelVariant
+      ? `${money(activeHotelVariant.nightly_rate)} / night`
+      : rateText(activeVenue, false);
+    if (modalCalendar) {
+      modalCalendar.clearSelection();
+      const note = modal?.querySelector('.idx-modal-calendar-note');
+      if (note) note.textContent = activeHotelVariant
+        ? 'Checking availability for this room option…'
+        : 'Choose a room option before checking dates.';
+      modalCalendar.selectionLocked = !activeHotelVariant;
+      modalCalendar.render();
+      if (activeHotelVariant) {
+        const selectedVenue = activeVenue;
+        const selectedVariant = activeHotelVariant;
+        modalCalendar.fetchBookedDates(selectedVenue.room_type, selectedVenue.venue_name, null, true, selectedVariant.room_group_id || null)
+          .then(loaded => {
+            if (activeVenue !== selectedVenue || activeHotelVariant !== selectedVariant || !note) return;
+            note.textContent = loaded
+              ? 'Select your dates here to pre-fill your booking. No hold is placed until checkout.'
+              : 'Availability could not be loaded. Choose another option to try again.';
+          });
+      }
+    }
+    updateContinue();
+  });
+  modal?.querySelector('.idx-modal-continue')?.addEventListener('click', event => {
+    if (event.currentTarget.getAttribute('aria-disabled') === 'true') event.preventDefault();
+  });
   modal?.querySelector('.idx-modal-calendar .cal-days-grid')?.addEventListener('click', () => window.setTimeout(updateContinue, 0));
   modal?.querySelectorAll('input[name="idx-villa-stay"]').forEach(radio => {
     radio.addEventListener('change', event => {
@@ -677,7 +814,8 @@ document.addEventListener("DOMContentLoaded", function () {
   modal?.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); closeVenueModal(); return; }
     if (event.key !== 'Tab') return;
-    const focusable = Array.from(modal.querySelectorAll('button, a[href]')).filter(item => !item.disabled && item.offsetParent !== null);
+    const focusable = Array.from(modal.querySelectorAll('button, a[href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(item => !item.disabled && item.getAttribute('aria-hidden') !== 'true' && item.offsetParent !== null);
     if (!focusable.length) return;
     const first = focusable[0], last = focusable[focusable.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/media_helper.php';
+require_once __DIR__ . '/../../includes/hotel_rooms.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -57,6 +58,10 @@ try {
         // Prevent deletion of the ONE core system slot that breaks the website layout if missing
         if ($media['slot_assignment'] === 'home-hero') {
             throw new Exception("The Homepage Hero Banner cannot be deleted, it can only be replaced.");
+        }
+        $optionGroupId = hotel_room_group_option_media_slot_group_id((string)($media['slot_assignment'] ?? ''));
+        if ($optionGroupId !== null && !hotel_room_group_option_media_identity($conn, $optionGroupId, true)) {
+            throw new Exception('The room-option gallery is no longer available.');
         }
         $files_to_delete[] = $media;
     }

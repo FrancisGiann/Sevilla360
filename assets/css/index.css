@@ -717,6 +717,7 @@
 .idx-modal-thumbnail img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .idx-modal-thumbnail::after { content: ''; position: absolute; inset: .25rem; border: 1px solid transparent; }.idx-modal-thumbnail.is-active::after { border-color: var(--idx-gold); }
 .idx-modal-copy { min-height: 0; padding: 1.55rem 1.7rem; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: thin; scrollbar-color: var(--idx-gold-deep) var(--idx-sand); }
+.idx-modal-content { display: contents; }
 .idx-modal-copy::-webkit-scrollbar { width: 6px; }
 .idx-modal-copy::-webkit-scrollbar-track { background: var(--idx-sand); }
 .idx-modal-copy::-webkit-scrollbar-thumb { background: var(--idx-gold-deep); border-radius: 999px; }
@@ -726,6 +727,21 @@
 .idx-modal-villa-stay input { accent-color: var(--idx-gold-deep); }
 .idx-modal-villa-stay small { margin-left: auto; color: #726a60; font-size: .69rem; text-align: right; }
 .idx-modal-villa-stay[hidden] { display: none; }
+.idx-modal-hotel-variant { display: grid; gap: .55rem; margin: .65rem 0 0; padding: .75rem; border: 1px solid var(--idx-hairline); border-radius: 8px; }
+.idx-modal-hotel-variant legend { padding: 0 .3rem; color: var(--idx-ink); font-size: .78rem; font-weight: 600; }
+.idx-room-option-list { display: grid; gap: .45rem; }
+.idx-room-option { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); align-items: start; gap: .65rem; padding: .65rem .7rem; border: 1px solid var(--idx-hairline); border-radius: 7px; background: #fff; color: var(--idx-ink); cursor: pointer; }
+.idx-room-option:has(input:checked) { border-color: var(--idx-gold-deep); background: #fbf7ef; }
+.idx-room-option input { width: 1.05rem; height: 1.05rem; margin: .12rem 0 0; accent-color: var(--idx-gold-deep); }
+.idx-room-option input:focus-visible { outline: 2px solid var(--idx-gold-deep); outline-offset: 3px; }
+.idx-room-option input:disabled { cursor: not-allowed; }
+.idx-room-option:has(input:disabled) { opacity: .6; cursor: not-allowed; }
+.idx-room-option-details { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: .15rem .7rem; min-width: 0; }
+.idx-room-option-details strong { min-width: 0; color: var(--idx-ink); font-size: .78rem; line-height: 1.35; }
+.idx-room-option-price { color: var(--idx-ink); font-size: .76rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.idx-room-option-details small { grid-column: 1 / -1; color: #62594f; font-size: .68rem; line-height: 1.35; }
+.idx-modal-hotel-variant small { color: #62594f; font-size: .69rem; line-height: 1.4; }
+.idx-modal-hotel-variant[hidden] { display: none; }
 .idx-modal-category { margin: 0; color: var(--idx-gold-deep); font-size: .68rem; letter-spacing: .15em; text-transform: uppercase; }
 .idx-modal-copy h2 { margin: .5rem 0 0; color: var(--idx-ink); font: 400 clamp(1.8rem, 3vw, 2.4rem)/1.08 var(--font-heading); }
 .idx-modal-rate { margin: .65rem 0 0; color: var(--idx-ink); font-size: .96rem; font-weight: 600; line-height: 1.5; }
@@ -776,6 +792,8 @@
 .idx-modal-calendar .idx-modal-calendar-legend-dot--checkout { background: #d6a870; border: 2px dashed #8b5e2c; }
 .idx-modal-calendar .idx-modal-calendar-legend-dot--past { background: #999; }
 .idx-modal-calendar-note { margin: .5rem 0 0; color: #726a60; font-size: .7rem; line-height: 1.4; }.idx-modal-continue { width: 100%; margin-top: .85rem; padding: .75rem 1rem; font-size: .61rem; }
+.idx-modal-continue.is-disabled { opacity: .55; cursor: not-allowed; }
+.idx-modal-calendar .cal-day-cell.availability-loading { opacity: .55; cursor: wait; pointer-events: none; }
 
 @media (max-height: 640px) and (min-width: 768px) {
   .idx-modal-copy { overflow-y: auto; }
@@ -829,8 +847,25 @@
   .idx-modal-gallery > img { min-height: 0; height: 100%; flex: 0 0 auto; }
   .idx-modal-thumbnails { gap: .5rem; }
   .idx-modal-thumbnail { flex-basis: 3.5rem; width: 3.5rem !important; height: 3rem !important; min-width: 3.5rem; min-height: 3rem; }
-  .idx-modal-copy { flex: 1 1 auto; overflow-y: auto; padding-bottom: 5rem; } /* Keep the fixed booking action clear of the last detail. */
-  .idx-page .idx-modal-continue { position: absolute; bottom: 0; left: 0; right: 0; width: 100%; min-width: 0; max-width: none; box-sizing: border-box; margin: 0; border-radius: 0 0 14px 14px; height: 4rem; z-index: 10; font-size: .8rem; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); }
+  .idx-modal-copy { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+  .idx-modal-content { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-bottom: 1rem; }
+  .idx-modal-content > #idx-modal-title { order: 0; }
+  .idx-modal-content > .idx-modal-category { order: 1; }
+  .idx-modal-content > .idx-modal-rate { order: 2; }
+  .idx-modal-content > .idx-modal-hotel-variant { order: 3; }
+  .idx-modal-content > .idx-modal-villa-stay { order: 3; }
+  .idx-modal-content > .idx-modal-facts { order: 4; }
+  .idx-modal-content > .idx-modal-description { order: 5; }
+  .idx-modal-content > .idx-modal-amenities { order: 6; }
+  .idx-modal-content > .idx-modal-rating { order: 7; }
+  .idx-modal-content > .idx-modal-reviews { order: 8; }
+  .idx-modal-content > .idx-modal-availability { order: 9; }
+  .idx-page .idx-modal-continue { position: static; z-index: 10; align-self: stretch; flex: 0 0 4rem; width: auto; min-width: 0; max-width: none; box-sizing: border-box; margin: 1rem -1.7rem -1.55rem; border-radius: 0 0 14px 14px; height: 4rem; font-size: .8rem; box-shadow: 0 -4px 12px rgba(0,0,0,0.15); }
+}
+@media (max-width: 380px) {
+  .idx-room-option { gap: .5rem; padding: .6rem .55rem; }
+  .idx-room-option-details { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+  .idx-room-option-price { white-space: normal; }
 }
 @media (max-width: 767px) and (max-height: 500px) {
   .idx-modal-gallery { height: clamp(8rem, 32vh, 10rem); flex-basis: clamp(8rem, 32vh, 10rem); }

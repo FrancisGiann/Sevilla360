@@ -19,19 +19,37 @@ require_once 'includes/media_helper.php';
 $natural_receptionist_enabled = trim((string)($_ENV['RECEPTIONIST_NATURAL_HYBRID_ENABLED'] ?? getenv('RECEPTIONIST_NATURAL_HYBRID_ENABLED') ?: '')) === '1';
 
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
+$hotel_media_overrides_ready = $hotel_group_schema_ready && hotel_group_media_overrides_schema_ready($conn);
 $hotel_room_group_select = $hotel_group_schema_ready ? 'hr.room_group_id' : 'NULL';
 $hotel_type_code_select = $hotel_group_schema_ready ? 'hrg.room_type_code' : 'NULL';
 $hotel_type_code_group = $hotel_group_schema_ready ? ', hrg.room_type_code, hr.room_group_id' : '';
 $hotel_type_catalog_join = $hotel_group_schema_ready
     ? ' LEFT JOIN hotel_room_groups hrg ON hrg.id = hr.room_group_id LEFT JOIN hotel_room_types hrt ON hrt.type_code = hrg.room_type_code'
     : '';
+$hotel_building_select = $hotel_group_schema_ready ? 'COALESCE(hrg.building_name, v.name)' : 'v.name';
+$hotel_building_group = $hotel_group_schema_ready ? ', hrg.building_name' : '';
+$hotel_canonical_type_select = $hotel_group_schema_ready ? 'COALESCE(hrt.display_name, hr.room_type)' : 'hr.room_type';
+$hotel_group_media_select = $hotel_group_schema_ready
+    ? "hrg.media_slot_key, hrg.legacy_room_type, NULL AS legacy_media_room_types,
+        hrg.base_capacity, hrg.max_capacity, hrg.bed_count AS group_bed_count,
+        hrg.nightly_rate AS group_nightly_rate, hrg.extra_pax_rate, hrg.check_in_time, hrg.check_out_time,
+        " . ($hotel_media_overrides_ready
+            ? 'MAX(hrg.standard_media_override_enabled) AS standard_media_override_enabled, MAX(hrg.tour_media_override_enabled) AS tour_media_override_enabled'
+            : '0 AS standard_media_override_enabled, 0 AS tour_media_override_enabled')
+    : 'NULL AS media_slot_key, hr.room_type AS legacy_room_type, hr.room_type AS legacy_media_room_type, hr.room_type AS legacy_media_room_types, hr.base_capacity AS base_capacity, hr.max_capacity AS max_capacity, hr.bed_count AS group_bed_count, hr.nightly_rate AS group_nightly_rate, hr.extra_pax_rate AS extra_pax_rate, hr.check_in_time AS check_in_time, hr.check_out_time AS check_out_time';
+$hotel_group_by = $hotel_group_schema_ready
+    ? ', hrg.media_slot_key, hrg.legacy_room_type, hrg.base_capacity, hrg.max_capacity, hrg.bed_count, hrg.nightly_rate, hrg.extra_pax_rate, hrg.check_in_time, hrg.check_out_time'
+    : ', hr.base_capacity, hr.max_capacity, hr.bed_count, hr.nightly_rate, hr.extra_pax_rate, hr.check_in_time, hr.check_out_time';
 $hotel_type_active_filter = $hotel_group_schema_ready ? " AND (v.category <> 'Hotel Room' OR hrt.active = 1)" : '';
 
 // 1. Fetch all venues
 $venues_query = $conn->query("
     SELECT 
-        v.id, v.category, v.name AS venue_name, v.status, v.description, v.amenities,
-        hr.room_type, {$hotel_room_group_select} AS room_group_id, {$hotel_type_code_select} AS room_type_code, hr.base_capacity, hr.max_capacity, MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count, hr.nightly_rate,
+        v.id, v.category, v.name AS venue_name, {$hotel_building_select} AS building_name, v.status, v.description, v.amenities,
+        {$hotel_canonical_type_select} AS room_type, {$hotel_room_group_select} AS room_group_id, {$hotel_type_code_select} AS room_type_code,
+        {$hotel_group_media_select}, hr.room_type AS inventory_legacy_room_type,
+        MIN(hr.bed_count) AS min_bed_count, MAX(hr.bed_count) AS max_bed_count,
+        COUNT(hr.venue_id) AS inventory_count,
         eh.base_rate AS eh_rate, eh.max_capacity AS eh_cap,
         vi.day_rate AS vi_rate, vi.max_capacity AS vi_cap
     FROM venues v
@@ -40,28 +58,127 @@ $venues_query = $conn->query("
     LEFT JOIN event_halls eh ON v.id = eh.venue_id
     LEFT JOIN villas vi ON v.id = vi.venue_id
     WHERE v.status = 'Available'{$hotel_type_active_filter}
-    GROUP BY v.id, v.category, v.name, hr.room_type {$hotel_type_code_group}
+    GROUP BY v.id, v.category, v.name, hr.room_type {$hotel_type_code_group}{$hotel_building_group}{$hotel_group_by}
     ORDER BY v.id ASC, hr.room_type ASC
 ");
 
 $showroom_data = [];
+$hotel_showroom_slot_map = []; // [actual media slot => all variant destination IDs sharing the canonical room type]
+$hotel_showroom_option_map = []; // [deterministic option slot => exact destination and room group]
+$hotel_showroom_option_tour_scopes = []; // [private panorama scope => exact destination and variant key]
 
 if ($venues_query) {
     while($v = $venues_query->fetch_assoc()) {
-        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $v['venue_name'] . ' - ' . $v['room_type'] : $v['venue_name'];
-        $safe_id = substr(media_cms_venue_slot_key($display_name), strlen('venue_'));
+        $buildingName = $v['category'] === 'Hotel Room' ? (string)($v['building_name'] ?? $v['venue_name']) : (string)$v['venue_name'];
+        $display_name = ($v['category'] === 'Hotel Room' && !empty($v['room_type'])) ? $buildingName . ' - ' . $v['room_type'] : $v['venue_name'];
+        $safe_id = $v['category'] === 'Hotel Room'
+            ? 'hotel_' . substr(hotel_public_room_type_key($buildingName, (string)($v['room_type_code'] ?? ''), (string)($v['room_type'] ?? '')), 0, 32)
+            : substr(media_cms_venue_slot_key($display_name), strlen('venue_'));
         
         $cap = 'N/A'; $rate = 'N/A';
         $capacity_value = null; $rate_value = null; $beds_value = null;
         $beds = '';
         if ($v['category'] === 'Hotel Room') {
             $capacity_value = is_numeric($v['max_capacity']) ? (int)$v['max_capacity'] : null;
-            $rate_value = is_numeric($v['nightly_rate']) ? (float)$v['nightly_rate'] : null;
+            $rate_value = is_numeric($v['group_nightly_rate'] ?? $v['nightly_rate'] ?? null) ? (float)($v['group_nightly_rate'] ?? $v['nightly_rate']) : null;
             $cap = $capacity_value !== null ? $capacity_value . ' pax' : 'N/A';
             $rate = $rate_value !== null ? '₱' . number_format($rate_value) . ' /night' : 'N/A';
             $minBeds = (int)($v['min_bed_count'] ?? 0); $maxBeds = (int)($v['max_bed_count'] ?? 0);
             $beds_value = $maxBeds > 0 ? $maxBeds : ($minBeds > 0 ? $minBeds : null);
             $beds = $beds_value === null ? '' : ($minBeds === $maxBeds ? $minBeds . ' ' . ($minBeds === 1 ? 'bed' : 'beds') : $minBeds . '–' . $maxBeds . ' beds');
+
+            $commercial_key = hotel_commercial_variant_key([
+                'building_name' => $buildingName,
+                'room_type_code' => (string)($v['room_type_code'] ?? ''),
+                'legacy_room_type' => (string)($v['room_type_code'] ?? '') === '' ? (string)($v['room_type'] ?? '') : '',
+                'base_capacity' => (int)($v['base_capacity'] ?? 0),
+                'max_capacity' => (int)($v['max_capacity'] ?? 0),
+                'bed_count' => (int)($v['group_bed_count'] ?? $beds_value ?? 0),
+                'nightly_rate' => $rate_value ?? 0,
+                'extra_pax_rate' => (float)($v['extra_pax_rate'] ?? 0),
+                'check_in_time' => (string)($v['check_in_time'] ?? '14:00:00'),
+                'check_out_time' => (string)($v['check_out_time'] ?? '12:00:00'),
+            ]);
+            $variant_label = hotel_public_variant_label([
+                'base_capacity' => (int)($v['base_capacity'] ?? 0),
+                'max_capacity' => (int)($v['max_capacity'] ?? 0),
+                'bed_count' => $beds_value ?? 0,
+                'nightly_rate' => $rate_value,
+            ]);
+            $variant = [
+                'room_group_id' => is_numeric($v['room_group_id'] ?? null) ? (int)$v['room_group_id'] : null,
+                'variant_key' => $commercial_key,
+                'room_type_code' => (string)($v['room_type_code'] ?? ''),
+                'label' => $variant_label,
+                'base_capacity' => (int)($v['base_capacity'] ?? 0),
+                'max_capacity' => (int)($v['max_capacity'] ?? 0),
+                'bed_count' => (int)($v['group_bed_count'] ?? $beds_value ?? 0),
+                'nightly_rate' => $rate_value,
+                'extra_pax_rate' => (float)($v['extra_pax_rate'] ?? 0),
+                'check_in_time' => (string)($v['check_in_time'] ?? ''),
+                'check_out_time' => (string)($v['check_out_time'] ?? ''),
+                'inventory_count' => max(0, (int)($v['inventory_count'] ?? 0)),
+                'standard_media_override_enabled' => (int)($v['standard_media_override_enabled'] ?? 0) === 1,
+                'tour_media_override_enabled' => (int)($v['tour_media_override_enabled'] ?? 0) === 1,
+            ];
+            $room_group_id = $variant['room_group_id'];
+            $variant_map_key = $commercial_key . ($room_group_id !== null ? '#group:' . $room_group_id : '');
+            $variant['variant_map_key'] = $variant_map_key;
+            $variant['_own_gallery_candidates'] = [];
+            $variant['_own_tour'] = [
+                'pano_urls' => [], 'pano_media_ids' => [], 'showroom_views' => [],
+                'hotspots_by_pano_index' => [], 'legacy_pano_media_ids' => [],
+            ];
+            $media_group = [
+                'building_name' => $buildingName,
+                'room_type' => (string)($v['room_type'] ?? ''),
+                'room_type_code' => (string)($v['room_type_code'] ?? ''),
+                'legacy_room_type' => (string)($v['legacy_room_type'] ?? ''),
+                'legacy_media_room_types' => (string)($v['legacy_media_room_types'] ?? $v['inventory_legacy_room_type'] ?? ''),
+                'media_slot_key' => (string)($v['media_slot_key'] ?? ''),
+            ];
+            foreach (hotel_room_group_media_slot_keys($media_group) as $media_slot) {
+                $hotel_showroom_slot_map[$media_slot][] = $safe_id;
+            }
+
+            if (!isset($showroom_data[$safe_id])) {
+                $showroom_data[$safe_id] = [
+                    'id' => $safe_id,
+                    'venue_id' => $v['id'],
+                    'review_key' => hotel_public_review_key(null, $buildingName, (string)($v['room_type'] ?? '')),
+                    'title' => strtoupper($display_name),
+                    'category' => $v['category'],
+                    'room_type' => $v['room_type'] ?? '',
+                    'room_type_code' => $v['room_type_code'] ?? null,
+                    'venue_name' => $buildingName,
+                    'status' => $v['status'],
+                    'description' => !empty($v['description']) ? $v['description'] : 'Explore this hotel room in the Sevilla360 showroom.',
+                    'amenities' => !empty($v['amenities']) ? explode(',', $v['amenities']) : [],
+                    'variants' => [],
+                    '_variant_map' => [],
+                    'pano_url' => '',
+                    'gallery' => [],
+                    'gallery_candidates' => [],
+                ];
+            }
+            if (isset($showroom_data[$safe_id]['_variant_map'][$variant_map_key])) {
+                $showroom_data[$safe_id]['_variant_map'][$variant_map_key]['inventory_count'] += $variant['inventory_count'];
+            } else {
+                $showroom_data[$safe_id]['_variant_map'][$variant_map_key] = $variant;
+            }
+            if ($room_group_id !== null) {
+                $standardSlot = hotel_room_group_option_media_slot_key($room_group_id);
+                $tourSlot = hotel_room_group_option_media_slot_key($room_group_id, true);
+                if ($standardSlot !== null) $hotel_showroom_option_map[$standardSlot] = ['destination_id' => $safe_id, 'variant_key' => $variant_map_key, 'kind' => 'standard'];
+                if ($tourSlot !== null) {
+                    $scope = 'variant_tour_' . $room_group_id;
+                    $hotel_showroom_option_map[$tourSlot] = ['destination_id' => $safe_id, 'variant_key' => $variant_map_key, 'kind' => '360', 'scope' => $scope];
+                    $hotel_showroom_option_tour_scopes[$scope] = ['destination_id' => $safe_id, 'variant_key' => $variant_map_key];
+                }
+            }
+            continue;
+        } else {
+            $variant_label = '';
         }
         if ($v['category'] === 'Event Hall') {
             $capacity_value = is_numeric($v['eh_cap']) ? (int)$v['eh_cap'] : null;
@@ -97,6 +214,7 @@ if ($venues_query) {
             'room_type' => $v['room_type'] ?? '',
             'room_group_id' => is_numeric($v['room_group_id'] ?? null) ? (int)$v['room_group_id'] : null,
             'room_type_code' => $v['room_type_code'] ?? null,
+            'variant_label' => $variant_label,
             'venue_name' => $v['venue_name'],
             'capacity' => $cap,
             'capacity_value' => $capacity_value,
@@ -116,60 +234,162 @@ if ($venues_query) {
     }
 }
 
+// Collapse commercial variants into one canonical room destination while
+// keeping every exact group/key available for booking.
+foreach ($showroom_data as &$destination) {
+    if (($destination['category'] ?? '') !== 'Hotel Room') continue;
+    $destination['variants'] = array_values($destination['_variant_map'] ?? []);
+    usort($destination['variants'], static fn(array $left, array $right): int =>
+        ((float)($left['nightly_rate'] ?? 0) <=> (float)($right['nightly_rate'] ?? 0))
+        ?: ((int)($left['max_capacity'] ?? 0) <=> (int)($right['max_capacity'] ?? 0))
+        ?: ((int)($left['bed_count'] ?? 0) <=> (int)($right['bed_count'] ?? 0))
+    );
+    $rates = array_values(array_filter(array_map(static fn(array $variant): ?float => is_numeric($variant['nightly_rate'] ?? null) ? (float)$variant['nightly_rate'] : null, $destination['variants']), static fn(?float $value): bool => $value !== null));
+    $baseCapacities = array_values(array_filter(array_map(static fn(array $variant): int => (int)($variant['base_capacity'] ?? 0), $destination['variants']), static fn(int $value): bool => $value > 0));
+    $maxCapacities = array_values(array_filter(array_map(static fn(array $variant): int => (int)($variant['max_capacity'] ?? 0), $destination['variants']), static fn(int $value): bool => $value > 0));
+    $beds = array_values(array_filter(array_map(static fn(array $variant): int => (int)($variant['bed_count'] ?? 0), $destination['variants']), static fn(int $value): bool => $value > 0));
+    $destination['inventory_count'] = array_sum(array_map(static fn(array $variant): int => (int)($variant['inventory_count'] ?? 0), $destination['variants']));
+    $destination['rate_value'] = $rates ? min($rates) : null;
+    $destination['rate_max_value'] = $rates ? max($rates) : null;
+    if ($rates) {
+        $rateLabel = '₱' . number_format(min($rates));
+        if (min($rates) !== max($rates)) $rateLabel .= '–₱' . number_format(max($rates));
+        $destination['rate'] = $rateLabel . ' /night';
+    } else {
+        $destination['rate'] = 'N/A';
+    }
+    $destination['capacity_value'] = $maxCapacities ? max($maxCapacities) : null;
+    $destination['capacity'] = $baseCapacities && $maxCapacities
+        ? (min($baseCapacities) === max($maxCapacities) ? min($baseCapacities) : min($baseCapacities) . '–' . max($maxCapacities)) . ' pax'
+        : 'N/A';
+    $destination['beds_value'] = $beds ? max($beds) : null;
+    $destination['beds'] = $beds ? (min($beds) === max($beds) ? min($beds) : min($beds) . '–' . max($beds)) . ' ' . (max($beds) === 1 ? 'bed' : 'beds') : '';
+    $destination['variant_summary'] = count($destination['variants']) . ' room option' . (count($destination['variants']) === 1 ? '' : 's')
+        . ($destination['capacity'] !== 'N/A' ? ' · ' . $destination['capacity'] : '')
+        . ($destination['beds'] !== '' ? ' · ' . $destination['beds'] : '')
+        . ($destination['rate'] !== 'N/A' ? ' · from ' . $destination['rate'] : '');
+}
+unset($destination);
+$hotel_showroom_slot_map = array_map(static fn(array $ids): array => array_values(array_unique($ids)), $hotel_showroom_slot_map);
+
 // 2. Fetch Media from CMS and attach to the correct showroom venue
 // Primary panoramas are shown first; stable media IDs keep navigation intact.
 $media_query = $conn->query("SELECT id, slot_assignment, file_path, file_name, media_type, is_primary, showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov FROM media_cms ORDER BY is_primary DESC, id ASC");
 
 $pano_index_map = []; // [ base_id => [ media_id => pano_url_index ] ]
 $legacy_pano_media_ids = []; // [ base_id => media IDs in historical id-ascending order ]
+$legacy_pano_media_ids_by_slot = []; // Variant destination -> original media slot -> historical IDs
+$pano_source_slot_by_media_id = []; // Stable IDs preserve each hotspot graph's original slot boundary
 
 if ($media_query) {
     while ($m = $media_query->fetch_assoc()) {
         $slot = $m['slot_assignment'];
 
-        if ($m['media_type'] === '360' && preg_match('/^venue_.+_360$/', $slot)) {
-            $base_id = preg_replace('/^venue_(.+)_360$/', '$1', $slot);
-            if (isset($showroom_data[$base_id])) {
-                if (!isset($showroom_data[$base_id]['pano_urls'])) {
-                    $showroom_data[$base_id]['pano_urls'] = [];
-                    $showroom_data[$base_id]['pano_media_ids'] = [];
-                    $pano_index_map[$base_id] = [];
-                    $legacy_pano_media_ids[$base_id] = [];
-                }
-                $current_index = count($showroom_data[$base_id]['pano_urls']);
-                $showroom_data[$base_id]['pano_urls'][] = $m['file_path'];
-                $showroom_data[$base_id]['pano_media_ids'][] = (int)$m['id'];
+        if ($m['media_type'] === '360' && str_ends_with((string)$slot, '_360')) {
+            $base_id = substr((string)$slot, 0, -4);
+            $optionSource = $hotel_showroom_option_map[(string)$slot] ?? null;
+            if (is_array($optionSource) && ($optionSource['kind'] ?? '') === '360') {
+                $scope = (string)$optionSource['scope'];
+                $variantTour =& $showroom_data[$optionSource['destination_id']]['_variant_map'][$optionSource['variant_key']]['_own_tour'];
+                $variantTour['pano_urls'][] = $m['file_path'];
+                $variantTour['pano_media_ids'][] = (int)$m['id'];
                 if ($m['showroom_view_x'] !== null && $m['showroom_view_y'] !== null && $m['showroom_view_z'] !== null && $m['showroom_fov'] !== null) {
-                    if (!isset($showroom_data[$base_id]['showroom_views'])) {
-                        $showroom_data[$base_id]['showroom_views'] = [];
-                    }
-                    $showroom_data[$base_id]['showroom_views'][(string)(int)$m['id']] = [
+                    $variantTour['showroom_views'][(string)(int)$m['id']] = [
+                        'x' => (float)$m['showroom_view_x'], 'y' => (float)$m['showroom_view_y'],
+                        'z' => (float)$m['showroom_view_z'], 'fov' => (float)$m['showroom_fov'],
+                    ];
+                }
+                $pano_index_map[$scope][(int)$m['id']] = count($variantTour['pano_urls']) - 1;
+                $legacy_pano_media_ids[$scope][] = (int)$m['id'];
+                $legacy_pano_media_ids_by_slot[$scope][$base_id][] = (int)$m['id'];
+                $pano_source_slot_by_media_id[(int)$m['id']] = $base_id;
+                unset($variantTour);
+                continue;
+            }
+            $destination_ids = showroom_tour_media_destination_ids((string)$slot, '360', $showroom_data, $hotel_showroom_slot_map);
+            foreach (array_values(array_unique($destination_ids)) as $destination_id) {
+                if (!isset($showroom_data[$destination_id])) continue;
+                if (isset($pano_index_map[$destination_id][(int)$m['id']])) continue;
+                if (!isset($showroom_data[$destination_id]['pano_urls'])) {
+                    $showroom_data[$destination_id]['pano_urls'] = [];
+                    $showroom_data[$destination_id]['pano_media_ids'] = [];
+                    $pano_index_map[$destination_id] = [];
+                    $legacy_pano_media_ids[$destination_id] = [];
+                }
+                $current_index = count($showroom_data[$destination_id]['pano_urls']);
+                $showroom_data[$destination_id]['pano_urls'][] = $m['file_path'];
+                $showroom_data[$destination_id]['pano_media_ids'][] = (int)$m['id'];
+                if ($m['showroom_view_x'] !== null && $m['showroom_view_y'] !== null && $m['showroom_view_z'] !== null && $m['showroom_fov'] !== null) {
+                    if (!isset($showroom_data[$destination_id]['showroom_views'])) $showroom_data[$destination_id]['showroom_views'] = [];
+                    $showroom_data[$destination_id]['showroom_views'][(string)(int)$m['id']] = [
                         'x' => (float)$m['showroom_view_x'],
                         'y' => (float)$m['showroom_view_y'],
                         'z' => (float)$m['showroom_view_z'],
                         'fov' => (float)$m['showroom_fov'],
                     ];
                 }
-                $pano_index_map[$base_id][$m['id']] = $current_index;
-                $legacy_pano_media_ids[$base_id][] = (int)$m['id'];
+                $pano_index_map[$destination_id][(int)$m['id']] = $current_index;
+                $legacy_pano_media_ids[$destination_id][] = (int)$m['id'];
+                $legacy_pano_media_ids_by_slot[$destination_id][$base_id][] = (int)$m['id'];
+                $pano_source_slot_by_media_id[(int)$m['id']] = $base_id;
             }
         }
-        elseif ($m['media_type'] === 'standard' && preg_match('/^venue_/', $slot) && strpos($slot, '_std') === false) {
-            $base_id = preg_replace('/^venue_/', '', $slot);
-            if (isset($showroom_data[$base_id])) {
-                $showroom_data[$base_id]['gallery'][] = $m['file_path'];
+        elseif ($m['media_type'] === 'standard') {
+            $optionSource = $hotel_showroom_option_map[(string)$slot] ?? null;
+            if (is_array($optionSource) && ($optionSource['kind'] ?? '') === 'standard') {
+                $path = (string)$m['file_path'];
+                $candidate = ['id' => (int)$m['id'], 'is_primary' => (int)$m['is_primary'], 'path' => $path];
+                $optionVariant =& $showroom_data[$optionSource['destination_id']]['_variant_map'][$optionSource['variant_key']];
+                $optionVariant['_own_gallery_candidates'][$path] = $candidate;
+                unset($optionVariant);
+                continue;
+            }
+            $base_id = preg_match('/^venue_/', $slot) && strpos($slot, '_std') === false
+                ? preg_replace('/^venue_/', '', $slot)
+                : $slot;
+            $destination_ids = showroom_tour_media_destination_ids((string)$slot, 'standard', $showroom_data, $hotel_showroom_slot_map);
+            foreach (array_values(array_unique($destination_ids)) as $destination_id) {
+                if (!isset($showroom_data[$destination_id])) continue;
+                if (($showroom_data[$destination_id]['category'] ?? '') === 'Hotel Room') {
+                    $path = (string)$m['file_path'];
+                    $candidate = ['id' => (int)$m['id'], 'is_primary' => (int)$m['is_primary'], 'path' => $path];
+                    $previous = $showroom_data[$destination_id]['gallery_candidates'][$path] ?? null;
+                    if ($previous === null || hotel_public_media_candidate_compare($candidate, $previous) < 0) {
+                        $showroom_data[$destination_id]['gallery_candidates'][$path] = $candidate;
+                    }
+                } elseif (!in_array($m['file_path'], $showroom_data[$destination_id]['gallery'], true)) {
+                    $showroom_data[$destination_id]['gallery'][] = $m['file_path'];
+                }
             }
         }
     }
 }
 
+foreach ($showroom_data as &$destination) {
+    if (($destination['category'] ?? '') !== 'Hotel Room') continue;
+    $galleryCandidates = array_values($destination['gallery_candidates'] ?? []);
+    usort($galleryCandidates, 'hotel_public_media_candidate_compare');
+    $destination['gallery'] = array_column($galleryCandidates, 'path');
+    $destination['shared_gallery'] = $destination['gallery'];
+    unset($destination['gallery_candidates']);
+}
+unset($destination);
+
 // Older hotspot records stored a positional index against the historical
 // id-ascending panorama list.  Keep that legacy list separate from the
 // current primary-first display order so a primary flag change cannot retarget
 // an existing navigation pin.
+foreach ($legacy_pano_media_ids_by_slot as &$source_slots) {
+    foreach ($source_slots as &$legacy_ids) sort($legacy_ids, SORT_NUMERIC);
+    unset($legacy_ids);
+}
+unset($source_slots);
 foreach ($legacy_pano_media_ids as $base_id => $legacy_ids) {
     sort($legacy_ids, SORT_NUMERIC);
-    if (isset($showroom_data[$base_id])) {
+    if (isset($hotel_showroom_option_tour_scopes[$base_id])) {
+        $scope = $hotel_showroom_option_tour_scopes[$base_id];
+        $showroom_data[$scope['destination_id']]['_variant_map'][$scope['variant_key']]['_own_tour']['legacy_pano_media_ids'] = $legacy_ids;
+    } elseif (isset($showroom_data[$base_id])) {
         $showroom_data[$base_id]['legacy_pano_media_ids'] = $legacy_ids;
     }
 }
@@ -183,11 +403,13 @@ if ($hotspots_query) {
     while ($h = $hotspots_query->fetch_assoc()) {
         $media_id = $h['media_id'];
         foreach ($pano_index_map as $base_id => $media_to_index) {
+            $optionTourScope = $hotel_showroom_option_tour_scopes[$base_id] ?? null;
             if (isset($media_to_index[$media_id])) {
                 $resolved_target_media_id = null;
                 if ($h['type'] === 'nav') {
-                    $legacy_ids = $legacy_pano_media_ids[$base_id] ?? [];
-                    $venue_media_ids = array_map('intval', array_keys($media_to_index));
+                    $source_slot = $pano_source_slot_by_media_id[(int)$media_id] ?? '';
+                    $legacy_ids = $legacy_pano_media_ids_by_slot[$base_id][$source_slot] ?? [];
+                    $venue_media_ids = array_values(array_unique(array_map('intval', $legacy_ids)));
                     $resolved_target_media_id = showroom_tour_resolve_target_media_id(
                         (int)$media_id,
                         $h['target_media_id'],
@@ -203,13 +425,14 @@ if ($hotspots_query) {
                 }
 
                 $pano_index = $media_to_index[$media_id];
-                if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'])) {
-                    $showroom_data[$base_id]['hotspots_by_pano_index'] = [];
+                if (is_array($optionTourScope)) {
+                    $hotspotTarget =& $showroom_data[$optionTourScope['destination_id']]['_variant_map'][$optionTourScope['variant_key']]['_own_tour']['hotspots_by_pano_index'];
+                } else {
+                    if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'])) $showroom_data[$base_id]['hotspots_by_pano_index'] = [];
+                    $hotspotTarget =& $showroom_data[$base_id]['hotspots_by_pano_index'];
                 }
-                if (!isset($showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index])) {
-                    $showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index] = [];
-                }
-                $showroom_data[$base_id]['hotspots_by_pano_index'][$pano_index][] = [
+                if (!isset($hotspotTarget[$pano_index])) $hotspotTarget[$pano_index] = [];
+                $hotspotTarget[$pano_index][] = [
                     'id' => $h['id'],
                     'type' => $h['type'],
                     'title' => $h['title'],
@@ -221,11 +444,94 @@ if ($hotspots_query) {
                     'target_media_id' => $resolved_target_media_id ?? $h['target_media_id'],
                     'arrow_rotation' => max(0, min(359, (int)$h['arrow_rotation'])),
                 ];
+                unset($hotspotTarget);
                 break;
             }
         }
     }
 }
+
+// Preserve the shared gallery/tour on the parent destination, then attach the
+// effective, independently-fallbacked media to each exact commercial option.
+foreach ($showroom_data as &$destination) {
+    if (($destination['category'] ?? '') !== 'Hotel Room') continue;
+    $destination['shared_tour'] = [
+        'pano_urls' => $destination['pano_urls'] ?? [],
+        'pano_media_ids' => $destination['pano_media_ids'] ?? [],
+        'showroom_views' => $destination['showroom_views'] ?? [],
+        'hotspots_by_pano_index' => $destination['hotspots_by_pano_index'] ?? [],
+        'legacy_pano_media_ids' => $destination['legacy_pano_media_ids'] ?? [],
+    ];
+    foreach ($destination['_variant_map'] as &$variant) {
+        $ownCandidates = array_values($variant['_own_gallery_candidates'] ?? []);
+        $ownCandidates = array_values(array_filter($ownCandidates, static function (array $candidate): bool {
+            try { media_cms_upload_file_path((string)($candidate['path'] ?? ''), true); return true; }
+            catch (Throwable $error) { return false; }
+        }));
+        usort($ownCandidates, 'hotel_public_media_candidate_compare');
+        $ownGallery = array_column($ownCandidates, 'path');
+        $ownTour = $variant['_own_tour'] ?? [];
+        $ownTourUrls = [];
+        $ownTourIds = [];
+        $ownTourViews = [];
+        $oldToNewIndexes = [];
+        foreach (($ownTour['pano_urls'] ?? []) as $oldIndex => $path) {
+            try { media_cms_upload_file_path((string)$path, true); }
+            catch (Throwable $error) { continue; }
+            $newIndex = count($ownTourUrls);
+            $oldToNewIndexes[(int)$oldIndex] = $newIndex;
+            $ownTourUrls[] = $path;
+            $ownTourIds[] = (int)($ownTour['pano_media_ids'][$oldIndex] ?? 0);
+            $mediaId = (string)$ownTourIds[$newIndex];
+            if (isset($ownTour['showroom_views'][$mediaId])) $ownTourViews[$mediaId] = $ownTour['showroom_views'][$mediaId];
+        }
+        $ownTourHotspots = [];
+        foreach (($ownTour['hotspots_by_pano_index'] ?? []) as $oldIndex => $hotspots) {
+            if (!isset($oldToNewIndexes[(int)$oldIndex])) continue;
+            $newIndex = $oldToNewIndexes[(int)$oldIndex];
+            foreach ($hotspots as $hotspot) {
+                if (($hotspot['type'] ?? '') === 'nav' && !in_array((int)($hotspot['target_media_id'] ?? 0), $ownTourIds, true)) continue;
+                if (($hotspot['type'] ?? '') === 'nav') {
+                    $targetIndex = array_search((int)$hotspot['target_media_id'], $ownTourIds, true);
+                    if ($targetIndex === false || $targetIndex === $newIndex) continue;
+                    $hotspot['target_pano_index'] = $targetIndex;
+                }
+                $ownTourHotspots[$newIndex][] = $hotspot;
+            }
+        }
+        $ownTour = [
+            'pano_urls' => $ownTourUrls,
+            'pano_media_ids' => $ownTourIds,
+            'showroom_views' => $ownTourViews,
+            'hotspots_by_pano_index' => $ownTourHotspots,
+            'legacy_pano_media_ids' => $ownTourIds,
+        ];
+        $variantGallery = showroom_tour_select_option_media(
+            ['gallery' => $destination['shared_gallery'] ?? []],
+            ['gallery' => $ownGallery],
+            !empty($variant['standard_media_override_enabled']),
+            'standard'
+        );
+        $variant['gallery'] = $variantGallery['gallery'] ?? [];
+        $variant['tour'] = showroom_tour_select_option_media(
+            $destination['shared_tour'],
+            $ownTour,
+            !empty($variant['tour_media_override_enabled']),
+            '360'
+        );
+        unset($variant['_own_gallery_candidates'], $variant['_own_tour'], $variant['variant_map_key']);
+    }
+    unset($variant);
+    $destination['variants'] = array_values($destination['_variant_map'] ?? []);
+    usort($destination['variants'], static fn(array $left, array $right): int =>
+        ((float)($left['nightly_rate'] ?? 0) <=> (float)($right['nightly_rate'] ?? 0))
+        ?: ((int)($left['max_capacity'] ?? 0) <=> (int)($right['max_capacity'] ?? 0))
+        ?: ((int)($left['bed_count'] ?? 0) <=> (int)($right['bed_count'] ?? 0))
+        ?: ((int)($left['room_group_id'] ?? 0) <=> (int)($right['room_group_id'] ?? 0))
+    );
+    unset($destination['_variant_map']);
+}
+unset($destination);
 
 // 4. Group showroom venues into categories for UI rendering
 $grouped_showroom = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
@@ -233,7 +539,7 @@ $first_available_category = '';
 $first_available_room = '';
 
 foreach($showroom_data as $id => $data) {
-    if (!empty($data['pano_urls']) || !empty($data['gallery'])) {
+    if (($data['category'] ?? '') === 'Hotel Room' || !empty($data['pano_urls']) || !empty($data['gallery'])) {
         $grouped_showroom[$data['category']][$id] = $data;
         if (empty($first_available_category)) {
             $first_available_category = $data['category'];
@@ -242,8 +548,8 @@ foreach($showroom_data as $id => $data) {
     }
 }
 
-// Keep every hotel venue as its own selectable destination, grouped in the
-// same room-type order as booking.php for a faster scan of the long list.
+// Keep every canonical hotel presentation selectable, including rooms with
+// empty CMS slots, grouped by the same room-type order as booking.php.
 $grouped_hotel_rooms = showroom_tour_group_hotel_venues($grouped_showroom['Hotel Room']);
 
 include 'includes/header.php';
@@ -397,7 +703,8 @@ window.process = {
                                         <button type="button" class="dropdown-item<?php echo ($id === $first_available_room) ? ' active' : ''; ?>"
                                             data-room="<?php echo htmlspecialchars((string)$id, ENT_QUOTES, 'UTF-8'); ?>"
                                             <?php echo ($id === $first_available_room) ? 'aria-current="true"' : ''; ?>>
-                                            <?php echo htmlspecialchars(ucwords(strtolower((string)$data['title'])), ENT_QUOTES, 'UTF-8'); ?>
+                                            <span><?php echo htmlspecialchars(ucwords(strtolower((string)$data['venue_name'] ?? $data['title'])), ENT_QUOTES, 'UTF-8'); ?></span>
+                                            <?php if (!empty($data['variant_summary'])): ?><small class="showroom-room-option-summary"><?php echo htmlspecialchars((string)$data['variant_summary'], ENT_QUOTES, 'UTF-8'); ?></small><?php endif; ?>
                                         </button>
                                         <?php endforeach; ?>
                                     </div>
@@ -461,6 +768,13 @@ window.process = {
                 <div class="detail-row" id="val-beds-row">
                     <span class="d-label">BEDS</span>
                     <span class="d-value" id="val-beds">--</span>
+                </div>
+                <div class="showroom-hotel-variant" id="showroom-hotel-variant" hidden>
+                    <label for="showroom-hotel-variant-select">Choose a room option</label>
+                    <select id="showroom-hotel-variant-select" aria-describedby="showroom-hotel-variant-help">
+                        <option value="">Choose capacity, beds and nightly price</option>
+                    </select>
+                    <small id="showroom-hotel-variant-help">Choose the capacity and rate that fit your stay before booking.</small>
                 </div>
             </div>
 

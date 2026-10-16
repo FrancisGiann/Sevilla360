@@ -256,9 +256,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================
   const manageGalleryModal = document.getElementById('manageGalleryModal');
   const mgGrid = document.getElementById('mg-grid');
+  const mgEmptyState = document.getElementById('mg-empty-state');
   const btnMgAdd = document.getElementById('btn-mg-add');
   let currentManageSlot = null;
   let currentManageType = null;
+  let currentManageHotelGallery = null;
 
   const lightbox = document.getElementById('cms-lightbox');
   const lightboxImg = document.getElementById('cms-lightbox-img');
@@ -293,11 +295,51 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.btn-manage-gallery').forEach(btn => {
       btn.addEventListener('click', function() {
           currentManageSlot = this.getAttribute('data-slot');
-          currentManageType = this.closest('.cms-card').getAttribute('data-type');
-          const photos = window.galleryData[currentManageSlot] || [];
+          const galleryCard = this.closest('.cms-card');
+          currentManageType = this.dataset.mediaType || galleryCard?.getAttribute('data-type') || null;
+          const buildingName = galleryCard?.dataset.hotelBuilding || '';
+          const roomTypeCode = galleryCard?.dataset.hotelRoomTypeCode || '';
+          const roomType = galleryCard?.dataset.hotelRoomType || '';
+          const canonicalSlot = galleryCard?.dataset.hotelCanonicalSlot || '';
+          const hotelEditorType = canonicalSlot
+              ? (window.hotelGalleryEditorData || []).find(type => type.canonical_slot === canonicalSlot)
+              : null;
+          const optionSlotMatch = /^hotel_option_([1-9][0-9]*)(_360)?$/.exec(String(currentManageSlot || ''));
+          const hotelOption = optionSlotMatch && hotelEditorType
+              ? (hotelEditorType.options || []).find(option => Number(option.room_group_id) === Number(optionSlotMatch[1]))
+              : null;
+          const optionMediaKind = optionSlotMatch?.[2] === '_360' ? '360' : 'standard';
+          currentManageHotelGallery = this.dataset.hotelShared === 'true'
+              && currentManageType === 'standard'
+              && /^hotel_type_[a-f0-9]{40}$/.test(String(currentManageSlot || ''))
+              && buildingName && roomType
+              ? { canonicalSlot: currentManageSlot, buildingName, roomTypeCode, roomType }
+              : null;
+          const photos = window.galleryData?.[currentManageSlot] || [];
           
-          document.getElementById('mg-title').innerText = `Manage Photos`;
+          document.getElementById('mg-title').innerText = hotelOption
+              ? (optionMediaKind === '360' ? 'Manage room option tour' : 'Manage room option photos')
+              : 'Manage Photos';
+          const managementHint = document.getElementById('mg-hint');
+          const isSharedHotelStandardGallery = currentManageHotelGallery !== null;
+          if (managementHint) {
+              managementHint.hidden = !isSharedHotelStandardGallery && !hotelOption;
+              managementHint.textContent = isSharedHotelStandardGallery
+                  ? 'Choose the image that should appear as the cover for this shared room gallery.'
+                  : hotelOption
+                      ? `${hotelEditorType.building_name} · ${hotelEditorType.room_type} · ${hotelOption.label}`
+                      : '';
+          }
           mgGrid.innerHTML = '';
+          if (mgEmptyState) {
+              const isEmptyOptionGallery = Boolean(hotelOption) && photos.length === 0;
+              mgEmptyState.hidden = !isEmptyOptionGallery;
+              mgEmptyState.textContent = isEmptyOptionGallery
+                  ? (optionMediaKind === '360'
+                      ? 'No tour scenes yet. Add panoramas for this room option.'
+                      : 'No photos yet. Add photos for this room option.')
+                  : '';
+          }
           
           photos.forEach((photo) => {
               const isPrimary = Number(photo.is_primary) === 1;
@@ -326,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                           
                           ${currentManageType === '360'
                               ? '<span class="mg-primary-managed">Starting scene is set in Tour Setup</span>'
-                              : `<button class="btn-primary-media" data-id="${photo.id}" data-slot="${currentManageSlot}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
+                              : `<button class="btn-primary-media" data-id="${photo.id}" data-slot="${escapeHTML(photo.slot_assignment || currentManageSlot)}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
                                   <i class="fa-solid fa-star" aria-hidden="true"></i>
                               </button>`}
                           
@@ -389,6 +431,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (primaryBtn) {
               const mediaId = primaryBtn.getAttribute('data-id');
               const slot = primaryBtn.getAttribute('data-slot');
+              const sharedGallery = currentManageHotelGallery ? { ...currentManageHotelGallery } : null;
+              const sharedGallerySlot = sharedGallery?.canonicalSlot || '';
 
               if (primaryBtn.disabled || primaryBtn.dataset.pending === 'true') return;
               const mediaIdNumber = Number(mediaId);
@@ -397,17 +441,28 @@ document.addEventListener('DOMContentLoaded', () => {
                   return;
               }
 
-              const slotButtons = Array.from(mgGrid.querySelectorAll('.btn-primary-media'))
-                  .filter(btn => btn.getAttribute('data-slot') === slot);
-              slotButtons.forEach(btn => {
+              const sharedGalleryMediaIds = sharedGallery
+                  ? new Set((window.galleryData?.[sharedGallerySlot] || []).map(photo => String(photo.id)))
+                  : null;
+              const primaryButtons = Array.from(mgGrid.querySelectorAll('.btn-primary-media'))
+                  .filter(btn => sharedGallery || btn.getAttribute('data-slot') === slot);
+              primaryButtons.forEach(btn => {
                   btn.disabled = true;
                   btn.dataset.pending = 'true';
               });
 
+              const requestBody = { id: mediaIdNumber, slot_assignment: slot };
+              if (sharedGallery) {
+                  requestBody.canonical_gallery_slot = sharedGallery.canonicalSlot;
+                  requestBody.building_name = sharedGallery.buildingName;
+                  requestBody.room_type_code = sharedGallery.roomTypeCode;
+                  requestBody.room_type = sharedGallery.roomType;
+              }
+
               fetch("actions/admin/set_primary_media.php", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-                  body: JSON.stringify({ id: mediaIdNumber, slot_assignment: slot })
+                  body: JSON.stringify(requestBody)
               })
               .then(async res => {
                   let data;
@@ -427,17 +482,19 @@ document.addEventListener('DOMContentLoaded', () => {
                   const primaryId = Number.isSafeInteger(confirmedPrimaryId) && confirmedPrimaryId > 0
                       ? confirmedPrimaryId
                       : mediaIdNumber;
-                  const photosForSlot = window.galleryData && Array.isArray(window.galleryData[slot])
-                      ? window.galleryData[slot]
-                      : [];
-                  photosForSlot.forEach(photo => {
-                      photo.is_primary = Number(photo.id) === primaryId ? 1 : 0;
+                  Object.values(window.galleryData || {}).forEach(photos => {
+                      if (!Array.isArray(photos)) return;
+                      photos.forEach(photo => {
+                          if (sharedGalleryMediaIds?.has(String(photo.id))) {
+                              photo.is_primary = Number(photo.id) === primaryId ? 1 : 0;
+                          } else if (!sharedGallery && String(photo.slot_assignment || '') === slot) {
+                              photo.is_primary = Number(photo.id) === primaryId ? 1 : 0;
+                          }
+                      });
                   });
 
-                  mgGrid.querySelectorAll('.btn-primary-media').forEach(btn => {
-                      if (btn.getAttribute('data-slot') === slot) {
-                          updatePrimaryButtonState(btn, Number(btn.getAttribute('data-id')) === primaryId);
-                      }
+                  primaryButtons.forEach(btn => {
+                      updatePrimaryButtonState(btn, Number(btn.getAttribute('data-id')) === primaryId);
                   });
                   showAlert("Success", "Primary image updated successfully!", "success", false);
                   window.needsCmsRefresh = true;
@@ -449,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   showAlert("Error", message, "error", false);
               })
               .finally(() => {
-                  slotButtons.forEach(btn => {
+                  primaryButtons.forEach(btn => {
                       btn.disabled = false;
                       delete btn.dataset.pending;
                   });
@@ -598,8 +655,8 @@ document.addEventListener('DOMContentLoaded', () => {
           const matchesCategory = activeCMSCategoryFilter === 'venues'
               ? cardCategory !== 'website'
               : cardCategory === activeCMSCategoryFilter;
-          const matchesMedia = activeCMSMediaFilter === 'all'
-              || card.getAttribute('data-type') === activeCMSMediaFilter;
+          const cardMediaTypes = String(card.getAttribute('data-types') || card.getAttribute('data-type') || '').split(/\s+/).filter(Boolean);
+          const matchesMedia = activeCMSMediaFilter === 'all' || cardMediaTypes.includes(activeCMSMediaFilter);
           const isVisible = matchesCategory && matchesMedia;
 
           card.style.display = isVisible ? 'flex' : 'none';
@@ -627,6 +684,299 @@ document.addEventListener('DOMContentLoaded', () => {
       applyCMSFilters();
       persistCMSFilterState();
     });
+  });
+
+  // =========================================================
+  // 8. Shared hotel gallery editor and per-option overrides
+  // =========================================================
+  const hotelEditorOverlay = document.getElementById('hotelGalleryEditor');
+  const hotelEditorDialog = hotelEditorOverlay?.querySelector('[role="dialog"]');
+  let activeHotelEditorType = null;
+  let hotelEditorPreviousFocus = null;
+
+  const cmsPreviewPath = photo => {
+      const path = String(photo?.thumbnail_path || '');
+      return /^assets\/uploads\/\.cms-thumbnails\/[a-f0-9]{64}\.webp$/.test(path) ? path : 'assets/img/placeholder.jpg';
+  };
+  const optionPhotoSlot = option => String(option?.standard_slot || '');
+  const optionTourSlot = option => String(option?.tour_slot || '');
+
+  function hotelEditorControl(slot, className) {
+      const card = document.querySelector(`.cms-hotel-type-card[data-hotel-canonical-slot="${CSS.escape(String(activeHotelEditorType?.canonical_slot || ''))}"]`);
+      if (!card) return null;
+      return Array.from(card.querySelectorAll(`.${className}`)).find(button => button.getAttribute('data-slot') === slot) || null;
+  }
+
+  function renderHotelPreview(slot, parent, emptyCopy) {
+      parent.replaceChildren();
+      const photos = window.galleryData?.[slot] || [];
+      if (!photos.length) {
+          const empty = document.createElement('p');
+          empty.className = 'hotel-gallery-empty';
+          empty.textContent = emptyCopy;
+          parent.appendChild(empty);
+          return photos;
+      }
+      const strip = document.createElement('div');
+      strip.className = 'hotel-gallery-preview-strip';
+      photos.slice(0, 6).forEach((photo, index) => {
+          const image = document.createElement('img');
+          image.src = cmsPreviewPath(photo);
+          image.alt = index === 0 && Number(photo.is_primary) === 1 ? 'Current gallery cover' : `Gallery image ${index + 1}`;
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          strip.appendChild(image);
+      });
+      parent.appendChild(strip);
+      return photos;
+  }
+
+  function makeHotelAction(label, action, option = null, kind = null, secondary = false) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = secondary ? 'btn cms-btn-outline hotel-editor-action' : 'btn btn-primary hotel-editor-action';
+      button.dataset.hotelAction = action;
+      if (option) button.dataset.roomGroupId = String(option.room_group_id);
+      if (kind) button.dataset.mediaKind = kind;
+      button.textContent = label;
+      return button;
+  }
+
+  function switchHotelEditorTab(tabName, focus = false) {
+      if (!hotelEditorOverlay) return;
+      hotelEditorOverlay.querySelectorAll('[data-hotel-tab]').forEach(tab => {
+          const selected = tab.dataset.hotelTab === tabName;
+          tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+          tab.tabIndex = selected ? 0 : -1;
+          if (focus && selected) tab.focus();
+      });
+      hotelEditorOverlay.querySelectorAll('[data-hotel-panel]').forEach(panel => {
+          panel.hidden = panel.dataset.hotelPanel !== tabName;
+      });
+  }
+
+  function renderHotelEditor(type) {
+      if (!hotelEditorOverlay || !type) return;
+      activeHotelEditorType = type;
+      const title = `${type.building_name} — ${type.room_type}`;
+      document.getElementById('hotel-editor-title').textContent = title;
+      document.getElementById('hotel-editor-subtitle').textContent = `${(type.options || []).length} room option${(type.options || []).length === 1 ? '' : 's'} · Shared photos and tours, with separate galleries for each room option.`;
+
+      const sharedPhotosPanel = document.getElementById('hotel-shared-photos-panel');
+      const sharedStandard = window.galleryData?.[type.canonical_slot] || [];
+      const sharedPhotoPreview = document.createElement('div');
+      sharedPhotoPreview.className = 'hotel-gallery-preview';
+      const sharedPhotoHeading = document.createElement('div');
+      sharedPhotoHeading.className = 'hotel-gallery-section-heading';
+      const sharedPhotoTitle = document.createElement('div');
+      const sharedPhotoName = document.createElement('h3');
+      sharedPhotoName.textContent = 'Shared room photos';
+      const sharedPhotoStatus = document.createElement('p');
+      sharedPhotoStatus.textContent = sharedStandard.length ? `${sharedStandard.length} photos · used when an option has no own photos` : 'No shared photos yet';
+      sharedPhotoTitle.append(sharedPhotoName, sharedPhotoStatus);
+      sharedPhotoHeading.appendChild(sharedPhotoTitle);
+      sharedPhotoPreview.appendChild(sharedPhotoHeading);
+      const sharedPhotoStrip = document.createElement('div');
+      renderHotelPreview(type.canonical_slot, sharedPhotoStrip, 'No shared photos yet. Add a gallery that room options can use as their fallback.');
+      sharedPhotoPreview.appendChild(sharedPhotoStrip);
+      const sharedPhotoActions = document.createElement('div');
+      sharedPhotoActions.className = 'hotel-editor-actions';
+      sharedPhotoActions.append(
+          makeHotelAction('Add shared photos', 'upload-shared-photos'),
+          makeHotelAction('Manage shared photos', 'manage-shared-photos', null, null, true)
+      );
+      sharedPhotoPreview.appendChild(sharedPhotoActions);
+      sharedPhotosPanel.replaceChildren(sharedPhotoPreview);
+
+      const sharedTourPanel = document.getElementById('hotel-shared-tour-panel');
+      const sharedTourSlot = String(type.shared_tour_slot || `${type.canonical_slot}_360`);
+      const sharedTourPhotos = window.galleryData?.[sharedTourSlot] || [];
+      const sharedTourPreview = document.createElement('div');
+      sharedTourPreview.className = 'hotel-gallery-preview';
+      const sharedTourHeading = document.createElement('div');
+      sharedTourHeading.className = 'hotel-gallery-section-heading';
+      const sharedTourTitle = document.createElement('div');
+      const sharedTourName = document.createElement('h3');
+      sharedTourName.textContent = 'Shared 360 tour';
+      const sharedTourStatus = document.createElement('p');
+      sharedTourStatus.textContent = sharedTourPhotos.length ? `${sharedTourPhotos.length} scenes · used when an option has no own tour` : 'No shared 360 tour yet';
+      sharedTourTitle.append(sharedTourName, sharedTourStatus);
+      sharedTourHeading.appendChild(sharedTourTitle);
+      sharedTourPreview.appendChild(sharedTourHeading);
+      const sharedTourStrip = document.createElement('div');
+      renderHotelPreview(sharedTourSlot, sharedTourStrip, 'No shared tour yet. Upload a 360 panorama to create the room type fallback tour.');
+      sharedTourPreview.appendChild(sharedTourStrip);
+      const sharedTourActions = document.createElement('div');
+      sharedTourActions.className = 'hotel-editor-actions';
+      sharedTourActions.append(
+          makeHotelAction('Add shared panoramas', 'upload-shared-tour'),
+          makeHotelAction('Manage shared tour', 'manage-shared-tour', null, null, true)
+      );
+      if (sharedTourPhotos.length) sharedTourActions.appendChild(makeHotelAction('Edit shared hotspots', 'shared-hotspots', null, null, true));
+      sharedTourPreview.appendChild(sharedTourActions);
+      sharedTourPanel.replaceChildren(sharedTourPreview);
+
+      const optionsList = document.getElementById('hotel-room-options-list');
+      const migrationNotice = document.getElementById('hotel-options-migration-notice');
+      const overridesReady = window.hotelGalleryOverridesAvailable === true;
+      migrationNotice.hidden = overridesReady;
+      optionsList.replaceChildren();
+      if (!overridesReady) {
+          optionsList.hidden = true;
+          return;
+      }
+      optionsList.hidden = false;
+      (type.options || []).forEach(option => {
+          const row = document.createElement('article');
+          row.className = 'hotel-option-row';
+          row.setAttribute('role', 'listitem');
+          const header = document.createElement('div');
+          header.className = 'hotel-option-heading';
+          const copy = document.createElement('div');
+          const name = document.createElement('h3');
+          name.textContent = option.label || 'Room option';
+          const facts = document.createElement('p');
+          facts.textContent = `${option.inventory_count} ${Number(option.inventory_count) === 1 ? 'room' : 'rooms'}`;
+          copy.append(name, facts);
+          header.appendChild(copy);
+          row.appendChild(header);
+
+          const standardSlot = optionPhotoSlot(option);
+          const ownPhotos = window.galleryData?.[standardSlot] || [];
+          const photoRow = document.createElement('div');
+          photoRow.className = 'hotel-option-media-row';
+          const photoStatus = document.createElement('p');
+          photoStatus.className = 'hotel-option-media-status';
+          photoStatus.textContent = option.standard_override_enabled
+              ? (ownPhotos.length ? `Own photos · ${ownPhotos.length}` : 'Own photos selected · using shared fallback until you add photos')
+              : (ownPhotos.length
+                  ? `Uses shared photos · ${ownPhotos.length} saved own photo${ownPhotos.length === 1 ? '' : 's'} not currently used`
+                  : 'Uses shared photos');
+          photoRow.appendChild(photoStatus);
+          if (ownPhotos.length) {
+              const ownPhotoStrip = document.createElement('div');
+              ownPhotoStrip.className = 'hotel-option-preview-strip';
+              renderHotelPreview(standardSlot, ownPhotoStrip, '');
+              photoRow.appendChild(ownPhotoStrip);
+          }
+          photoRow.appendChild(makeHotelAction('Manage own photos', 'manage-option-gallery', option, 'standard'));
+          if (option.standard_override_enabled) photoRow.appendChild(makeHotelAction('Return to shared photos', 'share-option-gallery', option, 'standard', true));
+          row.appendChild(photoRow);
+
+          const tourSlot = optionTourSlot(option);
+          const ownTour = window.galleryData?.[tourSlot] || [];
+          const tourRow = document.createElement('div');
+          tourRow.className = 'hotel-option-media-row';
+          const tourStatus = document.createElement('p');
+          tourStatus.className = 'hotel-option-media-status';
+          tourStatus.textContent = option.tour_override_enabled
+              ? (ownTour.length ? `Own 360 tour · ${ownTour.length} scenes` : 'Own tour selected · using shared fallback until you add scenes')
+              : (ownTour.length
+                  ? `Uses shared 360 tour · ${ownTour.length} saved scene${ownTour.length === 1 ? '' : 's'} not currently used`
+                  : 'Uses shared 360 tour');
+          tourRow.appendChild(tourStatus);
+          if (ownTour.length) {
+              const ownTourStrip = document.createElement('div');
+              ownTourStrip.className = 'hotel-option-preview-strip';
+              renderHotelPreview(tourSlot, ownTourStrip, '');
+              tourRow.appendChild(ownTourStrip);
+          }
+          tourRow.appendChild(makeHotelAction('Manage own tour', 'manage-option-gallery', option, '360'));
+          if (ownTour.length) tourRow.appendChild(makeHotelAction('Edit own hotspots', 'option-hotspots', option, '360', true));
+          if (option.tour_override_enabled) tourRow.appendChild(makeHotelAction('Return to shared tour', 'share-option-gallery', option, '360', true));
+          row.appendChild(tourRow);
+          optionsList.appendChild(row);
+      });
+  }
+
+  function showHotelEditor(type, tabName) {
+      if (!hotelEditorOverlay || !type) return;
+      hotelEditorPreviousFocus = document.activeElement;
+      renderHotelEditor(type);
+      hotelEditorOverlay.hidden = false;
+      hotelEditorOverlay.classList.add('active');
+      switchHotelEditorTab(tabName || 'photos');
+      hotelEditorDialog?.focus();
+  }
+
+  function closeHotelEditor() {
+      if (!hotelEditorOverlay) return;
+      hotelEditorOverlay.classList.remove('active');
+      hotelEditorOverlay.hidden = true;
+      activeHotelEditorType = null;
+      if (hotelEditorPreviousFocus?.isConnected) hotelEditorPreviousFocus.focus();
+  }
+
+  document.querySelectorAll('.cms-open-hotel-editor').forEach(button => button.addEventListener('click', () => {
+      const card = button.closest('.cms-hotel-type-card');
+      const type = (window.hotelGalleryEditorData || []).find(item => item.canonical_slot === card?.dataset.hotelCanonicalSlot);
+      showHotelEditor(type, activeCMSMediaFilter === '360' ? 'tour' : 'photos');
+  }));
+  hotelEditorOverlay?.querySelectorAll('.hotel-editor-close').forEach(button => button.addEventListener('click', closeHotelEditor));
+  hotelEditorOverlay?.querySelectorAll('[data-hotel-tab]').forEach(tab => tab.addEventListener('click', () => switchHotelEditorTab(tab.dataset.hotelTab)));
+  hotelEditorOverlay?.querySelector('.hotel-editor-tabs')?.addEventListener('keydown', event => {
+      if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = Array.from(hotelEditorOverlay.querySelectorAll('[data-hotel-tab]'));
+      const current = tabs.indexOf(event.target.closest('[data-hotel-tab]'));
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      switchHotelEditorTab(tabs[next]?.dataset.hotelTab, true);
+  });
+  hotelEditorOverlay?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeHotelEditor(); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(hotelEditorDialog?.querySelectorAll('button:not(:disabled):not([hidden]), [href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])') || [])
+          .filter(item => item.offsetParent !== null);
+      if (!focusable.length) return;
+      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1).focus(); }
+      else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
+  });
+
+  async function setHotelGalleryMode(option, kind, enabled) {
+      const response = await fetch('actions/admin/set_hotel_media_mode.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+          body: JSON.stringify({ room_group_id: Number(option.room_group_id), kind, enabled: enabled ? 1 : 0 })
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) throw new Error(data?.message || 'The room-option gallery could not be updated.');
+      if (kind === '360') option.tour_override_enabled = Boolean(enabled);
+      else option.standard_override_enabled = Boolean(enabled);
+  }
+
+  hotelEditorOverlay?.addEventListener('click', async event => {
+      const button = event.target.closest('[data-hotel-action]');
+      if (!button || button.disabled) return;
+      const action = button.dataset.hotelAction;
+      const kind = button.dataset.mediaKind;
+      const option = activeHotelEditorType?.options?.find(item => Number(item.room_group_id) === Number(button.dataset.roomGroupId));
+      const control = (slot, className) => hotelEditorControl(slot, className);
+      const clickControl = (slot, className) => {
+          const target = control(slot, className);
+          if (!target) throw new Error('The gallery control is unavailable. Refresh the page and try again.');
+          target.click();
+      };
+      try {
+          if (action === 'upload-shared-photos') clickControl(activeHotelEditorType.canonical_slot, 'btn-cms-modal');
+          else if (action === 'manage-shared-photos') clickControl(activeHotelEditorType.canonical_slot, 'btn-manage-gallery');
+          else if (action === 'upload-shared-tour') clickControl(activeHotelEditorType.shared_tour_slot, 'btn-cms-modal');
+          else if (action === 'manage-shared-tour') clickControl(activeHotelEditorType.shared_tour_slot, 'btn-manage-gallery');
+          else if (action === 'shared-hotspots') clickControl(activeHotelEditorType.canonical_slot, 'btn-place-hotspots');
+          else if (action === 'manage-option-gallery' && option) {
+              const isEnabled = kind === '360' ? option.tour_override_enabled : option.standard_override_enabled;
+              if (!isEnabled) await setHotelGalleryMode(option, kind, true);
+              renderHotelEditor(activeHotelEditorType);
+              clickControl(kind === '360' ? optionTourSlot(option) : optionPhotoSlot(option), 'btn-manage-gallery');
+          } else if (action === 'share-option-gallery' && option) {
+              await setHotelGalleryMode(option, kind, false);
+              renderHotelEditor(activeHotelEditorType);
+          } else if (action === 'option-hotspots' && option) {
+              clickControl(optionTourSlot(option), 'btn-place-hotspots');
+          }
+      } catch (error) {
+          if (typeof window.showAlert === 'function') window.showAlert('Gallery update failed', error instanceof Error ? error.message : 'Please try again.', 'error');
+      }
   });
 
   applyCMSFilters();

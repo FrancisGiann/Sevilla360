@@ -168,3 +168,41 @@ assert.ok(showroomSource.includes('window.addEventListener("pageshow", refreshCa
 assert.ok(showroomSource.includes('if (!isSelectable(value)) { wrap.refreshDateEligibility(); return; }'), 'a stale rendered day is revalidated when clicked');
 
 console.log('PASS|calendar timezone normalization, resort date boundary, checkout rules, inclusive Villa availability, and DST-safe night arithmetic');
+
+const verifyHotelAvailabilityRace = async () => {
+  const pendingResponses = [];
+  context.fetch = () => new Promise(resolve => pendingResponses.push(resolve));
+  const responseWithDates = dates => ({
+    ok: true,
+    json: async () => ({ success: true, booked_dates: dates, hard_blocked_dates: [] })
+  });
+
+  const firstVariantRequest = calendar.fetchBookedDates('Family Room / Superior', 'Abelardo', null, true, 501);
+  assert.equal(calendar.selectionLocked, true, 'calendar locks synchronously while the first group availability loads');
+  assert.ok(root.querySelector('.cal-days-grid').children.some(cell => cell.classList.contains('availability-loading')),
+    'loading days are visibly non-interactive');
+  const secondVariantRequest = calendar.fetchBookedDates('Family Room / Superior', 'Abelardo', null, true, 502);
+  assert.equal(calendar.selectionLocked, true, 'changing groups keeps the calendar locked during the replacement request');
+
+  pendingResponses[1](responseWithDates(['2035-09-18']));
+  assert.equal(await secondVariantRequest, true);
+  assert.deepEqual(calendar.bookedDatesList, ['2035-09-18'], 'the latest selected group owns rendered availability');
+  assert.equal(calendar.selectionLocked, false, 'the latest successful response unlocks its dates');
+
+  pendingResponses[0](responseWithDates(['2035-09-11']));
+  await firstVariantRequest;
+  assert.deepEqual(calendar.bookedDatesList, ['2035-09-18'], 'a late response for the previous group cannot replace current dates');
+
+  const clearedRequest = calendar.fetchBookedDates('Family Room / Superior', 'Abelardo', null, true, 503);
+  calendar.clearSelection();
+  pendingResponses[2](responseWithDates(['2035-09-25']));
+  await clearedRequest;
+  assert.deepEqual(Array.from(calendar.bookedDatesList), [], 'closing or changing the room clears in-flight group dates');
+  assert.equal(calendar.selectionLocked, false, 'clearing context removes the loading lock');
+  console.log('PASS|variant availability requests lock dates and discard stale group responses');
+};
+
+verifyHotelAvailabilityRace().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

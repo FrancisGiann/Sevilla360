@@ -15,10 +15,14 @@ require_once 'includes/media_helper.php';
 // public facts; no customer, booking, lock, or internal note fields leave the
 // server.
 $public_media = [];
-$public_media_query = $conn->query("SELECT slot_assignment, file_path, is_primary FROM media_cms WHERE media_type = 'standard' ORDER BY is_primary DESC, id ASC");
+$public_media_query = $conn->query("SELECT id, slot_assignment, file_path, is_primary FROM media_cms WHERE media_type = 'standard' ORDER BY is_primary DESC, id ASC");
 if ($public_media_query) {
     while ($media = $public_media_query->fetch_assoc()) {
-        $public_media[$media['slot_assignment']][] = (string)$media['file_path'];
+        $public_media[$media['slot_assignment']][] = [
+            'id' => (int)$media['id'],
+            'file_path' => (string)$media['file_path'],
+            'is_primary' => (int)$media['is_primary'],
+        ];
     }
 }
 $public_slot_key = static fn(string $name): string => media_cms_venue_slot_key($name);
@@ -58,69 +62,241 @@ if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
     ];
 }
 $hotel_group_schema_ready = hotel_group_schema_ready($conn);
+$hotel_media_overrides_ready = hotel_group_media_overrides_schema_ready($conn);
+$hotel_variant_rows = [];
+$public_hotel_legacy_labels = [];
 if ($hotel_group_schema_ready) {
+    // Keep legacy media labels as rows instead of GROUP_CONCAT so long or
+    // unusual room-label sets are never truncated by MySQL's group_concat_max_len.
+    $public_hotel_labels_query = $conn->query("SELECT h.room_group_id, h.room_type
+        FROM hotel_rooms h
+        INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+        WHERE h.room_group_id IS NOT NULL
+        GROUP BY h.room_group_id, h.room_type");
+    if ($public_hotel_labels_query) while ($label = $public_hotel_labels_query->fetch_assoc()) {
+        $labelGroupId = (int)$label['room_group_id'];
+        $labelType = trim((string)$label['room_type']);
+        if ($labelGroupId > 0 && $labelType !== '') $public_hotel_legacy_labels[$labelGroupId][] = $labelType;
+    }
     $hotel_group_review_fields = $venue_reviews_available
         ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND vr.venue_id IN (SELECT rh.venue_id FROM hotel_rooms rh INNER JOIN venues rv ON rv.id = rh.venue_id AND rv.category = 'Hotel Room' AND rv.status = 'Available' WHERE rh.room_group_id = g.id)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND vr.venue_id IN (SELECT rh.venue_id FROM hotel_rooms rh INNER JOIN venues rv ON rv.id = rh.venue_id AND rv.category = 'Hotel Room' AND rv.status = 'Available' WHERE rh.room_group_id = g.id)) AS rating_count"
         : ', 0 AS rating_average, 0 AS rating_count';
+    $hotel_override_select = $hotel_media_overrides_ready
+        ? 'MAX(g.standard_media_override_enabled) AS standard_media_override_enabled, MAX(g.tour_media_override_enabled) AS tour_media_override_enabled'
+        : '0 AS standard_media_override_enabled, 0 AS tour_media_override_enabled';
     $public_hotel_query = $conn->query("SELECT g.id AS room_group_id, g.media_slot_key, g.legacy_room_type,
-            (SELECT CASE WHEN COUNT(DISTINCT media_h.room_type) = 1 THEN MIN(media_h.room_type) ELSE NULL END
-             FROM hotel_rooms media_h
-             INNER JOIN venues media_v ON media_v.id = media_h.venue_id
-                AND media_v.category = 'Hotel Room' AND media_v.status = 'Available'
-             WHERE media_h.room_group_id = g.id) AS legacy_media_room_type,
-            COALESCE(NULLIF(g.display_name, ''), CONCAT(g.building_name, ' — ', COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room'))) AS display_name,
             g.building_name, COALESCE(t.display_name, g.legacy_room_type, 'Hotel Room') AS room_type,
-            g.room_type_code, g.nightly_rate, g.nightly_rate AS max_nightly_rate,
-            g.base_capacity, g.max_capacity, g.bed_count AS min_bed_count, g.bed_count AS max_bed_count,
+            g.room_type_code, g.nightly_rate,
+            {$hotel_override_select},
+            g.base_capacity, g.max_capacity, g.bed_count,
             g.extra_pax_rate, g.check_in_time, g.check_out_time,
-            MAX(g.description) AS description, MAX(g.amenities) AS amenities,
+        g.description, g.amenities,
             COUNT(DISTINCT v.id) AS inventory_count {$hotel_group_review_fields}
         FROM hotel_room_groups g
         INNER JOIN hotel_room_types t ON t.type_code = g.room_type_code AND t.active = 1
         INNER JOIN hotel_rooms h ON h.room_group_id = g.id
         INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
-        GROUP BY g.id, g.media_slot_key, g.display_name, g.building_name, g.room_type_code, t.display_name,
+        GROUP BY g.id, g.media_slot_key, g.building_name, g.room_type_code, t.display_name,
             g.legacy_room_type, g.nightly_rate, g.base_capacity, g.max_capacity, g.bed_count, g.extra_pax_rate,
-            g.check_in_time, g.check_out_time, g.sort_order, t.sort_order, t.comfort_rank
+            g.check_in_time, g.check_out_time, g.description, g.amenities, g.sort_order, t.sort_order, t.comfort_rank
         ORDER BY t.sort_order, t.comfort_rank, g.building_name, g.sort_order, g.id");
-    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
-        $groupId = (int)$venue['room_group_id'];
-        $mediaSlot = hotel_room_group_media_slot_key($venue) ?? '';
-        $images = hotel_room_group_public_images($venue, $public_media);
-        $displayName = (string)$venue['display_name'];
-        $bedCount = (int)$venue['min_bed_count'];
-        $public_venues['Hotel Room'][] = [
-            'key' => 'hotel-group-' . $groupId, 'stable_key' => 'hotel-group-' . $groupId, 'review_key' => 'hotel-group-' . $groupId,
-            'room_group_id' => $groupId, 'media_slot_key' => $mediaSlot !== '' ? $mediaSlot : null,
-            'category' => 'Hotel Room', 'title' => $displayName, 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
-            'room_type' => (string)$venue['room_type'], 'room_type_code' => (string)($venue['room_type_code'] ?? ''),
-            'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null,
-            'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null,
-            'rate_is_starting' => false, 'overnight_rate' => null,
-            'facts' => ['Beds' => $bedCount . ' bed' . ($bedCount === 1 ? '' : 's'), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
-            'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''),
-            'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'], 'images' => $images, 'thumbnails' => $public_thumbnail_images($images), 'card_image' => $public_card_image($images)
-        ];
-    }
+    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) $hotel_variant_rows[] = $venue;
 } else {
     $hotel_review_fields = $venue_reviews_available
         ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id INNER JOIN venues rv ON rv.id = rb.venue_id WHERE vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded' AND rv.name = v.name AND EXISTS (SELECT 1 FROM hotel_rooms rh WHERE rh.venue_id = rb.venue_id AND rh.room_type = h.room_type)) AS rating_count"
         : ', 0 AS rating_average, 0 AS rating_count';
-    $public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, MIN(h.nightly_rate) AS nightly_rate, MAX(h.nightly_rate) AS max_nightly_rate, MIN(h.base_capacity) AS base_capacity, MAX(h.max_capacity) AS max_capacity, MIN(h.bed_count) AS min_bed_count, MAX(h.bed_count) AS max_bed_count, MIN(h.extra_pax_rate) AS extra_pax_rate, MIN(h.check_in_time) AS check_in_time, MAX(h.check_out_time) AS check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count {$hotel_review_fields} FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type ORDER BY v.name, h.room_type");
-    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) {
-        $displayName = $venue['building_name'] . ' - ' . $venue['room_type'];
-        $reviewKey = hotel_public_review_key(null, (string)$venue['building_name'], (string)$venue['room_type']);
-        $minBeds = (int)$venue['min_bed_count']; $maxBeds = (int)$venue['max_bed_count'];
-        $formatBeds = static fn(int $min, int $max): string => $min === $max ? $min . ' ' . ($min === 1 ? 'bed' : 'beds') : $min . '–' . $max . ' beds';
-        $public_venues['Hotel Room'][] = [
-            'key' => $reviewKey, 'stable_key' => $reviewKey, 'review_key' => $reviewKey, 'category' => 'Hotel Room', 'venue_name' => (string)$venue['building_name'], 'building_name' => (string)$venue['building_name'],
-            'room_type' => (string)$venue['room_type'], 'rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null, 'max_nightly_rate' => is_numeric($venue['max_nightly_rate'] ?? null) ? (float)$venue['max_nightly_rate'] : null, 'rate_is_starting' => is_numeric($venue['nightly_rate'] ?? null) && is_numeric($venue['max_nightly_rate'] ?? null) && (float)$venue['nightly_rate'] < (float)$venue['max_nightly_rate'], 'overnight_rate' => null,
-            'facts' => ['Beds' => $formatBeds($minBeds, $maxBeds), 'Inventory' => (int)$venue['inventory_count'] . ' units', 'Capacity' => (int)$venue['base_capacity'] . '–' . (int)$venue['max_capacity'] . ' guests', 'Stay' => 'Per night', 'Check-in' => substr((string)$venue['check_in_time'], 0, 5), 'Check-out' => substr((string)$venue['check_out_time'], 0, 5)],
-            'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
-            'images' => $hotel_images = $public_images($displayName), 'thumbnails' => $public_thumbnail_images($hotel_images), 'card_image' => $public_card_image($hotel_images)
+    $public_hotel_query = $conn->query("SELECT v.name AS building_name, h.room_type, h.nightly_rate, h.base_capacity, h.max_capacity, h.bed_count, h.extra_pax_rate, h.check_in_time, h.check_out_time, MAX(v.description) AS description, MAX(v.amenities) AS amenities, COUNT(*) AS inventory_count {$hotel_review_fields} FROM venues v INNER JOIN hotel_rooms h ON h.venue_id = v.id WHERE v.category = 'Hotel Room' AND v.status = 'Available' GROUP BY v.name, h.room_type, h.nightly_rate, h.base_capacity, h.max_capacity, h.bed_count, h.extra_pax_rate, h.check_in_time, h.check_out_time ORDER BY v.name, h.room_type, h.nightly_rate, h.max_capacity");
+    if ($public_hotel_query) while ($venue = $public_hotel_query->fetch_assoc()) $hotel_variant_rows[] = $venue;
+}
+
+// One public card represents a building and canonical room type. Each
+// commercial group remains a separate bookable option with its own facts.
+$hotel_type_listings = [];
+foreach ($hotel_variant_rows as $venue) {
+    $building = (string)($venue['building_name'] ?? '');
+    $roomType = (string)($venue['room_type'] ?? 'Hotel Room');
+    $typeCode = (string)($venue['room_type_code'] ?? '');
+    $typeKey = hotel_public_room_type_key($building, $typeCode, $roomType);
+    $displayName = $building . ' — ' . $roomType;
+    $groupId = filter_var($venue['room_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $variant = [
+        'room_group_id' => $groupId !== false ? (int)$groupId : null,
+        'room_type_code' => $typeCode,
+        'building_name' => $building,
+        'room_type' => $roomType,
+        'nightly_rate' => is_numeric($venue['nightly_rate'] ?? null) ? (float)$venue['nightly_rate'] : null,
+        'base_capacity' => (int)($venue['base_capacity'] ?? 0),
+        'max_capacity' => (int)($venue['max_capacity'] ?? 0),
+        'bed_count' => (int)($venue['bed_count'] ?? $venue['max_bed_count'] ?? 0),
+        'extra_pax_rate' => is_numeric($venue['extra_pax_rate'] ?? null) ? (float)$venue['extra_pax_rate'] : null,
+        'check_in_time' => (string)($venue['check_in_time'] ?? ''),
+        'check_out_time' => (string)($venue['check_out_time'] ?? ''),
+        'inventory_count' => max(0, (int)($venue['inventory_count'] ?? 0)),
+    ];
+    $variant['variant_key'] = hotel_commercial_variant_key([
+        'building_name' => $building,
+        'room_type_code' => $typeCode,
+        'legacy_room_type' => $typeCode === '' ? $roomType : '',
+        'base_capacity' => $variant['base_capacity'],
+        'max_capacity' => $variant['max_capacity'],
+        'bed_count' => $variant['bed_count'],
+        'nightly_rate' => $variant['nightly_rate'],
+        'extra_pax_rate' => $variant['extra_pax_rate'],
+        'check_in_time' => $variant['check_in_time'] !== '' ? $variant['check_in_time'] : '14:00:00',
+        'check_out_time' => $variant['check_out_time'] !== '' ? $variant['check_out_time'] : '12:00:00',
+    ]);
+    $variant['label'] = hotel_public_variant_label($variant);
+    $variant['standard_media_override_enabled'] = (int)($venue['standard_media_override_enabled'] ?? 0) === 1;
+    $variant['tour_media_override_enabled'] = (int)($venue['tour_media_override_enabled'] ?? 0) === 1;
+    if ($hotel_group_schema_ready) {
+        $variantMediaGroup = $venue;
+        $variantMediaGroup['room_group_id'] = $groupId !== false ? (int)$groupId : null;
+        $variantMediaGroup['legacy_media_room_types'] = $public_hotel_legacy_labels[(int)($venue['room_group_id'] ?? 0)] ?? [];
+        $variantCandidates = hotel_room_group_public_effective_image_candidates(
+            $variantMediaGroup,
+            $public_media,
+            $variant['standard_media_override_enabled']
+        );
+        $variantImages = [];
+        foreach ($variantCandidates as $candidate) {
+            try {
+                $path = media_cms_upload_relative_path((string)$candidate['path']);
+                media_cms_upload_file_path($path, true);
+                $variantImages[] = $path;
+            } catch (Throwable $error) {
+                // Invalid retired media paths do not leave broken public slides.
+            }
+        }
+        $variant['images'] = $variantImages ?: ['assets/img/placeholder.jpg'];
+        $variant['thumbnails'] = $public_thumbnail_images($variant['images']);
+        $variant['card_image'] = $public_card_image($variant['images']);
+    }
+
+    if (!isset($hotel_type_listings[$typeKey])) {
+        $hotel_type_listings[$typeKey] = [
+            'key' => 'hotel-type-' . $typeKey,
+            'stable_key' => 'hotel-type-' . $typeKey,
+            'review_key' => hotel_public_review_key(null, $building, $roomType),
+            'review_keys' => [],
+            'category' => 'Hotel Room',
+            'title' => $displayName,
+            'display_name' => $displayName,
+            'venue_name' => $building,
+            'building_name' => $building,
+            'room_type' => $roomType,
+            'room_type_code' => $typeCode,
+            'rate' => null,
+            'max_nightly_rate' => null,
+            'rate_is_starting' => false,
+            'overnight_rate' => null,
+            'base_capacity' => null,
+            'max_capacity' => null,
+            'min_bed_count' => null,
+            'max_bed_count' => null,
+            'inventory_count' => 0,
+            'variants' => [],
+            'images' => [],
+            '_image_candidates' => [],
+            'description' => (string)($venue['description'] ?? ''),
+            'amenities' => (string)($venue['amenities'] ?? ''),
+            'rating_average' => 0.0,
+            'rating_count' => 0,
+            '_rating_weighted_total' => 0.0,
         ];
     }
+
+    $listing =& $hotel_type_listings[$typeKey];
+    $listing['variants'][] = $variant;
+    $listing['review_keys'][] = hotel_public_review_key($groupId, $building, $roomType);
+    $listing['review_keys'][] = hotel_public_review_key(null, $building, $roomType);
+    foreach ($public_hotel_legacy_labels[(int)($groupId ?: 0)] ?? [] as $legacyReviewType) {
+        $listing['review_keys'][] = hotel_public_review_key(null, $building, (string)$legacyReviewType);
+    }
+    $listing['inventory_count'] += $variant['inventory_count'];
+    $listing['base_capacity'] = $listing['base_capacity'] === null ? $variant['base_capacity'] : min($listing['base_capacity'], $variant['base_capacity']);
+    $listing['max_capacity'] = $listing['max_capacity'] === null ? $variant['max_capacity'] : max($listing['max_capacity'], $variant['max_capacity']);
+    $listing['min_bed_count'] = $listing['min_bed_count'] === null ? $variant['bed_count'] : min($listing['min_bed_count'], $variant['bed_count']);
+    $listing['max_bed_count'] = $listing['max_bed_count'] === null ? $variant['bed_count'] : max($listing['max_bed_count'], $variant['bed_count']);
+    if ($variant['nightly_rate'] !== null) {
+        $listing['rate'] = $listing['rate'] === null ? $variant['nightly_rate'] : min($listing['rate'], $variant['nightly_rate']);
+        $listing['max_nightly_rate'] = $listing['max_nightly_rate'] === null ? $variant['nightly_rate'] : max($listing['max_nightly_rate'], $variant['nightly_rate']);
+    }
+    $variantRatingCount = max(0, (int)($venue['rating_count'] ?? 0));
+    if ($hotel_group_schema_ready) {
+        $listing['_rating_weighted_total'] += (float)($venue['rating_average'] ?? 0) * $variantRatingCount;
+        $listing['rating_count'] += $variantRatingCount;
+    } elseif ($listing['rating_count'] === 0) {
+        // The legacy SQL aggregate already spans all variants of this exact
+        // raw label; assigning it once avoids multiplying the review count.
+        $listing['_rating_weighted_total'] = (float)($venue['rating_average'] ?? 0) * $variantRatingCount;
+        $listing['rating_count'] = $variantRatingCount;
+    }
+
+    if ($hotel_group_schema_ready) {
+        $mediaGroup = $venue;
+        $mediaGroup['legacy_media_room_types'] = $public_hotel_legacy_labels[(int)($venue['room_group_id'] ?? 0)] ?? [];
+        foreach (hotel_room_group_public_image_candidates($mediaGroup, $public_media) as $candidate) {
+            $path = (string)$candidate['path'];
+            if ($path === 'assets/img/placeholder.jpg') continue;
+            $previous = $listing['_image_candidates'][$path] ?? null;
+            if ($previous === null || hotel_public_media_candidate_compare($candidate, $previous) < 0) {
+                $listing['_image_candidates'][$path] = $candidate;
+            }
+        }
+    } else {
+        foreach ($public_images($building . ' - ' . $roomType) as $path) {
+            if ($path !== 'assets/img/placeholder.jpg') $listing['images'][$path] = $path;
+        }
+    }
+    unset($listing);
 }
+foreach ($hotel_type_listings as &$listing) {
+    $listing['review_keys'] = array_values(array_unique(array_filter(array_map('strval', $listing['review_keys']))));
+    usort($listing['variants'], static fn(array $left, array $right): int =>
+        ((float)($left['nightly_rate'] ?? PHP_FLOAT_MAX) <=> (float)($right['nightly_rate'] ?? PHP_FLOAT_MAX))
+        ?: ((int)$left['max_capacity'] <=> (int)$right['max_capacity'])
+        ?: ((int)$left['bed_count'] <=> (int)$right['bed_count'])
+        ?: ((int)($left['room_group_id'] ?? 0) <=> (int)($right['room_group_id'] ?? 0))
+    );
+    $listing['rate_is_starting'] = $listing['rate'] !== null && $listing['max_nightly_rate'] !== null && $listing['rate'] < $listing['max_nightly_rate'];
+    $listing['rating_average'] = $listing['rating_count'] > 0 ? round($listing['_rating_weighted_total'] / $listing['rating_count'], 1) : 0.0;
+    if ($hotel_group_schema_ready) {
+        $imageCandidates = array_values($listing['_image_candidates']);
+        usort($imageCandidates, 'hotel_public_media_candidate_compare');
+        $listing['images'] = array_column($imageCandidates, 'path');
+    }
+    $bedText = $listing['min_bed_count'] === $listing['max_bed_count']
+        ? $listing['min_bed_count'] . ' bed' . ($listing['min_bed_count'] === 1 ? '' : 's')
+        : $listing['min_bed_count'] . '–' . $listing['max_bed_count'] . ' beds';
+    $listing['facts'] = [
+        'Beds' => $bedText,
+        'Inventory' => $listing['inventory_count'] . ' units',
+        'Capacity' => $listing['base_capacity'] . '–' . $listing['max_capacity'] . ' guests',
+        'Stay' => 'Per night',
+    ];
+    $listing['images'] = array_values($listing['images']);
+    $listing['images'] = array_values(array_filter(array_map(static function (string $path): ?string {
+        try {
+            $relativePath = media_cms_upload_relative_path($path);
+            media_cms_upload_file_path($relativePath, true);
+            return $relativePath;
+        } catch (Throwable $error) {
+            return null;
+        }
+    }, $listing['images'])));
+    if ($hotel_group_schema_ready) {
+        // If the type has no shared gallery, use one ordered option's photos
+        // for the unselected presentation without combining option galleries.
+        $listing['images'] = hotel_public_presentation_gallery($listing['images'], $listing['variants']);
+    }
+    if (!$listing['images']) $listing['images'] = ['assets/img/placeholder.jpg'];
+    $listing['thumbnails'] = $public_thumbnail_images($listing['images']);
+    $listing['card_image'] = $public_card_image($listing['images']);
+    unset($listing['_rating_weighted_total']);
+    unset($listing['_image_candidates']);
+}
+unset($listing);
+$public_venues['Hotel Room'] = array_values($hotel_type_listings);
 $public_villa_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, vi.day_rate, vi.overnight_rate, vi.base_capacity, vi.max_capacity, vi.extra_pax_rate, vi.has_private_pool, vi.day_check_in_time, vi.day_check_out_time, vi.overnight_check_in_time, vi.overnight_check_out_time, vi.day_stay_inclusions, vi.overnight_stay_inclusions {$event_review_fields} FROM venues v INNER JOIN villas vi ON vi.venue_id = v.id WHERE v.category = 'Resort Villa' AND v.status = 'Available' ORDER BY v.name");
 if ($public_villa_query) while ($venue = $public_villa_query->fetch_assoc()) {
     $public_venues['Resort Villa'][] = [
@@ -185,6 +361,7 @@ $build_catalog_booking_url = static function (array $venue): string {
         $params['venue_id'] = (int)$venue['venue_id'];
     }
     if (!empty($venue['room_type'])) $params['room_type'] = (string)$venue['room_type'];
+    if (!empty($venue['room_type_code'])) $params['room_type_code'] = (string)$venue['room_type_code'];
     return 'booking.php?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 };
 
@@ -383,37 +560,44 @@ include 'includes/header.php';
                 <div class="idx-modal-thumbnails" role="list"></div>
             </div>
             <div class="idx-modal-copy">
-                <h2 id="idx-modal-title"></h2>
-                <p class="idx-modal-category"></p>
-                <p class="idx-modal-rate"></p>
-                <p class="idx-modal-rating" id="idx-modal-rating" aria-live="polite"></p>
-                <section class="idx-modal-reviews" aria-labelledby="idx-modal-reviews-title">
-                    <h3 id="idx-modal-reviews-title">Recent reviews</h3>
-                    <div id="idx-modal-reviews-list"><p>No ratings yet</p></div>
-                </section>
-                <div class="idx-modal-facts"></div>
-                <p class="idx-modal-description"></p>
-                <ul class="idx-modal-amenities"></ul>
-                <fieldset class="idx-modal-villa-stay" hidden>
-                    <legend>Choose a Villa stay</legend>
-                    <label><input type="radio" name="idx-villa-stay" value="Day Time Stay" checked> Day Time Stay <small data-villa-day-rate></small></label>
-                    <label><input type="radio" name="idx-villa-stay" value="Overnight"> Overnight <small data-villa-overnight-rate></small></label>
-                </fieldset>
-                <div class="idx-modal-availability">
-                    <h3>Check availability</h3>
-                    <div class="calendar-ui idx-modal-calendar" id="idx-modal-calendar">
-                        <div class="cal-header"><button type="button" class="cal-nav prev-month" aria-label="Previous month"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><h4 class="cal-month-year">Month Year</h4><button type="button" class="cal-nav next-month" aria-label="Next month"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
-                        <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>
-                        <div class="cal-days-grid" aria-live="polite"></div>
-                        <ul class="idx-modal-calendar-legend" aria-label="Calendar legend">
-                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--available" aria-hidden="true"></span><span>Available</span></li>
-                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--selected" aria-hidden="true"></span><span>Selected</span></li>
-                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--unavailable" aria-hidden="true"></span><span>Unavailable</span></li>
-                            <li data-calendar-legend="checkout-boundary" hidden><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--checkout" aria-hidden="true"></span><span>Available checkout date</span></li>
-                            <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--past" aria-hidden="true"></span><span>Past date</span></li>
-                        </ul>
+                <div class="idx-modal-content">
+                    <h2 id="idx-modal-title"></h2>
+                    <p class="idx-modal-category"></p>
+                    <p class="idx-modal-rate"></p>
+                    <fieldset class="idx-modal-hotel-variant" hidden>
+                        <legend>Choose a room option</legend>
+                        <div id="idx-modal-hotel-variant-options" class="idx-room-option-list" role="radiogroup" aria-label="Room capacity and nightly price"></div>
+                        <small id="idx-hotel-variant-help">Choose an option to check dates and continue booking.</small>
+                    </fieldset>
+                    <p class="idx-modal-rating" id="idx-modal-rating" aria-live="polite"></p>
+                    <section class="idx-modal-reviews" aria-labelledby="idx-modal-reviews-title">
+                        <h3 id="idx-modal-reviews-title">Recent reviews</h3>
+                        <div id="idx-modal-reviews-list"><p>No ratings yet</p></div>
+                    </section>
+                    <div class="idx-modal-facts"></div>
+                    <p class="idx-modal-description"></p>
+                    <ul class="idx-modal-amenities"></ul>
+                    <fieldset class="idx-modal-villa-stay" hidden>
+                        <legend>Choose a Villa stay</legend>
+                        <label><input type="radio" name="idx-villa-stay" value="Day Time Stay" checked> Day Time Stay <small data-villa-day-rate></small></label>
+                        <label><input type="radio" name="idx-villa-stay" value="Overnight"> Overnight <small data-villa-overnight-rate></small></label>
+                    </fieldset>
+                    <div class="idx-modal-availability">
+                        <h3>Check availability</h3>
+                        <div class="calendar-ui idx-modal-calendar" id="idx-modal-calendar">
+                            <div class="cal-header"><button type="button" class="cal-nav prev-month" aria-label="Previous month"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><h4 class="cal-month-year">Month Year</h4><button type="button" class="cal-nav next-month" aria-label="Next month"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
+                            <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>
+                            <div class="cal-days-grid" aria-live="polite"></div>
+                            <ul class="idx-modal-calendar-legend" aria-label="Calendar legend">
+                                <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--available" aria-hidden="true"></span><span>Available</span></li>
+                                <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--selected" aria-hidden="true"></span><span>Selected</span></li>
+                                <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--unavailable" aria-hidden="true"></span><span>Unavailable</span></li>
+                                <li data-calendar-legend="checkout-boundary" hidden><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--checkout" aria-hidden="true"></span><span>Available checkout date</span></li>
+                                <li><span class="idx-modal-calendar-legend-dot idx-modal-calendar-legend-dot--past" aria-hidden="true"></span><span>Past date</span></li>
+                            </ul>
+                        </div>
+                        <p class="idx-modal-calendar-note">Select your dates here to pre-fill your booking. No hold is placed until checkout.</p>
                     </div>
-                    <p class="idx-modal-calendar-note">Select your dates here to pre-fill your booking. No hold is placed until checkout.</p>
                 </div>
                 <a class="idx-btn idx-btn-gold idx-modal-continue" href="booking.php">Continue booking</a>
             </div>

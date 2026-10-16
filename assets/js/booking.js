@@ -461,7 +461,9 @@ class BookingController {
         const venueId = urlParams.get('venue_id');
         const hasVenueId = urlParams.has('venue_id');
         const roomGroupId = urlParams.get('room_group_id');
+        const variantKey = urlParams.get('variant_key');
         const roomType = urlParams.get('room_type');
+        const roomTypeCode = urlParams.get('room_type_code');
         const venueName = urlParams.get('venue_name');
         const selectVenueFromURL = (select) => {
             const options = Array.from(select?.options || []);
@@ -479,8 +481,11 @@ class BookingController {
             selectVenueFromURL(this.getEl('villa-type'));
         } else if (category === 'Hotel Room') {
             const typeSelect = this.getEl('hotel-room-type');
-            const groupRoom = roomGroupId ? Object.values(window.hotelRoomData || {}).flat().find(item => String(item.room_group_id || '') === String(roomGroupId)) : null;
-            const desiredType = roomType || groupRoom?.room_type || '';
+            const allHotelRooms = Object.values(window.hotelRoomData || {}).flat();
+            const groupRoom = roomGroupId ? allHotelRooms.find(item => String(item.room_group_id || '') === String(roomGroupId)) : null;
+            const desiredRoom = groupRoom || (variantKey ? allHotelRooms.find(item => String(item.variant_key || '') === String(variantKey)) : null)
+                || (roomTypeCode ? allHotelRooms.find(item => String(item.room_type_code || '') === String(roomTypeCode)) : null);
+            const desiredType = roomType || desiredRoom?.room_type || '';
             if (typeSelect && desiredType) {
                 for (let i = 0; i < typeSelect.options.length; i++) {
                     if (typeSelect.options[i].value === desiredType) {
@@ -492,7 +497,7 @@ class BookingController {
                 const nameSelect = this.getEl('hotel-room-name');
                 const option = Array.from(nameSelect?.options || []).find(item => roomGroupId
                     ? String(item.dataset.roomGroupId || '') === String(roomGroupId)
-                    : item.dataset.name === venueName);
+                    : variantKey ? String(item.dataset.variantKey || '') === String(variantKey) : false);
                 if (nameSelect && option) {
                     nameSelect.selectedIndex = option.index;
                     nameSelect.dispatchEvent(new Event('change'));
@@ -1383,17 +1388,18 @@ class BookingController {
         const requestedGroupId = String(requestedSelection?.roomGroupId || '');
         const requestedBuilding = String(requestedSelection?.buildingName || '');
 
-        nameSelect.innerHTML = '<option value="" disabled selected>Select a building...</option>';
+        nameSelect.innerHTML = '<option value="" disabled selected>Select a room option...</option>';
         (Array.isArray(rooms) ? rooms : []).forEach((room) => {
             const opt = document.createElement("option");
             opt.value = room.nightly_rate;
             opt.dataset.roomGroupId = room.room_group_id || '';
+            opt.dataset.variantKey = room.variant_key || '';
             opt.dataset.roomTypeCode = room.room_type_code || '';
             opt.dataset.type     = room.room_type;
             opt.dataset.name     = room.building_name;
             opt.dataset.inventory = room.total_inventory;
             opt.dataset.img      = room.image || 'assets/img/placeholder.jpg';
-            opt.dataset.display  = `${room.building_name}`;
+            opt.dataset.display  = `${room.building_name} · ${room.variant_label || ''}`.trim();
             opt.dataset.baseCap  = room.base_capacity;
             opt.dataset.maxCap   = room.max_capacity;
             opt.dataset.extraPax = room.extra_pax_rate;
@@ -1402,7 +1408,8 @@ class BookingController {
             opt.dataset.checkOut = room.check_out_time || '';
             opt.dataset.description = room.venue_description || '';
             opt.dataset.amenities = room.venue_amenities || '';
-            opt.textContent = `${room.building_name} (${room.total_inventory} Units)`;
+            const unitLabel = Number(room.total_inventory) === 1 ? 'unit' : 'units';
+            opt.textContent = `${room.building_name} · ${room.variant_label || 'Room option'} · ${room.total_inventory} ${unitLabel}`;
             nameSelect.appendChild(opt);
         });
         nameSelect.disabled = nameSelect.options.length <= 1;

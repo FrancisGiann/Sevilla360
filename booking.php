@@ -89,6 +89,19 @@ $hotel_rooms_flat = $rooms_query->fetch_all(MYSQLI_ASSOC);
 $grouped_hotel_rooms = [];
 $room_img_cache = [];
 foreach ($hotel_rooms_flat as &$room) {
+    $room['variant_key'] = hotel_commercial_variant_key([
+        'building_name' => (string)($room['building_name'] ?? ''),
+        'room_type_code' => (string)($room['room_type_code'] ?? ''),
+        'legacy_room_type' => empty($room['room_type_code']) ? (string)($room['room_type'] ?? '') : '',
+        'base_capacity' => $room['base_capacity'] ?? 0,
+        'max_capacity' => $room['max_capacity'] ?? 0,
+        'bed_count' => $room['bed_count'] ?? 0,
+        'nightly_rate' => $room['nightly_rate'] ?? 0,
+        'extra_pax_rate' => $room['extra_pax_rate'] ?? 0,
+        'check_in_time' => $room['check_in_time'] ?? '14:00:00',
+        'check_out_time' => $room['check_out_time'] ?? '12:00:00',
+    ]);
+    $room['variant_label'] = hotel_public_variant_label($room);
     if ($hotel_group_schema_ready && !empty($room['room_group_id'])) {
         $room['image'] = get_hotel_room_group_image($conn, (int)$room['room_group_id']);
     } else {

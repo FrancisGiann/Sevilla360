@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/media_helper.php';
+require_once __DIR__ . '/../../includes/media_upload_validation.php';
 
 final class MediaUploadException extends RuntimeException
 {
@@ -105,16 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'home-hero' => 'standard',
             'home-about' => 'standard'
         ];
-        $expected_media_type = $home_slots[$website_slot] ?? null;
-        if ($website_slot === 'gallery') {
-            $expected_media_type = null;
-        } elseif (preg_match('/^venue_[a-z0-9]+(?:_[a-z0-9]+)*_360$/', $website_slot)) {
-            $expected_media_type = '360';
-        } elseif (preg_match('/^venue_[a-z0-9]+(?:_[a-z0-9]+)*$/', $website_slot)) {
-            $expected_media_type = 'standard';
-        } elseif ($expected_media_type === null) {
+        $slot_classification = media_upload_classify_website_slot($website_slot);
+        if ($slot_classification === null) {
             throw new MediaUploadException('The selected website slot is invalid.', 422);
         }
+        $expected_media_type = $slot_classification['expected_media_type'];
         if ($media_type !== 'standard' && $media_type !== '360') {
             throw new MediaUploadException('The selected media type is invalid.', 422);
         }
@@ -240,6 +236,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require_once __DIR__ . '/../../config/db_connect.php';
         if (!$conn->begin_transaction()) throw new Exception('Could not start upload transaction.');
         $transaction_started = true;
+        $canonical_gallery_slot = $slot_classification['canonical_gallery_slot'];
+        if ($canonical_gallery_slot !== null
+            && !media_upload_canonical_slot_exists($conn, $canonical_gallery_slot)) {
+            throw new MediaUploadException('The selected website slot is invalid.', 422);
+        }
+        $option_group_id = isset($slot_classification['option_group_id']) ? (int)$slot_classification['option_group_id'] : null;
+        if ($option_group_id !== null) {
+            if (!hotel_group_media_overrides_schema_ready($conn)) {
+                throw new MediaUploadException('Room-option galleries are not available yet. Apply migration 032 and refresh this page.', 503);
+            }
+            if (!media_upload_option_slot_exists($conn, $option_group_id, $website_slot)) {
+                throw new MediaUploadException('The selected room option is invalid or no longer has active inventory.', 422);
+            }
+        }
 
         // Keep old DB records until the transaction includes the new records;
         // old physical files are deleted only after commit below.
@@ -275,6 +285,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $successful_uploads++;
         }
         if ($successful_uploads < 1) throw new Exception('No valid files were uploaded.');
+        if ($option_group_id !== null) {
+            $overrideColumn = $media_type === '360' ? 'tour_media_override_enabled' : 'standard_media_override_enabled';
+            $enableOverride = $conn->prepare("UPDATE hotel_room_groups SET {$overrideColumn} = 1 WHERE id = ?");
+            if (!$enableOverride) throw new Exception('Could not enable this room option gallery.');
+            $enableOverride->bind_param('i', $option_group_id);
+            if (!$enableOverride->execute() || $enableOverride->affected_rows < 0) throw new Exception('Could not enable this room option gallery.');
+            $enableOverride->close();
+        }
         if (isset($_SESSION['user_id'])) {
             $log_user = (int)$_SESSION['user_id']; $log_module = 'Media CMS'; $log_action = "Uploaded $successful_uploads file(s) to slot: $website_slot"; $log_ip = request_client_ip();
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");

@@ -17,6 +17,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentMediaId = null;
     let currentSlot = null;
     let currentPhotosArray = []; // Track all photos for this room
+    let currentGallerySources = [];
+    let currentGalleryTitle = '';
     let pendingPoint = null;
     let pendingSpot = null;
     let raycastEnabled = false;
@@ -63,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const formHeading = document.getElementById('hs-form-heading');
     const formState = document.getElementById('hs-form-state');
     const saveLabel = document.getElementById('hs-save-label');
+    const galleryPicker = document.getElementById('hs-source-gallery-picker');
+    const adminGallerySelector = document.getElementById('hs-admin-gallery-selector');
     const adminViewSelector = document.getElementById("hs-admin-view-selector");
     const viewDescription = document.getElementById("hs-view-description");
     const startingSceneStatus = document.getElementById("hs-starting-scene-status");
@@ -220,6 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // texture even if Panolens' one-shot load event was missed.
         if (setCurrentViewButton) setCurrentViewButton.disabled = tourBusy || !viewer;
         if (adminViewSelector) adminViewSelector.disabled = tourBusy;
+        if (adminGallerySelector) adminGallerySelector.disabled = tourBusy;
         if (closeModalButton) closeModalButton.disabled = tourBusy;
         if (saveViewButton) saveViewButton.disabled = tourBusy || !viewer;
         if (previewViewButton) previewViewButton.disabled = tourBusy || !savedView || !viewer;
@@ -552,57 +557,119 @@ document.addEventListener("DOMContentLoaded", () => {
     // ============================================================
     // PLACE / OPEN HOTSPOT MODAL
     // ============================================================
+    function readGallerySources(button) {
+        let sources = [];
+        try {
+            const encoded = button.getAttribute('data-gallery-sources');
+            if (encoded) sources = JSON.parse(encoded);
+        } catch (error) {
+            console.warn('Invalid CMS panorama gallery list', error);
+        }
+        if (!Array.isArray(sources) || sources.length === 0) {
+            const slot = button.getAttribute('data-slot') || '';
+            sources = slot ? [{ slot, label: slot.replace(/^venue_/, '').replace(/_360$/, '').replace(/_/g, ' ') }] : [];
+        }
+        const seen = new Set();
+        return sources.filter(source => {
+            const slot = String(source?.slot || '');
+            if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,83}_360$/.test(slot) || seen.has(slot)) return false;
+            seen.add(slot);
+            return true;
+        }).map(source => ({ slot: String(source.slot), label: String(source.label || '') }));
+    }
+
+    function loadGallerySource(source) {
+        const sourcePhotos = Array.isArray(window.hotelSourcePanoData?.[source.slot])
+            ? window.hotelSourcePanoData[source.slot]
+            : window.galleryData?.[source.slot];
+        const nextPhotos = Array.isArray(sourcePhotos)
+            ? sourcePhotos.slice().filter(photo => photo.file_path
+                && String(photo.file_path).startsWith('assets/uploads/')
+                && (!photo.slot_assignment || String(photo.slot_assignment) === source.slot))
+                .sort((left, right) => (Number(right.is_primary) - Number(left.is_primary)) || (Number(left.id) - Number(right.id)))
+            : [];
+
+        if (nextPhotos.length === 0) return false;
+
+        currentSlot = source.slot;
+        currentPhotosArray = nextPhotos;
+        activeViewIndex = 0;
+        currentMediaId = Number(currentPhotosArray[0].id);
+        savedView = photoSavedView(currentPhotosArray[0]);
+        viewDraft = null;
+        viewDirty = false;
+        hotspotDirty = false;
+        savedHotspotCount = 0;
+        savedHotspots = [];
+        tourBusy = false;
+        const sourceLabel = source.label ? ` — ${source.label}` : '';
+        document.getElementById('hotspot-modal-title').textContent = `Tour Setup & Hotspots — ${currentGalleryTitle}${currentGallerySources.length > 1 ? sourceLabel : ''}`;
+
+        if (adminViewSelector) {
+            adminViewSelector.replaceChildren();
+            currentPhotosArray.forEach((photo, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                const scenePrefix = Number(photo.is_primary) === 1 ? 'Starting Scene · ' : '';
+                option.textContent = `View ${index + 1} · ${scenePrefix}${photoLabel(photo, index)}`;
+                adminViewSelector.appendChild(option);
+            });
+            adminViewSelector.value = '0';
+        }
+
+        refreshTargetDropdown(activeViewIndex);
+        setHotspotFormVisible(false);
+        setFormMode(false);
+        pendingPoint = null;
+        raycastEnabled = false;
+        listEl.innerHTML = '<p class="hotspot-empty-state">Loading saved hotspots…</p>';
+        listEl.setAttribute('aria-busy', 'true');
+        updateTourStatus();
+        setEditorStatus('Loading panorama preview…', 'loading');
+        setLoading(true);
+        initViewer(currentPhotosArray[0].file_path);
+        return true;
+    }
+
     document.querySelectorAll(".btn-place-hotspots").forEach((btn) => {
         btn.addEventListener("click", () => {
-            currentSlot = btn.getAttribute("data-slot");
-            currentPhotosArray = Array.isArray(window.galleryData?.[currentSlot])
-                ? window.galleryData[currentSlot].slice().filter(photo => photo.file_path && String(photo.file_path).startsWith('assets/uploads/'))
-                    .sort((left, right) => (Number(right.is_primary) - Number(left.is_primary)) || (Number(left.id) - Number(right.id)))
-                : [];
-
-            if (currentPhotosArray.length === 0) {
-                return;
-            }
-
-            previousFocus = document.activeElement;
-            activeViewIndex = 0;
-            currentMediaId = Number(currentPhotosArray[0].id);
-            savedView = photoSavedView(currentPhotosArray[0]);
-            viewDraft = null;
-            viewDirty = false;
-            hotspotDirty = false;
-            savedHotspotCount = 0;
-            savedHotspots = [];
-            tourBusy = false;
-            setEditorStatus('Loading panorama preview…', 'loading');
-            document.getElementById("hotspot-modal-title").textContent = "Tour Setup & Hotspots — " + currentSlot.replace(/^venue_/, "").replace(/_360$/, "").replace(/_/g, " ");
-
-            if (adminViewSelector) {
-                adminViewSelector.replaceChildren();
-                currentPhotosArray.forEach((p, idx) => {
-                    const opt = document.createElement("option");
-                    opt.value = idx;
-                    const scenePrefix = Number(p.is_primary) === 1 ? 'Starting Scene · ' : '';
-                    opt.textContent = `View ${idx + 1} · ${scenePrefix}${photoLabel(p, idx)}`;
-                    adminViewSelector.appendChild(opt);
+            currentGallerySources = readGallerySources(btn);
+            if (currentGallerySources.length === 0) return;
+            currentGalleryTitle = String(btn.getAttribute('data-gallery-title') || btn.getAttribute('aria-label') || 'Gallery');
+            if (adminGallerySelector && galleryPicker) {
+                adminGallerySelector.replaceChildren();
+                currentGallerySources.forEach((source, index) => {
+                    const option = document.createElement('option');
+                    option.value = source.slot;
+                    option.textContent = source.label || `Gallery ${index + 1}`;
+                    adminGallerySelector.appendChild(option);
                 });
-                adminViewSelector.value = '0';
+                adminGallerySelector.value = currentGallerySources[0].slot;
+                galleryPicker.hidden = currentGallerySources.length < 2;
             }
-
-            refreshTargetDropdown(activeViewIndex);
-            setHotspotFormVisible(false);
-            setFormMode(false);
-            pendingPoint = null;
-            raycastEnabled = false;
-            listEl.innerHTML = '<p class="hotspot-empty-state">Loading saved hotspots…</p>';
-            listEl.setAttribute('aria-busy', 'true');
-            updateTourStatus();
+            previousFocus = document.activeElement;
             hotspotModal.classList.add("active");
             closeModalButton?.focus();
-            setEditorStatus('Loading panorama preview…', 'loading');
-            setLoading(true);
-            initViewer(currentPhotosArray[0].file_path);
+            if (!loadGallerySource(currentGallerySources[0])) {
+                hotspotModal.classList.remove('active');
+                setEditorStatus('No source panoramas are available in this gallery.', 'error');
+            }
         });
+    });
+
+    adminGallerySelector?.addEventListener('change', async () => {
+        const nextSource = currentGallerySources.find(source => source.slot === adminGallerySelector.value);
+        if (!nextSource || nextSource.slot === currentSlot) return;
+        const currentSource = currentGallerySources.find(source => source.slot === currentSlot);
+        if (!await confirmDiscardChanges('switch to another gallery')) {
+            adminGallerySelector.value = currentSource?.slot || currentSlot || '';
+            return;
+        }
+        discardCurrentHotspotDraft(false);
+        if (!loadGallerySource(nextSource)) {
+            adminGallerySelector.value = currentSource?.slot || currentSlot || '';
+            setEditorStatus('That source gallery has no panorama available.', 'error');
+        }
     });
 
     // ============================================================
@@ -696,6 +763,12 @@ document.addEventListener("DOMContentLoaded", () => {
         panoContainer.replaceChildren();
         currentPanoMesh = null;
         currentMediaId = null;
+        currentSlot = null;
+        currentPhotosArray = [];
+        currentGallerySources = [];
+        currentGalleryTitle = '';
+        if (adminGallerySelector) adminGallerySelector.replaceChildren();
+        if (galleryPicker) galleryPicker.hidden = true;
         savedView = null;
         viewDraft = null;
         viewDirty = false;

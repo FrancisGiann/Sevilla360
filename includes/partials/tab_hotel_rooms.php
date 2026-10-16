@@ -16,7 +16,7 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="hotel-room-name">Select Building</label>
+                <label for="hotel-room-name">Select Room Option</label>
                 <select id="hotel-room-name" disabled>
                     <option value="" disabled selected>Select category first...</option>
                 </select>

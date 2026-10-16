@@ -27,6 +27,7 @@ $showroomPhp = $read('showroom.php');
 $fetchDatesPhp = $read('actions/bookings/fetch_dates.php');
 $availabilityEndpointPhp = $read('actions/bookings/get_room_availability.php');
 $publicReviewsPhp = $read('actions/public/get_venue_reviews.php');
+$publicReviewServicePhp = $read('includes/public_venue_reviews.php');
 $adminCmsPhp = $read('includes/admin-page/admin_cms.php');
 $showroomCss = $read('assets/css/showroom.css');
 
@@ -130,14 +131,16 @@ $checks['distinct commercial variants may share the same exact legacy media slot
     ])
     && str_contains($recommendServicePhp, '$standardSlotToGroup[$slot][]')
     && str_contains($recommendServicePhp, '$panoSlotToGroup[$slot . \'_360\'][]');
-$checks['recommendation and booking media use shared group slot resolution for standard and 360 media'] = str_contains($recommendServicePhp, 'hotel_room_group_media_slot_key($group)')
+$checks['recommendation and booking media use shared group slot resolution for standard and 360 media'] = str_contains($recommendServicePhp, 'hotel_room_group_media_slot_keys($group)')
     && str_contains($recommendServicePhp, '$standardSlotToGroup[$slot][]')
     && str_contains($recommendServicePhp, '$panoSlotToGroup[$slot . \'_360\'][]')
+    && str_contains($recommendServicePhp, 'hotel_room_group_media_slot_keys($group)')
+    && str_contains($recommendServicePhp, 'legacy_media_room_types')
     && str_contains($recommendServicePhp, "\$media['media_type'] === '360'")
     && str_contains($mediaHelperPhp, 'function get_hotel_room_group_image')
-    && str_contains($mediaHelperPhp, 'hotel_room_group_media_slot_key($group)')
-    && str_contains($homepagePhp, 'hotel_room_group_public_images($venue, $public_media)')
-    && str_contains($homepagePhp, "'media_slot_key' => \$mediaSlot !== '' ? \$mediaSlot : null");
+    && str_contains($mediaHelperPhp, 'hotel_room_group_media_slot_keys($group)')
+    && str_contains($homepagePhp, 'hotel_room_group_public_image_candidates($mediaGroup, $public_media)')
+    && str_contains($homepagePhp, "\$mediaGroup['legacy_media_room_types'] = \$public_hotel_legacy_labels[");
 $checks['schema readiness checks full group and availability dependencies and group saves mark core commercial data ready'] = str_contains($hotelSavePhp, 'hotel_room_group_upsert')
     && str_contains($schemaReadinessCode, "'hotel_room_types' => ['type_code', 'display_name', 'comfort_rank', 'active', 'sort_order']")
     && str_contains($read('includes/hotel_rooms.php'), "'bookings' => ['id', 'venue_id', 'booking_status', 'source', 'start_date', 'end_date']")
@@ -161,7 +164,7 @@ $checks['customer room-group queries exclude inactive canonical types'] = str_co
     && str_contains($showroomPhp, 'hrg.id = hr.room_group_id') && str_contains($showroomPhp, 'hrt.active = 1')
     && str_contains($fetchDatesPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($availabilityEndpointPhp, 't.type_code = g.room_type_code AND t.active = 1')
-    && str_contains($publicReviewsPhp, 't.type_code = g.room_type_code AND t.active = 1')
+    && str_contains($publicReviewServicePhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($submitPhp, 't.type_code = g.room_type_code AND t.active = 1')
     && str_contains($lockPhp, 't.type_code = g.room_type_code AND t.active = 1');
 $checks['catalog sort order deterministically orders migrated customer group lists'] = str_contains($recommendServicePhp, 'ORDER BY t.sort_order ASC')
@@ -297,7 +300,7 @@ $checks['hotel handoff carries group id and dates without physical unit numbers'
     && str_contains($showroomJs, 'check_in') && str_contains($showroomJs, 'check_out')
     && str_contains($showroomJs, 'guest_range') && str_contains($bookingJs, "formData.append('room_group_id', context.roomGroupId)");
 $checks['undated hotel booking handoff keeps group and guest range while omitting dates'] = str_contains($showroomJs, 'if (startDate && endDate)')
-    && str_contains($showroomJs, 'params.set("guest_range", String(arguments[3]))')
+    && str_contains($showroomJs, 'params.set("guest_range", String(guestRange))')
     && str_contains($showroomJs, 'data-receptionist-date-later')
     && str_contains($showroomJs, '"Choose dates later"');
 $checks['lock and submit revalidate group membership, capacity, and transactional availability'] = str_contains($lockPhp, 'h.room_group_id = ?')

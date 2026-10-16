@@ -79,6 +79,9 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
                 AND active_v.category = 'Hotel Room' AND active_v.status = 'Available'
             WHERE active_h.room_group_id = g.id
         )";
+    $mediaOverrideFields = hotel_group_media_overrides_schema_ready($conn)
+        ? 'g.standard_media_override_enabled, g.tour_media_override_enabled'
+        : '0 AS standard_media_override_enabled, 0 AS tour_media_override_enabled';
     $groupStmt = $conn->prepare("SELECT g.id, g.building_name, g.display_name, g.description, g.amenities,
             g.legacy_room_type, g.room_type_code, t.display_name AS room_type,
             (SELECT MIN(media_h.venue_id) FROM hotel_rooms media_h
@@ -92,7 +95,7 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
              WHERE media_h.room_group_id = g.id) AS legacy_media_room_type,
             t.comfort_rank, g.base_capacity, g.max_capacity, g.bed_count, g.nightly_rate,
             g.extra_pax_rate, g.check_in_time, g.check_out_time,
-            g.sort_order, g.media_slot_key,
+            g.sort_order, g.media_slot_key, {$mediaOverrideFields},
             (SELECT COUNT(*) FROM hotel_rooms active_h
              INNER JOIN venues active_v ON active_v.id = active_h.venue_id
                 AND active_v.category = 'Hotel Room' AND active_v.status = 'Available'
@@ -108,6 +111,27 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
     $groupStmt->close();
 
     $groupIds = array_map(static fn(array $group): int => (int)$group['id'], $groups);
+    if ($groupIds) {
+        $labelPlaceholders = implode(',', array_fill(0, count($groupIds), '?'));
+        $labelStmt = $conn->prepare("SELECT h.room_group_id, h.room_type
+            FROM hotel_rooms h
+            INNER JOIN venues v ON v.id = h.venue_id AND v.category = 'Hotel Room' AND v.status = 'Available'
+            WHERE h.room_group_id IN ({$labelPlaceholders})
+            GROUP BY h.room_group_id, h.room_type");
+        if (!$labelStmt) throw new RuntimeException('Unable to prepare hotel media alias lookup.');
+        hotel_bind_values($labelStmt, str_repeat('i', count($groupIds)), $groupIds);
+        if (!$labelStmt->execute()) throw new RuntimeException('Unable to load hotel media aliases.');
+        $labelsByGroup = [];
+        $labelResult = $labelStmt->get_result();
+        while ($label = $labelResult->fetch_assoc()) {
+            $labelType = trim((string)($label['room_type'] ?? ''));
+            $labelGroupId = (int)($label['room_group_id'] ?? 0);
+            if ($labelGroupId > 0 && $labelType !== '') $labelsByGroup[$labelGroupId][] = $labelType;
+        }
+        $labelStmt->close();
+        foreach ($groups as &$group) $group['legacy_media_room_types'] = $labelsByGroup[(int)$group['id']] ?? [];
+        unset($group);
+    }
     $availableUnits = $availabilityChecked
         ? hotel_available_group_units($conn, $checkIn->format('Y-m-d'), $checkOut->format('Y-m-d'), $sessionId ?? session_id(), $groupIds)
         : [];
@@ -125,8 +149,14 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
         $group['active_unit_count'] = (int)$group['active_unit_count'];
         $group['available_unit_count'] = count($availableUnits[$id] ?? []);
         $group['gallery'] = [];
+        $group['_shared_gallery'] = [];
+        $group['_own_gallery'] = [];
         $group['pano_urls'] = [];
         $group['pano_media_ids'] = [];
+        $group['_shared_pano_urls'] = [];
+        $group['_shared_pano_media_ids'] = [];
+        $group['_own_pano_urls'] = [];
+        $group['_own_pano_media_ids'] = [];
         $group['hotspots_by_pano_index'] = [];
     }
     unset($group);
@@ -136,18 +166,26 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
 
     $standardSlotToGroup = [];
     $panoSlotToGroup = [];
+    $optionStandardSlotToGroup = [];
+    $optionPanoSlotToGroup = [];
     foreach ($groups as $group) {
-        $slot = hotel_room_group_media_slot_key($group);
-        if ($slot !== null) {
+        foreach (hotel_room_group_media_slot_keys($group) as $slot) {
             $standardSlotToGroup[$slot][] = (int)$group['id'];
             $panoSlotToGroup[$slot . '_360'][] = (int)$group['id'];
         }
+        $optionStandardSlot = hotel_room_group_option_media_slot_key($group['id']);
+        $optionPanoSlot = hotel_room_group_option_media_slot_key($group['id'], true);
+        if ($optionStandardSlot !== null) $optionStandardSlotToGroup[$optionStandardSlot] = [(int)$group['id']];
+        if ($optionPanoSlot !== null) $optionPanoSlotToGroup[$optionPanoSlot] = [(int)$group['id']];
     }
-    $mediaSlotParams = array_values(array_unique([...array_keys($standardSlotToGroup), ...array_keys($panoSlotToGroup)]));
+    $mediaSlotParams = array_values(array_unique([
+        ...array_keys($standardSlotToGroup), ...array_keys($panoSlotToGroup),
+        ...array_keys($optionStandardSlotToGroup), ...array_keys($optionPanoSlotToGroup),
+    ]));
     if ($mediaSlotParams) {
         $slotPlaceholders = implode(',', array_fill(0, count($mediaSlotParams), '?'));
         $mediaStmt = $conn->prepare("SELECT id, slot_assignment, file_path, media_type FROM media_cms
-            WHERE slot_assignment IN ({$slotPlaceholders}) ORDER BY is_primary DESC, id ASC");
+            WHERE slot_assignment IN ({$slotPlaceholders}) ORDER BY is_primary DESC, id DESC");
         if (!$mediaStmt) throw new RuntimeException('Unable to prepare hotel media lookup.');
         hotel_bind_values($mediaStmt, str_repeat('s', count($mediaSlotParams)), $mediaSlotParams);
         if (!$mediaStmt->execute()) throw new RuntimeException('Unable to load hotel group media.');
@@ -156,17 +194,33 @@ function hotel_recommendation_search(mysqli $conn, array $requestData, ?string $
         $mediaResult = $mediaStmt->get_result();
         while ($media = $mediaResult->fetch_assoc()) {
             $slot = (string)$media['slot_assignment'];
+            try { media_cms_upload_file_path((string)$media['file_path'], true); }
+            catch (Throwable $error) { continue; }
             if ($media['media_type'] === '360') {
-                foreach ($panoSlotToGroup[$slot] ?? [] as $groupId) if (isset($groupsById[$groupId])) {
-                    $groupsById[$groupId]['pano_urls'][] = (string)$media['file_path'];
-                    $groupsById[$groupId]['pano_media_ids'][] = (int)$media['id'];
+                $isOptionGallery = isset($optionPanoSlotToGroup[$slot]);
+                foreach (($isOptionGallery ? $optionPanoSlotToGroup[$slot] : $panoSlotToGroup[$slot] ?? []) as $groupId) if (isset($groupsById[$groupId])) {
+                    $prefix = $isOptionGallery ? '_own' : '_shared';
+                    $groupsById[$groupId][$prefix . '_pano_urls'][] = (string)$media['file_path'];
+                    $groupsById[$groupId][$prefix . '_pano_media_ids'][] = (int)$media['id'];
                 }
             } elseif ($media['media_type'] === 'standard') {
-                foreach ($standardSlotToGroup[$slot] ?? [] as $groupId) if (isset($groupsById[$groupId])) $groupsById[$groupId]['gallery'][] = (string)$media['file_path'];
+                $isOptionGallery = isset($optionStandardSlotToGroup[$slot]);
+                foreach (($isOptionGallery ? $optionStandardSlotToGroup[$slot] : $standardSlotToGroup[$slot] ?? []) as $groupId) if (isset($groupsById[$groupId])) {
+                    $groupsById[$groupId][$isOptionGallery ? '_own_gallery' : '_shared_gallery'][] = (string)$media['file_path'];
+                }
             }
         }
         $mediaStmt->close();
     }
+    foreach ($groups as &$group) {
+        $useOwnStandard = (int)($group['standard_media_override_enabled'] ?? 0) === 1 && !empty($group['_own_gallery']);
+        $useOwnTour = (int)($group['tour_media_override_enabled'] ?? 0) === 1 && !empty($group['_own_pano_urls']);
+        $group['gallery'] = $useOwnStandard ? $group['_own_gallery'] : $group['_shared_gallery'];
+        $group['pano_urls'] = $useOwnTour ? $group['_own_pano_urls'] : $group['_shared_pano_urls'];
+        $group['pano_media_ids'] = $useOwnTour ? $group['_own_pano_media_ids'] : $group['_shared_pano_media_ids'];
+        unset($group['_shared_gallery'], $group['_own_gallery'], $group['_shared_pano_urls'], $group['_shared_pano_media_ids'], $group['_own_pano_urls'], $group['_own_pano_media_ids']);
+    }
+    unset($group);
 
     $rankCandidates = hotel_filter_recommendation_groups_by_type($groups, $requestedType);
     $ranked = hotel_rank_recommendation_groups($rankCandidates, $priority, $nights, $maxGuests, max(1, count($rankCandidates)), $availabilityChecked);

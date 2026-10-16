@@ -42,11 +42,17 @@ $checks = [
     'one gallery payload retains original paths and bounded derivative URLs' => str_contains($cms, 'window.galleryData =')
         && str_contains($cms, 'thumbnail_path')
         && !str_contains($cms, 'window.panoDataOrdered'),
+    'CMS standard cards use cached responsive derivatives with bounded thumbnail fallback while 360 cards stay thumbnail-only' =>
+        str_contains($helper, "media_cms_card_image_data(\$media['file_path']")
+        && str_contains($helper, "(\$media['media_type'] ?? '') === 'standard'")
+        && str_contains($helper, "srcset=\"")
+        && str_contains($cms, 'media_cms_card_image_markup('),
     'management thumbnails accept only deterministic WebP derivative paths' => str_contains($cmsJs, '\\.cms-thumbnails')
         && str_contains($cmsJs, '{64}\\.webp'),
-    'panorama order derives from the same media set in browser code' => str_contains($hotspotJs, 'window.galleryData?.[currentSlot]')
+    'panorama order derives from the exact source media set in browser code' => str_contains($hotspotJs, 'window.galleryData?.[source.slot]')
+        && str_contains($hotspotJs, 'window.hotelSourcePanoData?.[source.slot]')
+        && str_contains($hotspotJs, 'sourcePhotos.slice().filter(')
         && str_contains($hotspotJs, 'is_primary')
-        && str_contains($hotspotJs, '.slice().filter(')
         && str_contains($hotspotJs, 'Number(left.id) - Number(right.id)'),
     'all initial CMS card image markup uses lazy async thumbnails with intrinsic dimensions' => str_contains($cms, 'media_cms_card_image_markup(')
         && str_contains($helper, 'loading="lazy"')
@@ -178,6 +184,22 @@ if ($failed === 0) {
             'thumbnail_height' => $thumbnail['height'],
         ], 'A "safe" image');
         $assert(str_contains($markup, 'loading="lazy"') && str_contains($markup, 'decoding="async"') && str_contains($markup, 'alt="A &quot;safe&quot; image"'), 'card markup has lazy decoding, intrinsic dimensions, and escaped attributes');
+        $thumbnailFallbackMarkup = media_cms_card_image_markup([
+            'media_type' => 'standard',
+            'file_path' => $sourceRelative,
+            'thumbnail_path' => $thumbnail['path'],
+            'thumbnail_version' => (int)(@filemtime($thumbnailPath) ?: 0),
+            'thumbnail_width' => $thumbnail['width'],
+            'thumbnail_height' => $thumbnail['height'],
+        ], 'Bounded fallback card');
+        $panoramaCardMarkup = media_cms_card_image_markup([
+            'media_type' => '360',
+            'file_path' => $sourceRelative,
+            'thumbnail_path' => $thumbnail['path'],
+            'thumbnail_version' => (int)(@filemtime($thumbnailPath) ?: 0),
+            'thumbnail_width' => $thumbnail['width'],
+            'thumbnail_height' => $thumbnail['height'],
+        ], 'Bounded panorama card');
 
         $sourceBytes = filesize($sourcePath);
         $sourceModifiedAt = filemtime($sourcePath);
@@ -202,6 +224,27 @@ if ($failed === 0) {
             && $cardImage['width'] === $cardDerivatives[2]['width']
             && $cardImage['height'] === $cardDerivatives[2]['height'],
             'card image data exposes validated candidates and actual intrinsic dimensions');
+        $responsiveCardMarkup = media_cms_card_image_markup([
+            'media_type' => 'standard',
+            'file_path' => $sourceRelative,
+            'thumbnail_path' => $thumbnail['path'],
+            'thumbnail_version' => (int)(@filemtime($thumbnailPath) ?: 0),
+            'thumbnail_width' => $thumbnail['width'],
+            'thumbnail_height' => $thumbnail['height'],
+        ], 'Responsive standard card');
+        $assert(str_contains($responsiveCardMarkup, 'srcset=')
+            && str_contains($responsiveCardMarkup, 'sizes="(max-width: 767px)')
+            && str_contains($responsiveCardMarkup, $cardDerivatives[0]['url'])
+            && str_contains($responsiveCardMarkup, 'width="' . $cardDerivatives[2]['width'] . '" height="' . $cardDerivatives[2]['height'] . '"'),
+            'standard CMS grid card selects existing responsive derivatives with intrinsic source dimensions');
+        $assert(!str_contains($thumbnailFallbackMarkup, 'srcset=')
+            && str_contains($thumbnailFallbackMarkup, media_cms_thumbnail_url($thumbnail['path'], (int)(@filemtime($thumbnailPath) ?: 0)))
+            && !str_contains($thumbnailFallbackMarkup, $sourceRelative),
+            'standard CMS card without cached public derivatives falls back to its bounded admin thumbnail');
+        $assert(!str_contains($panoramaCardMarkup, 'srcset=')
+            && str_contains($panoramaCardMarkup, media_cms_thumbnail_url($thumbnail['path'], (int)(@filemtime($thumbnailPath) ?: 0)))
+            && !str_contains($panoramaCardMarkup, $sourceRelative),
+            '360 CMS grid card remains on its bounded admin thumbnail instead of loading the full panorama');
         foreach ($cardDerivatives as $candidate) {
             $candidateFile = media_cms_upload_file_path($candidate['path'], true);
             $assert(is_file($candidateFile) && str_contains($cardImage['srcset'], $candidate['url'] . ' ' . $candidate['width'] . 'w'),

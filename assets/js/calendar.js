@@ -54,6 +54,7 @@ class SevillaCalendar {
     this.maintenanceDatesList = []; // Array of objects {date, type}
     this.isMaintenanceMode = false;
     this.availabilityRequestGeneration = 0;
+    this.selectionLocked = false;
 
     this.init();
   }
@@ -113,6 +114,8 @@ class SevillaCalendar {
     if (!room_type && !room_name && !venue_id && !room_group_id) return;
     const requestGeneration = ++this.availabilityRequestGeneration;
     this.isMaintenanceMode = false;
+    this.selectionLocked = true;
+    this.render();
     
     // Auto-detect hotel mode from strings if passed, or explicit flag
     if (requireHotelRules || room_type === 'Hotel Room' || (room_type && room_type !== 'Event Hall' && room_type !== 'Resort Villa')) {
@@ -142,17 +145,21 @@ class SevillaCalendar {
       if (requestGeneration !== this.availabilityRequestGeneration) return;
       this.bookedDatesList = data.booked_dates;
       this.hardBlockedDatesList = Array.isArray(data.hard_blocked_dates) ? data.hard_blocked_dates : [];
+      this.selectionLocked = false;
       this.render();
+      return true;
     } catch (error) {
       if (requestGeneration !== this.availabilityRequestGeneration) return;
       console.error("Error fetching dates:", error);
       // Never turn a failed request into an apparently empty calendar.
       this.bookedDatesList = previousBookedDates;
       this.hardBlockedDatesList = previousHardBlockedDates;
+      this.selectionLocked = true;
       this.render();
       if (typeof showAlert === 'function') {
           showAlert('Availability Error', error.message || 'Availability could not be loaded. Please try again.', 'error');
       }
+      return false;
     }
   }
 
@@ -238,9 +245,10 @@ class SevillaCalendar {
       const isBooked = this.bookedDatesList.includes(cellDateStr);
       const isHardBlocked = this.hardBlockedDatesList.includes(cellDateStr);
       const checkoutBoundary = this.requireHotelRules && this.startDate && !this.endDate && isBooked && cellDate > this.startDate && !this.hasInvalidDaysBetween(this.startDate, cellDate);
-      const isInteractive = !isPastDate && !isMaintenance && !isHardBlocked && (!isBooked || checkoutBoundary);
+      const isInteractive = !this.selectionLocked && !isPastDate && !isMaintenance && !isHardBlocked && (!isBooked || checkoutBoundary);
       const cell = document.createElement(isInteractive ? "button" : "div");
       cell.className = "cal-day-cell";
+      if (this.selectionLocked && !isPastDate) cell.classList.add("availability-loading");
       cell.innerText = day;
       if (isInteractive) {
         cell.type = 'button';
@@ -411,6 +419,7 @@ class SevillaCalendar {
     // flight. Its result must not overwrite the new empty state or alert the
     // customer after they have moved on.
     this.availabilityRequestGeneration++;
+    this.selectionLocked = false;
     this.startDate = null;
     this.endDate = null;
     this.bookedDatesList = [];

@@ -11,6 +11,51 @@ function showroom_tour_is_panorama(?string $media_type): bool
     return $media_type === '360';
 }
 
+/** Select a room option's actual gallery or tour, falling back independently to the shared type media. */
+function showroom_tour_select_option_media(array $shared, array $own, bool $overrideEnabled, string $kind): array
+{
+    $collection = $kind === 'standard' ? 'gallery' : ($kind === '360' ? 'pano_urls' : null);
+    if ($collection === null) throw new InvalidArgumentException('Unknown showroom media kind.');
+    $items = $own[$collection] ?? null;
+    if ($overrideEnabled && is_array($items) && array_filter($items, static fn(mixed $item): bool => is_string($item) && trim($item) !== '')) {
+        return $own;
+    }
+    return $shared;
+}
+
+/** Resolve public destination IDs for a CMS media slot without changing legacy venue IDs. */
+function showroom_tour_media_destination_ids(
+    string $slot,
+    string $media_type,
+    array $showroom_data,
+    array $hotel_slot_map
+): array {
+    $is_panorama = $media_type === '360' && str_ends_with($slot, '_360');
+    $raw_base = $is_panorama ? substr($slot, 0, -4) : $slot;
+    $legacy_base = preg_match('/^venue_/', $raw_base) && ($is_panorama || strpos($slot, '_std') === false)
+        ? (string)preg_replace('/^venue_/', '', $raw_base)
+        : $raw_base;
+
+    $mapping_keys = $is_panorama
+        ? [$raw_base, $slot]
+        : [$slot, $legacy_base, $raw_base];
+    foreach (array_values(array_unique($mapping_keys)) as $mapping_key) {
+        if (!isset($hotel_slot_map[$mapping_key]) || !is_array($hotel_slot_map[$mapping_key])) continue;
+        $destinations = [];
+        foreach ($hotel_slot_map[$mapping_key] as $destination_id) {
+            $destination_id = (string)$destination_id;
+            if (isset($showroom_data[$destination_id])) $destinations[] = $destination_id;
+        }
+        if ($destinations) return array_values(array_unique($destinations));
+    }
+
+    $direct_keys = array_values(array_unique([$raw_base, $legacy_base]));
+    foreach ($direct_keys as $destination_id) {
+        if (isset($showroom_data[$destination_id])) return [$destination_id];
+    }
+    return [];
+}
+
 /** @return array{media_id:int,view:?array{x:float,y:float,z:float,fov:float}} */
 function showroom_tour_validate_view_request(stdClass $payload): array
 {
