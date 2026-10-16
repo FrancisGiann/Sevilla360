@@ -27,17 +27,7 @@ if ($public_media_query) {
 }
 $public_slot_key = static fn(string $name): string => media_cms_venue_slot_key($name);
 $public_images = static function (string $displayName) use (&$public_media, $public_slot_key): array {
-    $images = $public_media[$public_slot_key($displayName)] ?? [];
-    $images = array_values(array_filter(array_map(static function ($path): ?string {
-        try {
-            $relativePath = media_cms_upload_relative_path(trim((string)$path));
-            media_cms_upload_file_path($relativePath, true);
-            return $relativePath;
-        } catch (Throwable $error) {
-            return null;
-        }
-    }, $images)));
-    return $images ?: ['assets/img/placeholder.jpg'];
+    return media_cms_public_image_paths($public_media[$public_slot_key($displayName)] ?? []);
 };
 $public_thumbnail_images = static function (array $images): array {
     return array_map(static fn(string $path): string => media_cms_existing_thumbnail_url($path) ?? $path, $images);

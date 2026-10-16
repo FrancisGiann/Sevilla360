@@ -719,6 +719,19 @@ document.addEventListener('DOMContentLoaded', () => {
       const path = String(photo?.thumbnail_path || '');
       return /^assets\/uploads\/\.cms-thumbnails\/[a-f0-9]{64}\.webp$/.test(path) ? path : 'assets/img/placeholder.jpg';
   };
+  const hotelPreviewSizes = '(max-width: 700px) calc(84vw - 2rem), (max-width: 1000px) calc(50vw - 4rem), 430px';
+  const cmsCardPreviewSources = photo => {
+      const src = String(photo?.card_preview_src || '');
+      const srcset = String(photo?.card_preview_srcset || '');
+      if (!/^assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(?:480|800|1320)\.webp\?v=\d+$/.test(src)
+          || photo?.card_preview_sizes !== hotelPreviewSizes) return null;
+      const candidates = srcset.split(',').map(candidate => candidate.trim());
+      if (!candidates.length || candidates.some(candidate => {
+          const match = candidate.match(/^assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(480|800|1320)\.webp\?v=\d+\s+([1-9]\d{0,3})w$/);
+          return !match || Number(match[2]) > Number(match[1]) || Number(match[2]) > 1320;
+      })) return null;
+      return { src, srcset, sizes: hotelPreviewSizes };
+  };
   const optionPhotoSlot = option => String(option?.standard_slot || '');
   const optionTourSlot = option => String(option?.tour_slot || '');
 
@@ -739,11 +752,20 @@ document.addEventListener('DOMContentLoaded', () => {
           return photos;
       }
       const strip = document.createElement('div');
-      strip.className = 'hotel-gallery-preview-strip';
+      const isTour = activeHotelTab === 'tour';
+      strip.className = `hotel-gallery-preview-strip hotel-gallery-preview-strip--${isTour ? 'tour' : 'photos'}`;
+      strip.tabIndex = 0;
+      strip.setAttribute('role', 'region');
+      strip.setAttribute('aria-label', isTour ? `Tour scene previews, ${photos.length} scenes` : `Photo previews, ${photos.length} photos`);
       photos.slice(0, 6).forEach((photo, index) => {
           const image = document.createElement('img');
-          image.src = cmsPreviewPath(photo);
-          image.alt = index === 0 && Number(photo.is_primary) === 1 ? 'Current gallery cover' : `Gallery image ${index + 1}`;
+          const responsiveSource = isTour ? null : cmsCardPreviewSources(photo);
+          image.src = responsiveSource?.src || cmsPreviewPath(photo);
+          if (responsiveSource) {
+              image.srcset = responsiveSource.srcset;
+              image.sizes = responsiveSource.sizes;
+          }
+          image.alt = Number(photo.is_primary) === 1 ? 'Current gallery cover' : `Gallery image ${index + 1}`;
           image.loading = 'lazy';
           image.decoding = 'async';
           strip.appendChild(image);

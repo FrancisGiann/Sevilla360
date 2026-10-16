@@ -101,6 +101,24 @@ function media_cms_upload_file_path(string $relativePath, bool $requireFile = fa
     return $resolved;
 }
 
+/** Resolve public CMS galleries from media rows or legacy path strings. */
+function media_cms_public_image_paths(array $mediaRecords, string $fallback = 'assets/img/placeholder.jpg'): array
+{
+    $paths = [];
+    foreach ($mediaRecords as $record) {
+        $rawPath = is_array($record) ? ($record['file_path'] ?? '') : $record;
+        if (!is_string($rawPath) || trim($rawPath) === '') continue;
+        try {
+            $relativePath = media_cms_upload_relative_path(trim($rawPath));
+            media_cms_upload_file_path($relativePath, true);
+            $paths[] = $relativePath;
+        } catch (Throwable $error) {
+            // Invalid or retired CMS paths should not leave broken public slides.
+        }
+    }
+    return $paths ?: [$fallback];
+}
+
 /** Return the deterministic derivative path for a source media URL. */
 function media_cms_thumbnail_relative_path(string $sourcePath): string
 {

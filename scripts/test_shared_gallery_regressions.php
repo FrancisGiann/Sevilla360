@@ -119,6 +119,23 @@ $checks['hotel editor spacing, mobile scope, and child dialog stack stay usable'
     && str_contains($cmsCss, '.hotel-editor-scope select { width: 100%; min-width: 0; min-height: 44px;')
     && str_contains($cmsCss, '.hotel-gallery-workspace-actions .hotel-editor-action { flex: 1 1 8rem; }')
     && str_contains($cmsClient, 'scope.textContent = option.label || \'Room option\'');
+$checks['hotel photo previews use bounded responsive sources while tour previews remain thumbnail-sized'] =
+    str_contains($cms, "media_cms_card_image_data((string)\$photo['file_path'], \$hotel_preview_sizes)")
+    && str_contains($cms, "\$hotel_photo_preview_slots[\$optionSlot] = true;")
+    && str_contains($cms, "\$standard_venue_photos[\$previewSlot] ?? []")
+    && str_contains($cms, "'card_preview_srcset' => (string)(\$preview['srcset'] ?? '')")
+    && str_contains($cmsClient, 'const cmsCardPreviewSources = photo =>')
+    && str_contains($cmsClient, '([1-9]\\d{0,3})w')
+    && str_contains($cmsClient, 'Number(match[2]) > Number(match[1]) || Number(match[2]) > 1320')
+    && str_contains($cmsClient, 'image.srcset = responsiveSource.srcset;')
+    && str_contains($cmsClient, 'const responsiveSource = isTour ? null : cmsCardPreviewSources(photo);')
+    && str_contains($cmsClient, 'strip.setAttribute(\'role\', \'region\');')
+    && str_contains($cmsCss, '.hotel-gallery-preview-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));')
+    && str_contains($cmsCss, '.hotel-gallery-preview-strip--photos img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2;')
+    && str_contains($cmsCss, '.hotel-gallery-preview-strip--tour img { flex: 0 0 200px; width: 200px; height: 125px;')
+    && str_contains($cmsCss, '.hotel-gallery-preview-strip--photos img { flex: 0 0 84%; width: 84%;')
+    && str_contains($cms, "(max-width: 1000px) calc(50vw - 4rem), 430px")
+    && str_contains($cmsClient, "(max-width: 1000px) calc(50vw - 4rem), 430px");
 $checks['showroom switches photos and 360 tour by exact option and keeps shared media as independent fallback'] =
     str_contains($showroom, '$hotel_showroom_option_map[$tourSlot]')
     && str_contains($showroom, '$hotel_showroom_option_map[(string)$slot]')

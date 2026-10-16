@@ -105,6 +105,17 @@ $sharedFixture = tempnam($uploadsRoot, '.test-shared-fallback-');
 if ($sharedFixture !== false) {
     file_put_contents($sharedFixture, 'temporary media fixture');
     $sharedFixtureRelative = 'assets/uploads/' . basename($sharedFixture);
+    $checks['homepage public galleries accept media records and legacy paths while retaining valid file order'] = media_cms_public_image_paths([
+        ['id' => 100, 'file_path' => $sharedFixtureRelative, 'is_primary' => 1],
+        ['id' => 101, 'file_path' => 'assets/uploads/missing-public-gallery-test.jpg', 'is_primary' => 0],
+        ['id' => 102, 'file_path' => null, 'is_primary' => 0],
+        $sharedFixtureRelative,
+    ]) === [$sharedFixtureRelative, $sharedFixtureRelative]
+        && media_cms_public_image_paths([
+            ['file_path' => 'assets/uploads/missing-public-gallery-test.jpg'],
+            ['file_path' => '../config/db_connect.php'],
+            ['file_path' => 12],
+        ]) === ['assets/img/placeholder.jpg'];
     $checks['enabled option gallery with only missing media falls back to a readable shared photo'] = array_column(
         hotel_room_group_public_effective_image_candidates(
             ['room_group_id' => 41] + $groupA,
@@ -145,6 +156,10 @@ $checks['media preference ranks primary candidates across all canonical aliases'
     && str_contains(file_get_contents(__DIR__ . '/../includes/admin-page/admin_cms.php') ?: '', 'hotel_public_media_candidate_compare')
     && str_contains(file_get_contents(__DIR__ . '/../showroom.php') ?: '', 'hotel_public_media_candidate_compare')
     && str_contains(file_get_contents(__DIR__ . '/../includes/hotel_recommendation_service.php') ?: '', 'ORDER BY is_primary DESC, id DESC');
+$checks['homepage standard media resolver normalizes record rows before building event and villa galleries'] = str_contains(
+    file_get_contents(__DIR__ . '/../index.php') ?: '',
+    'media_cms_public_image_paths($public_media[$public_slot_key($displayName)] ?? [])'
+);
 $primaryApi = file_get_contents(__DIR__ . '/../actions/admin/set_primary_media.php') ?: '';
 $cmsJs = file_get_contents(__DIR__ . '/../assets/js/admin-page/admin_cms.js') ?: '';
 $checks['CMS shared cover action updates every photo in the canonical gallery'] = str_contains($cmsJs, 'requestBody.canonical_gallery_slot = sharedGallery.canonicalSlot')

@@ -208,6 +208,16 @@ unset($slotInfo);
 foreach ($venue_360_slots as &$slotInfo) unset($slotInfo['_variant_keys']);
 unset($slotInfo);
 
+$hotel_photo_preview_slots = [];
+foreach ($hotel_editor_types as $canonicalSlot => $editorType) {
+    $hotel_photo_preview_slots[$canonicalSlot] = true;
+    foreach ($hotel_gallery_alias_slots[$canonicalSlot] ?? [] as $aliasSlot) $hotel_photo_preview_slots[$aliasSlot] = true;
+    foreach ($editorType['options'] as $option) {
+        $optionSlot = (string)($option['standard_slot'] ?? '');
+        if ($optionSlot !== '') $hotel_photo_preview_slots[$optionSlot] = true;
+    }
+}
+
 // One narrow, stable query powers cards, galleries, and hotspot editing.
 $query = "SELECT id, file_name, file_path, media_type, slot_assignment, is_primary,
                  showroom_view_x, showroom_view_y, showroom_view_z, showroom_fov
@@ -316,9 +326,29 @@ foreach ($pano_venue_photos as $slot => $photos) {
     $pano_venue_photos_ordered[$slot] = $photos;
 }
 
+$cms_gallery_slots = array_merge($standard_venue_photos, $pano_venue_photos);
+$cms_card_previews_by_id = [];
+$hotel_preview_sizes = '(max-width: 700px) calc(84vw - 2rem), (max-width: 1000px) calc(50vw - 4rem), 430px';
+// Wider responsive sources are only for standard hotel photos; tours stay on bounded admin thumbnails.
+foreach ($hotel_photo_preview_slots as $previewSlot => $unused) {
+    foreach ($standard_venue_photos[$previewSlot] ?? [] as $photo) {
+        $mediaId = (int)$photo['id'];
+        if (isset($cms_card_previews_by_id[$mediaId])) continue;
+        $preview = media_cms_card_image_data((string)$photo['file_path'], $hotel_preview_sizes);
+        if ($preview['srcset'] !== '') {
+            $cms_card_previews_by_id[$mediaId] = [
+                'src' => (string)$preview['src'],
+                'srcset' => (string)$preview['srcset'],
+                'sizes' => (string)$preview['sizes'],
+            ];
+        }
+    }
+}
+
 $cms_gallery_data = [];
-foreach (array_merge($standard_venue_photos, $pano_venue_photos) as $slot => $photos) {
-    $cms_gallery_data[$slot] = array_map(static function (array $photo): array {
+foreach ($cms_gallery_slots as $slot => $photos) {
+    $cms_gallery_data[$slot] = array_map(static function (array $photo) use ($cms_card_previews_by_id): array {
+        $preview = $cms_card_previews_by_id[(int)$photo['id']] ?? null;
         return [
             'id' => (int)$photo['id'],
             'file_name' => (string)$photo['file_name'],
@@ -328,6 +358,9 @@ foreach (array_merge($standard_venue_photos, $pano_venue_photos) as $slot => $ph
             'thumbnail_version' => (int)$photo['thumbnail_version'],
             'thumbnail_width' => (int)$photo['thumbnail_width'],
             'thumbnail_height' => (int)$photo['thumbnail_height'],
+            'card_preview_src' => (string)($preview['src'] ?? ''),
+            'card_preview_srcset' => (string)($preview['srcset'] ?? ''),
+            'card_preview_sizes' => (string)($preview['sizes'] ?? ''),
             'showroom_view_x' => $photo['showroom_view_x'],
             'showroom_view_y' => $photo['showroom_view_y'],
             'showroom_view_z' => $photo['showroom_view_z'],
