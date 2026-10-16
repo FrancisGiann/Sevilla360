@@ -78,27 +78,46 @@ $checks['hotspot editor changes exact source slot before loading panorama and sa
     && str_contains($hotspots, 'adminGallerySelector?.addEventListener(\'change\'')
     && str_contains($hotspots, 'String(photo.slot_assignment) === source.slot')
     && str_contains($hotspots, 'initViewer(currentPhotosArray[0].file_path)');
-$checks['one hotel type card remains visible to standard and 360 filters and exposes independent room option controls'] =
+$checks['empty hotel type cards are compact, have an accessible shared-photo shortcut, and keep one clear editor action'] =
     str_contains($cms, 'class="cms-card cms-hotel-type-card" data-type="hotel" data-types="standard 360"')
+    && str_contains($cms, 'cms-hotel-empty-cover')
+    && str_contains($cms, 'No shared photos yet')
+    && str_contains($cms, 'class="btn cms-hotel-add-shared"')
+    && str_contains($cms, 'Edit galleries')
+    && str_contains($cmsCss, '.cms-hotel-type-card .cms-hotel-empty-cover { display: flex; aspect-ratio: auto;')
+    && str_contains($cmsCss, '.cms-hotel-add-shared { min-width: 82px; min-height: 44px;')
+    && str_contains($cmsCss, '@media (max-width: 380px)')
+    && str_contains($cmsClient, "showHotelEditor(type, 'photos', 'shared')")
+    && str_contains($cmsClient, "hotelEditorOverlay?.querySelector('[data-hotel-action=\"upload-shared-photos\"]')?.click();");
+$checks['hotel gallery editor uses one scope selector and two media tabs with contextual option actions'] =
+    str_contains($cms, 'id="hotel-gallery-scope"')
     && str_contains($cms, 'id="hotelGalleryEditor"')
     && str_contains($cms, 'data-hotel-tab="photos"')
     && str_contains($cms, 'data-hotel-tab="tour"')
-    && str_contains($cms, 'data-hotel-tab="options"')
+    && !str_contains($cms, 'data-hotel-tab="options"')
     && str_contains($cms, "'standard_slot' => hotel_room_group_option_media_slot_key(\$groupId)")
     && str_contains($cms, "'tour_slot' => hotel_room_group_option_media_slot_key(\$groupId, true)")
-    && str_contains($cmsClient, 'Manage own photos')
-    && str_contains($cmsClient, 'Manage own tour')
-    && str_contains($cmsClient, 'Return to shared photos')
-    && str_contains($cmsClient, 'Return to shared tour')
+    && str_contains($cmsClient, 'upload-option-gallery')
+    && str_contains($cmsClient, 'enable-option-gallery')
+    && str_contains($cmsClient, 'share-option-gallery')
+    && str_contains($cmsClient, "scope.textContent = option.label || 'Room option'")
+    && str_contains($cmsClient, 'Choose “Use own gallery” to select its own.')
     && str_contains($cmsClient, 'Manage room option photos')
-    && str_contains($cmsClient, 'No photos yet. Add photos for this room option.')
-    && str_contains($cmsClient, 'not currently used')
+    && str_contains($cmsClient, 'saved own ${isTour ? \'scene\' : \'photo\'}')
+    && str_contains($cmsClient, 'hotel-gallery-workspace-actions')
     && str_contains($cms, 'id="mg-empty-state"');
-$checks['hotel editor tabs reset global section spacing and child gallery dialogs stack above the parent'] =
+$checks['shared hotspot action invokes the exact source-owned hidden control'] =
+    str_contains($cmsClient, "card?.querySelector('.btn-place-hotspots[data-gallery-sources]')")
+    && str_contains($cmsClient, "'Edit shared hotspots' : 'Edit hotspots'")
+    && str_contains($cmsClient, "target.click();")
+    && !str_contains($cmsClient, "clickControl(activeHotelEditorType.canonical_slot, 'btn-place-hotspots')");
+$checks['hotel editor spacing, mobile scope, and child dialog stack stay usable'] =
     str_contains($cmsCss, '.hotel-editor-body [role="tabpanel"] { padding: 0; }')
     && preg_match('/\.hotel-editor-overlay\s*\{\s*z-index:\s*1050;/s', $cmsCss) === 1
     && preg_match('/\.cms-modal-overlay\s*\{[^}]*z-index:\s*1100;/s', $cmsCss) === 1
-    && str_contains($cmsClient, 'facts.textContent = `${option.inventory_count}');
+    && str_contains($cmsCss, '.hotel-editor-scope select { width: 100%; min-width: 0; min-height: 44px;')
+    && str_contains($cmsCss, '.hotel-gallery-workspace-actions .hotel-editor-action { flex: 1 1 8rem; }')
+    && str_contains($cmsClient, 'scope.textContent = option.label || \'Room option\'');
 $checks['showroom switches photos and 360 tour by exact option and keeps shared media as independent fallback'] =
     str_contains($showroom, '$hotel_showroom_option_map[$tourSlot]')
     && str_contains($showroom, '$hotel_showroom_option_map[(string)$slot]')

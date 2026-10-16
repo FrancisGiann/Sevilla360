@@ -455,21 +455,34 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             data-hotel-building="<?php echo htmlspecialchars((string)$editor_type['building_name'], ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-room-type-code="<?php echo htmlspecialchars((string)$editor_type['room_type_code'], ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-room-type="<?php echo htmlspecialchars((string)$editor_type['room_type'], ENT_QUOTES, 'UTF-8'); ?>">
-            <div class="cms-img-wrapper">
+            <div class="cms-img-wrapper<?php echo $first_shared ? '' : ' cms-hotel-empty-cover'; ?>">
                 <?php if ($first_shared): ?>
                     <?php echo media_cms_card_image_markup($first_shared, $hotelTitle); ?>
                 <?php else: ?>
-                    <span class="cms-hotel-empty-preview">Shared room photos will appear here.</span>
+                    <div class="cms-hotel-empty-preview">
+                        <span class="cms-hotel-empty-icon" aria-hidden="true"><i class="fa-solid fa-images"></i></span>
+                        <span class="cms-hotel-empty-copy">
+                            <strong>No shared photos yet</strong>
+                            <span>Fallback gallery for room options</span>
+                        </span>
+                        <button type="button" class="btn cms-hotel-add-shared" aria-label="Add shared photos for <?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?>">Add photos</button>
+                    </div>
                 <?php endif; ?>
             </div>
             <div class="cms-card-content">
-                <div class="cms-card-header">
-                    <h4 class="cms-title"><?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?></h4>
-                    <span class="badge badge-gray"><?php echo count($editor_type['options']); ?> room option<?php echo count($editor_type['options']) === 1 ? '' : 's'; ?></span>
+                <div class="cms-hotel-card-header">
+                    <div class="cms-hotel-card-title-group">
+                        <p class="cms-hotel-building"><?php echo htmlspecialchars((string)$editor_type['building_name'], ENT_QUOTES, 'UTF-8'); ?></p>
+                        <h4 class="cms-title"><?php echo htmlspecialchars((string)$editor_type['room_type'], ENT_QUOTES, 'UTF-8'); ?></h4>
+                    </div>
+                    <span class="cms-hotel-option-count"><?php echo count($editor_type['options']); ?> <?php echo count($editor_type['options']) === 1 ? 'option' : 'options'; ?></span>
                 </div>
-                <p class="cms-size">Shared photos: <?php echo count($shared_standard); ?> · Shared tour: <?php echo count($shared_panoramas); ?> scene<?php echo count($shared_panoramas) === 1 ? '' : 's'; ?></p>
+                <p class="cms-hotel-gallery-summary">
+                    <span><?php echo count($shared_standard); ?> photos</span>
+                    <span><?php echo count($shared_panoramas); ?> tour scenes</span>
+                </p>
                 <button type="button" class="btn btn-primary cms-open-hotel-editor" data-default-tab="photos">
-                    Edit room galleries
+                    Edit galleries
                 </button>
             </div>
             <div class="cms-hotel-hidden-actions" hidden aria-hidden="true">
@@ -655,25 +668,28 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
         <header class="hotel-editor-header">
             <div>
                 <h2 id="hotel-editor-title">Room galleries</h2>
-                <p id="hotel-editor-subtitle">Manage shared photos, tour scenes, and room options.</p>
+                <p id="hotel-editor-subtitle">Choose a gallery, then select Photos or 360 Tour.</p>
             </div>
             <button type="button" class="btn cms-btn-outline hotel-editor-close" aria-label="Close room gallery editor">Close</button>
         </header>
-        <div class="hotel-editor-tabs" role="tablist" aria-label="Room gallery sections">
+        <div class="hotel-editor-scope">
+            <label for="hotel-gallery-scope">Gallery for</label>
+            <select id="hotel-gallery-scope" aria-describedby="hotel-gallery-scope-help">
+                <option value="shared">Shared default</option>
+            </select>
+            <p id="hotel-gallery-scope-help">Shared galleries are used when a room option has no photos or tour of its own.</p>
+            <p id="hotel-options-migration-notice" class="hotel-editor-notice" hidden>Room-option galleries need migration 032. Shared room photos and tours are still available.</p>
+        </div>
+        <div class="hotel-editor-tabs" role="tablist" aria-label="Gallery media type">
             <button type="button" role="tab" id="hotel-tab-photos" aria-controls="hotel-panel-photos" aria-selected="true" tabindex="0" data-hotel-tab="photos">Photos</button>
             <button type="button" role="tab" id="hotel-tab-tour" aria-controls="hotel-panel-tour" aria-selected="false" tabindex="-1" data-hotel-tab="tour">360 Tour</button>
-            <button type="button" role="tab" id="hotel-tab-options" aria-controls="hotel-panel-options" aria-selected="false" tabindex="-1" data-hotel-tab="options">Room Options</button>
         </div>
         <div class="hotel-editor-body">
             <section id="hotel-panel-photos" role="tabpanel" aria-labelledby="hotel-tab-photos" data-hotel-panel="photos" tabindex="0">
-                <div id="hotel-shared-photos-panel"></div>
+                <div id="hotel-gallery-photos-panel"></div>
             </section>
             <section id="hotel-panel-tour" role="tabpanel" aria-labelledby="hotel-tab-tour" data-hotel-panel="tour" tabindex="0" hidden>
-                <div id="hotel-shared-tour-panel"></div>
-            </section>
-            <section id="hotel-panel-options" role="tabpanel" aria-labelledby="hotel-tab-options" data-hotel-panel="options" tabindex="0" hidden>
-                <p id="hotel-options-migration-notice" class="hotel-editor-notice" hidden>Room-option galleries need migration 032. Shared room photos and tours are still available.</p>
-                <div id="hotel-room-options-list" class="hotel-room-options-list"></div>
+                <div id="hotel-gallery-tour-panel"></div>
             </section>
         </div>
         <footer class="hotel-editor-footer">
