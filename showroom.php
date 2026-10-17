@@ -284,12 +284,18 @@ $pano_source_slot_by_media_id = []; // Stable IDs preserve each hotspot graph's 
 if ($media_query) {
     while ($m = $media_query->fetch_assoc()) {
         $slot = $m['slot_assignment'];
+        $mediaId = (int)$m['id'];
+        $sourceAvailable = media_cms_source_file_available((string)($m['file_path'] ?? ''));
 
         if ($m['media_type'] === '360' && str_ends_with((string)$slot, '_360')) {
             $base_id = substr((string)$slot, 0, -4);
             $optionSource = $hotel_showroom_option_map[(string)$slot] ?? null;
             if (is_array($optionSource) && ($optionSource['kind'] ?? '') === '360') {
                 $scope = (string)$optionSource['scope'];
+                $legacy_pano_media_ids[$scope][] = $mediaId;
+                $legacy_pano_media_ids_by_slot[$scope][$base_id][] = $mediaId;
+                $pano_source_slot_by_media_id[$mediaId] = $base_id;
+                if (!$sourceAvailable) continue;
                 $variantTour =& $showroom_data[$optionSource['destination_id']]['_variant_map'][$optionSource['variant_key']]['_own_tour'];
                 $variantTour['pano_urls'][] = $m['file_path'];
                 $variantTour['pano_media_ids'][] = (int)$m['id'];
@@ -300,9 +306,6 @@ if ($media_query) {
                     ];
                 }
                 $pano_index_map[$scope][(int)$m['id']] = count($variantTour['pano_urls']) - 1;
-                $legacy_pano_media_ids[$scope][] = (int)$m['id'];
-                $legacy_pano_media_ids_by_slot[$scope][$base_id][] = (int)$m['id'];
-                $pano_source_slot_by_media_id[(int)$m['id']] = $base_id;
                 unset($variantTour);
                 continue;
             }
@@ -313,9 +316,14 @@ if ($media_query) {
                 if (!isset($showroom_data[$destination_id]['pano_urls'])) {
                     $showroom_data[$destination_id]['pano_urls'] = [];
                     $showroom_data[$destination_id]['pano_media_ids'] = [];
-                    $pano_index_map[$destination_id] = [];
-                    $legacy_pano_media_ids[$destination_id] = [];
                 }
+                if (!isset($pano_index_map[$destination_id])) $pano_index_map[$destination_id] = [];
+                $legacy_pano_media_ids[$destination_id] ??= [];
+                $legacy_pano_media_ids_by_slot[$destination_id][$base_id] ??= [];
+                $legacy_pano_media_ids[$destination_id][] = $mediaId;
+                $legacy_pano_media_ids_by_slot[$destination_id][$base_id][] = $mediaId;
+                $pano_source_slot_by_media_id[$mediaId] = $base_id;
+                if (!$sourceAvailable) continue;
                 $current_index = count($showroom_data[$destination_id]['pano_urls']);
                 $showroom_data[$destination_id]['pano_urls'][] = $m['file_path'];
                 $showroom_data[$destination_id]['pano_media_ids'][] = (int)$m['id'];
@@ -329,12 +337,10 @@ if ($media_query) {
                     ];
                 }
                 $pano_index_map[$destination_id][(int)$m['id']] = $current_index;
-                $legacy_pano_media_ids[$destination_id][] = (int)$m['id'];
-                $legacy_pano_media_ids_by_slot[$destination_id][$base_id][] = (int)$m['id'];
-                $pano_source_slot_by_media_id[(int)$m['id']] = $base_id;
             }
         }
         elseif ($m['media_type'] === 'standard') {
+            if (!$sourceAvailable) continue;
             $optionSource = $hotel_showroom_option_map[(string)$slot] ?? null;
             if (is_array($optionSource) && ($optionSource['kind'] ?? '') === 'standard') {
                 $path = (string)$m['file_path'];
@@ -409,7 +415,9 @@ if ($hotspots_query) {
                 if ($h['type'] === 'nav') {
                     $source_slot = $pano_source_slot_by_media_id[(int)$media_id] ?? '';
                     $legacy_ids = $legacy_pano_media_ids_by_slot[$base_id][$source_slot] ?? [];
-                    $venue_media_ids = array_values(array_unique(array_map('intval', $legacy_ids)));
+                    // Retain historical IDs above for positional resolution, but only
+                    // link to scenes that are actually available to the guest.
+                    $venue_media_ids = array_values(array_unique(array_map('intval', array_keys($media_to_index))));
                     $resolved_target_media_id = showroom_tour_resolve_target_media_id(
                         (int)$media_id,
                         $h['target_media_id'],
@@ -741,10 +749,10 @@ window.process = {
 
                 <!-- NEW: Amenities Grid -->
                 <div class="amenities-grid">
-                    <div class="amenity"><i class="fa-solid fa-wifi"></i> Free Wi-Fi</div>
-                    <div class="amenity"><i class="fa-solid fa-snowflake"></i> Fully Air-Conditioned</div>
-                    <div class="amenity"><i class="fa-solid fa-square-parking"></i> Ample Parking</div>
-                    <div class="amenity"><i class="fa-solid fa-wheelchair"></i> Wheelchair Accessible</div>
+                    <div class="amenity"><i class="fa-solid fa-wifi" aria-hidden="true"></i> Free Wi-Fi</div>
+                    <div class="amenity"><i class="fa-solid fa-snowflake" aria-hidden="true"></i> Fully Air-Conditioned</div>
+                    <div class="amenity"><i class="fa-solid fa-square-parking" aria-hidden="true"></i> Ample Parking</div>
+                    <div class="amenity"><i class="fa-solid fa-wheelchair" aria-hidden="true"></i> Wheelchair Accessible</div>
                 </div>
                 <section class="showroom-reviews" aria-labelledby="showroom-reviews-title">
                     <h3 class="details-title" id="showroom-reviews-title">GUEST REVIEWS</h3>

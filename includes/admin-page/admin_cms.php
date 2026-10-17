@@ -208,13 +208,21 @@ unset($slotInfo);
 foreach ($venue_360_slots as &$slotInfo) unset($slotInfo['_variant_keys']);
 unset($slotInfo);
 
-$hotel_photo_preview_slots = [];
+$hotel_media_preview_slots = [];
 foreach ($hotel_editor_types as $canonicalSlot => $editorType) {
-    $hotel_photo_preview_slots[$canonicalSlot] = true;
-    foreach ($hotel_gallery_alias_slots[$canonicalSlot] ?? [] as $aliasSlot) $hotel_photo_preview_slots[$aliasSlot] = true;
+    $hotel_media_preview_slots[$canonicalSlot] = true;
+    $hotel_media_preview_slots[$canonicalSlot . '_360'] = true;
+    foreach ($hotel_gallery_alias_slots[$canonicalSlot] ?? [] as $aliasSlot) {
+        $hotel_media_preview_slots[$aliasSlot] = true;
+        $hotel_media_preview_slots[$aliasSlot . '_360'] = true;
+    }
     foreach ($editorType['options'] as $option) {
         $optionSlot = (string)($option['standard_slot'] ?? '');
-        if ($optionSlot !== '') $hotel_photo_preview_slots[$optionSlot] = true;
+        if ($optionSlot !== '') {
+            $hotel_media_preview_slots[$optionSlot] = true;
+        }
+        $optionTourSlot = (string)($option['tour_slot'] ?? '');
+        if ($optionTourSlot !== '') $hotel_media_preview_slots[$optionTourSlot] = true;
     }
 }
 
@@ -237,16 +245,26 @@ if ($result && $result->num_rows > 0) {
             error_log('CMS media path unavailable for media id ' . (int)$row['id'] . ': ' . $e->getMessage());
             continue;
         }
-        try {
-            $thumbnail = media_cms_ensure_admin_thumbnail($row['file_path']);
-            $thumbnailFile = media_cms_thumbnail_file_path($row['file_path']);
-            $row['thumbnail_path'] = $thumbnail['path'];
-            $row['thumbnail_version'] = (int)(@filemtime($thumbnailFile) ?: 0);
-            $row['thumbnail_width'] = (int)$thumbnail['width'];
-            $row['thumbnail_height'] = (int)$thumbnail['height'];
-        } catch (Throwable $e) {
-            // A failed derivative must never send the full source to a card.
-            error_log('CMS thumbnail unavailable for media id ' . (int)$row['id'] . ': ' . $e->getMessage());
+        $row['source_status'] = media_cms_source_file_status($row['file_path']);
+        $row['source_available'] = $row['source_status'] === 'available';
+        if ($row['source_available']) {
+            try {
+                $thumbnail = media_cms_ensure_admin_thumbnail($row['file_path']);
+                $thumbnailFile = media_cms_thumbnail_file_path($row['file_path']);
+                $row['thumbnail_path'] = $thumbnail['path'];
+                $row['thumbnail_version'] = (int)(@filemtime($thumbnailFile) ?: 0);
+                $row['thumbnail_width'] = (int)$thumbnail['width'];
+                $row['thumbnail_height'] = (int)$thumbnail['height'];
+            } catch (Throwable $e) {
+                // A failed derivative must never send the full source to a card.
+                error_log('CMS thumbnail unavailable for media id ' . (int)$row['id'] . ': ' . $e->getMessage());
+                $row['thumbnail_path'] = 'assets/img/placeholder.jpg';
+                $row['thumbnail_version'] = 0;
+                $row['thumbnail_width'] = MEDIA_CMS_THUMBNAIL_WIDTH;
+                $row['thumbnail_height'] = MEDIA_CMS_THUMBNAIL_HEIGHT;
+            }
+        } else {
+            error_log('CMS media source unavailable for media id ' . (int)$row['id']);
             $row['thumbnail_path'] = 'assets/img/placeholder.jpg';
             $row['thumbnail_version'] = 0;
             $row['thumbnail_width'] = MEDIA_CMS_THUMBNAIL_WIDTH;
@@ -279,11 +297,15 @@ foreach ($hotel_source_pano_venue_photos as $slot => $photos) {
     );
     $hotel_source_pano_venue_photos_ordered[$slot] = $photos;
 }
+$hotel_source_pano_readable = [];
+foreach ($hotel_source_pano_venue_photos_ordered as $slot => $photos) {
+    $hotel_source_pano_readable[$slot] = media_cms_filter_available_records($photos);
+}
 $hotel_gallery_hotspot_sources = [];
 foreach ($hotel_gallery_alias_slots as $canonical_slot => $alias_slots) {
     $hotel_gallery_hotspot_sources[$canonical_slot] = hotel_room_group_source_panorama_galleries(
         $alias_slots,
-        $hotel_source_pano_venue_photos_ordered
+        $hotel_source_pano_readable
     );
 }
 
@@ -329,9 +351,11 @@ foreach ($pano_venue_photos as $slot => $photos) {
 $cms_gallery_slots = array_merge($standard_venue_photos, $pano_venue_photos);
 $cms_card_previews_by_id = [];
 $hotel_preview_sizes = '(max-width: 700px) calc(84vw - 2rem), (max-width: 1000px) calc(50vw - 4rem), 430px';
-// Wider responsive sources are only for standard hotel photos; tours stay on bounded admin thumbnails.
-foreach ($hotel_photo_preview_slots as $previewSlot => $unused) {
-    foreach ($standard_venue_photos[$previewSlot] ?? [] as $photo) {
+// Reuse existing candidates for room galleries. Other visible images are
+// upgraded lazily by the authenticated preview route as they enter the viewport.
+foreach ($hotel_media_preview_slots as $previewSlot => $unused) {
+    foreach (array_merge($standard_venue_photos[$previewSlot] ?? [], $pano_venue_photos[$previewSlot] ?? []) as $photo) {
+        if (empty($photo['source_available'])) continue;
         $mediaId = (int)$photo['id'];
         if (isset($cms_card_previews_by_id[$mediaId])) continue;
         $preview = media_cms_card_image_data((string)$photo['file_path'], $hotel_preview_sizes);
@@ -340,6 +364,8 @@ foreach ($hotel_photo_preview_slots as $previewSlot => $unused) {
                 'src' => (string)$preview['src'],
                 'srcset' => (string)$preview['srcset'],
                 'sizes' => (string)$preview['sizes'],
+                'width' => (int)$preview['width'],
+                'height' => (int)$preview['height'],
             ];
         }
     }
@@ -358,9 +384,13 @@ foreach ($cms_gallery_slots as $slot => $photos) {
             'thumbnail_version' => (int)$photo['thumbnail_version'],
             'thumbnail_width' => (int)$photo['thumbnail_width'],
             'thumbnail_height' => (int)$photo['thumbnail_height'],
+            'source_available' => !empty($photo['source_available']),
+            'source_status' => (string)($photo['source_status'] ?? 'invalid'),
             'card_preview_src' => (string)($preview['src'] ?? ''),
             'card_preview_srcset' => (string)($preview['srcset'] ?? ''),
             'card_preview_sizes' => (string)($preview['sizes'] ?? ''),
+            'card_preview_width' => (int)($preview['width'] ?? 0),
+            'card_preview_height' => (int)($preview['height'] ?? 0),
             'showroom_view_x' => $photo['showroom_view_x'],
             'showroom_view_y' => $photo['showroom_view_y'],
             'showroom_view_z' => $photo['showroom_view_z'],
@@ -394,7 +424,7 @@ foreach ($hotel_gallery_hotspot_sources as $source_galleries) foreach ($source_g
 foreach ($hotel_editor_types as $editor_type) foreach ($editor_type['options'] as $option) {
     $source_pano_slot = (string)($option['tour_slot'] ?? '');
     if ($source_pano_slot === '' || isset($hotel_source_pano_payload[$source_pano_slot])) continue;
-    $option_panoramas = $pano_venue_photos_ordered[$source_pano_slot] ?? [];
+    $option_panoramas = $hotel_source_pano_readable[$source_pano_slot] ?? [];
     if (!$option_panoramas) continue;
     $hotel_source_pano_payload[$source_pano_slot] = array_map(static fn(array $photo): array => [
         'id' => (int)$photo['id'], 'file_name' => (string)$photo['file_name'],
@@ -470,7 +500,17 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             $shared_standard = $standard_venue_photos[$canonical_slot] ?? [];
             $shared_tour_slot = $canonical_slot . '_360';
             $shared_panoramas = $pano_venue_photos_ordered[$shared_tour_slot] ?? [];
-            $first_shared = $shared_standard[0] ?? null;
+            $available_shared_standard = array_values(array_filter($shared_standard, static fn(array $photo): bool => !empty($photo['source_available'])));
+            $available_shared_panoramas = array_values(array_filter($shared_panoramas, static fn(array $photo): bool => !empty($photo['source_available'])));
+            $missing_shared_standard = count(array_filter($shared_standard, static fn(array $photo): bool => ($photo['source_status'] ?? '') === 'missing'));
+            $missing_shared_panoramas = count(array_filter($shared_panoramas, static fn(array $photo): bool => ($photo['source_status'] ?? '') === 'missing'));
+            $unavailable_shared_standard = count(array_filter($shared_standard, static fn(array $photo): bool => !in_array(($photo['source_status'] ?? ''), ['available', 'missing'], true)));
+            $unavailable_shared_panoramas = count(array_filter($shared_panoramas, static fn(array $photo): bool => !in_array(($photo['source_status'] ?? ''), ['available', 'missing'], true)));
+            $missing_shared_count = count(array_filter(array_merge($shared_standard, $shared_panoramas), static fn(array $photo): bool => ($photo['source_status'] ?? '') === 'missing'));
+            $unavailable_shared_count = count(array_filter(array_merge($shared_standard, $shared_panoramas), static fn(array $photo): bool => !in_array(($photo['source_status'] ?? ''), ['available', 'missing'], true)));
+            $first_shared = $available_shared_standard[0] ?? null;
+            $first_shared_tour = $available_shared_panoramas[0] ?? null;
+            $hotel_card_preview = $first_shared ?? $first_shared_tour;
             $hotelTitle = (string)$editor_type['building_name'] . ' — ' . (string)$editor_type['room_type'];
             $sharedHotspotSources = $hotel_gallery_hotspot_sources[$canonical_slot] ?? [];
             $sharedHotspotOptions = [];
@@ -483,24 +523,57 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 $sharedHotspotOptions[] = ['slot' => $sourceGallery['slot'], 'label' => $sourceLabel];
             }
         ?>
-        <article class="cms-card cms-hotel-type-card<?php echo $first_shared ? '' : ' cms-hotel-type-card-empty'; ?>" data-type="hotel" data-types="standard 360" data-category="hotel-room"
+        <article class="cms-card cms-hotel-type-card<?php echo $hotel_card_preview ? '' : ' cms-hotel-type-card-empty'; ?>" data-type="hotel" data-types="standard 360" data-category="hotel-room"
             data-hotel-canonical-slot="<?php echo htmlspecialchars($canonical_slot, ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-building="<?php echo htmlspecialchars((string)$editor_type['building_name'], ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-room-type-code="<?php echo htmlspecialchars((string)$editor_type['room_type_code'], ENT_QUOTES, 'UTF-8'); ?>"
             data-hotel-room-type="<?php echo htmlspecialchars((string)$editor_type['room_type'], ENT_QUOTES, 'UTF-8'); ?>">
-            <div class="cms-img-wrapper<?php echo $first_shared ? '' : ' cms-hotel-empty-cover'; ?>">
-                <?php if ($first_shared): ?>
-                    <?php echo media_cms_card_image_markup($first_shared, $hotelTitle); ?>
-                <?php else: ?>
-                    <div class="cms-hotel-empty-preview">
-                        <span class="cms-hotel-empty-icon" aria-hidden="true"><i class="fa-solid fa-images"></i></span>
-                        <span class="cms-hotel-empty-copy">
-                            <strong>No shared photos yet</strong>
-                            <span>Fallback gallery for room options</span>
-                        </span>
-                        <button type="button" class="btn cms-hotel-add-shared" aria-label="Add shared photos for <?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?>">Add photos</button>
-                    </div>
-                <?php endif; ?>
+            <div class="cms-img-wrapper<?php echo $hotel_card_preview ? '' : ' cms-hotel-empty-cover'; ?>">
+                <div class="cms-hotel-card-preview-panel" data-hotel-preview-kind="standard">
+                    <?php if ($first_shared): ?>
+                        <?php echo media_cms_card_image_markup($first_shared, $hotelTitle); ?>
+                    <?php elseif ($first_shared_tour): ?>
+                        <?php echo media_cms_card_image_markup($first_shared_tour, $hotelTitle . ' tour preview'); ?>
+                        <span class="cms-hotel-tour-preview-label">Tour preview</span>
+                    <?php else: ?>
+                        <div class="cms-hotel-empty-preview<?php echo $hotel_card_preview ? ' cms-hotel-empty-preview--panel' : ''; ?>">
+                            <span class="cms-hotel-empty-icon" aria-hidden="true"><i class="fa-solid fa-images"></i></span>
+                            <span class="cms-hotel-empty-copy">
+                                <?php if ($missing_shared_standard > 0 || $unavailable_shared_standard > 0): ?>
+                                <strong>Photo files unavailable</strong>
+                                <span><?php if ($missing_shared_standard > 0): ?><?php echo $missing_shared_standard; ?> source <?php echo $missing_shared_standard === 1 ? 'file is' : 'files are'; ?> missing<?php endif; ?><?php if ($missing_shared_standard > 0 && $unavailable_shared_standard > 0): ?> · <?php endif; ?><?php if ($unavailable_shared_standard > 0): ?><?php echo $unavailable_shared_standard; ?> source <?php echo $unavailable_shared_standard === 1 ? 'needs' : 'files need'; ?> inspection<?php endif; ?></span>
+                                <?php else: ?>
+                                <strong>No shared photos yet</strong>
+                                <span>Available to every room option as a fallback</span>
+                                <?php endif; ?>
+                            </span>
+                            <button type="button" class="btn cms-hotel-add-shared" data-media-kind="standard" aria-label="Add shared photos for <?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?>">Add photos</button>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="cms-hotel-card-preview-panel" data-hotel-preview-kind="360" hidden>
+                    <?php if ($first_shared_tour): ?>
+                        <?php echo media_cms_card_image_markup($first_shared_tour, $hotelTitle . ' tour preview'); ?>
+                        <span class="cms-hotel-tour-preview-label">Tour preview</span>
+                    <?php else: ?>
+                        <div class="cms-hotel-empty-preview<?php echo $hotel_card_preview ? ' cms-hotel-empty-preview--panel' : ''; ?>">
+                            <span class="cms-hotel-empty-icon" aria-hidden="true"><i class="fa-solid fa-vr-cardboard"></i></span>
+                            <span class="cms-hotel-empty-copy">
+                                <?php if ($missing_shared_panoramas > 0): ?>
+                                <strong>Tour files unavailable</strong>
+                                <span><?php echo $missing_shared_panoramas; ?> saved source <?php echo $missing_shared_panoramas === 1 ? 'file is' : 'files are'; ?> missing from this server.</span>
+                                <?php elseif ($unavailable_shared_panoramas > 0): ?>
+                                <strong>Tour files need inspection</strong>
+                                <span><?php echo $unavailable_shared_panoramas; ?> saved source <?php echo $unavailable_shared_panoramas === 1 ? 'file needs' : 'files need'; ?> inspection.</span>
+                                <?php else: ?>
+                                <strong>No shared 360 tour yet</strong>
+                                <span>Add panoramas for this room type.</span>
+                                <?php endif; ?>
+                            </span>
+                            <button type="button" class="btn cms-hotel-add-shared" data-media-kind="360" aria-label="Add shared 360 tour scenes for <?php echo htmlspecialchars($hotelTitle, ENT_QUOTES, 'UTF-8'); ?>">Add tour</button>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             <div class="cms-card-content">
                 <div class="cms-hotel-card-header">
@@ -511,8 +584,12 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                     <span class="cms-hotel-option-count"><?php echo count($editor_type['options']); ?> <?php echo count($editor_type['options']) === 1 ? 'option' : 'options'; ?></span>
                 </div>
                 <p class="cms-hotel-gallery-summary">
-                    <span><?php echo count($shared_standard); ?> photos</span>
-                    <span><?php echo count($shared_panoramas); ?> tour scenes</span>
+                    <span data-hotel-summary-kind="standard"><?php echo count($available_shared_standard); ?> available photos</span>
+                    <span data-hotel-summary-kind="360"><?php echo count($available_shared_panoramas); ?> available tour scenes</span>
+                    <?php if ($missing_shared_standard > 0): ?><span class="cms-media-missing-summary" data-hotel-summary-kind="standard"><?php echo $missing_shared_standard; ?> missing photo source <?php echo $missing_shared_standard === 1 ? 'file' : 'files'; ?></span><?php endif; ?>
+                    <?php if ($missing_shared_panoramas > 0): ?><span class="cms-media-missing-summary" data-hotel-summary-kind="360"><?php echo $missing_shared_panoramas; ?> missing tour source <?php echo $missing_shared_panoramas === 1 ? 'file' : 'files'; ?></span><?php endif; ?>
+                    <?php if ($unavailable_shared_standard > 0): ?><span class="cms-media-missing-summary" data-hotel-summary-kind="standard"><?php echo $unavailable_shared_standard; ?> photo source <?php echo $unavailable_shared_standard === 1 ? 'needs' : 'files need'; ?> inspection</span><?php endif; ?>
+                    <?php if ($unavailable_shared_panoramas > 0): ?><span class="cms-media-missing-summary" data-hotel-summary-kind="360"><?php echo $unavailable_shared_panoramas; ?> tour source <?php echo $unavailable_shared_panoramas === 1 ? 'needs' : 'files need'; ?> inspection</span><?php endif; ?>
                 </p>
                 <button type="button" class="btn btn-primary cms-open-hotel-editor" data-default-tab="photos">
                     Edit galleries
@@ -531,7 +608,7 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 <?php endif; ?>
                 <?php foreach ($editor_type['options'] as $option):
                     $optionStandardPhotos = $standard_venue_photos[$option['standard_slot']] ?? [];
-                    $optionPanoramas = $hotel_source_pano_venue_photos_ordered[$option['tour_slot']] ?? [];
+                    $optionPanoramas = $hotel_source_pano_readable[$option['tour_slot']] ?? [];
                 ?>
                 <button type="button" class="btn-cms-modal" data-type="standard" data-slot="<?php echo htmlspecialchars($option['standard_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
                 <button type="button" class="btn-cms-modal" data-type="360" data-slot="<?php echo htmlspecialchars($option['tour_slot'], ENT_QUOTES, 'UTF-8'); ?>"></button>
@@ -552,9 +629,13 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             if (!empty($slot_info['canonical_room_type'])) continue;
             $photos_array = isset($pano_venue_photos[$slot_key]) ? $pano_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
-            $has_img = $photo_count > 0;
-            // Use the primary-first ascending-ID view for the card and hotspot button.
             $ordered_photos_array = isset($pano_venue_photos_ordered[$slot_key]) ? $pano_venue_photos_ordered[$slot_key] : $photos_array;
+            $ordered_photos_array = array_values(array_filter($ordered_photos_array, static fn(array $photo): bool => !empty($photo['source_available'])));
+            $available_photo_count = count($ordered_photos_array);
+            $missing_photo_count = count(array_filter($photos_array, static fn(array $photo): bool => ($photo['source_status'] ?? '') === 'missing'));
+            $unavailable_photo_count = $photo_count - $available_photo_count - $missing_photo_count;
+            $has_img = $available_photo_count > 0;
+            // Use the primary-first ascending-ID view for the card and hotspot button.
             $first_photo = $has_img ? $ordered_photos_array[0] : null;
         ?>
         <div class="cms-card" data-type="360" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>">
@@ -563,32 +644,36 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 <?php if ($has_img): ?>
                 <?php echo media_cms_card_image_markup($first_photo, $slot_info['title']); ?>
                 <?php else: ?>
-                <span style="color:#888;">Empty Slot</span>
+                <span class="cms-empty-media-state"><?php echo $missing_photo_count > 0 ? 'Tour files unavailable' : ($unavailable_photo_count > 0 ? 'Tour files need inspection' : 'No tour uploaded yet'); ?></span>
                 <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
                     <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
                     <span class="badge badge-gold">
-                        <?php echo $has_img ? $photo_count . ' Panoramas' : $slot_info['category_badge']; ?>
+                        <?php echo $has_img ? $available_photo_count . ' available panoramas' : $slot_info['category_badge']; ?>
                     </span>
                 </div>
                 <?php if (!empty($slot_info['canonical_room_type'])): ?>
                 <p class="cms-size">Shared by <?php echo count($slot_info['variant_labels']); ?> booking option<?php echo count($slot_info['variant_labels']) === 1 ? '' : 's'; ?><?php if (!empty($slot_info['variant_labels'])): ?>: <?php echo htmlspecialchars(implode(' · ', $slot_info['variant_labels']), ENT_QUOTES, 'UTF-8'); ?><?php endif; ?></p>
                 <?php endif; ?>
                 <?php if (!$has_img): ?>
-                <p class="cms-size">No 360 view uploaded yet.</p>
+                <p class="cms-size"><?php echo $missing_photo_count > 0 ? 'No available 360 scenes. ' . $missing_photo_count . ' saved source ' . ($missing_photo_count === 1 ? 'file is' : 'files are') . ' missing on this server.' : ($unavailable_photo_count > 0 ? $unavailable_photo_count . ' saved panorama source ' . ($unavailable_photo_count === 1 ? 'needs' : 'files need') . ' inspection.' : 'No 360 view uploaded yet.'); ?></p>
                 <?php else: ?>
                 <p class="cms-size">360 Virtual Tour Active</p>
                 <?php endif; ?>
+                <?php if ($has_img && $missing_photo_count > 0): ?><p class="cms-media-missing-summary"><?php echo $missing_photo_count; ?> saved source <?php echo $missing_photo_count === 1 ? 'file is' : 'files are'; ?> missing on this server.</p><?php endif; ?>
+                <?php if ($has_img && $unavailable_photo_count > 0): ?><p class="cms-media-missing-summary"><?php echo $unavailable_photo_count; ?> source <?php echo $unavailable_photo_count === 1 ? 'needs' : 'files need'; ?> inspection.</p><?php endif; ?>
 
                 <div class="cms-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="btn btn-primary btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="360" style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
-                    <?php if ($has_img): ?>
+                    <?php if ($photo_count > 0): ?>
                     <button class="btn btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">Manage</button>
+                    <?php endif; ?>
+                    <?php if ($has_img): ?>
                     <?php if (!empty($slot_info['canonical_room_type'])): ?>
                         <?php
                             $canonical_slot = substr($slot_key, 0, -4);
@@ -633,8 +718,12 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             if (!empty($slot_info['canonical_room_type'])) continue;
             $photos_array = isset($standard_venue_photos[$slot_key]) ? $standard_venue_photos[$slot_key] : [];
             $photo_count = count($photos_array);
-            $has_img = $photo_count > 0;
-            $first_photo = $has_img ? $photos_array[0] : null;
+            $available_photos = array_values(array_filter($photos_array, static fn(array $photo): bool => !empty($photo['source_available'])));
+            $available_photo_count = count($available_photos);
+            $missing_photo_count = count(array_filter($photos_array, static fn(array $photo): bool => ($photo['source_status'] ?? '') === 'missing'));
+            $unavailable_photo_count = $photo_count - $available_photo_count - $missing_photo_count;
+            $has_img = $available_photo_count > 0;
+            $first_photo = $has_img ? $available_photos[0] : null;
         ?>
         <div class="cms-card" data-type="standard" data-category="<?php echo htmlspecialchars($slot_info['category_filter'], ENT_QUOTES, 'UTF-8'); ?>"<?php if (!empty($slot_info['canonical_room_type'])): ?> data-hotel-building="<?php echo htmlspecialchars((string)$slot_info['hotel_building_name'], ENT_QUOTES, 'UTF-8'); ?>" data-hotel-room-type-code="<?php echo htmlspecialchars((string)$slot_info['hotel_room_type_code'], ENT_QUOTES, 'UTF-8'); ?>" data-hotel-room-type="<?php echo htmlspecialchars((string)$slot_info['hotel_room_type_label'], ENT_QUOTES, 'UTF-8'); ?>"<?php endif; ?>>
             <div class="cms-img-wrapper"
@@ -642,29 +731,31 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 <?php if ($has_img): ?>
                 <?php echo media_cms_card_image_markup($first_photo, $slot_info['title']); ?>
                 <?php else: ?>
-                <span style="color:#888;">Empty Slot</span>
+                <span class="cms-empty-media-state"><?php echo $missing_photo_count > 0 ? 'Photo files unavailable' : ($unavailable_photo_count > 0 ? 'Photo files need inspection' : 'No photos uploaded yet'); ?></span>
                 <?php endif; ?>
             </div>
             <div class="cms-card-content">
                 <div class="cms-card-header">
                     <h4 class="cms-title"><?php echo $slot_info['title']; ?></h4>
                     <span
-                        class="badge badge-gray"><?php echo $has_img ? $photo_count . ' Photos' : $slot_info['badge']; ?></span>
+                        class="badge badge-gray"><?php echo $has_img ? $available_photo_count . ' available photos' : $slot_info['badge']; ?></span>
                 </div>
                 <?php if (!empty($slot_info['canonical_room_type'])): ?>
                 <p class="cms-size">Shared by <?php echo count($slot_info['variant_labels']); ?> booking option<?php echo count($slot_info['variant_labels']) === 1 ? '' : 's'; ?><?php if (!empty($slot_info['variant_labels'])): ?>: <?php echo htmlspecialchars(implode(' · ', $slot_info['variant_labels']), ENT_QUOTES, 'UTF-8'); ?><?php endif; ?></p>
                 <?php endif; ?>
                 <?php if (!$has_img): ?>
-                <p class="cms-size">No standard photos uploaded yet.</p>
+                <p class="cms-size"><?php echo $missing_photo_count > 0 ? 'No available photos. ' . $missing_photo_count . ' saved source ' . ($missing_photo_count === 1 ? 'file is' : 'files are') . ' missing on this server.' : ($unavailable_photo_count > 0 ? $unavailable_photo_count . ' saved image source ' . ($unavailable_photo_count === 1 ? 'needs' : 'files need') . ' inspection.' : 'No standard photos uploaded yet.'); ?></p>
                 <?php else: ?>
                 <p class="cms-size">Standard Photo Gallery</p>
                 <?php endif; ?>
+                <?php if ($has_img && $missing_photo_count > 0): ?><p class="cms-media-missing-summary"><?php echo $missing_photo_count; ?> saved source <?php echo $missing_photo_count === 1 ? 'file is' : 'files are'; ?> missing on this server.</p><?php endif; ?>
+                <?php if ($has_img && $unavailable_photo_count > 0): ?><p class="cms-media-missing-summary"><?php echo $unavailable_photo_count; ?> source <?php echo $unavailable_photo_count === 1 ? 'needs' : 'files need'; ?> inspection.</p><?php endif; ?>
 
                 <div class="cms-actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button class="btn btn-primary btn-cms-modal" data-slot="<?php echo $slot_key; ?>" data-type="standard" style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">
                         <?php echo $has_img ? 'Add More' : 'Upload'; ?>
                     </button>
-                    <?php if ($has_img): ?>
+                    <?php if ($photo_count > 0): ?>
                     <button class="btn btn-outline btn-manage-gallery" data-slot="<?php echo $slot_key; ?>"
                         style="padding: 8px 16px; font-size: 0.85rem; flex: 1;">Manage</button>
                     <?php endif; ?>
@@ -800,14 +891,15 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                 </select>
             </div>
 
-            <div id="upload-progress-container" style="display: none; margin-bottom: 15px;">
+            <div id="upload-progress-container" role="group" aria-label="Media upload progress" style="display: none; margin-bottom: 15px;">
                 <div
                     style="display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.85rem; font-weight: 600;">
-                    <span style="color: var(--color-dark);">Uploading...</span>
-                    <span id="upload-progress-text" style="color: var(--color-gold);">0%</span>
+                    <span id="upload-progress-label" role="status" aria-live="polite" style="color: var(--color-dark);">Uploading images…</span>
+                    <span id="upload-progress-text" aria-hidden="true" style="color: var(--color-gold);">0% sent</span>
                 </div>
                 <div style="width: 100%; background: #eee; border-radius: 10px; height: 8px; overflow: hidden;">
                     <div id="upload-progress-bar"
+                        role="progressbar" aria-label="File transfer" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Waiting to upload."
                         style="width: 100%; height: 100%; background: var(--color-gold); transform-origin: left center; transform: scaleX(0); transition: transform 0.2s;"></div>
                 </div>
             </div>

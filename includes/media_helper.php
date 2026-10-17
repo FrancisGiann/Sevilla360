@@ -101,6 +101,42 @@ function media_cms_upload_file_path(string $relativePath, bool $requireFile = fa
     return $resolved;
 }
 
+/** Return whether a CMS source is safely present and readable for public use. */
+function media_cms_source_file_available(string $relativePath): bool
+{
+    try {
+        $absolutePath = media_cms_upload_file_path($relativePath, true);
+        return is_readable($absolutePath);
+    } catch (Throwable $error) {
+        return false;
+    }
+}
+
+/** Distinguish a safely missing upload from an unsafe path or unreadable file. */
+function media_cms_source_file_status(string $relativePath): string
+{
+    try {
+        $absolutePath = media_cms_upload_file_path($relativePath);
+        clearstatcache(true, $absolutePath);
+        if (!file_exists($absolutePath)) return 'missing';
+        return is_file($absolutePath) && is_readable($absolutePath) ? 'available' : 'unavailable';
+    } catch (Throwable $error) {
+        return 'invalid';
+    }
+}
+
+/** Filter media rows to readable source files without changing their slot or stable IDs. */
+function media_cms_filter_available_records(array $mediaRecords): array
+{
+    $available = [];
+    foreach ($mediaRecords as $record) {
+        if (!is_array($record)) continue;
+        $path = $record['file_path'] ?? $record['path'] ?? '';
+        if (is_string($path) && media_cms_source_file_available($path)) $available[] = $record;
+    }
+    return $available;
+}
+
 /** Resolve public CMS galleries from media rows or legacy path strings. */
 function media_cms_public_image_paths(array $mediaRecords, string $fallback = 'assets/img/placeholder.jpg'): array
 {
@@ -110,7 +146,7 @@ function media_cms_public_image_paths(array $mediaRecords, string $fallback = 'a
         if (!is_string($rawPath) || trim($rawPath) === '') continue;
         try {
             $relativePath = media_cms_upload_relative_path(trim($rawPath));
-            media_cms_upload_file_path($relativePath, true);
+            if (!media_cms_source_file_available($relativePath)) continue;
             $paths[] = $relativePath;
         } catch (Throwable $error) {
             // Invalid or retired CMS paths should not leave broken public slides.
@@ -387,17 +423,22 @@ function media_cms_ensure_card_derivatives(string $sourcePath): array
         throw new RuntimeException('CMS source is not a supported image within the configured dimensions.');
     }
 
+    $sourceLock = @fopen($source, 'rb');
+    if (!is_resource($sourceLock) || !flock($sourceLock, LOCK_EX)) {
+        if (is_resource($sourceLock)) fclose($sourceLock);
+        throw new RuntimeException('Card derivative generation is busy.');
+    }
     $derivatives = [];
-    foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
-        $existing = media_cms_existing_card_derivative($normalized, $width);
-        if ($existing !== null) {
-            $derivatives[] = $existing;
-            continue;
-        }
-
-        $destination = media_cms_card_derivative_file_path($normalized, $width);
-        $temporaryPath = $destination . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
-        try {
+    try {
+        foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+            $destination = media_cms_card_derivative_file_path($normalized, $width);
+            $temporaryPath = $destination . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
+            try {
+            $existing = media_cms_existing_card_derivative($normalized, $width);
+            if ($existing !== null) {
+                $derivatives[] = $existing;
+                continue;
+            }
             $binary = media_cms_thumbnail_binary();
             if ($binary === null) {
                 if (!media_cms_imagick_write_bounded_webp($source, $temporaryPath, $width, MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT)) {
@@ -447,9 +488,13 @@ function media_cms_ensure_card_derivatives(string $sourcePath): array
             $derivative = media_cms_existing_card_derivative($normalized, $width);
             if ($derivative === null) throw new RuntimeException('Committed card derivative failed validation.');
             $derivatives[] = $derivative;
-        } finally {
-            if (is_file($temporaryPath) || is_link($temporaryPath)) @unlink($temporaryPath);
+            } finally {
+                if (is_file($temporaryPath) || is_link($temporaryPath)) @unlink($temporaryPath);
+            }
         }
+    } finally {
+        flock($sourceLock, LOCK_UN);
+        fclose($sourceLock);
     }
     return $derivatives;
 }
@@ -531,10 +576,10 @@ function media_cms_card_image_markup(array $media, string $alt = ''): string
     $height = max(1, min(MEDIA_CMS_THUMBNAIL_HEIGHT, (int)($media['thumbnail_height'] ?? MEDIA_CMS_THUMBNAIL_HEIGHT)));
     $srcset = '';
     $sizes = '';
-    // Standard CMS photos have cached responsive card derivatives created by
-    // upload/backfill. Use those when present, but retain the bounded admin
-    // thumbnail as fallback; never make a grid card fetch a full source image.
-    if (($media['media_type'] ?? '') === 'standard' && is_string($media['file_path'] ?? null)) {
+    // Standard photos and panorama previews use cached bounded derivatives.
+    // Without them, keep the bounded admin thumbnail until the authenticated
+    // CMS preview endpoint creates responsive variants; never load a full pano.
+    if (in_array(($media['media_type'] ?? ''), ['standard', '360'], true) && is_string($media['file_path'] ?? null)) {
         $cardImage = media_cms_card_image_data($media['file_path'], '(max-width: 767px) calc(100vw - 2rem), (max-width: 1100px) calc(50vw - 2rem), 400px');
         if ($cardImage['srcset'] !== '') {
             $path = $cardImage['src'];
@@ -548,7 +593,10 @@ function media_cms_card_image_markup(array $media, string $alt = ''): string
     $responsiveAttributes = $srcset !== ''
         ? ' srcset="' . $safe($srcset) . '" sizes="' . $safe($sizes) . '"'
         : '';
-    return '<img src="' . $safe($path) . '"' . $responsiveAttributes . ' alt="' . $safe($alt) . '" width="' . $width . '" height="' . $height . '" loading="lazy" decoding="async">';
+    $mediaId = filter_var($media['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $previewIdAttribute = $mediaId ? ' data-cms-preview-id="' . (int)$mediaId . '"' : '';
+    $sourceAvailableAttribute = ' data-source-available="' . (!empty($media['source_available']) ? 'true' : 'false') . '"';
+    return '<img src="' . $safe($path) . '"' . $responsiveAttributes . $previewIdAttribute . $sourceAvailableAttribute . ' alt="' . $safe($alt) . '" width="' . $width . '" height="' . $height . '" loading="lazy" decoding="async">';
 }
 
 /** Return whether the loaded Imagick extension can write WebP files. */

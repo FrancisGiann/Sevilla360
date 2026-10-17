@@ -7,6 +7,7 @@ $read = static fn(string $path): string => (string)file_get_contents($root . '/'
 $cms = $read('includes/admin-page/admin_cms.php');
 $dashboard = $read('admin_dashboard.php');
 $upload = $read('actions/admin/upload_media.php');
+$previewEndpoint = $read('actions/admin/media_preview.php');
 $delete = $read('actions/admin/delete_media.php');
 $helper = $read('includes/media_helper.php');
 $cmsJs = $read('assets/js/admin-page/admin_cms.js');
@@ -42,9 +43,9 @@ $checks = [
     'one gallery payload retains original paths and bounded derivative URLs' => str_contains($cms, 'window.galleryData =')
         && str_contains($cms, 'thumbnail_path')
         && !str_contains($cms, 'window.panoDataOrdered'),
-    'CMS standard cards use cached responsive derivatives with bounded thumbnail fallback while 360 cards stay thumbnail-only' =>
+    'CMS standard and panorama cards use cached responsive derivatives with a bounded thumbnail fallback' =>
         str_contains($helper, "media_cms_card_image_data(\$media['file_path']")
-        && str_contains($helper, "(\$media['media_type'] ?? '') === 'standard'")
+        && str_contains($helper, "in_array((\$media['media_type'] ?? ''), ['standard', '360'], true)")
         && str_contains($helper, "srcset=\"")
         && str_contains($cms, 'media_cms_card_image_markup('),
     'management thumbnails accept only deterministic WebP derivative paths' => str_contains($cmsJs, '\\.cms-thumbnails')
@@ -62,15 +63,20 @@ $checks = [
         && !str_contains($cms, 'time()')
         && !preg_match('/(?:admin_cms|admin_hotspots|panorama-view-compat|hotspot-material|guide_tours)\.\w+\?v=<\?=\s*time\(\)/', $dashboard)
         && !str_contains($cmsJs, 'Date.now()'),
-    'upload requires derivatives and tracks them for rollback/replacement cleanup' => str_contains($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
+    'upload generates stable thumbnails and standard-card derivatives, tracking them for cleanup' => str_contains($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
         && str_contains($upload, "'thumbnail_path' => media_cms_thumbnail_file_path")
         && str_contains($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])')
         && str_contains($upload, "'hero_path' => \$website_slot === 'home-hero'")
         && str_contains($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])')
+        && str_contains($upload, "if (\$media_type === 'standard') {")
         && str_contains($upload, "'card_paths' => array_values(array_filter(array_map(")
         && strpos($upload, '$new_files[] = media_cms_thumbnail_file_path') < strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
         && str_contains($upload, 'foreach ($new_files as $path)')
         && strpos($upload, 'foreach ($old_files as $old)') > strpos($upload, '$conn->commit()'),
+    '360 uploads defer public-card conversion to the authenticated lazy preview route' => !str_contains($upload, "in_array(\$media_type, ['standard', '360'], true)")
+        && str_contains($previewEndpoint, "\$_SESSION['role'] !== 'admin'")
+        && str_contains($previewEndpoint, "\$_SESSION['csrf_token']")
+        && str_contains($previewEndpoint, 'media_cms_ensure_card_derivatives((string)$media[\'file_path\'])'),
     'CMS upload connects and starts its transaction only after CPU-heavy derivatives finish' => strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';") > max(
             strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])'),
             strpos($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])'),
@@ -78,6 +84,14 @@ $checks = [
         )
         && strpos($upload, '$conn->begin_transaction()') > strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';")
         && str_contains($read('config/db_connect.php'), 'defined(\'SEVILLA_CMS_MEDIA_UPLOAD\')'),
+    'upload UI distinguishes completed file transfer from server-side image processing' => str_contains($cms, 'id="upload-progress-label" role="status" aria-live="polite"')
+        && str_contains($cms, 'role="progressbar" aria-label="File transfer"')
+        && str_contains($cmsJs, 'xhr.upload.addEventListener("load"')
+        && str_contains($cmsJs, 'Upload received. Processing ${uploadDescription} on the server')
+        && str_contains($cmsJs, "progText.innerText = 'Sent'")
+        && str_contains($cmsJs, 'server is processing images.'),
+    'ambiguous gateway and post-transfer failures instruct editors to reconcile before retrying' => str_contains($cmsJs, 'xhr.status === 504 || xhr.status >= 500')
+        && str_contains($cmsJs, 'check the gallery before retrying; the images may already be saved.'),
     'CMS upload preserves the original failure when rollback fails and retains staged files after an uncertain commit' => str_contains($upload, 'catch (Throwable $rollback_error)')
         && str_contains($upload, 'if (!$commit_attempted) {')
         && strpos($upload, 'if (!$commit_attempted) {') < strpos($upload, 'throw $e;')
@@ -131,12 +145,12 @@ $checks = [
         && str_contains($uploadAccess, 'php_flag engine off')
         && str_contains($uploadAccess, '<FilesMatch "\\.(jpg|jpeg|png|gif|webp)$">')
         && str_contains($uploadAccess, 'SetHandler None'),
-    'backfill is idempotent and creates public candidates for standard CMS media only' => str_contains($backfill, 'SELECT id, file_path, slot_assignment, media_type FROM media_cms')
-        && str_contains($backfill, "WHERE media_type = 'standard' ORDER BY id ASC")
+    'backfill is idempotent and creates public candidates for standard and 360 CMS media' => str_contains($backfill, 'SELECT id, file_path, slot_assignment, media_type FROM media_cms')
+        && str_contains($backfill, "WHERE media_type IN ('standard', '360') ORDER BY id ASC")
         && str_contains($backfill, "in_array('--cards-only'")
         && str_contains($backfill, 'media_cms_ensure_admin_thumbnail($sourcePath)')
         && str_contains($backfill, 'media_cms_ensure_hero_derivative($sourcePath)')
-        && str_contains($backfill, 'if (($row[\'media_type\'] ?? \'\') === \'standard\')')
+        && str_contains($backfill, "in_array((\$row['media_type'] ?? ''), ['standard', '360'], true)")
         && str_contains($backfill, 'media_cms_ensure_card_derivatives($sourcePath)')
         && !str_contains($backfill, 'payment-qrs'),
 ];
@@ -241,10 +255,18 @@ if ($failed === 0) {
             && str_contains($thumbnailFallbackMarkup, media_cms_thumbnail_url($thumbnail['path'], (int)(@filemtime($thumbnailPath) ?: 0)))
             && !str_contains($thumbnailFallbackMarkup, $sourceRelative),
             'standard CMS card without cached public derivatives falls back to its bounded admin thumbnail');
-        $assert(!str_contains($panoramaCardMarkup, 'srcset=')
-            && str_contains($panoramaCardMarkup, media_cms_thumbnail_url($thumbnail['path'], (int)(@filemtime($thumbnailPath) ?: 0)))
-            && !str_contains($panoramaCardMarkup, $sourceRelative),
-            '360 CMS grid card remains on its bounded admin thumbnail instead of loading the full panorama');
+        $responsivePanoramaCardMarkup = media_cms_card_image_markup([
+            'media_type' => '360',
+            'file_path' => $sourceRelative,
+            'thumbnail_path' => $thumbnail['path'],
+            'thumbnail_version' => (int)(@filemtime($thumbnailPath) ?: 0),
+            'thumbnail_width' => $thumbnail['width'],
+            'thumbnail_height' => $thumbnail['height'],
+        ], 'Responsive tour card');
+        $assert(str_contains($responsivePanoramaCardMarkup, 'srcset=')
+            && str_contains($responsivePanoramaCardMarkup, $cardDerivatives[0]['url'])
+            && !str_contains($responsivePanoramaCardMarkup, $sourceRelative),
+            '360 CMS grid card selects bounded cached derivatives instead of loading the full panorama');
         foreach ($cardDerivatives as $candidate) {
             $candidateFile = media_cms_upload_file_path($candidate['path'], true);
             $assert(is_file($candidateFile) && str_contains($cardImage['srcset'], $candidate['url'] . ' ' . $candidate['width'] . 'w'),
@@ -279,6 +301,17 @@ if ($failed === 0) {
             && $smallDerivatives[2]['width'] === 320
             && $smallCardImage['width'] === 320,
             'small sources are never enlarged and duplicate candidates are removed');
+        $smallPanoramaMarkup = media_cms_card_image_markup([
+            'media_type' => '360',
+            'file_path' => $smallRelative,
+            'thumbnail_path' => 'assets/img/placeholder.jpg',
+            'source_available' => true,
+        ], 'Small tour card');
+        $assert(substr_count($smallPanoramaMarkup, ' 320w') === 1
+            && !str_contains($smallPanoramaMarkup, ' 480w')
+            && !str_contains($smallPanoramaMarkup, ' 800w')
+            && !str_contains($smallPanoramaMarkup, ' 1320w'),
+            'small panorama previews retain the source pixel width without inflated srcset descriptors');
 
         $invalidCardImage = media_cms_card_image_data('assets/uploads/missing-card-image.jpg');
         $assert($invalidCardImage['src'] === 'assets/img/placeholder.jpg' && $invalidCardImage['srcset'] === '',

@@ -4,8 +4,41 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 require_once $root . '/includes/showroom_tour.php';
+require_once $root . '/includes/media_helper.php';
 $read = static fn(string $path): string => (string)file_get_contents($root . '/' . $path);
 $checks = [];
+$uploadsRoot = $root . '/assets/uploads';
+$validPanoOne = tempnam($uploadsRoot, '.tour-source-one-');
+$validPanoTwo = tempnam($uploadsRoot, '.tour-source-two-');
+if ($validPanoOne !== false && $validPanoTwo !== false) {
+    file_put_contents($validPanoOne, 'valid panorama fixture one');
+    file_put_contents($validPanoTwo, 'valid panorama fixture two');
+    $missingFirst = 'assets/uploads/' . basename($validPanoOne) . '.missing';
+    $missingMiddle = 'assets/uploads/' . basename($validPanoTwo) . '.missing';
+    $historicalPanos = [
+        ['id' => 90, 'file_path' => $missingFirst],
+        ['id' => 91, 'file_path' => 'assets/uploads/' . basename($validPanoOne)],
+        ['id' => 92, 'file_path' => $missingMiddle],
+        ['id' => 93, 'file_path' => 'assets/uploads/' . basename($validPanoTwo)],
+    ];
+    $availablePanos = media_cms_filter_available_records($historicalPanos);
+    $legacyPanoIds = array_column($historicalPanos, 'id');
+    sort($legacyPanoIds, SORT_NUMERIC);
+    $availablePanoIds = array_column($availablePanos, 'id');
+    $checks['missing-first and missing-middle panoramas are excluded without shifting legacy targets onto another scene'] =
+        $availablePanoIds === [91, 93]
+        && showroom_tour_resolve_target_media_id(93, null, 0, $legacyPanoIds, $availablePanoIds) === null
+        && showroom_tour_resolve_target_media_id(93, null, 1, $legacyPanoIds, $availablePanoIds) === 91
+        && showroom_tour_resolve_target_media_id(93, null, 2, $legacyPanoIds, $availablePanoIds) === null
+        && showroom_tour_resolve_target_media_id(93, 91, null, $legacyPanoIds, $availablePanoIds) === 91
+        && showroom_tour_resolve_target_media_id(93, 92, null, $legacyPanoIds, $availablePanoIds) === null;
+    unlink($validPanoOne);
+    unlink($validPanoTwo);
+} else {
+    if ($validPanoOne !== false) unlink($validPanoOne);
+    if ($validPanoTwo !== false) unlink($validPanoTwo);
+    $checks['missing-first and missing-middle panoramas are excluded without shifting legacy targets onto another scene'] = false;
+}
 $checks['admin authorization is role-scoped'] = showroom_tour_is_admin('admin') && !showroom_tour_is_admin('customer') && !showroom_tour_is_admin(null);
 $checks['only 360 media can accept a saved view'] = showroom_tour_is_panorama('360') && !showroom_tour_is_panorama('standard') && !showroom_tour_is_panorama(null);
 $shared_tour_fixture = ['pano_urls' => ['shared-tour.jpg'], 'pano_media_ids' => [10], 'hotspots_by_pano_index' => [0 => [['type' => 'info', 'id' => 1]]]];

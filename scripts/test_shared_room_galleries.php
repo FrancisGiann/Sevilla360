@@ -105,6 +105,9 @@ $sharedFixture = tempnam($uploadsRoot, '.test-shared-fallback-');
 if ($sharedFixture !== false) {
     file_put_contents($sharedFixture, 'temporary media fixture');
     $sharedFixtureRelative = 'assets/uploads/' . basename($sharedFixture);
+    $checks['CMS source availability accepts a readable media file and rejects missing or unsafe records'] = media_cms_source_file_available($sharedFixtureRelative)
+        && !media_cms_source_file_available('assets/uploads/missing-cms-source-test.jpg')
+        && !media_cms_source_file_available('../config/db_connect.php');
     $checks['homepage public galleries accept media records and legacy paths while retaining valid file order'] = media_cms_public_image_paths([
         ['id' => 100, 'file_path' => $sharedFixtureRelative, 'is_primary' => 1],
         ['id' => 101, 'file_path' => 'assets/uploads/missing-public-gallery-test.jpg', 'is_primary' => 0],

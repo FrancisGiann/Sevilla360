@@ -778,6 +778,57 @@ document.addEventListener("DOMContentLoaded", () => {
     return showroomBuildBookingUrl(room, startDate, endDate, guestRange, guestCount, currentRoomId, activeHotelVariant, selectedVariant);
   }
 
+  function showroomAmenityIconClass(label) {
+    const normalized = String(label ?? '')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/wi[\s.-]*fi/g, ' wifi ')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(word => word.length > 4 && word.endsWith('ies')
+        ? `${word.slice(0, -3)}y`
+        : word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word);
+    const has = (...phrases) => phrases.some(phrase => {
+      const words = phrase.split(' ');
+      return normalized.some((_, index) => words.every((word, offset) => normalized[index + offset] === word));
+    });
+
+    if (has('wheelchair', 'pwd')) return 'fa-wheelchair';
+    if (has('microphone', 'mic')) return 'fa-microphone';
+    if (has('sound system', 'audio system', 'speaker', 'audio')) return 'fa-volume-high';
+    if (has('table', 'chair', 'seating')) return 'fa-chair';
+    if (has('event lighting', 'lighting', 'light')) return 'fa-lightbulb';
+    if (has('stage area', 'stage', 'platform')) return 'fa-masks-theater';
+    if (has('guest restroom', 'restroom', 'bathroom', 'toilet', 'comfort room')) return 'fa-restroom';
+    if (has('catering area', 'catering', 'breakfast', 'food', 'utensil', 'dining')) return 'fa-utensils';
+    if (has('parking area', 'free parking', 'parking')) return 'fa-square-parking';
+    if (has('wifi', 'wi fi')) return 'fa-wifi';
+    if (has('air conditioning', 'air conditioner', 'air conditioned', 'aircon', 'ac')) return 'fa-snowflake';
+    if (has('private pool', 'swimming pool', 'pool', 'swimming')) return 'fa-water-ladder';
+    if (has('smart tv', 'television', 'tv')) return 'fa-tv';
+    if (has('mini fridge', 'refrigerator', 'fridge')) return 'fa-temperature-arrow-down';
+    if (has('gym', 'fitness')) return 'fa-dumbbell';
+    if (has('bed')) return 'fa-bed';
+    if (has('bath', 'shower')) return 'fa-bath';
+    return 'fa-check';
+  }
+
+  function renderShowroomAmenity(label) {
+    const text = String(label ?? '').trim();
+    if (!text) return null;
+    const item = document.createElement('div');
+    item.className = 'amenity';
+    const icon = document.createElement('i');
+    icon.className = `fa-solid ${showroomAmenityIconClass(text)}`;
+    icon.setAttribute('aria-hidden', 'true');
+    item.append(icon, document.createTextNode(` ${text}`));
+    return item;
+  }
+
   function updateHotelVariantDetails(room) {
     if (!room || room.category !== 'Hotel Room') return;
     const variant = activeHotelVariant;
@@ -910,37 +961,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Dynamic Amenities Icons
     if (amenitiesGrid && room.amenities) {
         amenitiesGrid.replaceChildren();
-        const iconMap = {
-            "free wi-fi": "fa-wifi", "wifi": "fa-wifi",
-            "fully air-conditioned": "fa-snowflake", "ac ": "fa-snowflake", "air ": "fa-snowflake",
-            "ample parking": "fa-square-parking", "park": "fa-square-parking",
-            "wheelchair accessible": "fa-wheelchair", "pwd": "fa-wheelchair",
-            "private pool": "fa-water-ladder", "pool": "fa-water-ladder", "swim": "fa-water-ladder",
-            "smart tv": "fa-tv", "tv": "fa-tv",
-            "mini-fridge": "fa-temperature-arrow-down", "fridge": "fa-temperature-arrow-down",
-            "breakfast": "fa-utensils", "food": "fa-utensils",
-            "gym": "fa-dumbbell", "fitness": "fa-dumbbell",
-            "bed": "fa-bed",
-            "bath": "fa-bath", "shower": "fa-bath"
-        };
-
         room.amenities.forEach(item => {
-            const cleanItem = item.trim();
-            if (cleanItem === "") return; 
-            
-            const lowerText = cleanItem.toLowerCase();
-            let iconClass = "fa-check"; 
-            for (const [key, val] of Object.entries(iconMap)) {
-                if (lowerText.includes(key)) { iconClass = val; break; }
-            }
-            
-            const div = document.createElement("div");
-            div.className = "amenity";
-            const icon = document.createElement("i");
-            icon.className = `fa-solid ${iconClass}`;
-            icon.setAttribute("aria-hidden", "true");
-            div.append(icon, document.createTextNode(` ${cleanItem}`));
-            amenitiesGrid.appendChild(div);
+            const amenity = renderShowroomAmenity(item);
+            if (amenity) amenitiesGrid.appendChild(amenity);
         });
     }
 

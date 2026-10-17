@@ -9,6 +9,175 @@ document.addEventListener('DOMContentLoaded', () => {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[char]);
 
+    function cmsLightboxSource(image) {
+        if (!image || image.dataset?.sourceAvailable === 'false') return null;
+        return image.dataset?.originalSrc || image.src || null;
+    }
+
+    const cmsPreviewContexts = {
+        grid: '(max-width: 767px) calc(100vw - 2rem), (max-width: 1100px) calc(50vw - 2rem), 400px',
+        hotel: '(max-width: 700px) calc(84vw - 2rem), (max-width: 1000px) calc(50vw - 4rem), 430px',
+        manager: '(max-width: 700px) calc(100vw - 3rem), (max-width: 1000px) 50vw, 600px'
+    };
+    const cmsPreviewPromises = new Map();
+    const cmsPreviewQueue = [];
+    let activeCmsPreviewRequests = 0;
+    function queueCmsPreviewRequest(run, prioritize = false) {
+        let job;
+        const promise = new Promise((resolve, reject) => {
+            job = { run, resolve, reject, started: false, priority: prioritize ? 1 : 0 };
+            enqueueCmsPreviewJob(job);
+            drainCmsPreviewQueue();
+        });
+        return {
+            promise,
+            promote: () => {
+                if (!job || job.started || job.priority > 0) return;
+                const index = cmsPreviewQueue.indexOf(job);
+                if (index < 0) return;
+                job.priority = 1;
+                cmsPreviewQueue.splice(index, 1);
+                enqueueCmsPreviewJob(job);
+            }
+        };
+    }
+    function enqueueCmsPreviewJob(job) {
+        const index = cmsPreviewQueue.findIndex(queued => queued.priority < job.priority);
+        if (index < 0) cmsPreviewQueue.push(job);
+        else cmsPreviewQueue.splice(index, 0, job);
+    }
+    function drainCmsPreviewQueue() {
+        while (activeCmsPreviewRequests < 2 && cmsPreviewQueue.length) {
+            const job = cmsPreviewQueue.shift();
+            job.started = true;
+            activeCmsPreviewRequests++;
+            Promise.resolve().then(job.run).then(job.resolve, job.reject).finally(() => {
+                activeCmsPreviewRequests--;
+                drainCmsPreviewQueue();
+            });
+        }
+    }
+    const cmsPreviewObserver = typeof IntersectionObserver === 'function'
+        ? new IntersectionObserver(entries => entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            cmsPreviewObserver.unobserve(entry.target);
+            loadCmsResponsivePreview(entry.target);
+        }), { rootMargin: '180px 0px' })
+        : null;
+
+    function safeCmsPreviewSourceSet(src, srcset) {
+        if (!/^assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(?:480|800|1320)\.webp\?v=\d+$/.test(String(src || ''))) return false;
+        const candidates = String(srcset || '').split(',').map(candidate => candidate.trim());
+        if (!candidates.length) return false;
+        const urls = [];
+        let previousWidth = 0;
+        for (const candidate of candidates) {
+            const match = candidate.match(/^(assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(480|800|1320)\.webp\?v=\d+)\s+([1-9]\d{0,3})w$/);
+            if (!match) return false;
+            const encodedWidth = Number(match[2]);
+            const actualWidth = Number(match[3]);
+            if (actualWidth > encodedWidth || actualWidth > 1320 || actualWidth <= previousWidth) return false;
+            urls.push(match[1]);
+            previousWidth = actualWidth;
+        }
+        return urls.includes(String(src));
+    }
+
+    function cachedCmsPreview(mediaId) {
+        for (const photos of Object.values(window.galleryData || {})) {
+            if (!Array.isArray(photos)) continue;
+            const photo = photos.find(item => Number(item?.id) === mediaId && item?.source_available !== false);
+            if (photo && safeCmsPreviewSourceSet(photo.card_preview_src, photo.card_preview_srcset)) {
+                return {
+                    src: photo.card_preview_src,
+                    srcset: photo.card_preview_srcset,
+                    width: Number(photo.card_preview_width) || 480,
+                    height: Number(photo.card_preview_height) || 270
+                };
+            }
+        }
+        return null;
+    }
+
+    function applyCmsPreview(mediaId, preview) {
+        Object.values(window.galleryData || {}).forEach(photos => {
+            if (!Array.isArray(photos)) return;
+            photos.forEach(photo => {
+                if (Number(photo?.id) !== mediaId) return;
+                photo.card_preview_src = preview.src;
+                photo.card_preview_srcset = preview.srcset;
+                photo.card_preview_sizes = cmsPreviewContexts.hotel;
+                photo.card_preview_width = preview.width;
+                photo.card_preview_height = preview.height;
+            });
+        });
+        document.querySelectorAll(`img[data-cms-preview-id="${mediaId}"]`).forEach(image => {
+            if (image.dataset.sourceAvailable === 'false') return;
+            const context = cmsPreviewContexts[image.dataset.cmsPreviewContext] ? image.dataset.cmsPreviewContext : 'grid';
+            image.src = preview.src;
+            image.srcset = preview.srcset;
+            image.sizes = cmsPreviewContexts[context];
+            if (Number(preview.width) > 0) image.width = Number(preview.width);
+            if (Number(preview.height) > 0) image.height = Number(preview.height);
+            image.dataset.cmsPreviewReady = 'true';
+        });
+    }
+
+    function loadCmsResponsivePreview(image) {
+        const mediaId = Number(image?.dataset.cmsPreviewId);
+        if (!Number.isSafeInteger(mediaId) || mediaId < 1 || image.dataset.cmsPreviewReady === 'true'
+            || image.dataset.sourceAvailable === 'false') return;
+        const cached = cachedCmsPreview(mediaId);
+        if (cached) {
+            applyCmsPreview(mediaId, cached);
+            return;
+        }
+        if (!csrfToken) return;
+        const context = cmsPreviewContexts[image.dataset.cmsPreviewContext] ? image.dataset.cmsPreviewContext : 'grid';
+        const prioritize = context === 'hotel' || context === 'manager';
+        let requestEntry = cmsPreviewPromises.get(mediaId);
+        if (!requestEntry) {
+            const queued = queueCmsPreviewRequest(async () => {
+                const response = await fetch('actions/admin/media_preview.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ id: mediaId, context })
+                });
+                const data = await response.json();
+                if (!response.ok || data?.success !== true || Number(data.id) !== mediaId
+                    || !safeCmsPreviewSourceSet(data.src, data.srcset)
+                    || !Number.isSafeInteger(Number(data.width)) || !Number.isSafeInteger(Number(data.height))) {
+                    throw new Error('Bounded CMS preview is unavailable.');
+                }
+                return { src: data.src, srcset: data.srcset, width: Number(data.width), height: Number(data.height) };
+            }, prioritize);
+            const request = queued.promise.finally(() => {
+                if (cmsPreviewPromises.get(mediaId)?.promise === request) cmsPreviewPromises.delete(mediaId);
+            });
+            requestEntry = { promise: request, promote: queued.promote };
+            cmsPreviewPromises.set(mediaId, requestEntry);
+        } else if (prioritize) {
+            requestEntry.promote();
+        }
+        image.dataset.cmsPreviewReady = 'pending';
+        requestEntry.promise.then(preview => applyCmsPreview(mediaId, preview)).catch(() => {
+            image.dataset.cmsPreviewReady = 'failed';
+        });
+    }
+
+    function observeCmsPreviewImage(image, context = 'grid') {
+        if (!(image instanceof HTMLImageElement) || !/^\d+$/.test(String(image.dataset.cmsPreviewId || ''))) return;
+        image.dataset.cmsPreviewContext = cmsPreviewContexts[context] ? context : 'grid';
+        if (image.dataset.sourceAvailable === 'false' || image.dataset.cmsPreviewReady === 'true') return;
+        if (image.srcset && safeCmsPreviewSourceSet(image.getAttribute('src'), image.srcset)) {
+            image.sizes = cmsPreviewContexts[image.dataset.cmsPreviewContext];
+            image.dataset.cmsPreviewReady = 'true';
+            return;
+        }
+        if (cmsPreviewObserver) cmsPreviewObserver.observe(image);
+        else loadCmsResponsivePreview(image);
+    }
+
   const cmsCategoryFilters = new Set(['venues', 'hotel-room', 'event-hall', 'villa', 'website']);
   const cmsMediaFilters = new Set(['all', '360', 'standard']);
   const cmsFilterStorage = (() => {
@@ -63,6 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const progContainer = document.getElementById('upload-progress-container');
   const progBar = document.getElementById('upload-progress-bar');
   const progText = document.getElementById('upload-progress-text');
+  const progLabel = document.getElementById('upload-progress-label');
 
 
   // =========================================================
@@ -174,22 +344,37 @@ document.addEventListener('DOMContentLoaded', () => {
               submitBtn.innerText = originalText;
               submitBtn.disabled = false;
               if (progContainer) progContainer.style.display = 'none';
-              if (progBar) progBar.style.transform = 'scaleX(0)';
-              if (progText) progText.innerText = '0%';
+              if (progLabel) progLabel.innerText = 'Uploading images…';
+              if (progBar) {
+                  progBar.style.transform = 'scaleX(0)';
+                  progBar.setAttribute('aria-valuenow', '0');
+                  progBar.setAttribute('aria-valuetext', 'Waiting to upload.');
+              }
+              if (progText) progText.innerText = '0% sent';
           };
           const showUploadError = (title, message) => {
               resetUploadUi();
               showAlert(title, message, "error", false);
           };
+          const uploadOutcomeUnknown = 'Wait a moment, then check the gallery before retrying; the images may already be saved.';
+          let uploadBodySent = false;
 
-          submitBtn.innerText = "Uploading...";
+          const uploadDescription = fileInputEl.files.length === 1
+              ? '1 image'
+              : `${fileInputEl.files.length} images`;
+          submitBtn.innerText = "Uploading…";
           submitBtn.disabled = true;
 
           // Show Progress Bar
           if (progContainer) {
               progContainer.style.display = 'block';
-              progBar.style.transform = 'scaleX(0)';
-              progText.innerText = '0%';
+              if (progLabel) progLabel.innerText = `Uploading ${uploadDescription}…`;
+              if (progBar) {
+                  progBar.style.transform = 'scaleX(0)';
+                  progBar.setAttribute('aria-valuenow', '0');
+                  progBar.setAttribute('aria-valuetext', 'File transfer in progress.');
+              }
+              if (progText) progText.innerText = '0% sent';
           }
 
           // Use XMLHttpRequest for actual progress tracking!
@@ -204,10 +389,30 @@ document.addEventListener('DOMContentLoaded', () => {
                       const percentComplete = event.total > 0
                           ? Math.round((event.loaded / event.total) * 100)
                           : 0;
+                      if (percentComplete >= 100) uploadBodySent = true;
                       const progressRatio = Math.min(1, Math.max(0, percentComplete / 100));
-                      progBar.style.transform = `scaleX(${progressRatio})`;
-                      progText.innerText = percentComplete + '%';
+                      if (progBar) {
+                          progBar.style.transform = `scaleX(${progressRatio})`;
+                          progBar.setAttribute('aria-valuenow', String(percentComplete));
+                          progBar.setAttribute('aria-valuetext', `${percentComplete}% of image data sent.`);
+                      }
+                      if (progText) progText.innerText = percentComplete + '% sent';
                   }
+              });
+
+              // The upload body's transfer can finish well before the server has
+              // generated CMS thumbnails and public derivatives. Keep that work
+              // distinct from network progress so 100% does not look stalled.
+              xhr.upload.addEventListener("load", () => {
+                  uploadBodySent = true;
+                  if (progLabel) progLabel.innerText = `Upload received. Processing ${uploadDescription} on the server…`;
+                  submitBtn.innerText = 'Processing images…';
+                  if (progBar) {
+                      progBar.style.transform = 'scaleX(1)';
+                      progBar.setAttribute('aria-valuenow', '100');
+                      progBar.setAttribute('aria-valuetext', 'Upload sent; server is processing images.');
+                  }
+                  if (progText) progText.innerText = 'Sent';
               });
 
               // Handle Completion
@@ -221,6 +426,10 @@ document.addEventListener('DOMContentLoaded', () => {
                   }
 
                   const serverMessage = data && typeof data.message === 'string' ? data.message.trim() : '';
+                  if (xhr.status === 504 || xhr.status >= 500) {
+                      showUploadError("Upload result unconfirmed", uploadOutcomeUnknown);
+                      return;
+                  }
                   if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true) {
                       resetUploadUi();
                       uploadModal.classList.remove('active');
@@ -232,15 +441,18 @@ document.addEventListener('DOMContentLoaded', () => {
               };
 
               xhr.onerror = function() {
-                  showUploadError("Network Error", "A network error occurred during upload.");
+                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Network Error",
+                      uploadBodySent ? uploadOutcomeUnknown : "A network error occurred during upload.");
               };
 
               xhr.onabort = function() {
-                  showUploadError("Upload Cancelled", "The upload was cancelled before it finished.");
+                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Upload Cancelled",
+                      uploadBodySent ? uploadOutcomeUnknown : "The upload was cancelled before it finished.");
               };
 
               xhr.ontimeout = function() {
-                  showUploadError("Network Error", "The upload timed out. Please try again.");
+                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Network Error",
+                      uploadBodySent ? uploadOutcomeUnknown : "The upload timed out before all files were sent. Please try again.");
               };
 
               xhr.send(formData);
@@ -287,7 +499,55 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (selectAllCheck && checks.length > 0) {
-          selectAllCheck.checked = (checkedCount === checks.length);
+          const selectableChecks = Array.from(checks).filter(check => !check.disabled);
+          selectAllCheck.checked = selectableChecks.length > 0 && checkedCount === selectableChecks.length;
+          selectAllCheck.indeterminate = checkedCount > 0 && checkedCount < selectableChecks.length;
+      }
+  }
+
+  async function removeMissingMediaRecord(mediaId, button) {
+      const numericId = Number(mediaId);
+      if (!Number.isSafeInteger(numericId) || numericId < 1 || button.disabled) return;
+      button.disabled = true;
+      try {
+          const previewResponse = await fetch('actions/admin/delete_media.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+              body: JSON.stringify({ action: 'preview_missing', id: numericId })
+          });
+          const preview = await previewResponse.json();
+          if (!previewResponse.ok || preview?.success !== true || preview?.can_remove !== true) {
+              throw new Error(typeof preview?.message === 'string' ? preview.message : 'The missing record could not be checked.');
+          }
+          const own = Number(preview.plan?.source_hotspots) || 0;
+          const incoming = Number(preview.plan?.incoming_hotspots) || 0;
+          const dependents = own + incoming;
+          const dependencyCopy = dependents === 0
+              ? 'No saved tour hotspots refer to this panorama.'
+              : `${own} hotspot${own === 1 ? '' : 's'} on this panorama and ${incoming} incoming navigation link${incoming === 1 ? '' : 's'} will also be removed.`;
+          const confirmed = await showConfirm(
+              'Remove missing media record?',
+              `The original file is missing. This removes the saved media record. ${dependencyCopy} No files or cached images will be deleted.`
+          );
+          if (!confirmed) return;
+
+          const deleteResponse = await fetch('actions/admin/delete_media.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+              body: JSON.stringify({ action: 'remove_missing', id: numericId, expected: preview.plan })
+          });
+          const result = await deleteResponse.json();
+          if (!deleteResponse.ok || result?.success !== true) {
+              throw new Error(typeof result?.message === 'string' ? result.message : 'The missing record could not be removed.');
+          }
+          button.closest('.mg-photo-card')?.remove();
+          window.needsCmsRefresh = true;
+          updateBulkDeleteState();
+          if (mgGrid.children.length === 0) document.getElementById('btnCloseGalleryModal')?.click();
+      } catch (error) {
+          showAlert('Missing media was not removed', error instanceof Error ? error.message : 'Please retry after refreshing the gallery.', 'error', false);
+      } finally {
+          if (button.isConnected) button.disabled = false;
       }
   }
 
@@ -343,6 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           photos.forEach((photo) => {
               const isPrimary = Number(photo.is_primary) === 1;
+              const sourceAvailable = photo.source_available !== false;
               const starColor = isPrimary ? "var(--color-gold)" : "#ccc";
               const primaryLabel = isPrimary ? "Primary image" : "Set as primary image";
               const thumbnailPath = /^assets\/uploads\/\.cms-thumbnails\/[a-f0-9]{64}\.webp$/.test(String(photo.thumbnail_path || ''))
@@ -350,33 +611,41 @@ document.addEventListener('DOMContentLoaded', () => {
                   : 'assets/img/placeholder.jpg';
               const thumbnailVersion = Number(photo.thumbnail_version);
               const thumbnailUrl = `${thumbnailPath}${thumbnailVersion > 0 ? `?v=${thumbnailVersion}` : ''}`;
-              const originalPath = /^assets\/uploads\/[A-Za-z0-9_.-]+$/.test(String(photo.file_path || ''))
+              const hasCardPreview = safeCmsPreviewSourceSet(photo.card_preview_src, photo.card_preview_srcset);
+              const previewSource = hasCardPreview ? photo.card_preview_src : thumbnailUrl;
+              const previewSrcset = hasCardPreview ? photo.card_preview_srcset : '';
+              const originalPath = sourceAvailable && /^assets\/uploads\/[A-Za-z0-9_.-]+$/.test(String(photo.file_path || ''))
                   ? photo.file_path
                   : '';
               const fileName = escapeHTML(photo.file_name);
+              const sourceWarning = sourceAvailable ? '' : `<p class="mg-source-warning" role="status">${photo.source_status === 'missing' ? 'Original file is missing from this server.' : 'Original file is unavailable or its path is unsafe.'}</p>`;
+              const deleteControl = photo.source_status === 'missing'
+                  ? `<button type="button" class="btn-remove-missing-media" data-id="${photo.id}" aria-label="Remove missing media record for ${fileName}" title="Remove missing record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`
+                  : sourceAvailable
+                      ? `<button type="button" class="btn-delete-media" data-id="${photo.id}" aria-label="Delete ${fileName}" title="Delete"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`
+                      : '<button type="button" class="btn-delete-media" disabled aria-label="File path cannot be safely removed" title="Restore or inspect this file path first"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>';
               
               mgGrid.innerHTML += `
                   <div class="mg-photo-card" data-id="${photo.id}" style="position: relative; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
                       
                       <!-- Bulk Checkbox -->
                       <div style="position: absolute; top: 8px; left: 8px; z-index: 10; background: white; border-radius: 4px; padding: 3px 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
-                          <input type="checkbox" class="mg-bulk-check" value="${photo.id}" style="cursor: pointer; transform: scale(1.2); margin: 0;">
+                          <input type="checkbox" class="mg-bulk-check" value="${photo.id}" ${sourceAvailable ? '' : 'disabled'} aria-label="Select ${fileName} for deletion" style="cursor: ${sourceAvailable ? 'pointer' : 'not-allowed'}; transform: scale(1.2); margin: 0;">
                       </div>
 
-                      <img src="${escapeHTML(thumbnailUrl)}" data-original-src="${escapeHTML(originalPath)}" alt="${fileName}" width="${Number(photo.thumbnail_width) || 480}" height="${Number(photo.thumbnail_height) || 270}" loading="lazy" decoding="async" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: zoom-in;">
+                      <img src="${escapeHTML(previewSource)}" ${previewSrcset ? `srcset="${escapeHTML(previewSrcset)}" sizes="${escapeHTML(cmsPreviewContexts.manager)}"` : ''} data-cms-preview-id="${photo.id}" data-cms-preview-context="manager" data-original-src="${escapeHTML(originalPath)}" data-source-available="${sourceAvailable ? 'true' : 'false'}" alt="${sourceAvailable ? fileName : `Unavailable source: ${fileName}`}" width="${Number(photo.card_preview_width) || Number(photo.thumbnail_width) || 480}" height="${Number(photo.card_preview_height) || Number(photo.thumbnail_height) || 270}" loading="lazy" decoding="async" class="mg-thumb" style="width: 100%; height: 150px; object-fit: cover; display: block; cursor: ${sourceAvailable ? 'zoom-in' : 'default'};">
+                      ${sourceWarning}
                       <div style="padding: 10px; background: #fff; display: flex; justify-content: space-between; align-items: center;">
                           
                           ${currentManageType === '360'
                               ? '<span class="mg-primary-managed">Starting scene is set in Tour Setup</span>'
-                              : `<button class="btn-primary-media" data-id="${photo.id}" data-slot="${escapeHTML(photo.slot_assignment || currentManageSlot)}" aria-label="${primaryLabel}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${primaryLabel}" style="background: none; border: none; color: ${starColor}; cursor: pointer; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
+                              : `<button class="btn-primary-media" data-id="${photo.id}" data-slot="${escapeHTML(photo.slot_assignment || currentManageSlot)}" aria-label="${sourceAvailable ? primaryLabel : 'Original image file is missing'}" aria-pressed="${isPrimary ? 'true' : 'false'}" title="${sourceAvailable ? primaryLabel : 'Original image file is missing'}" ${sourceAvailable ? '' : 'disabled'} style="background: none; border: none; color: ${starColor}; cursor: ${sourceAvailable ? 'pointer' : 'not-allowed'}; padding: 5px; font-size: 1.2rem; transition: 0.3s;">
                                   <i class="fa-solid fa-star" aria-hidden="true"></i>
                               </button>`}
                           
                           <span style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${fileName}</span>
                           
-                          <button class="btn-delete-media" data-id="${photo.id}" style="background: none; border: none; color: #c75c5c; cursor: pointer; padding: 5px;">
-                              <i class="fa-solid fa-trash"></i>
-                          </button>
+                          ${deleteControl}
                       </div>
                   </div>
               `;
@@ -385,7 +654,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // Reset bulk states when modal opens
           if (selectAllCheck) selectAllCheck.checked = false;
           updateBulkDeleteState();
-          if (bulkControls) bulkControls.style.display = photos.length > 0 ? 'flex' : 'none';
+          if (bulkControls) bulkControls.style.display = photos.some(photo => photo.source_available !== false) ? 'flex' : 'none';
+          mgGrid.querySelectorAll('.mg-thumb[data-cms-preview-id]').forEach(image => observeCmsPreviewImage(image, 'manager'));
 
           manageGalleryModal.classList.add('active');
       });
@@ -395,7 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (selectAllCheck) {
       selectAllCheck.addEventListener('change', function() {
           const checks = mgGrid.querySelectorAll('.mg-bulk-check');
-          checks.forEach(c => c.checked = selectAllCheck.checked);
+          checks.forEach(c => c.checked = !c.disabled && selectAllCheck.checked);
           updateBulkDeleteState();
       });
   }
@@ -421,7 +691,9 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // LIGHTBOX
           if (e.target.classList.contains('mg-thumb')) {
-              lightboxImg.src = e.target.dataset.originalSrc || e.target.src;
+              const lightboxSource = cmsLightboxSource(e.target);
+              if (!lightboxSource) return;
+              lightboxImg.src = lightboxSource;
               lightbox.style.display = 'flex';
               return;
           }
@@ -548,6 +820,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   });
               });
           }
+
+          const removeMissingBtn = e.target.closest('.btn-remove-missing-media');
+          if (removeMissingBtn) removeMissingMediaRecord(removeMissingBtn.getAttribute('data-id'), removeMissingBtn);
       });
   }
 
@@ -636,6 +911,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const cmsCards = document.querySelectorAll('.cms-card');
   const cmsEmptyState = document.getElementById('cms-empty-state');
 
+  function applyHotelCardMediaContext(card) {
+      if (!card.classList.contains('cms-hotel-type-card')) return;
+      const kind = activeCMSMediaFilter === '360' ? '360' : 'standard';
+      card.dataset.visibleMediaKind = kind;
+      card.querySelectorAll('[data-hotel-preview-kind]').forEach(panel => {
+          const selected = panel.dataset.hotelPreviewKind === kind;
+          panel.hidden = !selected;
+          if (!selected) return;
+          panel.querySelectorAll('img[data-cms-preview-id]').forEach(image => observeCmsPreviewImage(image, 'grid'));
+      });
+      card.querySelectorAll('[data-hotel-summary-kind]').forEach(summary => {
+          summary.hidden = activeCMSMediaFilter !== 'all' && summary.dataset.hotelSummaryKind !== kind;
+      });
+  }
+
   function applyCMSFilters() {
       categoryFilterPills.forEach(pill => {
           const isActive = pill.getAttribute('data-category') === activeCMSCategoryFilter;
@@ -660,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const isVisible = matchesCategory && matchesMedia;
 
           card.style.display = isVisible ? 'flex' : 'none';
+          applyHotelCardMediaContext(card);
           if (isVisible) visibleCardCount++;
       });
 
@@ -720,17 +1011,18 @@ document.addEventListener('DOMContentLoaded', () => {
       return /^assets\/uploads\/\.cms-thumbnails\/[a-f0-9]{64}\.webp$/.test(path) ? path : 'assets/img/placeholder.jpg';
   };
   const hotelPreviewSizes = '(max-width: 700px) calc(84vw - 2rem), (max-width: 1000px) calc(50vw - 4rem), 430px';
-  const cmsCardPreviewSources = photo => {
+  const cmsCardPreviewSources = (photo, sizes = hotelPreviewSizes) => {
       const src = String(photo?.card_preview_src || '');
       const srcset = String(photo?.card_preview_srcset || '');
-      if (!/^assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(?:480|800|1320)\.webp\?v=\d+$/.test(src)
+      if (!safeCmsPreviewSourceSet(src, srcset)
           || photo?.card_preview_sizes !== hotelPreviewSizes) return null;
-      const candidates = srcset.split(',').map(candidate => candidate.trim());
-      if (!candidates.length || candidates.some(candidate => {
-          const match = candidate.match(/^assets\/uploads\/\.cms-card\/[a-f0-9]{64}-(480|800|1320)\.webp\?v=\d+\s+([1-9]\d{0,3})w$/);
-          return !match || Number(match[2]) > Number(match[1]) || Number(match[2]) > 1320;
-      })) return null;
-      return { src, srcset, sizes: hotelPreviewSizes };
+      return {
+          src,
+          srcset,
+          sizes,
+          width: Number(photo.card_preview_width) || 480,
+          height: Number(photo.card_preview_height) || 270
+      };
   };
   const optionPhotoSlot = option => String(option?.standard_slot || '');
   const optionTourSlot = option => String(option?.tour_slot || '');
@@ -741,9 +1033,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return Array.from(card.querySelectorAll(`.${className}`)).find(button => button.getAttribute('data-slot') === slot) || null;
   }
 
-  function renderHotelPreview(slot, parent, emptyCopy) {
+  function renderHotelPreview(slot, parent, emptyCopy, kind) {
       parent.replaceChildren();
-      const photos = window.galleryData?.[slot] || [];
+      const photos = (window.galleryData?.[slot] || []).filter(photo => photo?.source_available !== false);
       if (!photos.length) {
           const empty = document.createElement('p');
           empty.className = 'hotel-gallery-empty';
@@ -752,25 +1044,31 @@ document.addEventListener('DOMContentLoaded', () => {
           return photos;
       }
       const strip = document.createElement('div');
-      const isTour = activeHotelTab === 'tour';
+      const isTour = kind === 'tour';
       strip.className = `hotel-gallery-preview-strip hotel-gallery-preview-strip--${isTour ? 'tour' : 'photos'}`;
       strip.tabIndex = 0;
       strip.setAttribute('role', 'region');
       strip.setAttribute('aria-label', isTour ? `Tour scene previews, ${photos.length} scenes` : `Photo previews, ${photos.length} photos`);
       photos.slice(0, 6).forEach((photo, index) => {
           const image = document.createElement('img');
-          const responsiveSource = isTour ? null : cmsCardPreviewSources(photo);
+          const responsiveSource = cmsCardPreviewSources(photo, hotelPreviewSizes);
           image.src = responsiveSource?.src || cmsPreviewPath(photo);
           if (responsiveSource) {
               image.srcset = responsiveSource.srcset;
               image.sizes = responsiveSource.sizes;
+              image.width = responsiveSource.width;
+              image.height = responsiveSource.height;
           }
+          image.dataset.cmsPreviewId = String(photo.id);
+          image.dataset.cmsPreviewContext = 'hotel';
+          image.dataset.sourceAvailable = 'true';
           image.alt = Number(photo.is_primary) === 1 ? 'Current gallery cover' : `Gallery image ${index + 1}`;
           image.loading = 'lazy';
           image.decoding = 'async';
           strip.appendChild(image);
       });
       parent.appendChild(strip);
+      strip.querySelectorAll('img[data-cms-preview-id]').forEach(image => observeCmsPreviewImage(image, 'hotel'));
       return photos;
   }
 
@@ -809,8 +1107,12 @@ document.addEventListener('DOMContentLoaded', () => {
           : (type.options || []).find(item => String(item.room_group_id) === String(scopeId)) || null;
       const sharedSlot = isTour ? String(type.shared_tour_slot || `${type.canonical_slot}_360`) : type.canonical_slot;
       const optionSlot = option ? (isTour ? optionTourSlot(option) : optionPhotoSlot(option)) : '';
-      const ownPhotos = option ? (window.galleryData?.[optionSlot] || []) : [];
-      const sharedPhotos = window.galleryData?.[sharedSlot] || [];
+      const ownRecords = option ? (window.galleryData?.[optionSlot] || []) : [];
+      const sharedRecords = window.galleryData?.[sharedSlot] || [];
+      const ownPhotos = ownRecords.filter(photo => photo?.source_available !== false);
+      const sharedPhotos = sharedRecords.filter(photo => photo?.source_available !== false);
+      const missingOwnCount = ownRecords.length - ownPhotos.length;
+      const missingSharedCount = sharedRecords.length - sharedPhotos.length;
       const overrideEnabled = option ? Boolean(isTour ? option.tour_override_enabled : option.standard_override_enabled) : false;
       const useOwnPhotos = Boolean(option && overrideEnabled && ownPhotos.length);
       const activeSlot = useOwnPhotos ? optionSlot : sharedSlot;
@@ -820,17 +1122,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let status = '';
       if (!option) {
-          status = `${sharedPhotos.length} ${isTour ? `scene${sharedPhotos.length === 1 ? '' : 's'}` : `photo${sharedPhotos.length === 1 ? '' : 's'}`} · shared with room options as a fallback`;
+          status = `${sharedPhotos.length} available ${isTour ? `scene${sharedPhotos.length === 1 ? '' : 's'}` : `photo${sharedPhotos.length === 1 ? '' : 's'}`} · shared with room options as a fallback`;
+          if (missingSharedCount) status += ` · ${missingSharedCount} saved source ${missingSharedCount === 1 ? 'file is' : 'files are'} missing`;
       } else if (useOwnPhotos) {
           status = isTour ? `Own 360 tour · ${activePhotos.length} scenes` : `Own photos · ${activePhotos.length} photos`;
       } else if (overrideEnabled) {
           status = sharedPhotos.length
-              ? `Own ${mediaLabel} selected · shared ${isTour ? 'tour' : 'photos'} shown until you add option media`
-              : `Own ${mediaLabel} selected · no media yet`;
-      } else if (ownPhotos.length) {
-          status = `Uses shared ${isTour ? 'tour' : 'photos'} · ${ownPhotos.length} saved own ${isTour ? 'scene' : 'photo'}${ownPhotos.length === 1 ? '' : 's'} retained`;
+              ? `Shared ${isTour ? 'tour' : 'photos'} shown until option media is available`
+              : `No available ${mediaLabel}`;
+          if (missingOwnCount) status += ` · ${missingOwnCount} saved own source ${missingOwnCount === 1 ? 'file is' : 'files are'} missing`;
+      } else if (ownRecords.length) {
+          status = `Uses shared ${isTour ? 'tour' : 'photos'}`;
+          if (ownPhotos.length) status += ` · ${ownPhotos.length} saved own ${isTour ? 'scene' : 'photo'}${ownPhotos.length === 1 ? '' : 's'} retained`;
+          if (missingOwnCount) status += ` · ${missingOwnCount} saved own source ${missingOwnCount === 1 ? 'file is' : 'files are'} missing`;
       } else {
           status = `Uses shared ${isTour ? 'tour' : 'photos'}`;
+      }
+      if (option && !useOwnPhotos && missingSharedCount) {
+          status += ` · ${missingSharedCount} shared source ${missingSharedCount === 1 ? 'file is' : 'files are'} missing`;
       }
 
       const workspace = document.createElement('div');
@@ -847,16 +1156,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const preview = document.createElement('div');
       preview.className = 'hotel-gallery-workspace-preview';
       if (activePhotos.length) {
-          renderHotelPreview(activeSlot, preview, '');
+          renderHotelPreview(activeSlot, preview, '', kind);
       } else {
           const empty = document.createElement('p');
           empty.className = 'hotel-gallery-empty';
           if (!option) {
-              empty.textContent = isTour ? 'No shared tour yet. Add a panorama to start this tour.' : 'No shared photos yet. Add a room photo gallery.';
+              empty.textContent = missingSharedCount
+                  ? `No available shared ${mediaLabel}. ${missingSharedCount} saved source ${missingSharedCount === 1 ? 'file is' : 'files are'} missing from this server.`
+                  : isTour ? 'No shared tour yet. Add a panorama to start this tour.' : 'No shared photos yet. Add a room photo gallery.';
           } else if (sharedPhotos.length) {
               empty.textContent = isTour ? 'No option tour yet. Shared scenes remain available as the fallback.' : 'No option photos yet. Shared photos remain available as the fallback.';
           } else if (ownPhotos.length && !overrideEnabled) {
               empty.textContent = isTour ? 'No shared tour yet. Saved option scenes are available when you choose its own gallery.' : 'No shared photos yet. Saved option photos are available when you choose its own gallery.';
+          } else if (missingOwnCount) {
+              empty.textContent = `No available own ${mediaLabel}. ${missingOwnCount} saved source ${missingOwnCount === 1 ? 'file is' : 'files are'} missing from this server.`;
           } else {
               empty.textContent = isTour ? 'No own tour yet. Add a panorama for this option.' : 'No own photos yet. Add photos for this option.';
           }
@@ -943,14 +1256,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.cms-open-hotel-editor').forEach(button => button.addEventListener('click', () => {
       const card = button.closest('.cms-hotel-type-card');
       const type = (window.hotelGalleryEditorData || []).find(item => item.canonical_slot === card?.dataset.hotelCanonicalSlot);
-      showHotelEditor(type, activeCMSMediaFilter === '360' ? 'tour' : 'photos');
+      const selectedFilter = document.querySelector('.cms-pill.active')?.dataset.filter;
+      const defaultTab = button.dataset.defaultTab === 'tour' ? 'tour' : 'photos';
+      const tab = selectedFilter === '360' ? 'tour' : selectedFilter === 'standard' ? 'photos' : defaultTab;
+      showHotelEditor(type, tab);
   }));
   document.querySelectorAll('.cms-hotel-add-shared').forEach(button => button.addEventListener('click', () => {
       const card = button.closest('.cms-hotel-type-card');
       const type = (window.hotelGalleryEditorData || []).find(item => item.canonical_slot === card?.dataset.hotelCanonicalSlot);
       if (!type) return;
-      showHotelEditor(type, 'photos', 'shared');
-      hotelEditorOverlay?.querySelector('[data-hotel-action="upload-shared-photos"]')?.click();
+      const kind = button.dataset.mediaKind === '360' ? '360' : 'standard';
+      const tab = kind === '360' ? 'tour' : 'photos';
+      showHotelEditor(type, tab, 'shared');
+      const action = kind === '360' ? 'upload-shared-tour' : 'upload-shared-photos';
+      hotelEditorOverlay?.querySelector(`[data-hotel-action="${action}"]`)?.click();
   }));
   hotelGalleryScope?.addEventListener('change', () => {
       if (!activeHotelEditorType) return;
@@ -1037,6 +1356,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   applyCMSFilters();
+  document.querySelectorAll('img[data-cms-preview-id]').forEach(image => {
+      if (image.closest('.mg-photo-card')) return;
+      observeCmsPreviewImage(image, 'grid');
+  });
   persistCMSFilterState();
 
 });

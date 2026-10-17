@@ -1225,6 +1225,21 @@
 .cms-hotel-type-card .cms-title { margin: 0; font-size: 1.2rem; line-height: 1.25; overflow-wrap: anywhere; }
 .cms-hotel-option-count { flex: 0 0 auto; padding: .38rem .6rem; border: 1px solid #e6ddcf; border-radius: 999px; background: #f8f4ed; color: #554634; font-size: .82rem; font-weight: 650; line-height: 1.2; white-space: nowrap; }
 .cms-hotel-gallery-summary { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin: 0; color: #62594f; font-size: .9rem; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.cms-hotel-gallery-summary [hidden] { display: none !important; }
+.cms-media-missing-summary { margin: .35rem 0 0; color: #8a3f27; font-size: .84rem; font-weight: 600; line-height: 1.4; }
+.cms-hotel-gallery-summary .cms-media-missing-summary { margin: 0; }
+.mg-source-warning { margin: 0; padding: .45rem .65rem; background: #fff2ec; color: #8a3f27; font-size: .82rem; font-weight: 600; line-height: 1.35; }
+.cms-empty-media-state { display: grid; width: 100%; height: 100%; min-height: 150px; place-items: center; padding: 1rem; color: #5d554d; font-size: .92rem; font-weight: 650; text-align: center; }
+.cms-hotel-type-card .cms-img-wrapper { position: relative; }
+.cms-hotel-card-preview-panel { position: relative; width: 100%; height: 100%; }
+.cms-hotel-card-preview-panel[hidden] { display: none !important; }
+.cms-hotel-empty-preview--panel { display: grid; width: 100%; height: 100%; min-height: 0; grid-template-columns: 2.25rem minmax(0, 1fr) auto; align-content: center; align-items: center; gap: .55rem; padding: .65rem .75rem; background: #f7f3ed; }
+.cms-hotel-tour-preview-label { position: absolute; left: .7rem; bottom: .7rem; padding: .35rem .55rem; border-radius: 4px; background: rgba(41, 35, 29, .88); color: #fffaf3; font-size: .78rem; font-weight: 650; line-height: 1.2; }
+.btn-remove-missing-media,
+.mg-photo-card .btn-delete-media { display: inline-grid; width: 40px; min-width: 40px; height: 40px; place-items: center; border: 0; border-radius: 5px; background: transparent; color: #a34437; cursor: pointer; }
+.btn-remove-missing-media:hover,
+.mg-photo-card .btn-delete-media:not(:disabled):hover { background: #fff0ec; }
+.mg-photo-card .btn-delete-media:disabled { color: #8d847b; cursor: not-allowed; }
 .cms-hotel-type-card .cms-open-hotel-editor { width: 100%; min-height: 44px; }
 /* Do not let a neighboring populated card stretch the compact empty state vertically. */
 .cms-hotel-type-card-empty { align-self: start; }

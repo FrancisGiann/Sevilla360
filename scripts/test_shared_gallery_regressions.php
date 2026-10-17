@@ -79,7 +79,7 @@ $checks['hotspot editor changes exact source slot before loading panorama and sa
     && str_contains($hotspots, 'String(photo.slot_assignment) === source.slot')
     && str_contains($hotspots, 'initViewer(currentPhotosArray[0].file_path)');
 $checks['empty hotel type cards are compact, have an accessible shared-photo shortcut, and keep one clear editor action'] =
-    str_contains($cms, "class=\"cms-card cms-hotel-type-card<?php echo \$first_shared ? '' : ' cms-hotel-type-card-empty'; ?>\" data-type=\"hotel\"")
+    str_contains($cms, "class=\"cms-card cms-hotel-type-card<?php echo \$hotel_card_preview ? '' : ' cms-hotel-type-card-empty'; ?>\" data-type=\"hotel\"")
     && str_contains($cms, 'cms-hotel-empty-cover')
     && str_contains($cms, 'No shared photos yet')
     && str_contains($cms, 'class="btn cms-hotel-add-shared"')
@@ -88,8 +88,19 @@ $checks['empty hotel type cards are compact, have an accessible shared-photo sho
     && str_contains($cmsCss, '.cms-hotel-type-card .cms-hotel-empty-cover { display: flex; aspect-ratio: auto;')
     && str_contains($cmsCss, '.cms-hotel-add-shared { min-width: 82px; min-height: 44px;')
     && str_contains($cmsCss, '@media (max-width: 380px)')
-    && str_contains($cmsClient, "showHotelEditor(type, 'photos', 'shared')")
-    && str_contains($cmsClient, "hotelEditorOverlay?.querySelector('[data-hotel-action=\"upload-shared-photos\"]')?.click();");
+    && str_contains($cmsClient, "showHotelEditor(type, tab, 'shared')")
+    && str_contains($cmsClient, "button.dataset.mediaKind === '360' ? '360' : 'standard'")
+    && str_contains($cmsClient, 'hotelEditorOverlay?.querySelector(`[data-hotel-action="${action}"]`)?.click();');
+$checks['hotel cards follow the selected media filter for covers, empty copy, shortcuts, and editor tab'] =
+    str_contains($cms, 'data-hotel-preview-kind="standard"')
+    && str_contains($cms, 'data-hotel-preview-kind="360" hidden')
+    && str_contains($cms, 'Tour files unavailable')
+    && str_contains($cms, 'data-media-kind="360"')
+    && str_contains($cms, 'data-hotel-summary-kind="360"')
+    && str_contains($cmsClient, 'activeCMSMediaFilter === \'360\' ? \'360\' : \'standard\'')
+    && str_contains($cmsClient, 'summary.hidden = activeCMSMediaFilter !== \'all\' && summary.dataset.hotelSummaryKind !== kind;')
+    && str_contains($cmsClient, "selectedFilter === '360' ? 'tour' : selectedFilter === 'standard' ? 'photos' : defaultTab")
+    && str_contains($cmsClient, 'observeCmsPreviewImage(image, \'grid\')');
 $checks['hotel gallery editor uses one scope selector and two media tabs with contextual option actions'] =
     str_contains($cms, 'id="hotel-gallery-scope"')
     && str_contains($cms, 'id="hotelGalleryEditor"')
@@ -107,6 +118,13 @@ $checks['hotel gallery editor uses one scope selector and two media tabs with co
     && str_contains($cmsClient, 'saved own ${isTour ? \'scene\' : \'photo\'}')
     && str_contains($cmsClient, 'hotel-gallery-workspace-actions')
     && str_contains($cms, 'id="mg-empty-state"');
+$checks['CMS reports missing source files and omits them from active previews and hotspot source choices'] =
+    str_contains($cms, "media_cms_source_file_status(\$row['file_path'])")
+    && str_contains($cms, "'source_available' => !empty(\$photo['source_available'])")
+    && str_contains($cms, '$hotel_source_pano_readable')
+    && str_contains($cms, 'saved source')
+    && str_contains($cmsClient, 'photo?.source_available !== false')
+    && str_contains($cmsClient, 'Original file is missing from this server.');
 $checks['shared hotspot action invokes the exact source-owned hidden control'] =
     str_contains($cmsClient, "card?.querySelector('.btn-place-hotspots[data-gallery-sources]')")
     && str_contains($cmsClient, "'Edit shared hotspots' : 'Edit hotspots'")
@@ -119,16 +137,15 @@ $checks['hotel editor spacing, mobile scope, and child dialog stack stay usable'
     && str_contains($cmsCss, '.hotel-editor-scope select { width: 100%; min-width: 0; min-height: 44px;')
     && str_contains($cmsCss, '.hotel-gallery-workspace-actions .hotel-editor-action { flex: 1 1 8rem; }')
     && str_contains($cmsClient, 'scope.textContent = option.label || \'Room option\'');
-$checks['hotel photo previews use bounded responsive sources while tour previews remain thumbnail-sized'] =
+$checks['hotel photo and tour previews use bounded responsive sources'] =
     str_contains($cms, "media_cms_card_image_data((string)\$photo['file_path'], \$hotel_preview_sizes)")
-    && str_contains($cms, "\$hotel_photo_preview_slots[\$optionSlot] = true;")
     && str_contains($cms, "\$standard_venue_photos[\$previewSlot] ?? []")
     && str_contains($cms, "'card_preview_srcset' => (string)(\$preview['srcset'] ?? '')")
-    && str_contains($cmsClient, 'const cmsCardPreviewSources = photo =>')
+    && str_contains($cmsClient, 'const cmsCardPreviewSources = (photo, sizes = hotelPreviewSizes) =>')
     && str_contains($cmsClient, '([1-9]\\d{0,3})w')
-    && str_contains($cmsClient, 'Number(match[2]) > Number(match[1]) || Number(match[2]) > 1320')
+    && str_contains($cmsClient, 'actualWidth > encodedWidth || actualWidth > 1320 || actualWidth <= previousWidth')
     && str_contains($cmsClient, 'image.srcset = responsiveSource.srcset;')
-    && str_contains($cmsClient, 'const responsiveSource = isTour ? null : cmsCardPreviewSources(photo);')
+    && str_contains($cmsClient, 'const responsiveSource = cmsCardPreviewSources(photo, hotelPreviewSizes);')
     && str_contains($cmsClient, 'strip.setAttribute(\'role\', \'region\');')
     && str_contains($cmsCss, '.hotel-gallery-preview-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));')
     && str_contains($cmsCss, '.hotel-gallery-preview-strip--photos img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2;')
@@ -144,6 +161,11 @@ $checks['showroom switches photos and 360 tour by exact option and keeps shared 
     && str_contains($showroomClient, 'function applyHotelVariantMedia(room, variant)')
     && str_contains($showroomClient, 'variant.gallery.length ? variant.gallery : sharedGallery')
     && str_contains($showroomClient, 'showroomPanoCacheKey(roomId, room, variant)');
+$checks['showroom filters missing originals before exposing media and validates nav targets against available scenes'] =
+    str_contains($showroom, "media_cms_source_file_available((string)(\$m['file_path'] ?? ''))")
+    && str_contains($showroom, 'if (!$sourceAvailable) continue;')
+    && str_contains($showroom, 'array_keys($media_to_index)')
+    && str_contains($showroom, '$legacy_pano_media_ids_by_slot[$destination_id][$base_id][] = $mediaId;');
 
 $failed = false;
 foreach ($checks as $description => $passed) {

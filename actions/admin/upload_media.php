@@ -222,6 +222,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_files[] = media_cms_hero_derivative_file_path($file['db_path']);
                 media_cms_ensure_hero_derivative($file['db_path']);
             }
+            // Standard venue photos feed public cards, so keep their responsive
+            // candidates ready at upload time. Panorama card previews are not
+            // required by the public tour; the authenticated CMS preview route
+            // creates those candidates lazily when an editor opens the gallery.
+            // Avoid decoding each large equirectangular source three extra times
+            // inside the upload request.
             if ($media_type === 'standard') {
                 foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
                     $new_files[] = media_cms_card_derivative_file_path($file['db_path'], $width);

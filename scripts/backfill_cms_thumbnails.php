@@ -12,7 +12,7 @@ require_once __DIR__ . '/../includes/media_helper.php';
 
 $cardOnly = in_array('--cards-only', $argv ?? [], true);
 $query = $cardOnly
-    ? "SELECT id, file_path, slot_assignment, media_type FROM media_cms WHERE media_type = 'standard' ORDER BY id ASC"
+    ? "SELECT id, file_path, slot_assignment, media_type FROM media_cms WHERE media_type IN ('standard', '360') ORDER BY id ASC"
     : 'SELECT id, file_path, slot_assignment, media_type FROM media_cms ORDER BY id ASC';
 $result = $conn->query($query);
 if (!$result) {
@@ -64,7 +64,7 @@ while ($row = $result->fetch_assoc()) {
         if (!$wasValid) $generated++;
         $derivatives[$thumbnailRelative] = (int)$thumbnail['size'];
 
-        if (($row['media_type'] ?? '') === 'standard') {
+        if (in_array(($row['media_type'] ?? ''), ['standard', '360'], true)) {
             $cardWasValid = [];
             foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
                 $cardWasValid[$width] = media_cms_existing_card_derivative($sourcePath, $width) !== null;
