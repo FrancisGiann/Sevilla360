@@ -36,19 +36,12 @@ if ($requestedPage === false) {
 
 try {
     require_once __DIR__ . '/../../config/db_connect.php';
-    $accountStatement = $conn->prepare('SELECT role, status FROM users WHERE id = ? LIMIT 1');
-    if (!$accountStatement) $respond(503, 'Dashboard updates are temporarily unavailable.');
-    $accountStatement->bind_param('i', $userId);
-    if (!$accountStatement->execute()) {
-        $accountStatement->close();
-        $respond(503, 'Dashboard updates are temporarily unavailable.');
-    }
-    $account = $accountStatement->get_result()->fetch_assoc();
-    $accountStatement->close();
-    if (!$account || $account['role'] !== 'customer' || strcasecmp((string)$account['status'], 'active') !== 0) {
-        session_policy_expire('Your customer account is unavailable. Please sign in again or contact support.', 'Account unavailable', 'error');
-        $respond(403, 'Your customer account is unavailable. Sign in again or contact support.');
-    }
+    require_once __DIR__ . '/../../includes/session_account_guard.php';
+    if (!session_account_require_active($conn, ['customer'], static function (string $state) use ($respond): never {
+        $respond($state === 'invalid' ? 403 : 503, $state === 'invalid'
+            ? 'Your customer account is unavailable. Sign in again or contact support.'
+            : 'Dashboard updates are temporarily unavailable.');
+    })) exit;
 
     // The existing dashboard performs the customer-owned booking queries and renders
     // every status, amount, and action from the same SSR partials used on first load.

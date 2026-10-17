@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json; charset=UTF-8');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
 require_once __DIR__ . '/../../includes/rate_limit.php';
@@ -174,6 +175,7 @@ if (!is_string($clientCsrfToken) || !is_string($sessionCsrfToken)
     || $sessionCsrfToken === '' || !hash_equals($sessionCsrfToken, $clientCsrfToken)) {
     staff_management_error(403, 'CSRF validation failed. Unauthorized request.');
 }
+if (!session_account_require_active($conn, ['admin'], static function (string $state): never { staff_management_error($state === 'invalid' ? 403 : 503, $state === 'invalid' ? 'Unauthorized.' : 'Account status could not be verified.'); }, 403)) exit;
 
 $rawBody = file_get_contents('php://input');
 $data = json_decode($rawBody ?: '', true);

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 
 // 1. SECURITY: Must be Admin/Staff
@@ -17,6 +18,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     echo json_encode(['success' => false, 'message' => 'CSRF validation failed. Unauthorized request.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['admin', 'staff'], ['success' => false, 'message' => 'Unauthorized'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $data = json_decode(file_get_contents('php://input'), true);
 if (!isset($data['booking_id'])) {

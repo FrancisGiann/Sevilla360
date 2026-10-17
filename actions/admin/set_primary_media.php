@@ -218,6 +218,8 @@ $conn = null;
 try {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     require_once __DIR__ . '/../../config/db_connect.php';
+    require_once __DIR__ . '/../../includes/session_account_guard.php';
+    if (!session_account_require_active($conn, ['admin'], static function (string $state): never { set_primary_media_response(['success' => false, 'message' => $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.'], $state === 'invalid' ? 401 : 503); })) exit;
     require_once __DIR__ . '/../../includes/hotel_rooms.php';
     require_once __DIR__ . '/../../includes/media_helper.php';
     if (!($conn instanceof mysqli)) {

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 
 header('Content-Type: application/json; charset=UTF-8');
@@ -19,6 +20,7 @@ $csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? ($_POST['csrf_token'] ?? '');
 if (!is_string($csrf) || !is_string($_SESSION['csrf_token'] ?? null) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
     venue_review_error(403, 'CSRF validation failed.');
 }
+if (!session_account_require_active($conn, ['customer'], static function (string $state): never { venue_review_error($state === 'invalid' ? 401 : 503, $state === 'invalid' ? 'Customer access is no longer available.' : 'Account status could not be verified.'); })) exit;
 
 $payload = json_decode(file_get_contents('php://input') ?: '', true);
 if (!is_array($payload)) $payload = $_POST;

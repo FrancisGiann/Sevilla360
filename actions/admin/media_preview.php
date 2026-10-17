@@ -33,6 +33,8 @@ if (!$mediaId || !in_array($context, ['grid', 'hotel', 'manager'], true)) {
 session_write_close();
 try {
     require_once __DIR__ . '/../../config/db_connect.php';
+    require_once __DIR__ . '/../../includes/session_account_guard.php';
+    if (!session_account_require_active($conn, ['admin'], static function (string $state): never { media_preview_reply($state === 'invalid' ? 401 : 503, ['success' => false, 'message' => $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.']); })) exit;
     require_once __DIR__ . '/../../includes/media_helper.php';
 
     $stmt = $conn->prepare("SELECT file_path, media_type FROM media_cms WHERE id = ? AND media_type IN ('standard', '360') LIMIT 1");

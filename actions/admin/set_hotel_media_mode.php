@@ -37,6 +37,8 @@ try {
         throw new InvalidArgumentException('A valid room option and gallery mode are required.');
     }
     require_once __DIR__ . '/../../config/db_connect.php';
+    require_once __DIR__ . '/../../includes/session_account_guard.php';
+    if (!session_account_require_active($conn, ['admin'], static function (string $state): never { hotel_media_mode_response(['success' => false, 'message' => $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.'], $state === 'invalid' ? 401 : 503); })) exit;
     if (!hotel_group_media_overrides_schema_ready($conn)) {
         hotel_media_mode_response(['success' => false, 'message' => 'Room-option galleries are not available yet. Apply migration 032 and refresh this page.'], 503);
         exit;

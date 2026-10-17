@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 
 header('Content-Type: application/json; charset=UTF-8');
@@ -14,6 +15,7 @@ function moderate_review_error(int $status, string $message): never
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || ($_SESSION['role'] ?? '') !== 'admin') moderate_review_error(403, 'Administrator access is required.');
 $csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!is_string($csrf) || !hash_equals((string)($_SESSION['csrf_token'] ?? ''), $csrf)) moderate_review_error(403, 'CSRF validation failed.');
+if (!session_account_require_active($conn, ['admin'], static function (string $state): never { moderate_review_error($state === 'invalid' ? 403 : 503, $state === 'invalid' ? 'Administrator access is required.' : 'Account status could not be verified.'); }, 403)) exit;
 $payload = json_decode(file_get_contents('php://input') ?: '', true);
 if (!is_array($payload)) $payload = $_POST;
 $reviewId = filter_var($payload['review_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

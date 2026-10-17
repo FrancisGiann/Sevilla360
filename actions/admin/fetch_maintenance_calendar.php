@@ -2,11 +2,13 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'staff' && $_SESSION['role'] !== 'admin')) {
     echo json_encode(['booked_dates' => [], 'maintenance_dates' => []]);
     exit;
 }
+if (!session_account_require_active_json($conn, ['staff', 'admin'], ['booked_dates' => [], 'maintenance_dates' => []], ['booked_dates' => [], 'maintenance_dates' => [], 'error' => 'Account status could not be verified.'])) exit;
 
 try {
     $venue_id = isset($_REQUEST['venue_id']) ? (int)$_REQUEST['venue_id'] : 0;

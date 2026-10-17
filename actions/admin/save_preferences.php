@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../includes/google_maps.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo "Error: Unauthorized access."; exit();
@@ -13,6 +14,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     http_response_code(403);
     echo "Error|CSRF validation failed."; exit;
 }
+if (!session_account_require_active($conn, ['admin'], static function (string $state): void { http_response_code($state === 'invalid' ? 401 : 503); echo $state === 'invalid' ? 'Error: Unauthorized access.' : 'Error|Account status could not be verified.'; })) exit;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 

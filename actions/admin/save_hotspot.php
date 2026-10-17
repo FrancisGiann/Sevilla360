@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../includes/showroom_tour.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (!showroom_tour_is_admin(isset($_SESSION['role']) && is_string($_SESSION['role']) ? $_SESSION['role'] : null)) {
     http_response_code(401);
@@ -16,6 +17,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     echo json_encode(['success' => false, 'message' => 'CSRF validation failed.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $data = json_decode(file_get_contents('php://input'), true);
 if (!is_array($data)) { http_response_code(422); echo json_encode(['success' => false, 'message' => 'Invalid JSON request.']); exit; }

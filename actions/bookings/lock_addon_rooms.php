@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 function addon_bind_params(mysqli_stmt $statement, string $types, array $values): void
 {
@@ -34,6 +35,7 @@ $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     addon_lock_response(false, 'CSRF validation failed. Unauthorized request.', 0, 403);
 }
+if (!session_account_require_active($conn, ['staff', 'admin'], static function (string $state): never { addon_lock_response(false, $state === 'invalid' ? 'Your staff account is no longer available. Please sign in again.' : 'Account status could not be verified.', 0, $state === 'invalid' ? 401 : 503); })) exit;
 
 $session_id = session_id();
 $tracked_ids = array_values(array_filter(array_map('intval', (array)($_SESSION['walkin_addon_lock_ids'] ?? [])), static fn(int $id): bool => $id > 0));

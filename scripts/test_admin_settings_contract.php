@@ -66,6 +66,7 @@ $floorMigration = $read('migrations/029_hotel_room_floors.sql');
 $settingsClient = $read('assets/js/admin-page/admin_settings.js');
 $settingsStyles = $read('assets/css/admin-page/admin_settings.css');
 $mediaHelper = $read('includes/media_helper.php');
+$hotelRooms = $read('includes/hotel_rooms.php');
 $assert(str_contains($settings, 'hr.room_number, hr.floor_label, hr.bed_count')
     && str_contains($settings, 'json_encode([(string)$v[\'name\'], $floor_label]')
     && str_contains($settings, '$floor_search_label = $floor_label !== \'\' ? $floor_label : \'Floor not recorded\'')
@@ -105,9 +106,10 @@ $assert(str_contains($settings, 'type="hidden" id="vm-hr-media-slot" name="media
     && str_contains($settingsClient, 'formVenue.reset()')
     && str_contains($venueSave, "hotel_normalize_media_slot_key(\$_POST['media_slot_key'] ?? null)")
     && str_contains($venueSave, 'hotel_room_group_upsert($conn, [')
-    && str_contains($mediaHelper, 'trim((string)($group[\'media_slot_key\'] ?? \'\'))')
-    && str_contains($mediaHelper, 'return media_cms_venue_slot_key($building . \' - \' . $roomType);')
-    && str_contains($mediaHelper, 'return $images ?: [\'assets/img/placeholder.jpg\'];'), 'room edits retain their existing media group mapping through a hidden optional value, while new groups use the default CMS match.');
+    && str_contains($mediaHelper, 'function hotel_room_group_media_slot_keys(array $group): array')
+    && str_contains($mediaHelper, '$keys[] = $explicit;')
+    && str_contains($mediaHelper, '$keys[] = $canonicalSlot;')
+    && str_contains($hotelRooms, 'media_slot_key = VALUES(media_slot_key)'), 'room edits retain their existing media group mapping through a hidden optional value, while canonical and historical aliases remain available for existing galleries.');
 $assert(str_contains($settingsClient, 'venueData.floor_label')
     && str_contains($settingsClient, 'venueData.check_in_time || "14:00:00"')
     && !str_contains($settingsClient, 'hotelAdvancedDetails')

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once '../../includes/booking_reference.php';
 require_once '../../includes/phone_helper.php';
 require_once '../../includes/booking_rules.php';
@@ -30,6 +31,10 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     echo "Error|CSRF validation failed. Unauthorized request.";
     exit;
 }
+if (!session_account_require_active($conn, ['staff', 'admin'], static function (string $state): void {
+    http_response_code($state === 'invalid' ? 401 : 503);
+    echo $state === 'invalid' ? 'Error|Your staff account is no longer available. Please sign in again.' : 'Error|Account status could not be verified. Please try again.';
+})) exit;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 

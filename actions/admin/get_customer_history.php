@@ -3,10 +3,12 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']); exit;
 }
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $customer_id = intval($_GET['id'] ?? 0);
 

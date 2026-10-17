@@ -2,12 +2,14 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (($_SESSION['role'] ?? '') !== 'customer' || empty($_SESSION['user_id'])) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['customer'], ['success' => false, 'message' => 'Unauthorized'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 
 $stmt = $conn->prepare('SELECT id, title, message, is_read, created_at FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10');
 $stmt->bind_param('i', $_SESSION['user_id']);

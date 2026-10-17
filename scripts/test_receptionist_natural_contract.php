@@ -866,7 +866,7 @@ $assert('claimable evidence prompt gives the exact canonical field values used b
         && ($claimable['recommendation-101-77']['rate'] ?? null) === '₱1,200.00 /night'
         && ($claimable['recommendation-summary']['guest_count'] ?? null) === '3';
 })());
-$dateSummaryReply = "I found 3 rooms for 3 guests from {$future->modify('+14 days')->format('M j')}–{$future->modify('+16 days')->format('j')}, with a ₱2,500 stay total for Rafael Standard Room.";
+$dateSummaryReply = "I found 3 rooms for 3 guests from {$future->modify('+14 days')->format('M j')}–{$future->modify('+16 days')->format('M j')}, with a ₱2,500 stay total for Rafael Standard Room.";
 $assert('summary claims support checked counts, exact dates, night count, and full-stay price',
     receptionist_natural_claim_value('recommendation-summary', 'result_count', $groundRecords, $groundState, $groundProposal) === '3'
     && receptionist_natural_claim_value('recommendation-summary', 'guest_count', $groundRecords, $groundState, $groundProposal) === '3'
@@ -874,12 +874,13 @@ $assert('summary claims support checked counts, exact dates, night count, and fu
     && receptionist_natural_grounded_reply($dateSummaryReply, [...$identityClaims, ...$summaryClaims], $groundRecords, $groundState, $groundProposal, 'Show options for these dates.') === $dateSummaryReply);
 $compactRangeState = $groundState;
 $compactRangeState['recommendation_snapshot']['total_matches'] = 2;
-$compactRangeReply = 'I found two options for your 3 guests from October ' . (int)substr($date1, 8, 2) . ' to ' . (int)substr($date2, 8, 2) . ', ' . substr($date1, 0, 4) . '.';
+$compactRangeReply = 'I found two options for your 3 guests from ' . (new DateTimeImmutable($date1))->format('F j, Y')
+    . ' to ' . (new DateTimeImmutable($date2))->format('F j, Y') . '.';
 $compactRangeClaims = [
     ['source_id' => 'recommendation-summary', 'field' => 'check_in', 'value' => $date1],
     ['source_id' => 'recommendation-summary', 'field' => 'check_out', 'value' => $date2],
 ];
-$assert('natural summary verifies option count from snapshot and compact written date ranges',
+$assert('natural summary verifies option count from snapshot and explicit cross-month written dates',
     receptionist_natural_grounded_reply($compactRangeReply, $compactRangeClaims, $groundRecords, $compactRangeState, [], 'Show me the options.') === $compactRangeReply);
 $mixedFactsReply = 'Cancellation requests are reviewed by reception. For Rafael, the rate is ₱1,200.00 /night, so it does not cost ₱500.';
 $mixedFactsClaims = [

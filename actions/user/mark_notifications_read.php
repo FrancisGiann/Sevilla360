@@ -16,6 +16,7 @@ if ($user_id < 1 || $role !== 'customer') {
 }
 
 require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
 $session_csrf_token = $_SESSION['csrf_token'] ?? null;
@@ -24,6 +25,7 @@ if (!is_string($session_csrf_token) || !is_string($client_csrf_token) || $sessio
     echo json_encode(['success' => false, 'message' => 'CSRF validation failed.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['customer'], ['success' => false, 'message' => 'Unauthorized'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $has_notif_id = array_key_exists('id', $_POST);
 $notif_id = null;

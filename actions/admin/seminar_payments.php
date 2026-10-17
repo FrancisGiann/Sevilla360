@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/seminars.php';
 require_once __DIR__ . '/../../includes/seminar_payments.php';
 
@@ -20,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         exit;
     }
 }
+if (!session_account_require_active_json($conn, ['admin', 'staff'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 function seminar_payment_request_id(mixed $value): int
 {

@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
@@ -18,6 +19,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     echo json_encode(['success' => false, 'message' => 'CSRF validation failed. Unauthorized request.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['customer'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $user_id = $_SESSION['user_id'];
 $data = json_decode(file_get_contents('php://input'), true);

@@ -21,7 +21,9 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cs
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Administrator access is required.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 
 $projectRoot = dirname(__DIR__, 2);
 $newFiles = [];

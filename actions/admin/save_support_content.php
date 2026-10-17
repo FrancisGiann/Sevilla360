@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/receptionist_faq.php';
 
 header('Content-Type: application/json');
@@ -16,6 +17,7 @@ if (!is_string($_SESSION['csrf_token'] ?? null) || !is_string($client_csrf_token
     echo json_encode(['success' => false, 'message' => 'CSRF validation failed.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 
 $faq_items = json_decode($_POST['support_faq_json'] ?? '[]', true);
 if (!is_array($faq_items)) {

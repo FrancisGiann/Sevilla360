@@ -133,21 +133,31 @@
 .manual-payment-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .manual-payment-method { min-width: 0; margin: 0; }
 .manual-payment-method legend { padding: 0 8px; color: var(--color-dark); font-family: var(--font-heading); font-size: 1.25rem; }
-.manual-payment-method-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 0 0 12px; }
+.manual-payment-method-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0 0 12px; }
 .manual-payment-method-actions .btn { min-height: 36px; padding: 7px 11px; font-size: .82rem; }
 .manual-payment-method-actions .btn:disabled { cursor: not-allowed; opacity: .48; }
 .manual-payment-method-actions .btn:focus-visible, .manual-payment-list-heading .btn:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 3px; }
-.manual-payment-enabled { display: flex; align-items: center; gap: 9px; margin: 4px 0 18px; color: var(--color-dark); font-weight: 600; }
-.manual-payment-enabled input { width: 18px; height: 18px; accent-color: var(--color-gold); }
-.manual-payment-remove-qr { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--color-dark-light); font-size: .88rem; }
-.manual-payment-remove-qr input { width: 16px; height: 16px; accent-color: var(--color-gold); }
-.manual-payment-current-qr { display: block; width: min(180px, 100%); max-height: 180px; object-fit: contain; margin-top: 12px; background: #fff; border: 1px solid rgba(42, 37, 34, .14); border-radius: 8px; padding: 8px; }
+.manual-payment-enabled { display: flex; width: fit-content; max-width: 100%; min-height: 44px; align-items: center; justify-content: flex-start; gap: 10px; margin: 4px 0 18px; color: var(--color-dark); font-weight: 600; line-height: 1.4; cursor: pointer; }
+.manual-payment-enabled input { flex: 0 0 18px; width: 18px; height: 18px; margin: 0; accent-color: var(--color-gold); }
+.manual-payment-enabled:focus-within, .manual-payment-remove-qr:focus-within { outline: 2px solid var(--color-gold); outline-offset: 3px; }
+.manual-payment-method input[type="file"] { min-width: 0; width: 100%; padding: 10px 12px; font-size: .92rem; }
+.manual-payment-method input[type="file"]::file-selector-button { margin: 0 10px 0 0; padding: 8px 10px; border: 1px solid rgba(42, 37, 34, .2); border-radius: 4px; background: #fffaf3; color: var(--color-dark); font: inherit; cursor: pointer; }
+.manual-payment-remove-qr { display: flex; width: fit-content; max-width: 100%; min-height: 44px; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 10px; color: var(--color-dark-light); font-size: .9rem; line-height: 1.4; cursor: pointer; }
+.manual-payment-remove-qr input { flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: var(--color-gold); }
+.manual-payment-current-qr { display: block; width: min(240px, 100%); max-height: 240px; object-fit: contain; margin-top: 12px; background: #fff; border: 1px solid rgba(42, 37, 34, .14); border-radius: 8px; padding: 8px; box-sizing: border-box; }
 #manual-payment-settings-status { min-height: 1.5em; margin-top: 16px; color: var(--color-dark-light); }
 #manual-payment-settings-status[data-error="true"] { color: #8d352c; }
 @media (max-width: 760px) {
   .manual-payment-methods { grid-template-columns: minmax(0, 1fr); }
   .manual-payment-deadline { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .manual-payment-list-heading { align-items: flex-start; flex-direction: column; }
+  .manual-payment-method-actions { justify-content: flex-start; }
+  .manual-payment-method-actions .btn { min-height: 44px; }
+  .manual-payment-current-qr { width: min(320px, 100%); max-height: 320px; }
+}
+@media (max-width: 380px) {
+  .manual-payment-method input[type="file"] { padding: 8px; font-size: .78rem; }
+  .manual-payment-method input[type="file"]::file-selector-button { margin-right: 6px; padding: 6px 7px; }
 }
 .pricing-groups { display: grid; gap: 22px; }
 .pricing-group { padding-top: 18px; border-top: 1px solid rgba(42, 37, 34, .1); }

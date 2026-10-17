@@ -3,16 +3,18 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/admin_notifications.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/sales_report.php';
 $booking_completion_sql = booking_completion_sql('b');
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff', 'admin'], true)) {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized access']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['staff', 'admin'], ['error' => 'Unauthorized access'], ['error' => 'Account status could not be verified.'], 403)) exit;
 
 try {
     $response = [];

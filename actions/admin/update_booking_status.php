@@ -16,6 +16,8 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
+if (!session_account_require_active_json($conn, ['staff', 'admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 require_once __DIR__ . '/../../includes/booking_rules.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/request_context.php';

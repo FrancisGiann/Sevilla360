@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once '../../includes/booking_rules.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/seminars.php';
@@ -20,6 +21,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
     echo "Error|CSRF validation failed. Unauthorized request.";
     exit;
 }
+if (!session_account_require_active($conn, ['staff', 'admin'], static function (string $state): void { echo $state === 'invalid' ? 'Error|Unauthorized access.' : 'Error|Account status could not be verified.'; })) exit;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     try {

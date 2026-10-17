@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/media_helper.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
@@ -17,6 +18,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 // ==========================================
 // CSRF PROTECTION GUARD (JSON)

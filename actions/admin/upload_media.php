@@ -87,6 +87,29 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        // Revalidate before creating directories, moving files, or decoding
+        // image data. Close this short-lived connection immediately so a
+        // panorama conversion cannot leave it idle; the account is checked
+        // again on the transaction connection just before database writes.
+        if (!defined('SEVILLA_CMS_MEDIA_UPLOAD')) define('SEVILLA_CMS_MEDIA_UPLOAD', true);
+        try {
+            require_once __DIR__ . '/../../config/db_connect.php';
+            require_once __DIR__ . '/../../includes/session_account_guard.php';
+            if (!session_account_require_active($conn, ['admin'], static function (string $state): never {
+                media_upload_response([
+                    'success' => false,
+                    'message' => $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.',
+                ], $state === 'invalid' ? 401 : 503);
+                exit;
+            })) exit;
+            $conn->close();
+            unset($conn);
+        } catch (Throwable $accountError) {
+            error_log('CMS media upload account revalidation failed: ' . $accountError->getMessage());
+            media_upload_response(['success' => false, 'message' => 'Account status could not be verified.'], 503);
+            exit;
+        }
+
         // PHP drops the request body entirely when post_max_size is exceeded,
         // leaving no upload error entry to inspect.
         $content_length = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
@@ -236,10 +259,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Connect only after CPU-heavy image work is complete. The marker makes
-        // database connection failures throwable so staged files are cleaned up.
-        if (!defined('SEVILLA_CMS_MEDIA_UPLOAD')) define('SEVILLA_CMS_MEDIA_UPLOAD', true);
-        require_once __DIR__ . '/../../config/db_connect.php';
+        // Reopen only after CPU-heavy image work is complete so the connection
+        // and its configured timezone/options are recreated by the shared
+        // bootstrap rather than held idle through derivative generation.
+        require __DIR__ . '/../../config/db_connect.php';
+        require_once __DIR__ . '/../../includes/session_account_guard.php';
+        if (!session_account_require_active($conn, ['admin'], static function (string $state) use (&$new_files): never {
+            foreach (array_unique($new_files) as $stagedPath) {
+                if (is_string($stagedPath) && is_file($stagedPath)) @unlink($stagedPath);
+            }
+            media_upload_response(['success' => false, 'message' => $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.'], $state === 'invalid' ? 401 : 503);
+        })) exit;
         if (!$conn->begin_transaction()) throw new Exception('Could not start upload transaction.');
         $transaction_started = true;
         $canonical_gallery_slot = $slot_classification['canonical_gallery_slot'];

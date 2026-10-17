@@ -62,6 +62,8 @@ if ($dateFilter !== '' && (!preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $dateFilter)
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 
 $whereClauses = ['1=1'];
 $params = [];

@@ -13,8 +13,10 @@ if (!$bookingId) {
     exit;
 }
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
+if (!session_account_require_active_json($conn, ['customer'], ['success' => false, 'message' => 'Sign in with your customer account to view payment instructions.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 try {
     $completionSql = booking_completion_sql('b');

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 function walkin_extension_response(bool $success, string $message, array $data = [], int $status = 200): void
 {
@@ -25,6 +26,7 @@ $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     walkin_extension_response(false, 'CSRF validation failed. Unauthorized request.', [], 403);
 }
+if (!session_account_require_active($conn, ['staff', 'admin'], static function (string $state): never { walkin_extension_response(false, $state === 'invalid' ? 'Your staff account is no longer available. Please sign in again.' : 'Account status could not be verified.', [], $state === 'invalid' ? 401 : 503); })) exit;
 
 $session_id = session_id();
 $addon_ids = array_values(array_filter(

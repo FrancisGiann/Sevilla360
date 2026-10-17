@@ -61,6 +61,8 @@ $fov = $view['fov'] ?? null;
 
 try {
     require_once __DIR__ . '/../../config/db_connect.php';
+    require_once __DIR__ . '/../../includes/session_account_guard.php';
+    if (!session_account_require_active($conn, ['admin'], static function (string $state): never { save_panorama_view_response(['success' => false, 'message' => $state === 'invalid' ? 'Administrator access is no longer available.' : 'Account status could not be verified.'], $state === 'invalid' ? 401 : 503); })) exit;
     $lookup = $conn->prepare('SELECT media_type FROM media_cms WHERE id = ? LIMIT 1');
     if (!$lookup) throw new RuntimeException('Could not prepare panorama lookup.');
     $lookup->bind_param('i', $media_id);

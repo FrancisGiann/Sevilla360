@@ -25,7 +25,9 @@ if (!is_string($key) || strlen($key) > 191 || !preg_match('/\A(?:booking:[1-9][0
     exit;
 }
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/admin_notifications.php';
+if (!session_account_require_active_json($conn, ['admin', 'staff'], ['success' => false, 'message' => 'Administrator or staff access is required.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 try {
     if (!admin_notification_key_is_active($conn, $key)) {
         http_response_code(409);

@@ -41,6 +41,8 @@ if ($decision === 'reject' && ($reason === '' || strlen($reason) > 500 || preg_m
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
+if (!session_account_require_active_json($conn, ['admin', 'staff'], ['success' => false, 'message' => 'Staff access is required.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
 require_once __DIR__ . '/../../includes/notifications.php';

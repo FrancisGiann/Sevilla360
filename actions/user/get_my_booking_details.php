@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once '../../includes/booking_lifecycle.php';
 require_once '../../includes/customer_booking_status.php';
 require_once '../../includes/manual_payment.php';
@@ -14,6 +15,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['customer'], ['success' => false, 'message' => 'Unauthorized'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 if (!isset($_GET['id'])) {
     echo json_encode(['success' => false, 'message' => 'Booking ID missing']);

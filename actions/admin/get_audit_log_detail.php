@@ -41,6 +41,8 @@ if ($auditId === false) {
 }
 
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 require_once __DIR__ . '/../../includes/audit_log_details.php';
 
 try {

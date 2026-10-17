@@ -2,12 +2,14 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
     exit;
 }
+if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'])) exit;
 
 $media_id = filter_var($_GET['media_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$media_id) {

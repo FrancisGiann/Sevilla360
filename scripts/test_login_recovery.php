@@ -102,12 +102,12 @@ login_recovery_test_assert(strpos($auth_source, 'role="status" aria-live="polite
 login_recovery_test_assert(strpos($auth_source, 'data-forgot-password') !== false, 'recovery action uses the shared forgot-password trigger');
 login_recovery_test_assert(strpos($css_source, '.forgot-link {') !== false && strpos($css_source, 'width: 100%;') !== false, 'forgot-password button remains full-width and right-aligned');
 $customer_view_position = strpos($auth_source, 'id="view-user-login"');
-$admin_view_position = strpos($auth_source, 'id="view-admin-login"');
+$registration_view_position = strpos($auth_source, 'id="view-user-register"');
 $nudge_position = strpos($auth_source, 'class="login-recovery-nudge"');
 login_recovery_test_assert(
-    $customer_view_position !== false && $admin_view_position !== false && $nudge_position !== false
-        && $customer_view_position < $nudge_position && $nudge_position < $admin_view_position,
-    'recovery nudge markup is limited to the customer login view'
+    $customer_view_position !== false && $registration_view_position !== false && $nudge_position !== false
+        && $customer_view_position < $nudge_position && $nudge_position < $registration_view_position,
+    'recovery nudge markup is scoped to the current sign-in view before registration'
 );
 login_recovery_test_assert(strpos(file_get_contents(__DIR__ . '/../assets/js/auth.js'), 'forgotTriggers.forEach') !== false, 'forgot-password triggers share one view-switch handler');
 

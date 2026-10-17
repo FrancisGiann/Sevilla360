@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'staff'], true)) { http_response_code(401); exit('Unauthorized'); }
+require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
+if (!session_account_require_active($conn, ['admin', 'staff'], static function (string $state): void { http_response_code($state === 'invalid' ? 401 : 503); exit($state === 'invalid' ? 'Unauthorized' : 'Account status could not be verified.'); })) exit;
 header('Content-Type: text/csv; charset=UTF-8');
 header('Content-Disposition: attachment; filename="sevilla360-seminar-attendees-template.csv"');
 header('X-Content-Type-Options: nosniff');

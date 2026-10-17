@@ -830,7 +830,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 html += `<tr class="seminar-history-row${displayStatus === 'Cancelled' ? ' faded-row' : ''}" data-ref="${attr(referenceNo.toLowerCase())}" data-record-type="seminar">
                     <td data-label="Booking / seminar ID" class="seminar-history-id"><div class="seminar-history-id__content"><span class="seminar-history-type">Seminar</span><strong>${attr(referenceNo)}</strong></div></td>
                     <td data-label="Venue"><span>Event Hall · ${attr(venue)}</span></td>
-                    <td data-label="Customer / seminar"><span class="seminar-history-name">${attr(seminarName)}</span><small>Staff managed · ${attendeeCount} attendee${attendeeCount === 1 ? '' : 's'}</small></td>
+                    <td data-label="Customer / seminar" class="seminar-history-customer"><span class="seminar-history-name">${attr(seminarName)}</span><small>Staff managed · ${attendeeCount} attendee${attendeeCount === 1 ? '' : 's'}</small></td>
                     <td data-label="Date">${attr(dateLabel)}</td>
                     <td data-label="Amount" class="seminar-history-money"><div class="seminar-history-money__content"><strong>${attr(agreedText)}</strong><small>${attr(paidText)} · ${attr(dueText)}</small></div></td>
                     <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${attr(statusText)}</span></div></td>

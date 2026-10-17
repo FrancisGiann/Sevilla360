@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 $booking_completion_sql = booking_completion_sql('b');
 
@@ -8,6 +9,7 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff',
     http_response_code(403);
     exit('Unauthorized access.');
 }
+if (!session_account_require_active($conn, ['staff', 'admin'], static function (string $state): void { exit($state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.'); }, 403)) exit;
 
 $searchTerm = trim((string)($_GET['search'] ?? ''));
 $venueFilter = (string)($_GET['venue'] ?? 'All');

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/hotel_rooms.php';
 require_once __DIR__ . '/../../includes/hotel_room_number_sequence.php';
 require_once __DIR__ . '/../../includes/venue_time.php';
@@ -63,6 +64,7 @@ $client_csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['csrf_token']) || !is_string($client_csrf_token) || !hash_equals($_SESSION['csrf_token'], $client_csrf_token)) {
     venue_response(false, 'CSRF validation failed. Unauthorized request.', 403);
 }
+if (!session_account_require_active($conn, ['admin'], static function (string $state): never { venue_response(false, $state === 'invalid' ? 'Unauthorized access.' : 'Account status could not be verified.', $state === 'invalid' ? 403 : 503); }, 403)) exit;
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') venue_response(false, 'Invalid request method.', 405);
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
