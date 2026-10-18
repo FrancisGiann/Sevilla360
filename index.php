@@ -40,13 +40,14 @@ $venue_reviews_available = $venue_reviews_table_result instanceof mysqli_result 
 $event_review_fields = $venue_reviews_available
     ? ", COALESCE((SELECT AVG(vr.rating) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.venue_id = v.id AND vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded'), 0) AS rating_average, (SELECT COUNT(*) FROM venue_reviews vr INNER JOIN bookings rb ON rb.id = vr.booking_id WHERE vr.venue_id = v.id AND vr.moderation_status = 'Approved' AND rb.booking_status <> 'Cancelled' AND COALESCE(rb.payment_status, '') <> 'Refunded') AS rating_count"
     : ', 0 AS rating_average, 0 AS rating_count';
+$public_guest_capacity = static fn($capacity): string => (int)$capacity > 0 ? (int)$capacity . ' guests' : 'Confirm with resort';
 $public_venues = ['Event Hall' => [], 'Hotel Room' => [], 'Resort Villa' => []];
 $public_event_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet {$event_review_fields} FROM venues v INNER JOIN event_halls e ON e.venue_id = v.id WHERE v.category = 'Event Hall' AND v.status = 'Available' ORDER BY v.name");
 if ($public_event_query) while ($venue = $public_event_query->fetch_assoc()) {
     $public_venues['Event Hall'][] = [
         'key' => 'event-' . (int)$venue['id'], 'review_key' => 'event-' . (int)$venue['id'], 'category' => 'Event Hall', 'venue_name' => (string)$venue['name'],
         'venue_id' => (int)$venue['id'], 'rate' => is_numeric($venue['base_rate'] ?? null) ? (float)$venue['base_rate'] : null,
-        'facts' => ['Theater' => (int)$venue['capacity_theater'] . ' guests', 'Classroom' => (int)$venue['capacity_classroom'] . ' guests', 'Banquet' => (int)$venue['capacity_banquet'] . ' guests', 'Booking' => 'Inquiry, no date hold'],
+        'facts' => ['Theater' => $public_guest_capacity($venue['capacity_theater'] ?? null), 'Classroom' => $public_guest_capacity($venue['capacity_classroom'] ?? null), 'Banquet' => $public_guest_capacity($venue['capacity_banquet'] ?? null), 'Booking' => 'Inquiry, no date hold'],
         'description' => (string)($venue['description'] ?? ''), 'amenities' => (string)($venue['amenities'] ?? ''), 'rating_average' => round((float)$venue['rating_average'], 1), 'rating_count' => (int)$venue['rating_count'],
         'images' => $event_images = $public_images((string)$venue['name']), 'thumbnails' => $public_thumbnail_images($event_images), 'card_image' => $public_card_image($event_images)
     ];
