@@ -44,8 +44,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // select which policy is recorded for this booking.
         $policy_version = 'terms-v3-manual-payment';
 
-        $sDate = trim($_POST['start_date'] ?? '');
-        $eDate = trim($_POST['end_date'] ?? '');
+        $sDate = trim(is_string($_POST['start_date'] ?? null) ? $_POST['start_date'] : '');
+        $eDate = trim(is_string($_POST['end_date'] ?? null) ? $_POST['end_date'] : '');
         $room_type = trim((string)($_POST['room_type'] ?? ''));
         $scheme = $_POST['payment_scheme'] ?? '';
         $guests = booking_guest_count($_POST['guests'] ?? null);
@@ -72,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $customer_email = $customer['email'];
 
         // 2. Snapshot the booking contact and update the profile only by request.
-        $contact_phone = normalize_contact_phone((string)($_POST['contact_phone'] ?? ''));
+        $contact_phone = normalize_contact_phone(is_string($_POST['contact_phone'] ?? null) ? $_POST['contact_phone'] : '');
         if (($_POST['save_contact_default'] ?? '0') === '1') {
             $stmt_phone = $conn->prepare("UPDATE customers SET phone = ? WHERE id = ?");
             $stmt_phone->bind_param("si", $contact_phone, $customer_id);
@@ -343,8 +343,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             $room_groups = $normalized_room_groups;
 
-                $room_start = trim($_POST['room_start_date'] ?? '');
-                $room_end = trim($_POST['room_end_date'] ?? '');
+                $room_start = trim(is_string($_POST['room_start_date'] ?? null) ? $_POST['room_start_date'] : '');
+                $room_end = trim(is_string($_POST['room_end_date'] ?? null) ? $_POST['room_end_date'] : '');
                 $start_dt = DateTime::createFromFormat('!Y-m-d', $room_start);
                 $end_dt = DateTime::createFromFormat('!Y-m-d', $room_end);
                 if (!$start_dt || !$end_dt || $start_dt->format('Y-m-d') !== $room_start || $end_dt->format('Y-m-d') !== $room_end || $end_dt <= $start_dt || $start_dt < new DateTime('today')) {

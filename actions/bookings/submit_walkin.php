@@ -42,12 +42,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $conn->begin_transaction();
         $sid = session_id();
 
-        $sDate = trim($_POST['start_date'] ?? '');
-        $eDate = trim($_POST['end_date'] ?? '');
+        $sDate = trim(is_string($_POST['start_date'] ?? null) ? $_POST['start_date'] : '');
+        $eDate = trim(is_string($_POST['end_date'] ?? null) ? $_POST['end_date'] : '');
         $scheme = $_POST['payment_scheme'] ?? '';
         $room_type = $_POST['room_type'];
         $room_name = $_POST['room_name'];
         $guests = booking_guest_count($_POST['guests'] ?? null);
+
+        $guest_name = trim(is_string($_POST['guest_name'] ?? null) ? $_POST['guest_name'] : '');
+        $guest_email = trim(is_string($_POST['guest_email'] ?? null) ? $_POST['guest_email'] : '');
+        if ($guest_name === '') throw new Exception('Guest name is required.');
+        if (!filter_var($guest_email, FILTER_VALIDATE_EMAIL)) throw new Exception('Enter a valid guest email address.');
+        $guest_phone = normalize_contact_phone(is_string($_POST['guest_phone'] ?? null) ? $_POST['guest_phone'] : '');
+
 
         $start_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $sDate);
         $end_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $eDate);
@@ -141,8 +148,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if (!is_array($addon_room_groups) || count($addon_room_groups) < 1 || count($addon_room_groups) > 20) {
                 throw new Exception('Invalid hotel room add-on selection.');
             }
-            $addon_room_start = trim((string)($_POST['room_start_date'] ?? ''));
-            $addon_room_end = trim((string)($_POST['room_end_date'] ?? ''));
+            $addon_room_start = trim(is_string($_POST['room_start_date'] ?? null) ? $_POST['room_start_date'] : '');
+            $addon_room_end = trim(is_string($_POST['room_end_date'] ?? null) ? $_POST['room_end_date'] : '');
             $addon_start_dt = DateTime::createFromFormat('!Y-m-d', $addon_room_start);
             $addon_end_dt = DateTime::createFromFormat('!Y-m-d', $addon_room_end);
             if (!$addon_start_dt || !$addon_end_dt || $addon_start_dt->format('Y-m-d') !== $addon_room_start || $addon_end_dt->format('Y-m-d') !== $addon_room_end || $addon_start_dt < new DateTime('today') || $addon_end_dt <= $addon_start_dt) {
@@ -256,9 +263,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($raw_method === 'bank') $pay_method = 'Bank Transfer';
 
         // Find or create customer
-        $guest_email = trim($_POST['guest_email']);
-        $guest_phone = normalize_contact_phone((string)($_POST['guest_phone'] ?? ''));
-        $guest_name = trim($_POST['guest_name']);
 
         $name_parts = explode(' ', $guest_name, 2);
         $first_name = $name_parts[0];
