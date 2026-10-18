@@ -5,9 +5,12 @@ function calculate_refund_breakdown(float $amountPaid): array {
 }
 
 /** Validate and normalize the customer-selected destination for a paid refund. */
-function normalize_refund_destination(array $input): array {
+function normalize_refund_destination(array $input, bool $allowCash = false): array {
     $methodValue = $input['method'] ?? null;
     $method = is_string($methodValue) ? trim($methodValue) : '';
+    if ($allowCash && $method === 'Cash') {
+        return ['method' => 'Cash', 'account_name' => normalize_refund_destination_text($input['account_name'] ?? '', 2, 120, 'Enter the cash recipient name (2–120 characters).'), 'account_identifier' => null, 'bank_name' => null];
+    }
     $allowedMethods = ['GCash', 'Maya', 'Bank Transfer'];
     if (!in_array($method, $allowedMethods, true)) {
         throw new InvalidArgumentException('Choose GCash, Maya, or Bank Transfer as the refund destination.');
@@ -72,14 +75,14 @@ function normalize_refund_wallet_identifier(string $value): string {
     return '+' . $digits;
 }
 
-function refund_destination_is_valid(array $destination): bool {
+function refund_destination_is_valid(array $destination, bool $allowCash = false): bool {
     try {
         normalize_refund_destination([
             'method' => (string)($destination['refund_destination_method'] ?? $destination['method'] ?? ''),
             'account_name' => (string)($destination['refund_destination_account_name'] ?? $destination['account_name'] ?? ''),
             'account_identifier' => (string)($destination['refund_destination_account_identifier'] ?? $destination['account_identifier'] ?? ''),
             'bank_name' => (string)($destination['refund_destination_bank_name'] ?? $destination['bank_name'] ?? ''),
-        ]);
+        ], $allowCash);
         return true;
     } catch (InvalidArgumentException $error) {
         return false;

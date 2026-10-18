@@ -49,10 +49,13 @@ $assert(str_contains($cancel, 'INSERT INTO cancellations (booking_id, reason, re
     && str_contains($cancel, "status = 'Pending', admin_reply = NULL"),
     'First paid requests and rejected-row reopen replace all destination details atomically in prepared statements.');
 
-$assert(str_contains($adminAction, 'SELECT id, reason, refund_amount, fee_deducted, fee_percent, status, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name')
-    && str_contains($adminAction, 'refund_destination_is_valid($refund_row)')
+$adminRefundStart = strpos($adminAction, "elseif (\$action === 'refund')");
+$adminRefundEnd = strpos($adminAction, "elseif (\$action === 'reject_refund')", $adminRefundStart);
+$adminRefundBranch = substr($adminAction, $adminRefundStart, $adminRefundEnd - $adminRefundStart);
+$assert(str_contains($adminRefundBranch, 'SELECT id, reason, refund_amount, fee_deducted, fee_percent, status, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name')
+    && str_contains($adminRefundBranch, 'refund_destination_is_valid($refund_row,')
     && str_contains($adminAction, 'Contact the customer before sending funds.')
-    && !str_contains($adminAction, '$data[\'refund_destination\']'),
+    && !str_contains($adminRefundBranch, '$data[\'refund_destination\']'),
     'Refund processing locks and validates the saved destination and accepts no destination supplied by admin UI.');
 
 $assert(str_contains($customerDetails, "ORDER BY id DESC LIMIT 1")

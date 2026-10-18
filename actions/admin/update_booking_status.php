@@ -66,7 +66,7 @@ try {
     // FETCH CURRENT CUSTOMER AND VENUE DATA
     // ==========================================
     $stmt_info = $conn->prepare("
-        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, b.amount_paid, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id
+        SELECT b.reference_no, b.venue_id, b.start_date, b.end_date, b.booking_status, b.amount_paid, v.category, c.email, c.first_name, c.last_name, v.name as venue_name, c.user_id, b.source
         FROM bookings b
         JOIN customers c ON b.customer_id = c.id
         JOIN venues v ON b.venue_id = v.id
@@ -203,6 +203,51 @@ try {
         $stmt->execute();
         $message = "Booking #$ref_no has been cancelled!";
 
+    }
+    elseif ($action === 'request_guest_refund') {
+        // Guest requests use the same accounting/lifecycle as customer requests:
+        // keep the receipt and reservation until an actual refund is recorded.
+        if (($b_info['source'] ?? '') !== 'Walk-in' || $c_user_id !== null) {
+            throw new Exception('Only walk-in guests without an account use this request action.');
+        }
+        if ($locked_booking['booking_status'] !== 'Confirmed'
+            || !in_array($locked_booking['payment_status'], ['Paid', 'Partial'], true)
+            || (float)$locked_booking['amount_paid'] <= 0) {
+            throw new Exception('Only confirmed paid or partially paid guest walk-ins can request a refund.');
+        }
+        if (!is_string($data['reason'] ?? null)) throw new Exception('A valid cancellation reason is required.');
+        $raw_reason = $data['reason'];
+        $reason = trim($raw_reason);
+        if ($reason === '' || strlen($reason) > 1000 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $raw_reason)) {
+            throw new Exception('A valid cancellation reason is required (up to 1000 characters).');
+        }
+        $destination = normalize_refund_destination(is_array($data['refund_destination'] ?? null) ? $data['refund_destination'] : [], true);
+        $breakdown = calculate_refund_breakdown((float)$locked_booking['amount_paid']);
+        $refund_amount = $breakdown['refund']; $fee = $breakdown['fee']; $fee_percent = $breakdown['fee_percent'];
+        $existing_stmt = $conn->prepare('SELECT id, status FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE');
+        $existing_stmt->bind_param('i', $booking_id); $existing_stmt->execute();
+        $existing = $existing_stmt->get_result()->fetch_assoc();
+        if ($existing && $existing['status'] !== 'Rejected') {
+            throw new Exception('A refund request is already pending or processed for this booking.');
+        }
+        if ($existing) {
+            $request_stmt = $conn->prepare("UPDATE cancellations SET reason=?, refund_amount=?, fee_deducted=?, fee_percent=?, refund_destination_method=?, refund_destination_account_name=?, refund_destination_account_identifier=?, refund_destination_bank_name=?, refund_transaction_id=NULL, status='Pending', admin_reply=NULL WHERE id=? AND status='Rejected'");
+            $request_stmt->bind_param('sdddssssi', $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
+            if (!$request_stmt->execute() || $request_stmt->affected_rows !== 1) throw new Exception('Refund request changed before reopening.');
+            $cancellation_id = (int)$existing['id']; $history_action = 'reopened';
+        } else {
+            $request_stmt = $conn->prepare("INSERT INTO cancellations (booking_id,reason,refund_amount,fee_deducted,fee_percent,refund_destination_method,refund_destination_account_name,refund_destination_account_identifier,refund_destination_bank_name,status) VALUES (?,?,?,?,?,?,?,?,?,'Pending')");
+            $request_stmt->bind_param('isdddssss', $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
+            if (!$request_stmt->execute()) throw new Exception('Unable to record the guest refund request.');
+            $cancellation_id = (int)$conn->insert_id; $history_action = 'requested';
+        }
+        record_cancellation_history($conn, $booking_id, $cancellation_id, $history_action, $reason, $refund_amount, $fee, $fee_percent, null, (int)$_SESSION['user_id']);
+        $reschedule_stmt = $conn->prepare("UPDATE reschedule_requests SET status='Rejected', admin_reply='Guest requested cancellation through staff' WHERE booking_id=? AND status='Pending'");
+        $reschedule_stmt->bind_param('i', $booking_id); $reschedule_stmt->execute();
+        $message = "Guest refund request recorded for Booking #$ref_no. The booking stays reserved until the refund is marked sent.";
+        $auditEventType = 'booking.guest_refund_requested'; $auditModule = 'Refunds';
+        $auditDetails = ['booking_reference'=>(string)$ref_no,'booking_id'=>$booking_id,'cancellation_id'=>$cancellation_id,'refund_amount'=>$refund_amount,'decision'=>$history_action,'origin'=>'staff_guest_request'];
+        // The staff member informs the guest; no extra outbound notification.
     }
     elseif ($action === 'finalize_event_invoice') {
         if ($event_ended && $locked_booking['booking_status'] === 'Pending') {
@@ -661,15 +706,25 @@ try {
         ];
     }
     elseif ($action === 'refund') {
+        if (!in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)
+            || !in_array($locked_booking['payment_status'], ['Paid', 'Partial'], true)
+            || (float)$locked_booking['amount_paid'] <= 0) {
+            throw new Exception('This booking is no longer eligible for refund processing.');
+        }
+
         $stmt_refund = $conn->prepare("SELECT id, reason, refund_amount, fee_deducted, fee_percent, status, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name FROM cancellations WHERE booking_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE");
         $stmt_refund->bind_param("i", $booking_id);
         $stmt_refund->execute();
         $refund_row = $stmt_refund->get_result()->fetch_assoc();
         if (!$refund_row) throw new Exception('No pending refund request exists for this booking.');
-        if (!refund_destination_is_valid($refund_row)) {
+        if (!refund_destination_is_valid($refund_row, ($b_info['source'] ?? '') === 'Walk-in')) {
             throw new Exception('This pending refund has no valid destination details. Contact the customer before sending funds.');
         }
         $refund_amount = $refund_row ? floatval($refund_row['refund_amount']) : null;
+        if ($refund_amount <= 0 || abs(round($refund_amount + (float)$refund_row['fee_deducted'], 2) - round((float)$locked_booking['amount_paid'], 2)) > 0.001) {
+            throw new Exception('The paid amount changed after this request. Reject it and record an updated refund request before returning funds.');
+        }
+
 
         $refund_tx_id = trim((string)($data['refund_transaction_id'] ?? ''));
         if ($refund_tx_id === '' || strlen($refund_tx_id) > 160 || !preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:\/-]{0,159}\z/D', $refund_tx_id)) {

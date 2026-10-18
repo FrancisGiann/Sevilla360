@@ -100,6 +100,20 @@
     <!-- Modals Overlay -->
     <div class="modal-overlay" id="modalOverlay">
 
+        <div class="admin-modal booking-detail-modal" id="guestRefundRequestModal" role="dialog" aria-modal="true" aria-labelledby="guest-refund-title" tabindex="-1">
+            <h3 class="modal-main-title" id="guest-refund-title">Record guest refund request</h3>
+            <p id="guest-refund-context"></p>
+            <p>The full paid amount will be refunded. The booking stays reserved until you separately mark the refund sent. Recording this request does not send money or void the receipt.</p>
+            <form id="guest-refund-form">
+                <div class="form-group"><label for="guest-refund-reason">Guest’s cancellation reason</label><textarea id="guest-refund-reason" class="form-input-padded" rows="3" maxlength="1000" required></textarea></div>
+                <div class="form-group"><label for="guest-refund-method">Refund method</label><select id="guest-refund-method" class="form-input-padded"><option>Cash</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option></select></div>
+                <div class="form-group"><label for="guest-refund-name">Recipient / account holder name</label><input id="guest-refund-name" class="form-input-padded" minlength="2" maxlength="120" autocomplete="off" required></div>
+                <div class="form-group" id="guest-refund-identifier-wrap" hidden><label for="guest-refund-identifier">Wallet / account number</label><input id="guest-refund-identifier" class="form-input-padded" maxlength="64" autocomplete="off"></div>
+                <div class="form-group" id="guest-refund-bank-wrap" hidden><label for="guest-refund-bank">Bank name</label><input id="guest-refund-bank" class="form-input-padded" minlength="2" maxlength="100" autocomplete="off"></div>
+                <div class="modal-actions"><button type="button" class="btn-modal btn-modal-cancel close-modal">Close</button><button type="submit" class="btn-modal btn-modal-primary">Record request</button></div>
+            </form>
+        </div>
+
         <!-- Refund Modal -->
         <div class="admin-modal booking-detail-modal" id="refundModal" role="dialog" aria-modal="true" aria-labelledby="modal-refund-title" tabindex="-1">
             <header class="booking-detail-modal-header">
@@ -129,21 +143,23 @@
 
             <p class="refund-manual-instructions">Send the refund to this destination outside the system. Mark it sent only after the transfer is complete.</p>
             <div class="form-group refund-reference-field">
-                <label class="form-label-med" for="refund-transaction-id">Outbound refund transaction / reference ID <span class="required-mark">*</span></label>
-                <input type="text" id="refund-transaction-id" class="form-input-padded" maxlength="160" autocomplete="off" placeholder="Enter the transfer reference" required>
+                <label class="form-label-med" for="refund-transaction-id">Refund transfer / cash handover reference ID <span class="required-mark">*</span></label>
+                <input type="text" id="refund-transaction-id" class="form-input-padded" maxlength="160" autocomplete="off" placeholder="Enter the transfer or cash handover reference" required>
             </div>
 
             <div class="refund-total">
                 <span class="label">Refund Amount:</span>
                 <span class="value amount">₱0.00</span>
             </div>
+            <?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
             <div class="refund-rejection-block" aria-labelledby="refund-rejection-label">
                 <label class="form-label-med" id="refund-rejection-label" for="refund-rejection-reason">Rejection reason <span class="text-sub-muted">(required only to reject)</span></label>
                 <textarea id="refund-rejection-reason" class="form-input-padded" rows="3" maxlength="500" placeholder="Explain why this request cannot be approved"></textarea>
             </div>
+            <?php endif; ?>
             <div class="modal-actions">
                 <button type="button" class="btn-modal btn-modal-cancel close-modal">Cancel</button>
-                <button type="button" class="btn-modal btn-modal-danger btn-modal-reject-refund" id="btn-reject-refund-inline">Reject request</button>
+                <?php if (($_SESSION['role'] ?? '') === 'admin'): ?><button type="button" class="btn-modal btn-modal-danger btn-modal-reject-refund" id="btn-reject-refund-inline">Reject request</button><?php endif; ?>
                 <button type="button" class="btn-modal btn-modal-primary btn-modal-refund" disabled>Mark refund sent</button>
             </div>
         </div>

@@ -940,6 +940,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 const submissionId = Number.isSafeInteger(submissionIdValue) && submissionIdValue > 0 ? submissionIdValue : 0;
                 setPrimary(`<button type="button" class="btn-action btn-confirm open-manual-proof" ${rowId} data-submission-id="${submissionId}" data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}" data-event-ended="${eventEnded ? '1' : '0'}">Review Proof</button>`);
             }
+            if (!isCompleted && displayStatus === 'Confirmed' && Number(b.is_guest_walkin) === 1
+                && amtPaid > 0 && ['Paid', 'Partial'].includes(b.payment_status) && b.cancel_status !== 'Pending' && b.cancel_status !== 'Processed') {
+                addSecondary(`<button type="button" class="btn-action btn-refund open-guest-refund-request" ${rowId} data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-paid="${amtPaid}">Record guest refund request</button>`);
+            }
+
             const viewAction = `<button type="button" class="btn-action btn-view" ${rowId}>View Details</button>`;
             if (primaryAction) addSecondary(viewAction);
             else primaryAction = viewAction;
@@ -1148,7 +1153,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // 4. Modal System Close Logic
     // =========================================================
     const closeModal = () => {
-      const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : null;
+      const guestRequestModal = document.getElementById('guestRefundRequestModal');
+      const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : guestRequestModal?.classList.contains('active') ? guestRequestModal._invoker : null;
       modalOverlay.classList.remove("active");
       document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
       const refundTx = document.getElementById('refund-transaction-id');
@@ -1238,10 +1244,55 @@ document.addEventListener("DOMContentLoaded", () => {
       else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
     });
   
+    const guestRefundForm = document.getElementById('guest-refund-form');
+    document.getElementById('guest-refund-method')?.addEventListener('change', event => {
+        const cash = event.target.value === 'Cash'; const bank = event.target.value === 'Bank Transfer';
+        document.getElementById('guest-refund-identifier-wrap').hidden = cash;
+        document.getElementById('guest-refund-identifier').required = !cash;
+        document.getElementById('guest-refund-bank-wrap').hidden = !bank;
+        document.getElementById('guest-refund-bank').required = bank;
+    });
+    guestRefundForm?.addEventListener('submit', event => {
+        event.preventDefault();
+        const modal = document.getElementById('guestRefundRequestModal');
+        processBookingAction(modal.dataset.bookingId, 'request_guest_refund', guestRefundForm.querySelector('[type="submit"]'), {
+            reason: document.getElementById('guest-refund-reason').value.trim(),
+            refund_destination: { method: document.getElementById('guest-refund-method').value,
+                account_name: document.getElementById('guest-refund-name').value.trim(),
+                account_identifier: document.getElementById('guest-refund-identifier').value.trim(),
+                bank_name: document.getElementById('guest-refund-bank').value.trim() }
+        });
+    });
+    document.addEventListener('keydown', event => {
+        const modal = document.getElementById('guestRefundRequestModal');
+        if (!modal?.classList.contains('active')) return;
+        if (event.key === 'Escape') { event.preventDefault(); const invoker=modal._invoker; closeModal(); invoker?.focus(); return; }
+        if (event.key !== 'Tab') return;
+        const fields=Array.from(modal.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled])')).filter(el=>el.offsetParent!==null);
+        if (!fields.length) { event.preventDefault(); modal.focus(); }
+        else if (event.shiftKey && document.activeElement===fields[0]) { event.preventDefault(); fields.at(-1).focus(); }
+        else if (!event.shiftKey && document.activeElement===fields.at(-1)) { event.preventDefault(); fields[0].focus(); }
+    });
+
     // =========================================================
     // 5. HELPER TO RE-BIND DYNAMIC BUTTONS AFTER AJAX LOAD
     // =========================================================
     function bindDynamicButtons() {
+        document.querySelectorAll('.open-guest-refund-request').forEach(button => {
+            button.addEventListener('click', () => {
+                const modal = document.getElementById('guestRefundRequestModal');
+                const form = document.getElementById('guest-refund-form');
+                form.reset();
+                modal.dataset.bookingId = button.dataset.id;
+                modal._invoker = Array.from(document.querySelectorAll('tr[data-ref]')).find(row => row.dataset.ref === String(button.dataset.ref || '').toLowerCase())?.querySelector('.booking-action-menu-toggle') || button;
+                document.getElementById('guest-refund-context').textContent = `Booking ${button.dataset.ref} · ${button.dataset.customer} · Paid ₱${Number(button.dataset.paid).toFixed(2)}`;
+                document.getElementById('guest-refund-method').dispatchEvent(new Event('change'));
+                const submit = form.querySelector('[type="submit"]'); submit.disabled = false; submit.textContent = 'Record request'; submit.removeAttribute('style');
+                modalOverlay.classList.add('active'); modal.classList.add('active');
+                document.getElementById('guest-refund-reason').focus();
+            });
+        });
+
         
         // APPROVE & DECLINE MODALS
         const approveModal = document.getElementById("approveModal");
@@ -1359,7 +1410,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   transactionInput?.focus();
                   return;
               }
-              showConfirmModal("Have you already sent this refund to the customer’s saved destination? Mark it sent only after the transfer is complete.", () => {
+              showConfirmModal("Have you already returned this refund by the saved method? For Cash, confirm the recipient received the cash. Mark it sent only after completion.", () => {
                   processBookingAction(this.getAttribute('data-id'), 'refund', this, { refund_transaction_id: refundTxId });
               }, 'refundModal');
             });
@@ -1404,15 +1455,17 @@ document.addEventListener("DOMContentLoaded", () => {
                   accountIdentifier: String(cancellation.refund_destination_account_identifier || ''),
                   bankName: String(cancellation.refund_destination_bank_name || '')
                 } : null;
-                const methodAllowed = ['GCash', 'Maya', 'Bank Transfer'].includes(destination?.method);
+                const methodAllowed = ['Cash', 'GCash', 'Maya', 'Bank Transfer'].includes(destination?.method);
                 const hasRequiredDetails = methodAllowed && destination.accountName.trim().length >= 2
-                  && destination.accountIdentifier.trim().length >= 4
+                  && (destination.method === 'Cash' || destination.accountIdentifier.trim().length >= 4)
                   && (destination.method !== 'Bank Transfer' || destination.bankName.trim().length >= 2);
                 const requestIsPending = cancellation?.status === 'Pending';
+                const instructions = document.querySelector('#refundModal .refund-manual-instructions');
+                if (instructions) instructions.textContent = destination?.method === 'Cash' ? 'Return the cash to the named recipient outside the system. Record the cash handover reference only after the recipient has received it.' : 'Send the refund to this destination outside the system. Mark it sent only after the transfer is complete.';
                 if (destinationSection) destinationSection.hidden = !cancellation;
                 if (destinationMethod) destinationMethod.textContent = destination?.method || 'Not provided';
                 if (destinationName) destinationName.textContent = destination?.accountName || 'Not provided';
-                if (destinationIdentifier) destinationIdentifier.textContent = destination?.accountIdentifier || 'Not provided';
+                if (destinationIdentifier) destinationIdentifier.textContent = destination?.accountIdentifier || (destination?.method === 'Cash' ? 'Cash handover — no account number' : 'Not provided');
                 const showBank = destination?.method === 'Bank Transfer' && Boolean(destination.bankName);
                 if (destinationBankLabel) destinationBankLabel.hidden = !showBank;
                 if (destinationBank) {
