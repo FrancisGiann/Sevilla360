@@ -6,9 +6,9 @@
 document.addEventListener("DOMContentLoaded", () => {
     if (!document.getElementById('globalModalOverlay')) {
         const modalHTML = `
-        <div class="global-modal-overlay" id="globalModalOverlay" style="z-index: 10000; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); opacity: 0; visibility: hidden; transition: all 0.3s ease;"></div>
+        <div class="global-modal-overlay" id="globalModalOverlay" style="z-index: 10000; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); opacity: 0; visibility: hidden; transition: opacity 0.3s ease, transform 0.3s ease;"></div>
         
-        <div class="global-admin-modal" id="globalAlertModal" style="display: block; z-index: 10001; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: all 0.3s ease; background: white; border-radius: 8px; padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;">
+        <div class="global-admin-modal" id="globalAlertModal" role="dialog" aria-modal="true" aria-labelledby="ga-title" aria-describedby="ga-message" style="display: block; z-index: 10001; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: opacity 0.3s ease, transform 0.3s ease; background: white; border-radius: 8px; padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;">
             <i class="fa-solid fa-circle-info" id="ga-icon" style="font-size: 3rem; margin-bottom: 15px; color: #d6a870;"></i>
             <h3 class="modal-title" id="ga-title" style="margin-bottom: 10px; color: #2a2522;">Notice</h3>
             <div class="modal-body" style="margin-bottom: 20px; color: #666; font-size: 0.95rem;">
@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
         </div>
 
-        <div class="global-admin-modal" id="globalConfirmModal" style="display: block; z-index: 10001; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: all 0.3s ease; background: white; border-radius: 8px; padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;">
+        <div class="global-admin-modal" id="globalConfirmModal" role="dialog" aria-modal="true" aria-labelledby="gc-title" aria-describedby="gc-message" style="display: block; z-index: 10001; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: opacity 0.3s ease, transform 0.3s ease; background: white; border-radius: 8px; padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); text-align: center;">
             <i class="fa-solid fa-circle-exclamation" id="gc-icon" style="font-size: 3rem; margin-bottom: 15px; color: #d6a870;"></i>
             <h3 class="modal-title" id="gc-title" style="margin-bottom: 10px; color: #2a2522;">Confirm</h3>
             <div class="modal-body" style="margin-bottom: 20px; color: #666; font-size: 0.95rem;">
@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
         </div>
 
-        <div class="global-admin-modal" id="globalLoaderModal" style="display: block; z-index: 10002; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: all 0.3s ease; background: transparent; text-align: center;">
+        <div class="global-admin-modal" id="globalLoaderModal" style="display: block; z-index: 10002; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); opacity: 0; visibility: hidden; transition: opacity 0.3s ease, transform 0.3s ease; background: transparent; text-align: center;">
             <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 4rem; color: #d6a870; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));"></i>
             <h3 id="gl-message" style="color: white; margin-top: 15px; font-family: 'Inter', sans-serif; font-size: 1.2rem; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Processing...</h3>
         </div>
@@ -50,6 +50,47 @@ function hideModalCSS(el) {
     el.style.opacity = '0';
     el.style.transform = 'translate(-50%, -50%) scale(0.9)';
     setTimeout(() => { el.style.visibility = 'hidden'; }, 300);
+}
+
+// Keep keyboard interaction inside the shared notice/confirmation and return
+// to its invoker when dismissed, including when another modal opened it.
+let globalModalFocusCleanup = null;
+function manageGlobalModalFocus(modal, initialControl, escapeControl) {
+    if (globalModalFocusCleanup) globalModalFocusCleanup(false);
+    const invoker = document.activeElement;
+    const onKeyDown = (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            escapeControl.click();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        event.stopPropagation();
+        const controls = Array.from(modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]'))
+            .filter((control) => !control.disabled && control.tabIndex >= 0 && control.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    };
+    modal.addEventListener('keydown', onKeyDown);
+    const cleanup = (restore = true) => {
+        modal.removeEventListener('keydown', onKeyDown);
+        if (globalModalFocusCleanup === cleanup) globalModalFocusCleanup = null;
+        if (restore && invoker && invoker.isConnected) invoker.focus({ preventScroll: true });
+    };
+    globalModalFocusCleanup = cleanup;
+    setTimeout(() => {
+        if (globalModalFocusCleanup === cleanup) initialControl.focus({ preventScroll: true });
+    }, 0);
+    return cleanup;
 }
 
 window.playNotificationChime = function() {
@@ -123,7 +164,9 @@ window.showAlert = function(title, message, type = "info", reloadOnClose = false
     const newOkBtn = okBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(newOkBtn, okBtn);
 
+    let restoreFocus = () => {};
     newOkBtn.addEventListener("click", () => {
+        restoreFocus();
         hideModalCSS(alertModal);
         overlay.style.opacity = '0';
         setTimeout(() => overlay.style.visibility = 'hidden', 300);
@@ -132,6 +175,7 @@ window.showAlert = function(title, message, type = "info", reloadOnClose = false
             window.location.reload();
         }
     });
+    restoreFocus = manageGlobalModalFocus(alertModal, newOkBtn, newOkBtn);
 };
 
 window.showConfirm = function(title, message, type = "warning") {
@@ -163,7 +207,9 @@ window.showConfirm = function(title, message, type = "warning") {
         okBtn.parentNode.replaceChild(newOkBtn, okBtn);
         cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
 
+        let restoreFocus = () => {};
         newOkBtn.addEventListener("click", () => {
+            restoreFocus();
             hideModalCSS(confirmModal);
             overlay.style.opacity = '0';
             setTimeout(() => overlay.style.visibility = 'hidden', 300);
@@ -171,11 +217,13 @@ window.showConfirm = function(title, message, type = "warning") {
         });
 
         newCancelBtn.addEventListener("click", () => {
+            restoreFocus();
             hideModalCSS(confirmModal);
             overlay.style.opacity = '0';
             setTimeout(() => overlay.style.visibility = 'hidden', 300);
             resolve(false);
         });
+        restoreFocus = manageGlobalModalFocus(confirmModal, newCancelBtn, newCancelBtn);
     });
 };
 

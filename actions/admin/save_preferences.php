@@ -67,17 +67,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     $settings['social_links_json'] = json_encode($clean_social_links, JSON_UNESCAPED_SLASHES);
 
-    // Upsert into database
-    $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-    
-    foreach ($settings as $key => $val) {
-        $str_val = (string)$val;
-        $stmt->bind_param("sss", $key, $str_val, $str_val);
-        $stmt->execute();
+    // Save the complete preference set together, including business details.
+    try {
+        $conn->begin_transaction();
+        $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+        if (!$stmt) throw new RuntimeException('Settings statement unavailable.');
+        foreach ($settings as $key => $val) {
+            $str_val = (string)$val;
+            $stmt->bind_param("sss", $key, $str_val, $str_val);
+            if (!$stmt->execute()) throw new RuntimeException('Settings save failed.');
+        }
+        if (!$conn->commit()) throw new RuntimeException('Settings commit failed.');
+        $stmt->close();
+        echo "Success";
+    } catch (Throwable $error) {
+        $conn->rollback();
+        http_response_code(500);
+        echo "Error|Unable to save preferences.";
     }
-    $stmt->close();
-    
-    echo "Success";
 }
 $conn->close();
 ?>

@@ -853,10 +853,11 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                     <option value="" disabled selected>Select where this image goes...</option>
 
                     <optgroup label="System & Gallery">
-                        <option value="home-hero" data-type="standard" style="display:none;">Landing Page - Hero Banner
+                        <?php foreach ($website_slots as $key => $slot): ?>
+                        <option value="<?php echo htmlspecialchars($key, ENT_QUOTES, 'UTF-8'); ?>" data-type="standard" style="display:none;">
+                            <?php echo htmlspecialchars($slot['title'], ENT_QUOTES, 'UTF-8'); ?>
                         </option>
-                        <option value="home-about" data-type="standard" style="display:none;">Homepage - About/Welcome
-                            Photo</option>
+                        <?php endforeach; ?>
                         <option value="gallery" data-type="standard" style="display:none;">General Gallery (Standard)
                         </option>
                         <option value="gallery" data-type="360" style="display:none;">General Gallery (360)</option>

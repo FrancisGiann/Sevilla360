@@ -271,7 +271,7 @@
   width: 100%;
   border-collapse: collapse;
   text-align: left; 
-  table-layout: fixed;
+  table-layout: auto;
   min-width: 0;
 }
 
@@ -315,6 +315,15 @@
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* Currency is one value; intrinsic columns make room without splitting cents.
+   Long customer/venue text still wraps in the surrounding cells. */
+.bookings-table tr:not(.seminar-history-row) td[data-label="Amount"] {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .bookings-table th {

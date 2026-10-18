@@ -127,7 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $home_slots = [
             'home-hero' => 'standard',
-            'home-about' => 'standard'
+            'home-about' => 'standard',
+            'home-exp-1' => 'standard',
+            'home-exp-2' => 'standard',
+            'home-exp-3' => 'standard'
         ];
         $slot_classification = media_upload_classify_website_slot($website_slot);
         if ($slot_classification === null) {

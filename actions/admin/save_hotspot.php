@@ -99,8 +99,9 @@ try {
             $stmt->bind_param("isssdddi", $media_id, $type, $title, $description, $x, $y, $z, $arrow_rotation);
         }
         if (!$stmt->execute()) throw new RuntimeException('Unable to save hotspot.');
+        $inserted_hotspot_id = (int)$stmt->insert_id;
         if (!$conn->commit()) throw new RuntimeException('Unable to commit hotspot.');
-        echo json_encode(['success' => true, 'id' => $conn->insert_id]);
+        echo json_encode(['success' => true, 'id' => $inserted_hotspot_id]);
     }
 } catch (Throwable $e) {
     $conn->rollback();

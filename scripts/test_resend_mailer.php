@@ -178,7 +178,7 @@ class ResendTestDatabase
         if (str_contains($sql, 'FROM cancellations')) return new mysqli_result([['fee_percent' => 0, 'fee_deducted' => 0, 'refund_amount' => 1500, 'status' => 'Pending']]);
         if (str_contains($sql, 'reschedule_requests rr')) return new mysqli_result([$this->booking]);
         if (str_contains($sql, 'FROM bookings b')) {
-            $booking = $this->booking;
+            $booking = array_replace($this->booking, $GLOBALS['resend_test_booking_overrides'] ?? []);
             if (str_contains($sql, 'payment_scheme')) {
                 $booking['category'] = $GLOBALS['resend_test_receipt_category'];
                 return new mysqli_result([$booking]);
@@ -256,6 +256,24 @@ $invoiceRequest = $GLOBALS['resend_test_last_request'];
 resend_test_assert(($invoiceRequest['payload']['subject'] ?? '') === 'Sevilla360: Your Final Event Invoice [REF-INVOICE]', 'invoice subject changed');
 resend_test_assert(($invoiceRequest['payload']['from'] ?? '') === '"Sevilla360 Accounts" <reservations@misevillas.com>', 'invoice sender role changed');
 resend_test_assert(str_contains($invoiceRequest['payload']['html'] ?? '', 'Your Event Consultation is Complete!'), 'invoice body changed');
+
+// User-authored booking text must stay text in email HTML, without changing the recipient header.
+$GLOBALS['resend_test_booking_overrides'] = ['venue_name' => '<img src=x onerror=alert(1)>', 'payment_scheme' => '50% <b>QA</b>'];
+$unsafeName = '<a href="https://example.test">QA & Guest</a>';
+send_booking_receipt('guest@example.test', $unsafeName, 'REF-<b>QA</b>', 'Ignored', 0, 'Confirmed');
+$html = $GLOBALS['resend_test_last_request']['payload']['html'];
+resend_test_assert(str_contains($html, '&lt;a href=&quot;https://example.test&quot;&gt;QA &amp; Guest&lt;/a&gt;'), 'receipt customer name must be escaped');
+resend_test_assert(str_contains($html, '&lt;img src=x onerror=alert(1)&gt;'), 'receipt venue must be escaped');
+resend_test_assert(str_contains($html, 'REF-&lt;b&gt;QA&lt;/b&gt;'), 'receipt reference must be escaped');
+resend_test_assert(!str_contains($html, '<img src=x') && !str_contains($html, '<b>QA</b>'), 'receipt must not render user markup');
+send_invoice_ready_email('guest@example.test', $unsafeName, 'REF-<b>QA</b>', 12000, "https://example.test/dashboard?q='&next=qa");
+$html = $GLOBALS['resend_test_last_request']['payload']['html'];
+resend_test_assert(str_contains($html, '&lt;a href=&quot;https://example.test&quot;&gt;QA &amp; Guest&lt;/a&gt;'), 'invoice customer name must be escaped');
+resend_test_assert(str_contains($html, '&lt;img src=x onerror=alert(1)&gt;'), 'invoice venue must be escaped');
+resend_test_assert(str_contains($html, '50% &lt;b&gt;QA&lt;/b&gt;'), 'invoice payment scheme must be escaped');
+resend_test_assert(str_contains($html, "href='https://example.test/dashboard?q=&#039;&amp;next=qa'"), 'invoice link attributes must be escaped');
+resend_test_assert(!str_contains($html, '<img src=x') && !str_contains($html, '<b>QA</b>'), 'invoice must not render user markup');
+unset($GLOBALS['resend_test_booking_overrides']);
 
 $custom = resend_test_send(static function () { send_custom_email('customer@example.test', 'Customer', 'Verify Your Sevilla360 Account', '<p>Use code 123456</p>'); }, 'Verify Your Sevilla360 Account', '"Sevilla360 Accounts" <reservations@misevillas.com>', '123456');
 resend_test_assert(($custom['payload']['html'] ?? '') === '<p>Use code 123456</p>', 'custom email body should be passed through unchanged');

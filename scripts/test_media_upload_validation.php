@@ -58,7 +58,9 @@ $checks['historical homepage and general gallery destinations remain accepted'] 
     media_upload_classify_website_slot('home-hero') === ['expected_media_type' => 'standard', 'canonical_gallery_slot' => null]
     && media_upload_classify_website_slot('home-about') === ['expected_media_type' => 'standard', 'canonical_gallery_slot' => null]
     && media_upload_classify_website_slot('gallery') === ['expected_media_type' => null, 'canonical_gallery_slot' => null]
-    && media_upload_classify_website_slot('home-exp-1') === null;
+    && media_upload_classify_website_slot('home-exp-1') === ['expected_media_type' => 'standard', 'canonical_gallery_slot' => null]
+    && media_upload_classify_website_slot('home-exp-2') === ['expected_media_type' => 'standard', 'canonical_gallery_slot' => null]
+    && media_upload_classify_website_slot('home-exp-3') === ['expected_media_type' => 'standard', 'canonical_gallery_slot' => null];
 
 $upload = (string)file_get_contents($root . '/actions/admin/upload_media.php');
 $checks['endpoint validates canonical inventory after image conversion and before replacement or insert'] =

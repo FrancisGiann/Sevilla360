@@ -77,13 +77,25 @@ $checks = [
         && str_contains($previewEndpoint, "\$_SESSION['role'] !== 'admin'")
         && str_contains($previewEndpoint, "\$_SESSION['csrf_token']")
         && str_contains($previewEndpoint, 'media_cms_ensure_card_derivatives((string)$media[\'file_path\'])'),
-    'CMS upload connects and starts its transaction only after CPU-heavy derivatives finish' => strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';") > max(
-            strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])'),
-            strpos($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])'),
-            strpos($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])')
-        )
-        && strpos($upload, '$conn->begin_transaction()') > strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';")
-        && str_contains($read('config/db_connect.php'), 'defined(\'SEVILLA_CMS_MEDIA_UPLOAD\')'),
+    'CMS upload closes its account preflight connection before derivatives and reconnects before its transaction' => (static function () use ($upload, $read): bool {
+        $preflight = strpos($upload, "require_once __DIR__ . '/../../config/db_connect.php';");
+        $close = strpos($upload, '$conn->close();');
+        $release = strpos($upload, 'unset($conn);');
+        $thumbnail = strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])');
+        $hero = strpos($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])');
+        $cards = strpos($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])');
+        $reconnect = strpos($upload, "require __DIR__ . '/../../config/db_connect.php';");
+        $transaction = strpos($upload, '$conn->begin_transaction()');
+        if (in_array(false, [$preflight, $close, $release, $thumbnail, $hero, $cards, $reconnect, $transaction], true)) return false;
+        $preflightGuard = strpos($upload, 'session_account_require_active(', $preflight);
+        $transactionGuard = strpos($upload, 'session_account_require_active(', $reconnect);
+        return $preflightGuard !== false && $transactionGuard !== false
+            && $preflight < $preflightGuard && $preflightGuard < $close && $close < $release
+            && $release < min($thumbnail, $hero, $cards)
+            && max($thumbnail, $hero, $cards) < $reconnect
+            && $reconnect < $transactionGuard && $transactionGuard < $transaction
+            && str_contains($read('config/db_connect.php'), 'defined(\'SEVILLA_CMS_MEDIA_UPLOAD\')');
+    })(),
     'upload UI distinguishes completed file transfer from server-side image processing' => str_contains($cms, 'id="upload-progress-label" role="status" aria-live="polite"')
         && str_contains($cms, 'role="progressbar" aria-label="File transfer"')
         && str_contains($cmsJs, 'xhr.upload.addEventListener("load"')

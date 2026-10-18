@@ -2166,25 +2166,25 @@ class AdminWalkinController {
                         <p style="color: #6b7280; font-size: 0.95rem; margin-bottom: 25px;">The walk-in booking has been successfully recorded.</p>
                         
                         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 20px;">
-                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Reference No.</span>
-                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(refNo)}</strong>
+                                <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(refNo)}</strong>
                             </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Guest Name</span>
-                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(guest)}</strong>
+                                <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(guest)}</strong>
                             </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Venue</span>
-                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(venue)}</strong>
+                                <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(venue)}</strong>
                             </div>
-                            <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Dates</span>
-                                <strong style="color:#0f172a; font-size: 0.95rem;">${escapeHtml(dates)}</strong>
+                                <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(dates)}</strong>
                             </div>
-                            <div style="display:flex; justify-content:space-between;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Payment Status</span>
-                                <strong style="color:#10b981; font-size: 0.95rem;">${escapeHtml(payStatus)}</strong>
+                                <strong style="color:#10b981; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(payStatus)}</strong>
                             </div>
                         </div>
                     </div>

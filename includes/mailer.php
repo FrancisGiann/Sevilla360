@@ -163,6 +163,9 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     $biz_policies_html = nl2br(htmlspecialchars($biz['biz_policies']));
 
+    $receipt_name = htmlspecialchars((string)$customer_name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $receipt_reference = htmlspecialchars((string)$ref_no, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $receipt_venue = htmlspecialchars((string)$venue_name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $html_content = "
     <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
         <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
@@ -172,14 +175,14 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
             </div>
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>$header_title</h2>
-                <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>$customer_name</strong>,<br>$header_desc</p>
+                <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>$receipt_name</strong>,<br>$header_desc</p>
                 <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 30px;'>
                     <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>
                             <td style='padding: 12px; border-bottom: 1px solid #eee; width: 40%;'><strong>Reference No:</strong></td>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace; font-size: 16px; color: #d6a870;'><strong>$ref_no</strong></td>
+                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace; font-size: 16px; color: #d6a870;'><strong>$receipt_reference</strong></td>
                         </tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$venue_name</td></tr>
+                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$receipt_venue</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-in:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_in</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-out:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_out</td></tr>
                         $villa_summary_row
@@ -402,6 +405,11 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     else $downpayment = $booking['total_amount'];
 
     // 5. Build the Email
+    $invoice_name = htmlspecialchars((string)$customer_name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $invoice_reference = htmlspecialchars((string)$ref_no, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $invoice_venue = htmlspecialchars((string)$booking['venue_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $invoice_scheme = htmlspecialchars((string)$scheme, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $invoice_link = htmlspecialchars((string)$dashboard_link, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $html_content = "
     <div style='background-color: #f4f4f4; padding: 40px 0; font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;'>
         <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
@@ -412,7 +420,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
             <div style='padding: 40px;'>
                 <h2 style='color: #2a2522; margin-top: 0;'>Your Event Consultation is Complete!</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>
-                    Hello <strong>$customer_name</strong>,<br><br>
+                    Hello <strong>$invoice_name</strong>,<br><br>
                     Our administration has finalized your customized event quotation based on our recent consultation. Please review the updated details below.
                 </p>
 
@@ -420,9 +428,9 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                     <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>
                             <td style='padding: 12px; border-bottom: 1px solid #eee; width: 40%;'><strong>Reference No:</strong></td>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #d6a870;'><strong>$ref_no</strong></td>
+                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #d6a870;'><strong>$invoice_reference</strong></td>
                         </tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>" . $booking['venue_name'] . "</td></tr>
+                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$invoice_venue</td></tr>
                         <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Event Date:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$date_str</td></tr>
                         <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>" . $booking['guests_count'] . " Persons</td></tr>
 
@@ -433,14 +441,14 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                             <td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 18px; color: #d6a870;'><strong>₱" . number_format($booking['total_amount'], 2) . "</strong></td>
                         </tr>
                         <tr>
-                            <td style='padding: 12px; border-bottom: none;'><strong>Required to Secure Dates ($scheme):</strong></td>
+                            <td style='padding: 12px; border-bottom: none;'><strong>Required to Secure Dates ($invoice_scheme):</strong></td>
                             <td style='padding: 12px; border-bottom: none; text-align: right; color: #e06666;'><strong>₱" . number_format($downpayment, 2) . "</strong></td>
                         </tr>
                     </table>
                 </div>
 
                 <div style='text-align: center; margin-top: 30px;'>
-                    <a href='$dashboard_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>View payment instructions and submit receipt</a>
+                    <a href='$invoice_link' style='background-color: #d6a870; color: white; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 4px; display: inline-block;'>View payment instructions and submit receipt</a>
                 </div>
 
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>

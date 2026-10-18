@@ -10,6 +10,9 @@ function media_upload_classify_website_slot(string $websiteSlot): ?array
     $homeSlots = [
         'home-hero' => 'standard',
         'home-about' => 'standard',
+        'home-exp-1' => 'standard',
+        'home-exp-2' => 'standard',
+        'home-exp-3' => 'standard',
     ];
     if (isset($homeSlots[$websiteSlot])) {
         return ['expected_media_type' => $homeSlots[$websiteSlot], 'canonical_gallery_slot' => null];

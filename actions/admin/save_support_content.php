@@ -19,6 +19,13 @@ if (!is_string($_SESSION['csrf_token'] ?? null) || !is_string($client_csrf_token
 }
 if (!session_account_require_active_json($conn, ['admin'], ['success' => false, 'message' => 'Unauthorized access.'], ['success' => false, 'message' => 'Account status could not be verified.'], 403)) exit;
 
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to save support content.']);
+    exit;
+}
+
 $faq_items = json_decode($_POST['support_faq_json'] ?? '[]', true);
 if (!is_array($faq_items)) {
     echo json_encode(['success' => false, 'message' => 'Invalid FAQ configuration.']);
@@ -66,14 +73,20 @@ if ($settings['support_intro'] === '' || $settings['support_contact_heading'] ==
     exit;
 }
 
-$stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-foreach ($settings as $key => $value) {
-    $stmt->bind_param('sss', $key, $value, $value);
-    if (!$stmt->execute()) {
-        echo json_encode(['success' => false, 'message' => 'Unable to save support content.']);
-        exit;
+try {
+    $conn->begin_transaction();
+    $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+    if (!$stmt) throw new RuntimeException('Settings statement unavailable.');
+    foreach ($settings as $key => $value) {
+        $stmt->bind_param('sss', $key, $value, $value);
+        if (!$stmt->execute()) throw new RuntimeException('Settings save failed.');
     }
+    if (!$conn->commit()) throw new RuntimeException('Settings commit failed.');
+    $stmt->close();
+    echo json_encode(['success' => true, 'message' => 'Support content saved.']);
+} catch (Throwable $error) {
+    $conn->rollback();
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Unable to save support content.']);
 }
-$stmt->close();
 $conn->close();
-echo json_encode(['success' => true, 'message' => 'Support content saved.']);

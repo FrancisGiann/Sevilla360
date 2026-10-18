@@ -342,17 +342,11 @@ try {
             }
         }
 
-        // 5. Send Notification Email
-        $dash_link = site_metadata_absolute_url('user_dashboard.php');
-        if ($dash_link === null) {
-            error_log('Invoice email skipped: APP_BASE_URL is missing or invalid booking_id=' . (int)$booking_id);
-        } else {
-            try {
-                send_invoice_ready_email($c_email, $c_name, $ref_no, $new_total, $dash_link);
-            } catch (Throwable $mail_e) {
-                error_log('Invoice email delivery failed: ' . get_class($mail_e) . ' booking_id=' . (int)$booking_id);
-            }
-        }
+        // Invoice delivery must not escape a rolled-back quotation transaction.
+        $postCommitActions[] = [
+            'kind' => 'invoice_ready', 'email' => $c_email, 'name' => $c_name,
+            'reference' => $ref_no, 'total' => $new_total,
+        ];
 
         create_user_notification($conn, $c_user_id, "Quotation Ready", "Your event quotation for $v_name is ready. Review the amount and submit your payment reference and receipt from the dashboard within {$payment_hours} hours.");
 
@@ -864,6 +858,20 @@ try {
                 create_user_notification($conn, $postCommitAction['user_id'], 'Reschedule Rejected', 'Your request to reschedule ' . $postCommitAction['venue_name'] . ' was declined. Your original dates remain secured.');
             } catch (Throwable $notificationError) {
                 error_log('Reschedule rejection notification failed: ' . get_class($notificationError) . ' booking_id=' . (int)$booking_id);
+            }
+        } elseif ($postCommitAction['kind'] === 'invoice_ready') {
+            $dash_link = site_metadata_absolute_url('user_dashboard.php');
+            if ($dash_link === null) {
+                error_log('Invoice email skipped: APP_BASE_URL is missing or invalid booking_id=' . (int)$booking_id);
+            } else {
+                try {
+                    send_invoice_ready_email(
+                        $postCommitAction['email'], $postCommitAction['name'], $postCommitAction['reference'],
+                        $postCommitAction['total'], $dash_link
+                    );
+                } catch (Throwable $mailError) {
+                    error_log('Invoice email delivery failed: ' . get_class($mailError) . ' booking_id=' . (int)$booking_id);
+                }
             }
         } elseif ($postCommitAction['kind'] === 'manual_payment_receipt') {
             try {
