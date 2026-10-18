@@ -327,8 +327,16 @@ try {
         try {
             $stmt = $conn->prepare("SELECT id FROM seminars WHERE id=? AND status='draft' FOR UPDATE"); $stmt->bind_param('i', $seminarId); $stmt->execute(); if (!$stmt->get_result()->num_rows) throw new InvalidArgumentException('Reopen the finalized seminar before editing attendees.'); $stmt->close();
             if ($op === 'attendee_add') { $stmt = $conn->prepare('INSERT INTO seminar_attendees (seminar_id,full_name,gender,location,contact) VALUES (?,?,?,?,?)'); $stmt->bind_param('issss', $seminarId, $name, $gender, $location, $contact); }
-            else { $attendeeId = seminar_id($data['attendee_id'] ?? null, 'attendee'); $stmt = $conn->prepare('UPDATE seminar_attendees SET full_name=?,gender=?,location=?,contact=? WHERE id=? AND seminar_id=?'); $stmt->bind_param('ssssii', $name, $gender, $location, $contact, $attendeeId, $seminarId); }
-            $stmt->execute(); if ($stmt->affected_rows < 1 && $op === 'attendee_update') throw new InvalidArgumentException('Attendee not found.'); $stmt->close();
+            else {
+                $attendeeId = seminar_id($data['attendee_id'] ?? null, 'attendee');
+                $stmt = $conn->prepare('SELECT id FROM seminar_attendees WHERE id=? AND seminar_id=? FOR UPDATE');
+                $stmt->bind_param('ii', $attendeeId, $seminarId); $stmt->execute();
+                $attendeeExists = $stmt->get_result()->num_rows > 0; $stmt->close();
+                if (!$attendeeExists) throw new InvalidArgumentException('Attendee not found.');
+                $stmt = $conn->prepare('UPDATE seminar_attendees SET full_name=?,gender=?,location=?,contact=? WHERE id=? AND seminar_id=?');
+                $stmt->bind_param('ssssii', $name, $gender, $location, $contact, $attendeeId, $seminarId);
+            }
+            $stmt->execute(); $stmt->close();
             $conn->commit();
         } catch (Throwable $error) { $conn->rollback(); throw $error; }
         echo json_encode(['success' => true, 'seminar' => seminar_load($seminarId)]); exit;
