@@ -1,6 +1,25 @@
 <?php
 require_once __DIR__ . '/seminars.php';
 
+/** Parse a head count without truncating decimals, suffixes or integer overflow. */
+function booking_guest_count(mixed $value): int
+{
+    if (!is_string($value) && !is_int($value)) {
+        throw new InvalidArgumentException('Guest count must be a positive whole number.');
+    }
+    $digits = trim((string)$value);
+    if (!preg_match('/\A[0-9]+\z/D', $digits)) {
+        throw new InvalidArgumentException('Guest count must be a positive whole number.');
+    }
+    $digits = ltrim($digits, '0');
+    $maximum = (string)PHP_INT_MAX;
+    if ($digits === '' || strlen($digits) > strlen($maximum)
+        || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)) {
+        throw new InvalidArgumentException('Guest count must be a positive whole number.');
+    }
+    return (int)$digits;
+}
+
 /**
  * Returns the overlap predicate used for customer inventory.
  * Event halls and Resort Villas occupy every calendar date in their inclusive

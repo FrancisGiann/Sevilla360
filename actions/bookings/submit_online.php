@@ -48,7 +48,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $eDate = trim($_POST['end_date'] ?? '');
         $room_type = trim((string)($_POST['room_type'] ?? ''));
         $scheme = $_POST['payment_scheme'] ?? '';
-        $guests = (int)$_POST['guests'];
+        $guests = booking_guest_count($_POST['guests'] ?? null);
 
         $start_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $sDate);
         $end_dt = DateTimeImmutable::createFromFormat('!Y-m-d', $eDate);
@@ -199,6 +199,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $style_capacity = get_event_style_capacity($conn, (int)$venue_id, $event_style);
             if ($style_capacity === null || $style_capacity <= 0) {
                 throw new Exception("Please select a valid Event Hall seating style.");
+            }
+            // Both booking forms require at least ten Event Hall guests.
+            if ($guests < 10) {
+                throw new Exception("Guest count must be at least 10 for an Event Hall.");
             }
             if ($guests > $style_capacity) {
                 throw new Exception("Guest count exceeds the selected seating style's capacity of {$style_capacity}.");

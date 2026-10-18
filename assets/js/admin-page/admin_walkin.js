@@ -1976,6 +1976,20 @@ class AdminWalkinController {
         return context;
     }
 
+    getGuestCountIssue() {
+        const inputId = this.state.activeTabId === 'tab-hotel' ? 'hotel-guests'
+            : (this.state.activeTabId === 'tab-villa' ? 'villa-guests' : 'event-guests');
+        const input = this.getEl(inputId);
+        const count = input?.valueAsNumber;
+        const maximum = Number(input?.max);
+        const minimum = Number(input?.min || '1');
+        if (!Number.isSafeInteger(count) || count < minimum
+            || !Number.isSafeInteger(maximum) || maximum < 1 || count > maximum) {
+            return `Enter a whole number of guests from ${minimum}${Number.isSafeInteger(maximum) && maximum > 0 ? ` to ${maximum}` : ''}.`;
+        }
+        return null;
+    }
+
     async submitWalkinBooking() {
         const guestName  = this.getEl("guest-name")?.value.trim();
         const guestEmail = this.getEl("guest-email")?.value.trim();
@@ -1985,6 +1999,12 @@ class AdminWalkinController {
 
         if (!guestName || !guestEmail || !guestPhone) {
             showAlert("Notice", "Please complete the Guest Information section.");
+            return;
+        }
+
+        const guestCountIssue = this.getGuestCountIssue();
+        if (guestCountIssue) {
+            showAlert("Notice", guestCountIssue);
             return;
         }
 
