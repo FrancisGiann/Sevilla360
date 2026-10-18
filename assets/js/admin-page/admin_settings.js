@@ -70,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
               "Content-Type": "application/json",
               "X-CSRF-Token": csrfToken
           },
-          body: JSON.stringify({ name, phone, curr_pass: currPass, new_pass: newPass, conf_pass: confPass })
+          body: JSON.stringify({ name, phone, curr_pass: (newPass !== '' || confPass !== '') ? currPass : '', new_pass: newPass, conf_pass: confPass })
       })
       .then(res => res.json())
       .then(data => {

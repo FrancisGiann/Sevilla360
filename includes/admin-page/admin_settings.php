@@ -652,19 +652,19 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 
                     <!-- Event Hall Specific -->
                     <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
-                        <label>Base Rate (₱/Day)</label>
+                        <label for="vm-eh-rate">Base Rate (₱/Day)</label>
                         <input type="number" id="vm-eh-rate" name="base_rate" class="form-control" step="0.01">
                     </div>
                     <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
-                        <label>Theater Capacity</label>
+                        <label for="vm-eh-theater">Theater Capacity</label>
                         <input type="number" id="vm-eh-theater" name="capacity_theater" class="form-control">
                     </div>
                     <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
-                        <label>Classroom Capacity</label>
+                        <label for="vm-eh-classroom">Classroom Capacity</label>
                         <input type="number" id="vm-eh-classroom" name="capacity_classroom" class="form-control">
                     </div>
                     <div class="form-group vm-dynamic vm-event" style="display:none; margin-bottom: 0;">
-                        <label>Banquet Capacity</label>
+                        <label for="vm-eh-banquet">Banquet Capacity</label>
                         <input type="number" id="vm-eh-banquet" name="capacity_banquet" class="form-control">
                     </div>
 
@@ -700,11 +700,11 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 
                     <!-- Villa Specific -->
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Day Rate (₱)</label>
+                        <label for="vm-vi-day">Day Rate (₱)</label>
                         <input type="number" id="vm-vi-day" name="day_rate" class="form-control" step="0.01">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Overnight Rate (₱, total stay rate)</label>
+                        <label for="vm-vi-night">Overnight Rate (₱, total stay rate)</label>
                         <input type="number" id="vm-vi-night" name="overnight_rate" class="form-control" step="0.01">
                     </div>
                     <div class="form-group vm-dynamic vm-villa venue-pool-field" style="display:none; margin-bottom: 0;">
@@ -714,27 +714,27 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         </label>
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Day stay check-in</label>
+                        <label for="vm-vi-day-check-in">Day stay check-in</label>
                         <input type="time" id="vm-vi-day-check-in" name="day_check_in_time" class="form-control" value="07:00">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Day stay check-out</label>
+                        <label for="vm-vi-day-check-out">Day stay check-out</label>
                         <input type="time" id="vm-vi-day-check-out" name="day_check_out_time" class="form-control" value="17:00">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Overnight check-in</label>
+                        <label for="vm-vi-night-check-in">Overnight check-in</label>
                         <input type="time" id="vm-vi-night-check-in" name="overnight_check_in_time" class="form-control" value="14:00">
                     </div>
                     <div class="form-group vm-dynamic vm-villa" style="display:none; margin-bottom: 0;">
-                        <label>Overnight check-out</label>
+                        <label for="vm-vi-night-check-out">Overnight check-out</label>
                         <input type="time" id="vm-vi-night-check-out" name="overnight_check_out_time" class="form-control" value="12:00">
                     </div>
                     <div class="form-group vm-dynamic vm-villa venue-inclusions-field" style="display:none; margin-bottom: 0;">
-                        <label>Day stay inclusions <span class="field-help">Comma or newline separated</span></label>
+                        <label for="vm-vi-day-inclusions">Day stay inclusions <span class="field-help">Comma or newline separated</span></label>
                         <textarea id="vm-vi-day-inclusions" name="day_stay_inclusions" class="form-control" rows="3" data-required="false" placeholder="TV, bed, air conditioner"></textarea>
                     </div>
                     <div class="form-group vm-dynamic vm-villa venue-inclusions-field" style="display:none; margin-bottom: 0;">
-                        <label>Overnight inclusions <span class="field-help">Comma or newline separated</span></label>
+                        <label for="vm-vi-night-inclusions">Overnight inclusions <span class="field-help">Comma or newline separated</span></label>
                         <textarea id="vm-vi-night-inclusions" name="overnight_stay_inclusions" class="form-control" rows="3" data-required="false" placeholder="Complimentary breakfast for 4 persons"></textarea>
                     </div>
 

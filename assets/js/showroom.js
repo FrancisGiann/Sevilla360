@@ -2170,7 +2170,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!receptionistBackdropImage) return;
       // Hotel group panoramas are tour media, not standard room photos.
       // Preserve the legacy gallery behavior for Event and Villa venues.
-      const images = room.room_group_id
+      const images = room?.room_group_id
         ? (hasGallery(room) ? room.gallery.filter(Boolean) : [])
         : venueImages(room);
       const galleryIndex = images.length ? Math.min(Math.max(Number(photoIndex) || 0, 0), images.length - 1) : 0;
