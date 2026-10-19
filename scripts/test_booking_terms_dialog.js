@@ -19,7 +19,7 @@ function fixture() {
     const elements = Object.fromEntries(['tnc-modal','open-terms','btn-close-terms','btn-agree','terms-check'].map(id => [id,make(id)]));
     elements['tnc-modal'].classList.add('modal-overlay');
     elements['tnc-modal'].querySelectorAll = () => [elements['btn-close-terms'], elements['btn-agree']];
-    elements['tnc-modal'].getBoundingClientRect = () => ({});
+    elements['tnc-modal'].contains = el => [elements['btn-close-terms'], elements['btn-agree']].includes(el);
     document.getElementById = id => elements[id];
     const context = { document, setTimeout: fn => fn(), window: { addEventListener(n,fn) { handlers[n] = fn; } } };
     vm.createContext(context);

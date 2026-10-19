@@ -48,6 +48,7 @@ class SevillaCalendar {
     this.requireHotelRules = options.requireHotelRules === true;
     this.allowSelectionWhilePrimaryLocked = options.allowSelectionWhilePrimaryLocked === true;
     this.onRangeSelected = typeof options.onRangeSelected === 'function' ? options.onRangeSelected : null;
+    this.updateSummaryDisplay = options.updateSummaryDisplay !== false;
 
     this.bookedDatesList = [];
     this.hardBlockedDatesList = [];
@@ -381,8 +382,10 @@ class SevillaCalendar {
     }
 
     // Update whichever elements actually exist on the page!
-    if (adminDateDisplay) adminDateDisplay.innerText = displayStr;
-    userDateDisplays.forEach(el => el.innerText = displayStr);
+    if (this.updateSummaryDisplay !== false) {
+      if (adminDateDisplay) adminDateDisplay.innerText = displayStr;
+      userDateDisplays.forEach(el => el.innerText = displayStr);
+    }
     
     // Tell the page to recalculate the money based on the new totalNights!
     if (typeof window.calculateSummary === "function") {

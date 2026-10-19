@@ -574,6 +574,7 @@ class BookingController {
             this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
             this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
                 requireHotelRules: true,
+                updateSummaryDisplay: false,
                 onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
             });
         }
@@ -1252,9 +1253,14 @@ class BookingController {
         document.body.style.overflow = 'hidden';
         modal.classList.add('active');
         modal.setAttribute('aria-hidden', 'false');
-        // Resolve the visibility transition before focusing a formerly hidden control.
-        modal.getBoundingClientRect();
         this.getEl('btn-close-terms')?.focus({ preventScroll: true });
+        // The shared overlay animates visibility. Retry after that transition,
+        // without moving focus if the visitor already reached a dialog action.
+        setTimeout(() => {
+            if (modal.classList.contains('active') && !modal.contains(document.activeElement)) {
+                this.getEl('btn-close-terms')?.focus({ preventScroll: true });
+            }
+        }, 300);
     }
 
     closeTermsDialog() {
