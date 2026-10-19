@@ -88,13 +88,13 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     </div>
 
                     <div class="form-group">
-                        <label>EMAIL ADDRESS</label>
-                        <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
+                        <label for="login-email">EMAIL ADDRESS</label>
+                        <input type="email" id="login-email" name="email" class="form-control" placeholder="Enter your email" autocomplete="email" required>
                     </div>
                     <div class="form-group">
-                        <label>PASSWORD</label>
+                        <label for="login-password">PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" name="password" class="form-control"
+                            <input type="password" id="login-password" name="password" class="form-control" autocomplete="current-password"
                                 placeholder="Enter your password" required>
                             <span class="password-toggle">SHOW</span>
                         </div>
@@ -145,7 +145,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         </div>
 
                         <div class="form-group">
-                            <label>PASSWORD</label>
+                            <label for="reg-password">PASSWORD</label>
                             <div class="password-wrapper">
                                 <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help">
                                 <span class="password-toggle">SHOW</span>
@@ -155,7 +155,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         </div>
 
                         <div class="form-group">
-                            <label>CONFIRM PASSWORD</label>
+                            <label for="reg-confirm-password">CONFIRM PASSWORD</label>
                             <div class="password-wrapper">
                                 <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" required>
                                 <span class="password-toggle">SHOW</span>
@@ -169,13 +169,13 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <!-- STEP 2: Personal Info -->
                     <div id="register-step-2" class="register-step">
                         <div class="form-group">
-                            <label>FIRST NAME</label>
-                            <input type="text" name="first_name" class="form-control" placeholder="Juan" required>
+                            <label for="reg-first-name">FIRST NAME</label>
+                            <input type="text" id="reg-first-name" name="first_name" class="form-control" placeholder="Juan" autocomplete="given-name" required>
                         </div>
 
                         <div class="form-group">
-                            <label>LAST NAME</label>
-                            <input type="text" name="last_name" class="form-control" placeholder="Dela Cruz" required>
+                            <label for="reg-last-name">LAST NAME</label>
+                            <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
                         </div>
 
                         <div class="terms-checkbox-group">
@@ -240,8 +240,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     </div>
 
                     <div class="form-group">
-                        <label>EMAIL ADDRESS</label>
-                        <input type="email" name="email" class="form-control" placeholder="Enter your email" required>
+                        <label for="forgot-email">EMAIL ADDRESS</label>
+                        <input type="email" id="forgot-email" name="email" class="form-control" placeholder="Enter your email" autocomplete="email" required>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">SEND RESET LINK</button>
@@ -280,7 +280,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <input type="hidden" name="email" id="verify-email-input">
 
                 <div class="form-group">
-                    <input type="text" name="verification_code" class="form-control" placeholder="000000" maxlength="6"
+                    <label for="verification-code">VERIFICATION CODE</label>
+                    <input type="text" id="verification-code" name="verification_code" class="form-control" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric"
                         style="text-align: center; font-size: 2rem; letter-spacing: 8px; font-weight: bold; padding: 15px;"
                         required>
                 </div>

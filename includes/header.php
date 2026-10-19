@@ -231,7 +231,7 @@ $nav = [
                 <?php endif; ?>
             </div>
 
-            <button type="button" class="s-burger" id="burger" aria-label="Toggle navigation" aria-expanded="false">
+            <button type="button" class="s-burger" id="burger" aria-label="Toggle navigation" aria-expanded="false" aria-controls="mobile-navigation">
                 <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
                 </svg>
@@ -241,7 +241,7 @@ $nav = [
             </button>
         </nav>
 
-        <div class="s-mobile">
+        <div class="s-mobile" id="mobile-navigation">
             <?php foreach ($nav as $key => $item): ?>
             <a href="<?php echo htmlspecialchars($item['url']); ?>"
                 data-nav-key="<?php echo htmlspecialchars($key); ?>"
@@ -273,6 +273,14 @@ $nav = [
         burger.addEventListener('click', function() {
             var open = header.classList.toggle('is-open');
             burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key !== 'Escape' || !header.classList.contains('is-open')) return;
+            event.preventDefault();
+            header.classList.remove('is-open');
+            burger.setAttribute('aria-expanded', 'false');
+            burger.focus();
         });
 
         // Keep the mobile drawer usable for both regular page links and
