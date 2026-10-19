@@ -119,9 +119,9 @@ foreach ([
     'Completed' => 'Completed',
     'Cancelled' => 'Cancelled',
 ] as $value => $label) {
-    $assert(str_contains($php, '<option value="' . $value . '">' . $label . '</option>'), "status selector retains {$value} with label {$label}");
+    $assert(str_contains($php, var_export($value, true) . ' => ' . var_export($label, true)), "status selector retains {$value} with label {$label}");
 }
-$assert(str_contains($php, '<label for="statusFilter">Filter bookings</label>') && str_contains($js, 'statusFilter.addEventListener("change"'), 'the status selector is labeled and drives the existing row filters');
+$assert(str_contains($php, '<label for="statusFilter">Filter bookings</label>') && str_contains($js, 'statusFilter.addEventListener("change"'), 'the status selector is labeled and drives booking-history filtering');
 $assert(preg_match('/<a\b[^>]*>\s*<button\b/is', $php) !== 1 && preg_match('/<button\b[^>]*>\s*<a\b/is', $php) !== 1, 'dashboard markup has no directly nested anchor/button controls');
 $assert(str_contains($php, 'class="btn-primary-dash booking-new-link"><i') && str_contains($php, '</i> New Booking</a>'), 'New Booking is one semantic anchor styled as the action');
 $assert(str_contains($php, 'You don’t have any bookings yet. Select “New Booking” above to explore venues and start a reservation.'), 'the empty booking history explains the next task');
