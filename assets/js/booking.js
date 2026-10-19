@@ -640,12 +640,8 @@ class BookingController {
                 this.focusBookingElement(firstNew);
             }
         });
-        document.querySelector('.booking-summary-jump')?.addEventListener('click', event => {
-            event.preventDefault();
-            this.focusBookingElement(this.getEl('booking-summary'));
-        });
         document.querySelector('.booking-summary-return')?.addEventListener('click', () => {
-            this.focusBookingElement(document.querySelector('.booking-summary-jump'));
+            this.navigateToBookingStep(1);
         });
         this.renderRoomCatalog();
     }
@@ -839,14 +835,13 @@ class BookingController {
             });
             this.updateEventGuestLimit(Boolean(option?.dataset.id), capacities, true);
         }
-        const summaryJump = document.querySelector('.booking-summary-jump');
-        if (summaryJump) {
-            const label = summaryJump.querySelector('[data-summary-jump-label]');
-            if (label) label.textContent = currentStep === 4 ? 'Go to contact and submit' : 'View live summary';
-            summaryJump.setAttribute('aria-label', currentStep === 4
-                ? 'Jump to the booking summary and submission controls'
-                : 'Jump to the live booking summary');
+        const compactEstimate = this.getEl('booking-compact-estimate');
+        const activePanel = this.getEl(`tab-${this.state.activeTabId}`)?.querySelector(`[data-booking-step-panel="${currentStep}"]`);
+        const nextButton = activePanel?.querySelector('[data-booking-step-next]');
+        if (compactEstimate && nextButton) {
+            nextButton.parentElement.insertBefore(compactEstimate, nextButton);
         }
+        this.calculateSummary();
     }
 
     focusBookingElement(element) {
@@ -2360,6 +2355,26 @@ class BookingController {
     // =========================================================================
     // CALCULATION LOGIC
     // =========================================================================
+    hasBookingSelection(context = this.getTabContextData()) {
+        return this.state.activeTabId === 'hotel-rooms'
+            ? Boolean(context.roomType && context.roomName)
+            : Boolean(context.venueId);
+    }
+
+    updateSummaryVisibility(hasSelection, hasEstimate) {
+        const summary = this.getEl('booking-summary');
+        const reviewing = this.state.currentStep === 4;
+        const showBreakdown = hasSelection && reviewing;
+        if (!showBreakdown && summary?.contains(document.activeElement)) {
+            this.focusBookingElement(document.querySelector('[data-booking-step-nav].is-current'));
+        }
+        if (summary) summary.hidden = !showBreakdown;
+        const compactEstimate = this.getEl('booking-compact-estimate');
+        if (compactEstimate) compactEstimate.hidden = !hasSelection || !hasEstimate || reviewing;
+        const sidebar = document.querySelector('.booking-sidebar');
+        if (sidebar) sidebar.hidden = true;
+    }
+
     calculateSummary() {
         this.renderRoomCatalog();
         this.state.summary.total = 0;
@@ -2377,9 +2392,7 @@ class BookingController {
         const calendarKey = this.state.activeTabId === 'event-hall' ? 'event'
             : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa');
         const calendar = this.state.calendars[calendarKey];
-        const hasVenue = this.state.activeTabId === 'hotel-rooms'
-            ? Boolean(context.roomType && context.roomName)
-            : Boolean(context.venueId);
+        const hasVenue = this.hasBookingSelection(context);
         const hasDates = this.state.activeTabId === 'hotel-rooms'
             ? Boolean(calendar?.startDate && calendar?.endDate)
             : Boolean(calendar?.startDate);
@@ -2387,6 +2400,7 @@ class BookingController {
         const eventGuests = Number.parseInt(this.getEl('event-guests')?.value, 10) || 0;
         const hasRequiredEstimateInputs = !isEventInquiry || !this.getEl('check-catering')?.checked || eventGuests >= 10;
         const hasPriceInputs = hasVenue && hasDates && hasRequiredEstimateInputs;
+        this.updateSummaryVisibility(hasVenue, hasPriceInputs);
 
         switch (this.state.activeTabId) {
             case 'hotel-rooms': this.calcHotelMath(); break;
@@ -2427,10 +2441,9 @@ class BookingController {
                 ? 'Choose a room and dates to see your estimate.'
                 : 'Choose a villa and dates to see your estimate.';
         }
-        const compactEstimate = document.querySelector('[data-summary-jump-estimate]');
+        const compactEstimate = this.getEl('booking-compact-estimate');
         if (compactEstimate) {
-            compactEstimate.hidden = !hasPriceInputs;
-            compactEstimate.textContent = hasPriceInputs ? `Est. ${this.formatCurrency(this.state.summary.total)}` : '';
+            compactEstimate.textContent = hasPriceInputs ? `Estimated total: ${this.formatCurrency(this.state.summary.total)}` : '';
         }
         if (totalValEl) totalValEl.textContent = hasPriceInputs ? this.formatCurrency(this.state.summary.total) : '—';
         const eventEstimate = this.getEl('event-estimate-total');

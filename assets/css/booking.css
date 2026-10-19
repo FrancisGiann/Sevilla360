@@ -1362,6 +1362,11 @@ textarea:focus {
 }
 
 /* Public booking only: the shared Staff room catalog keeps its own layout. */
+.booking-section .booking-compact-estimate { margin-left: auto; align-self: center; color: #67471f; font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .booking-section .booking-step-actions { flex-wrap: wrap; }
+  .booking-section .booking-step-actions .booking-compact-estimate { flex-basis: 100%; order: -1; text-align: right; }
+}
 /* Clip horizontal decoration without making body a nested scroll container;
    the summary action must stick to the document viewport. */
 body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
