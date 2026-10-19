@@ -1549,20 +1549,8 @@ class BookingController {
             ? option.dataset.description
             : (hasSelection ? 'No additional description is available for this accommodation.' : 'Select a building to view its description.');
         description.classList.toggle('venue-description-empty', !hasDescription);
-        amenities.innerHTML = '';
         const items = (option.dataset.amenities || '').split(/[,\n]+/).map(item => item.trim()).filter(Boolean);
-        if (items.length === 0) {
-            const empty = document.createElement('li');
-            empty.className = 'amenities-empty';
-            empty.textContent = hasSelection ? 'No amenities listed.' : 'Select a building to view its amenities.';
-            amenities.appendChild(empty);
-        } else {
-            items.forEach(item => {
-                const li = document.createElement('li');
-                li.textContent = item;
-                amenities.appendChild(li);
-            });
-        }
+        this.renderAmenityList(amenities, items, hasSelection ? 'No amenities listed.' : 'Select a building to view its amenities.');
 
         const facts = {
             'hotel-base-capacity': hasSelection && Number.isFinite(baseCapacity) && baseCapacity > 0 ? `${baseCapacity} guests` : '—',
@@ -1760,20 +1748,117 @@ class BookingController {
                 ? `No additional description is available for this ${itemLabel}.`
                 : `Select ${article} ${itemLabel} to view its description.`);
         description.classList.toggle('venue-description-empty', !hasDescription);
-        amenities.replaceChildren();
         const items = (option.dataset.amenities || '').split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
+        this.renderAmenityList(amenities, items, hasSelection ? 'No amenities listed.' : `Select ${article} ${itemLabel} to view its amenities.`);
+    }
+
+    renderAmenityList(list, items, emptyText) {
+        // Staff keeps its full list; this disclosure belongs to public booking only.
+        const compact = Boolean(list.closest('.booking-section'));
+        list.nextElementSibling?.classList.contains('amenities-disclosure') && list.nextElementSibling.remove();
+        list.classList.toggle('amenities-preview', compact && items.length > 3);
+        list.replaceChildren();
         if (!items.length) {
             const empty = document.createElement('li');
             empty.className = 'amenities-empty';
-            empty.textContent = hasSelection ? 'No amenities listed.' : `Select ${article} ${itemLabel} to view its amenities.`;
-            amenities.appendChild(empty);
+            empty.textContent = emptyText;
+            list.appendChild(empty);
             return;
         }
-        items.forEach(item => {
+        (compact ? items.slice(0, 3) : items).forEach(item => {
             const li = document.createElement('li');
-            li.textContent = item;
-            amenities.appendChild(li);
+            const text = document.createElement('span');
+            text.textContent = item;
+            li.appendChild(text);
+            list.appendChild(li);
         });
+        if (!compact || items.length <= 3) return;
+        const controls = document.createElement('div');
+        controls.className = 'amenities-disclosure';
+        const count = document.createElement('span');
+        count.textContent = `${items.length} included amenities`;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'View all amenities';
+        button.setAttribute('aria-haspopup', 'dialog');
+        button.addEventListener('click', () => this.openAmenitiesPanel(items, button));
+        controls.append(count, button);
+        list.after(controls);
+    }
+
+    openAmenitiesPanel(items, trigger) {
+        if (this.amenitiesPanel?.open) return;
+        const panel = document.createElement('dialog');
+        panel.className = 'booking-amenities-panel';
+        panel.setAttribute('aria-labelledby', 'amenities-panel-title');
+        const header = document.createElement('div');
+        header.className = 'amenities-panel-header';
+        const title = document.createElement('h3');
+        title.id = 'amenities-panel-title';
+        title.textContent = 'Included amenities';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = 'Close';
+        header.append(title, close);
+        const label = document.createElement('label');
+        label.htmlFor = 'amenities-search';
+        label.textContent = 'Find an amenity';
+        const search = document.createElement('input');
+        search.id = 'amenities-search';
+        search.type = 'search';
+        search.placeholder = 'Search amenities';
+        const status = document.createElement('p');
+        status.className = 'amenities-panel-status';
+        status.setAttribute('role', 'status');
+        const list = document.createElement('ul');
+        list.className = 'amenities-panel-list';
+        list.tabIndex = 0;
+        list.setAttribute('aria-label', 'Included amenities');
+        const render = () => {
+            const query = search.value.trim().toLocaleLowerCase();
+            const matches = items.filter(item => item.toLocaleLowerCase().includes(query));
+            status.textContent = matches.length ? `${matches.length} of ${items.length} amenities` : 'No matching amenities. Try another search.';
+            list.replaceChildren(...matches.map(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                return li;
+            }));
+        };
+        search.addEventListener('input', render);
+        panel.addEventListener('keydown', event => {
+            if (event.key !== 'Tab') return;
+            const focusable = [close, search, list];
+            const active = document.activeElement;
+            if (!focusable.includes(active) || (event.shiftKey && active === close) || (!event.shiftKey && active === list)) {
+                event.preventDefault();
+                (event.shiftKey ? list : close).focus();
+            }
+        });
+        panel.append(header, label, search, status, list);
+        document.body.appendChild(panel);
+        this.amenitiesPanel = panel;
+        const previousOverflow = document.body.style.overflow;
+        const historyKey = `amenities-${Date.now()}`;
+        const onBack = () => { if (panel.open) panel.close(); };
+        window.addEventListener('popstate', onBack);
+        panel.addEventListener('close', () => {
+            window.removeEventListener('popstate', onBack);
+            document.body.style.overflow = previousOverflow;
+            panel.remove();
+            this.amenitiesPanel = null;
+            if (trigger.isConnected) trigger.focus({ preventScroll: true });
+            if (history.state?.bookingAmenities === historyKey) history.back();
+        }, { once: true });
+        close.addEventListener('click', () => panel.close());
+        panel.addEventListener('click', event => { if (event.target === panel) {
+            const rect = panel.getBoundingClientRect();
+            if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) panel.close();
+        }});
+        render();
+        panel.showModal();
+        document.body.style.overflow = 'hidden';
+        history.pushState({ ...history.state, bookingAmenities: historyKey }, '');
+        search.focus({ preventScroll: true });
     }
 
     closeServiceSwitchDialog({ restoreFocus = true } = {}) {
