@@ -1360,3 +1360,93 @@ textarea:focus {
   .booking-step-heading { font-size: 1.35rem; }
   .booking-step-actions .btn { padding: 0.75rem 0.8rem; }
 }
+
+/* Public booking only: the shared Staff room catalog keeps its own layout. */
+/* Clip horizontal decoration without making body a nested scroll container;
+   the summary action must stick to the document viewport. */
+body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
+.booking-section .room-catalog-tools { margin-bottom: 1rem; }
+.booking-section .room-catalog-tools label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
+.booking-section #addon-room-search { width: 100%; min-height: 44px; font: inherit; padding: 0.65rem 0.75rem; border: 1px solid #b6aa9c; border-radius: 6px; background: #fff; color: #302b26; }
+.booking-section .selected-rooms-heading h5 { margin: 1.25rem 0 0.35rem; font-size: 1rem; }
+.booking-section #selected-rooms-status,
+.booking-section #room-catalog-status { margin: 0 0 0.8rem; color: #574c41; font-size: 0.9rem; line-height: 1.5; }
+.booking-section #selected-room-groups { margin-bottom: 1.25rem; }
+.booking-section .room-group-card.is-selected { border-color: #67471f !important; }
+.booking-section .room-group-info,
+.booking-section .room-group-info > div,
+.booking-section .selected-room-row > div { min-width: 0; overflow-wrap: anywhere; }
+.booking-section .room-group-card { gap: 0.75rem; }
+.booking-section .btn-add-room-group { min-height: 44px; background: #67471f !important; color: #fff !important; }
+.booking-section .btn-add-room-group:disabled { opacity: 0.55; cursor: not-allowed; }
+.booking-section .room-catalog-more,
+.booking-section .booking-summary-return { min-height: 44px; padding: 0.65rem 1rem; border: 1px solid #67471f; border-radius: 6px; background: #fffdf8; color: #67471f; cursor: pointer; font: 600 0.9rem/1.4 var(--font-body); }
+.booking-section .room-catalog-more { width: 100%; }
+.booking-section .booking-summary-return { display: none; margin-bottom: 1rem; }
+.booking-section .selected-room-row .btn-remove-room-sel { width: 44px !important; height: 44px !important; flex: 0 0 44px; }
+.booking-section .selected-room-row .sel-room-qty { min-height: 44px; font-size: 1rem; }
+
+@media (max-width: 992px) {
+  .booking-section .booking-summary-jump {
+    position: sticky;
+    top: 78px;
+    z-index: 20;
+    display: flex;
+    width: 100%;
+    gap: 0.5rem 1rem;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    margin: -0.75rem 0 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid #67471f;
+    border-radius: 6px;
+    background: #fffdf8;
+    color: #67471f;
+    text-decoration: none;
+    box-shadow: 0 3px 8px rgba(42, 37, 34, 0.08);
+  }
+  .booking-section .booking-summary-jump [data-summary-jump-estimate] { font-variant-numeric: tabular-nums; }
+  .booking-section .booking-summary-return { display: inline-flex; }
+}
+
+@media (max-width: 600px) {
+  .booking-section { padding: 88px 0 64px; }
+  .booking-section > .container { width: 100%; padding-inline: 12px; }
+  .booking-section .booking-main { padding: 12px; }
+  .booking-section .booking-tabs { margin-bottom: 1.25rem; }
+  .booking-section .booking-tabs .tab-btn { min-height: 48px; }
+  .booking-section .booking-stepper { margin-bottom: 1rem; }
+  .booking-section .booking-step-link { flex-direction: column; gap: 4px; min-height: 58px; font-size: 0.8rem; }
+  .booking-section .tab-content > .section-title { font-size: 1.8rem; line-height: 1.15; margin-bottom: 1.25rem; letter-spacing: 0; }
+  .booking-section .addons-section { padding: 12px; margin-bottom: 1rem; }
+  .booking-section .addon-title { font-size: 1.3rem; margin-bottom: 1rem; }
+  .booking-section .addon-content { margin-left: 0; padding-left: 0; border-left: 0; }
+  .booking-section .toggle-label { align-items: flex-start; min-height: 44px; font-size: 1rem; }
+  .booking-section .toggle-label input { flex: 0 0 auto; margin-top: 5px; }
+  .booking-section .addon-room-calendar { padding: 0; border: 0; background: transparent; }
+  .booking-section .addon-room-calendar-heading { gap: 0.35rem; }
+  .booking-section .calendar-ui { min-width: 0; width: 100%; padding: 8px; margin-bottom: 1rem; box-shadow: none; }
+  .booking-section .cal-header { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 0; margin-bottom: 12px; }
+  .booking-section .cal-nav { min-width: 44px; min-height: 44px; padding: 0; }
+  .booking-section .cal-month-year { min-width: 0; font-size: 1.25rem; text-align: center; line-height: 1.2; }
+  .booking-section .cal-weekdays,
+  .booking-section .cal-days-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); letter-spacing: 0; }
+  .booking-section .cal-weekdays { font-size: 0.65rem; color: #574c41; }
+  .booking-section .cal-weekdays span { min-width: 0; }
+  .booking-section .cal-days-grid { gap: 4px 0; margin-bottom: 14px; }
+  .booking-section .cal-day-cell { min-width: 0; height: 44px; margin-inline: 1px; font-size: 0.9rem; }
+  .booking-section .cal-legend { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px 12px; padding-top: 12px; }
+  .booking-section .cal-legend .legend-item { min-width: 0; font-size: 0.75rem; line-height: 1.4; white-space: normal; text-align: left; }
+  .booking-section .cal-legend .dot { flex: 0 0 auto; }
+  .booking-section #addon-type-filter { width: 100%; max-width: none !important; min-height: 44px; font-size: 1rem !important; }
+  .booking-section .room-group-card { flex-direction: column; align-items: stretch !important; padding: 10px !important; }
+  .booking-section .room-group-info { width: 100%; align-items: flex-start !important; gap: 10px !important; }
+  .booking-section .room-group-info > div { flex: 1; line-height: 1.45; }
+  .booking-section .room-group-info .room-group-thumb { width: 56px !important; height: 56px !important; box-shadow: none !important; }
+  .booking-section .room-group-info strong { font-size: 0.95rem !important; }
+  .booking-section .room-group-info small { font-size: 0.85rem; }
+  .booking-section .room-group-card .btn-add-room-group { align-self: stretch; width: 100%; }
+  .booking-section .selected-room-row { flex-wrap: wrap; padding-block: 10px; border-bottom: 1px solid #d8cec0; }
+  .booking-section .selected-room-row > div:first-child { flex-basis: 100% !important; }
+  .booking-section .selected-room-row > div:last-child { margin-left: auto; }
+}

@@ -167,7 +167,7 @@ unset($villa);
                 <button type="button" class="tab-btn" id="booking-tab-hotel-rooms" role="tab" aria-selected="false" aria-controls="tab-hotel-rooms" tabindex="-1" data-tab="hotel-rooms">Hotel Rooms</button>
                 <button type="button" class="tab-btn" id="booking-tab-resort-villa" role="tab" aria-selected="false" aria-controls="tab-resort-villa" tabindex="-1" data-tab="resort-villa">Resort Villa</button>
             </div>
-            <a class="booking-summary-jump" href="#booking-summary" aria-label="Jump to booking summary and submission controls">Review summary</a>
+            <a class="booking-summary-jump" href="#booking-summary" aria-label="Jump to booking summary and submission controls"><span data-summary-jump-label>View live summary</span><span data-summary-jump-estimate hidden></span></a>
 
             <nav class="booking-stepper" aria-label="Booking steps" data-booking-stepper>
                 <ol>
@@ -200,6 +200,7 @@ unset($villa);
         <!-- RIGHT COLUMN: STICKY SUMMARY (35%) -->
         <div class="booking-sidebar">
             <div class="sticky-summary" id="booking-summary" tabindex="-1">
+                <button type="button" class="booking-summary-return">Back to selection</button>
                 <h3
                     style="font-family: var(--font-heading); margin-bottom: 1.5rem; font-size: 1.6rem; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">
                     Booking Summary

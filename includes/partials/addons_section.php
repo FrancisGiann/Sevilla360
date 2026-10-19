@@ -89,6 +89,18 @@ $addon_room_groups = $hotel_room_groups ?? [];
                 <?php $calendarId = 'cal-ui-addon-hotel'; include __DIR__ . '/booking_calendar.php'; ?>
             </div>
 
+            <?php if (($active_page ?? '') === 'booking'): ?>
+            <div class="selected-rooms-heading">
+                <h5>Selected rooms</h5>
+                <p id="selected-rooms-status" role="status">No rooms selected. Add rooms below after confirming your stay.</p>
+            </div>
+            <div id="selected-room-groups" aria-label="Selected hotel rooms"></div>
+            <div class="room-catalog-tools" data-room-catalog-tools hidden>
+                <label for="addon-room-search">Find a room</label>
+                <input type="search" id="addon-room-search" placeholder="Building or room type" aria-controls="room-groups-catalog" autocomplete="off">
+            </div>
+            <?php endif; ?>
+
             <!-- Filter dropdown -->
             <?php 
                 $unique_types = [];
@@ -111,6 +123,9 @@ $addon_room_groups = $hotel_room_groups ?? [];
             </div>
             <?php endif; ?>
 
+            <?php if (($active_page ?? '') === 'booking'): ?>
+            <p id="room-catalog-status" role="status" aria-live="polite" hidden></p>
+            <?php endif; ?>
             <!-- Room group catalog: rendered from real DB data -->
             <div class="room-groups-catalog" id="room-groups-catalog">
                 <?php foreach($addon_room_groups as $grp): 
@@ -154,7 +169,11 @@ $addon_room_groups = $hotel_room_groups ?? [];
             </div>
 
             <!-- Selected room groups with quantity controls -->
+            <?php if (($active_page ?? '') === 'booking'): ?>
+            <button type="button" class="room-catalog-more" id="room-catalog-more" aria-controls="room-groups-catalog" hidden>Show more rooms</button>
+            <?php else: ?>
             <div id="selected-room-groups" style="margin-top:12px;"></div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -169,7 +188,7 @@ $addon_room_groups = $hotel_room_groups ?? [];
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const filter = document.getElementById("addon-type-filter");
-    if (filter) {
+    if (filter && !document.querySelector(".booking-section")) {
         filter.addEventListener("change", function() {
             const selected = this.value;
             const cards = document.querySelectorAll(".room-group-card");

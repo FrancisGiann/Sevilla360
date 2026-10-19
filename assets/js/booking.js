@@ -52,6 +52,7 @@ class BookingController {
         this.initCalendars();
         this.bindNavigationAndTabs();
         this.bindUIInteractions();
+        this.bindRoomCatalog();
         this.bindCalculatorTriggers();
         this.bindModalsAndSubmission();
         this.bindUnloadHook();
@@ -619,6 +620,74 @@ class BookingController {
         });
     }
 
+    bindRoomCatalog() {
+        const tools = document.querySelector('[data-room-catalog-tools]');
+        if (!tools) return;
+        this.roomCatalogLimit = 6;
+        tools.hidden = false;
+        this.getEl('room-catalog-status').hidden = false;
+        const reset = () => { this.roomCatalogLimit = 6; this.renderRoomCatalog(); };
+        this.getEl('addon-room-search')?.addEventListener('input', reset);
+        this.getEl('addon-type-filter')?.addEventListener('change', reset);
+        this.getEl('room-catalog-more')?.addEventListener('click', () => {
+            const cards = Array.from(document.querySelectorAll('.room-group-card'));
+            const previouslyVisible = new Set(cards.filter(card => !card.hidden));
+            this.roomCatalogLimit += 6;
+            this.renderRoomCatalog();
+            const firstNew = cards.find(card => !card.hidden && !previouslyVisible.has(card));
+            if (firstNew) {
+                firstNew.tabIndex = -1;
+                this.focusBookingElement(firstNew);
+            }
+        });
+        document.querySelector('.booking-summary-jump')?.addEventListener('click', event => {
+            event.preventDefault();
+            this.focusBookingElement(this.getEl('booking-summary'));
+        });
+        document.querySelector('.booking-summary-return')?.addEventListener('click', () => {
+            this.focusBookingElement(document.querySelector('.booking-summary-jump'));
+        });
+        this.renderRoomCatalog();
+    }
+
+    renderRoomCatalog() {
+        const status = this.getEl('room-catalog-status');
+        if (!status) return;
+        const normalize = value => value.normalize('NFKC').toLocaleLowerCase().trim();
+        const query = normalize(this.getEl('addon-room-search')?.value || '');
+        const type = this.getEl('addon-type-filter')?.value || 'all';
+        const selected = new Map(Array.from(document.querySelectorAll('.selected-room-row')).map(row => [row.dataset.selKey, row]));
+        let matching = 0;
+        let shown = 0;
+        document.querySelectorAll('.room-group-card').forEach(card => {
+            const matches = (type === 'all' || card.dataset.roomType === type)
+                && normalize(`${card.dataset.building} ${card.dataset.roomType}`).includes(query);
+            if (matches) matching++;
+            card.hidden = !matches || matching > (this.roomCatalogLimit || 6);
+            if (!card.hidden) shown++;
+            const row = selected.get(card.dataset.groupKey);
+            card.classList.toggle('is-selected', Boolean(row));
+            const button = card.querySelector('.btn-add-room-group');
+            if (button) {
+                const quantity = row?.querySelector('.sel-room-qty')?.value;
+                button.textContent = row ? `Selected (${quantity})` : '+ Add';
+                button.setAttribute('aria-label', row
+                    ? `${card.dataset.building}, ${card.dataset.roomType}: selected. Adjust quantity above.`
+                    : `Add ${card.dataset.building}, ${card.dataset.roomType}`);
+            }
+        });
+        const text = matching ? `Showing ${shown} of ${matching} room groups` : 'No matching rooms. Try another building or room type.';
+        if (status.textContent !== text) status.textContent = text;
+        const more = this.getEl('room-catalog-more');
+        if (more) more.hidden = shown >= matching;
+        const selectedStatus = this.getEl('selected-rooms-status');
+        if (selectedStatus) {
+            const count = Array.from(selected.values()).reduce((total, row) => total + (Number.parseInt(row.querySelector('.sel-room-qty')?.value, 10) || 0), 0);
+            const text = selected.size ? `${count} room${count === 1 ? '' : 's'} selected in ${selected.size} group${selected.size === 1 ? '' : 's'}. Adjust quantities below.` : 'No rooms selected. Add rooms below after confirming your stay.';
+            if (selectedStatus.textContent !== text) selectedStatus.textContent = text;
+        }
+    }
+
     getActiveBookingCalendar() {
         const calendarKey = this.state.activeTabId === 'hotel-rooms'
             ? 'hotel'
@@ -772,7 +841,8 @@ class BookingController {
         }
         const summaryJump = document.querySelector('.booking-summary-jump');
         if (summaryJump) {
-            summaryJump.textContent = currentStep === 4 ? 'Go to contact and submit' : 'View live summary';
+            const label = summaryJump.querySelector('[data-summary-jump-label]');
+            if (label) label.textContent = currentStep === 4 ? 'Go to contact and submit' : 'View live summary';
             summaryJump.setAttribute('aria-label', currentStep === 4
                 ? 'Jump to the booking summary and submission controls'
                 : 'Jump to the live booking summary');
@@ -1093,6 +1163,7 @@ class BookingController {
         const quantityInput = document.createElement('input');
         quantityInput.type = 'number';
         quantityInput.className = 'sel-room-qty';
+        quantityInput.setAttribute('aria-label', `Quantity for ${building}, ${roomType}`);
         quantityInput.min = '1';
         quantityInput.max = String(inventory);
         quantityInput.value = '1';
@@ -1102,6 +1173,7 @@ class BookingController {
         removeButton.className = 'btn-remove-room-sel';
         removeButton.style.cssText = 'width: 32px; height: 32px; background: #fee2e2; color: #dc2626; border: none; border-radius: 4px; cursor: pointer; display:flex; align-items:center; justify-content:center;';
         removeButton.title = 'Remove';
+        removeButton.setAttribute('aria-label', `Remove ${building}, ${roomType}`);
         const removeIcon = document.createElement('i');
         removeIcon.className = 'fa-solid fa-times';
         removeButton.appendChild(removeIcon);
@@ -2289,6 +2361,7 @@ class BookingController {
     // CALCULATION LOGIC
     // =========================================================================
     calculateSummary() {
+        this.renderRoomCatalog();
         this.state.summary.total = 0;
         this.state.summary.rows = [];
         this.state.summary.bundleDiscount = 0;
@@ -2353,6 +2426,11 @@ class BookingController {
             pricingGuidance.textContent = this.state.activeTabId === 'hotel-rooms'
                 ? 'Choose a room and dates to see your estimate.'
                 : 'Choose a villa and dates to see your estimate.';
+        }
+        const compactEstimate = document.querySelector('[data-summary-jump-estimate]');
+        if (compactEstimate) {
+            compactEstimate.hidden = !hasPriceInputs;
+            compactEstimate.textContent = hasPriceInputs ? `Est. ${this.formatCurrency(this.state.summary.total)}` : '';
         }
         if (totalValEl) totalValEl.textContent = hasPriceInputs ? this.formatCurrency(this.state.summary.total) : '—';
         const eventEstimate = this.getEl('event-estimate-total');
