@@ -55,9 +55,9 @@
 
     <section class="database-backup-section" aria-labelledby="database-backup-archives-title">
         <div class="database-backup-section-heading"><div><h3 id="database-backup-archives-title">Private archives</h3><p>Status checks signed metadata only. Payload checksum and compression are verified before download, upload acceptance, and restore.</p></div><span id="database-backup-archive-count" class="database-backup-count">0</span></div>
-        <div class="database-backup-table-wrap">
+        <div class="database-backup-table-wrap" role="region" aria-label="Private archives table, scroll horizontally for all columns" tabindex="0">
             <table class="database-backup-table">
-                <thead><tr><th>Created</th><th>Type</th><th>Size</th><th>Header check</th><th>Actions</th></tr></thead>
+                <thead><tr><th scope="col">Created</th><th scope="col">Type</th><th scope="col">Size</th><th scope="col">Header check</th><th scope="col">Actions</th></tr></thead>
                 <tbody id="database-backup-archives"><tr><td colspan="5" class="database-backup-empty">Loading archives…</td></tr></tbody>
             </table>
         </div>
@@ -65,9 +65,9 @@
 
     <section class="database-backup-section" aria-labelledby="database-backup-jobs-title">
         <div class="database-backup-section-heading"><div><h3 id="database-backup-jobs-title">Recent jobs</h3><p>The status route remains available during database maintenance.</p></div><span id="database-backup-job-count" class="database-backup-count">0</span></div>
-        <div class="database-backup-table-wrap">
+        <div class="database-backup-table-wrap" role="region" aria-label="Recent backup jobs table, scroll horizontally for all columns" tabindex="0">
             <table class="database-backup-table">
-                <thead><tr><th>Request</th><th>State</th><th>Progress</th><th>Details</th><th>Safety archive</th></tr></thead>
+                <thead><tr><th scope="col">Request</th><th scope="col">State</th><th scope="col">Progress</th><th scope="col">Details</th><th scope="col">Safety archive</th></tr></thead>
                 <tbody id="database-backup-jobs"><tr><td colspan="5" class="database-backup-empty">Loading jobs…</td></tr></tbody>
             </table>
         </div>
