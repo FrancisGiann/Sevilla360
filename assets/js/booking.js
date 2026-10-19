@@ -1197,8 +1197,12 @@ class BookingController {
     }
 
     bindModalsAndSubmission() {
-        this.getEl("open-terms")?.addEventListener("click", (e) => { e.preventDefault(); this.getEl("tnc-modal")?.classList.add("active"); });
-        this.getEl("btn-agree")?.addEventListener("click", () => { this.getEl("tnc-modal")?.classList.remove("active"); this.getEl("terms-check").checked = true; });
+        this.getEl("open-terms")?.addEventListener("click", (e) => { e.preventDefault(); this.openTermsDialog(); });
+        this.getEl("btn-close-terms")?.addEventListener("click", () => this.closeTermsDialog());
+        this.getEl("btn-agree")?.addEventListener("click", () => {
+            this.getEl("terms-check").checked = true;
+            this.closeTermsDialog();
+        });
         
         this.getEl("btn-cancel")?.addEventListener("click", () => {
             this.clearDraft();
@@ -1208,6 +1212,10 @@ class BookingController {
 
         window.addEventListener("click", (e) => {
             if (!e.target.classList.contains("modal-overlay")) return;
+            if (e.target.id === 'tnc-modal') {
+                this.closeTermsDialog();
+                return;
+            }
             if (e.target.id === 'switch-tab-modal') {
                 this.closeServiceSwitchDialog();
                 return;
@@ -1219,6 +1227,10 @@ class BookingController {
             e.target.classList.remove("active");
         });
         window.addEventListener('keydown', (e) => {
+            if (this.getEl('tnc-modal')?.classList.contains('active')) {
+                this.handleTermsDialogKey(e);
+                return;
+            }
             if (this.getEl('switch-tab-modal')?.classList.contains('active')) {
                 this.handleServiceSwitchKey(e);
                 return;
@@ -1230,6 +1242,49 @@ class BookingController {
         });
 
         this.getEl("btn-proceed")?.addEventListener("click", () => this.submitOnlineBooking());
+    }
+
+    openTermsDialog() {
+        const modal = this.getEl('tnc-modal');
+        if (!modal || modal.classList.contains('active')) return;
+        this.termsDialogTrigger = document.activeElement;
+        this.termsDialogPreviousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        modal.classList.add('active');
+        modal.setAttribute('aria-hidden', 'false');
+        // Resolve the visibility transition before focusing a formerly hidden control.
+        modal.getBoundingClientRect();
+        this.getEl('btn-close-terms')?.focus({ preventScroll: true });
+    }
+
+    closeTermsDialog() {
+        this.getEl('tnc-modal')?.classList.remove('active');
+        this.getEl('tnc-modal')?.setAttribute('aria-hidden', 'true');
+        if (this.termsDialogPreviousOverflow !== undefined) {
+            document.body.style.overflow = this.termsDialogPreviousOverflow;
+            this.termsDialogPreviousOverflow = undefined;
+        }
+        const trigger = this.termsDialogTrigger;
+        this.termsDialogTrigger = null;
+        if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    }
+
+    handleTermsDialogKey(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeTermsDialog();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const buttons = Array.from(this.getEl('tnc-modal')?.querySelectorAll('button:not(:disabled)') || []);
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (!first) return;
+        const active = document.activeElement;
+        if (!buttons.includes(active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+        }
     }
 
     bindUnloadHook() {

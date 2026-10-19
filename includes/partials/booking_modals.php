@@ -32,9 +32,9 @@
 </div>
 
 <!-- T&C Modal -->
-<div class="modal-overlay" id="tnc-modal">
+<div class="modal-overlay" id="tnc-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="tnc-title">
     <div class="modal-content">
-        <h3 class="modal-title">Terms and Conditions</h3>
+        <h3 class="modal-title" id="tnc-title">Terms and Conditions</h3>
         <div class="modal-body">
             <p>Welcome to Sevilla360 Booking System. By proceeding, you agree to our standard reservation rules,
                 cancellation policies, and resort etiquette guidelines.</p>
@@ -43,7 +43,8 @@
             <p>3. Damage to resort property will be billed to the client's account.</p>
         </div>
         <div class="modal-actions-center">
-            <button class="btn btn-primary" id="btn-agree">I Agree</button>
+            <button type="button" class="btn btn-outline" id="btn-close-terms">Close</button>
+            <button type="button" class="btn btn-primary" id="btn-agree">I Agree</button>
         </div>
     </div>
 </div>
