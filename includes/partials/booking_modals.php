@@ -49,12 +49,12 @@
 </div>
 
 <!-- Switch Tab Warning Modal -->
-<div class="modal-overlay" id="switch-tab-modal">
+<div class="modal-overlay" id="switch-tab-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="switch-tab-title" aria-describedby="switch-tab-description">
     <div class="modal-content modal-sm">
-        <i class="fa-solid fa-triangle-exclamation modal-icon-warning"></i>
-        <h3 class="modal-title">Change Service?</h3>
+        <i class="fa-solid fa-triangle-exclamation modal-icon-warning" aria-hidden="true"></i>
+        <h3 class="modal-title" id="switch-tab-title">Change Service?</h3>
         <div class="modal-body modal-text-center">
-            <p>You are currently booking a space. Switching tabs will cancel your current selection and release any
+            <p id="switch-tab-description">You are currently booking a space. Switching tabs will cancel your current selection and release any
                 locked dates. Do you want to proceed?</p>
         </div>
         <div class="modal-actions-center">

@@ -1208,6 +1208,10 @@ class BookingController {
 
         window.addEventListener("click", (e) => {
             if (!e.target.classList.contains("modal-overlay")) return;
+            if (e.target.id === 'switch-tab-modal') {
+                this.closeServiceSwitchDialog();
+                return;
+            }
             if (e.target.id === 'date-confirm-modal' && this.state.pendingDateConfirmation) {
                 this.cancelPendingDateConfirmation();
                 return;
@@ -1215,6 +1219,10 @@ class BookingController {
             e.target.classList.remove("active");
         });
         window.addEventListener('keydown', (e) => {
+            if (this.getEl('switch-tab-modal')?.classList.contains('active')) {
+                this.handleServiceSwitchKey(e);
+                return;
+            }
             if (e.key === 'Escape' && this.state.pendingDateConfirmation) {
                 e.preventDefault();
                 this.cancelPendingDateConfirmation();
@@ -1768,6 +1776,37 @@ class BookingController {
         });
     }
 
+    closeServiceSwitchDialog({ restoreFocus = true } = {}) {
+        const modal = this.getEl('switch-tab-modal');
+        modal?.classList.remove('active');
+        modal?.setAttribute('aria-hidden', 'true');
+        if (this.switchDialogPreviousOverflow !== undefined) {
+            document.body.style.overflow = this.switchDialogPreviousOverflow;
+            this.switchDialogPreviousOverflow = undefined;
+        }
+        const trigger = this.switchDialogTrigger;
+        this.switchDialogTrigger = null;
+        if (restoreFocus && trigger?.isConnected) trigger.focus({ preventScroll: true });
+    }
+
+    handleServiceSwitchKey(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.closeServiceSwitchDialog();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const buttons = Array.from(this.getEl('switch-tab-modal')?.querySelectorAll('button:not(:disabled)') || []);
+        const first = buttons[0];
+        const last = buttons[buttons.length - 1];
+        if (!first) return;
+        const active = document.activeElement;
+        if (!buttons.includes(active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+        }
+    }
+
     handleTabSwitch(btn) {
         if (btn.classList.contains("active")) return;
         const target = btn.getAttribute("data-tab");
@@ -1775,15 +1814,23 @@ class BookingController {
         if (this.state.isDatesLocked || (this.state.activeCalendar && this.state.activeCalendar.startDate)) {
             const switchModal = this.getEl('switch-tab-modal');
             if (!switchModal) return;
+            if (switchModal.classList.contains('active')) return;
             
+            this.switchDialogTrigger = btn;
+            this.switchDialogPreviousOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
             switchModal.classList.add('active');
+            switchModal.setAttribute('aria-hidden', 'false');
             this.replaceElement("btn-confirm-switch").addEventListener("click", () => {
-                switchModal.classList.remove("active");
+                this.closeServiceSwitchDialog({ restoreFocus: false });
                 if (this.state.isDatesLocked) this.unlockDatesAPI();
                 this.stopTimerAndReset();
                 this.executeTabVisualSwitch(btn, target);
+                btn.focus({ preventScroll: true });
             });
-            this.replaceElement("btn-cancel-switch").addEventListener("click", () => switchModal.classList.remove("active"));
+            const cancel = this.replaceElement("btn-cancel-switch");
+            cancel.addEventListener("click", () => this.closeServiceSwitchDialog());
+            cancel.focus({ preventScroll: true });
             return;
         }
         this.executeTabVisualSwitch(btn, target);
