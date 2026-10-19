@@ -681,8 +681,8 @@ body.um-modal-open {
     gap: 12px;
   }
 
-  .um-table.active > table tbody tr,
-  table.um-table.active tbody tr {
+  .um-table.active > table tbody tr:not([hidden]),
+  table.um-table.active tbody tr:not([hidden]) {
     display: block;
     padding: 10px 14px;
     border: 1px solid rgba(42, 37, 34, .1);
