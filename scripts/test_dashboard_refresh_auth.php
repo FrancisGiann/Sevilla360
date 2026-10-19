@@ -137,7 +137,7 @@ try {
     $ownershipBound = str_contains($dashboard, '$user_id = $_SESSION[\'user_id\'];')
         && str_contains($dashboard, 'FROM customers WHERE user_id = ?')
         && str_contains($dashboard, 'WHERE b.customer_id = ?')
-        && str_contains($dashboard, '$stmt_bookings->bind_param("issii", $customer_id, $booking_filter, $booking_filter, $booking_limit, $booking_offset);');
+        && str_contains($dashboard, '$stmt_bookings->bind_param("iii", $customer_id, $booking_limit, $booking_offset);');
     echo ($ownershipBound ? 'PASS|' : 'FAIL|') . 'customer dashboard refresh renders session-owned customer queries only' . "\n";
     if (!$ownershipBound) $failed++;
 } finally {

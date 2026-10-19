@@ -74,16 +74,9 @@ $balance_due = (float)($stmt_balance->get_result()->fetch_assoc()['balance_due']
 $stmt_balance->close();
 
 $booking_limit = 10;
-$booking_filter = customer_booking_filter_value($_GET['booking_status'] ?? 'All');
-$booking_filter_sql = customer_booking_filter_sql('b');
-$stmt_filtered_count = $conn->prepare("SELECT COUNT(*) FROM bookings b WHERE b.customer_id = ? AND (? = 'All' OR ($booking_filter_sql) = ?)");
-$stmt_filtered_count->bind_param('iss', $customer_id, $booking_filter, $booking_filter);
-$stmt_filtered_count->execute();
-$booking_filtered_total = (int)$stmt_filtered_count->get_result()->fetch_row()[0];
-$stmt_filtered_count->close();
 $booking_page = filter_input(INPUT_GET, 'booking_page', FILTER_VALIDATE_INT);
 $booking_page = ($booking_page && $booking_page > 0) ? $booking_page : 1;
-$booking_pages = max(1, (int) ceil($booking_filtered_total / $booking_limit));
+$booking_pages = max(1, (int) ceil($stat_total / $booking_limit));
 $booking_page = min($booking_page, $booking_pages);
 $booking_offset = ($booking_page - 1) * $booking_limit;
 
@@ -104,11 +97,11 @@ $stmt_bookings = $conn->prepare("
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
     LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-    WHERE b.customer_id = ? AND (? = 'All' OR ($booking_filter_sql) = ?)
+    WHERE b.customer_id = ?
     ORDER BY b.id DESC
     LIMIT ? OFFSET ?
 ");
-$stmt_bookings->bind_param("issii", $customer_id, $booking_filter, $booking_filter, $booking_limit, $booking_offset);
+$stmt_bookings->bind_param("iii", $customer_id, $booking_limit, $booking_offset);
 $stmt_bookings->execute();
 $bookings_result = $stmt_bookings->get_result();
 
@@ -479,9 +472,12 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                             <div class="status-filter">
                                 <label for="statusFilter">Filter bookings</label>
                                 <select id="statusFilter" class="status-filter-select">
-                                    <?php foreach (['All' => 'All bookings', 'Pending' => 'Needs Attention', 'Partially Paid' => 'Partially Paid', 'Paid' => 'Paid', 'Completed' => 'Completed', 'Cancelled' => 'Cancelled'] as $filter_value => $filter_label): ?>
-                                    <option value="<?= htmlspecialchars($filter_value, ENT_QUOTES, 'UTF-8') ?>" <?= $booking_filter === $filter_value ? 'selected' : '' ?>><?= htmlspecialchars($filter_label, ENT_QUOTES, 'UTF-8') ?></option>
-                                    <?php endforeach; ?>
+                                    <option value="All">All bookings</option>
+                                    <option value="Pending">Needs Attention</option>
+                                    <option value="Partially Paid">Partially Paid</option>
+                                    <option value="Paid">Paid</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
                                 </select>
                             </div>
                         </div>

@@ -1,24 +1,6 @@
 <?php
 require_once __DIR__ . '/booking_lifecycle.php';
 
-/** Normalize the history filter before using it in a prepared query or URL. */
-function customer_booking_filter_value(mixed $value): string
-{
-    return is_string($value) && in_array($value, ['All', 'Pending', 'Partially Paid', 'Paid', 'Completed', 'Cancelled'], true)
-        ? $value : 'All';
-}
-
-/** Match the existing history buckets before pagination, using database-local dates. */
-function customer_booking_filter_sql(string $alias = 'b'): string
-{
-    $completed = booking_completion_sql($alias);
-    return "CASE WHEN $completed THEN 'Completed'
-        WHEN {$alias}.booking_status = 'Cancelled' THEN 'Cancelled'
-        WHEN {$alias}.booking_status = 'Confirmed' AND {$alias}.payment_status = 'Paid' THEN 'Paid'
-        WHEN {$alias}.booking_status = 'Confirmed' AND {$alias}.payment_status = 'Partial' THEN 'Partially Paid'
-        ELSE 'Pending' END";
-}
-
 /** Resolve the customer-facing booking state used across dashboard surfaces. */
 function customer_dashboard_status(array $booking): array
 {

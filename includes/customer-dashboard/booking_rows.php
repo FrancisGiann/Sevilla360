@@ -1,6 +1,6 @@
                                     <?php if (empty($bookings)): ?>
                                     <tr>
-                                        <td colspan="6" class="empty-table-cell"><?php if (($booking_filter ?? 'All') !== 'All'): ?>No bookings match this status. Choose another filter to see your reservations.<?php else: ?>You don’t have any bookings yet. Select “New Booking” above to explore venues and start a reservation.<?php endif; ?></td>
+                                        <td colspan="6" class="empty-table-cell">You don’t have any bookings yet. Select “New Booking” above to explore venues and start a reservation.</td>
                                     </tr>
                                     <?php else: ?>
                                     <?php foreach ($bookings as $b):

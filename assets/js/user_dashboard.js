@@ -472,13 +472,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (statusFilter) {
     statusFilter.addEventListener("change", (e) => {
       const filterValue = e.target.value;
-      const url = new URL(window.location.href);
-      url.searchParams.set('section', 'bookings');
-      url.searchParams.delete('booking_page');
-      url.hash = '';
-      if (filterValue === 'All') url.searchParams.delete('booking_status');
-      else url.searchParams.set('booking_status', filterValue);
-      window.location.assign(url.toString());
+      applyBookingFilter(filterValue);
     });
   }
 
@@ -1641,7 +1635,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let timedOut = false;
     const timeoutId = window.setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
     try {
-      const params = new URLSearchParams({ booking_page: String(requestState.page), booking_status: requestState.status });
+      const params = new URLSearchParams({ booking_page: String(requestState.page) });
       const response = await fetch(`actions/user/refresh_dashboard.php?${params.toString()}`, {
         method: 'GET',
         cache: 'no-store',
