@@ -28,7 +28,7 @@ for(const tab of ['event-hall','hotel-rooms','resort-villa']) {
     for(const step of [1,2,3,4]) verify(tab,{},step,false,false,false,'empty '+tab+' at step '+step);
 }
 verify('hotel-rooms',{roomType:'Hotel Room'},1,false,false,false,'category alone is not a room');
-for(const [tab,selection] of [['hotel-rooms',{roomType:'Hotel Room',roomName:'QA Lodge'}],['event-hall',{venueId:90}],['resort-villa',{venueId:2000}]]) {
+for(const [tab,selection] of [['hotel-rooms',{roomType:'Hotel Room',roomName:'QA Lodge'}],['event-hall',{venueId:90}],['resort-villa',{roomName:'QA Villa',baseAmt:'0'}]]) {
     verify(tab,selection,1,false,false,false,'choice without dates has no estimate');
     for(const step of [1,2,3]) verify(tab,selection,step,true,false,true,'existing choice/Back/valid resumed state at step '+step);
     verify(tab,selection,4,true,true,false,'Review owns the only full breakdown');
@@ -45,6 +45,20 @@ controller.focusBookingElement=element=>{focusTarget=element;};
 controller.updateSummaryVisibility(false);
 assert.equal(focusTarget,elements['[data-booking-step-nav].is-current'],'hiding focused summary returns focus to the current step');
 const markup=fs.readFileSync(path.join(__dirname,'../booking.php'),'utf8');
+// Exercise the actual context method: a stubbed selection missed Villa's ID.
+const villaController = Object.create(context.Controller.prototype);
+villaController.state = {activeTabId:'resort-villa',currentStep:4};
+elements['villa-type'] = {selectedIndex:0,options:[{text:'Synthetic Villa (Overnight)',value:'8000',dataset:{id:'3',overnight:'10000'}}]};
+elements['villa-guests'] = {value:'1'};
+elements['input[name="villa-stay"]:checked'] = {value:'Overnight'};
+const villaContext = villaController.getTabContextData();
+assert.equal(villaContext.venueId,null,'Villa keeps its established name-based hold contract');
+assert.equal(villaContext.baseAmt,'10000','overnight price remains unchanged');
+assert.equal(villaController.hasBookingSelection(),true,'actual Villa selection is recognized');
+villaController.updateSummaryVisibility(villaController.hasBookingSelection(),true);
+assert.equal(elements['booking-summary'].hidden,false,'actual Villa Review shows the full summary');
+elements['villa-type'].options[0] = {text:'Choose a Villa',value:'',dataset:{}};
+assert.equal(villaController.hasBookingSelection(),false,'placeholder Villa is not a selection');
 assert.match(markup,/id="booking-compact-estimate"[^>]* hidden>/,'compact total starts hidden before JavaScript initializes');
 assert.ok(!markup.includes('class="booking-summary-jump"'),'earlier steps have no summary navigation control');
 assert.match(markup,/id="booking-summary"[^>]* hidden>/,'panel starts hidden before JavaScript initializes');

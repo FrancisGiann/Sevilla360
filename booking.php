@@ -158,7 +158,7 @@ unset($villa);
 <section class="booking-section">
     <div class="container booking-grid">
 
-        <!-- LEFT COLUMN (65%) -->
+        <!-- Centered booking flow; the full summary appears inside Review. -->
         <div class="booking-main">
 
             <!-- Tab Navigation Buttons -->
@@ -197,7 +197,7 @@ unset($villa);
 
         </div>
 
-        <!-- RIGHT COLUMN: STICKY SUMMARY (35%) -->
+        <!-- Hidden storage for the existing summary between Review visits. -->
         <div class="booking-sidebar" hidden>
             <div class="sticky-summary" id="booking-summary" tabindex="-1" hidden>
                 <button type="button" class="booking-summary-return">Back to selection</button>

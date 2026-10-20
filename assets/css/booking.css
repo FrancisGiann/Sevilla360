@@ -11,13 +11,16 @@
 
 .booking-grid {
   display: grid;
-  grid-template-columns: 65% 33%;
-  gap: 2%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   align-items: start;
 }
 
 /* --- Left Column: Tabs & Main Content --- */
 .booking-main {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
   background: var(--color-beige);
   min-width: 0;
   padding: 2rem;
@@ -71,7 +74,7 @@
 
 .tab-content {
   display: none;
-  animation: fadeIn 0.5s ease;
+  animation: fadeIn 180ms ease-out;
 }
 
 .tab-content.active {
@@ -81,7 +84,7 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -90,8 +93,10 @@
 }
 
 .section-title {
-  font-size: 2.2rem;
-  margin-bottom: 1.5rem;
+  font-size: clamp(1.65rem, 3vw, 2.2rem);
+  margin-bottom: 1.25rem;
+  line-height: 1.2;
+  text-wrap: balance;
   color: var(--color-gold);
 }
 
@@ -207,9 +212,10 @@ textarea:focus {
 }
 
 .booking-choice-grid > .booking-choice-tile:has(> input:checked) {
-  border-color: var(--color-gold);
-  background: rgba(214, 168, 112, 0.1);
-  box-shadow: inset 0 0 0 1px rgba(214, 168, 112, 0.35);
+  border-color: #67471f;
+  background: #f7eee0;
+  color: #4f3517;
+  box-shadow: inset 0 0 0 1px #67471f;
 }
 
 .booking-choice-grid > .booking-choice-tile:has(> input:focus-visible) {
@@ -561,6 +567,41 @@ textarea:focus {
 .venue-information-card .inc-col,
 .hotel-information-card .inc-col {
   min-width: 0;
+}
+
+/* Existing CMS photos identify the selected space without becoming a hero. */
+.booking-section .inc-col:first-child { display: flow-root; }
+.booking-section .inc-col .booking-venue-image {
+  float: inline-start;
+  width: 112px;
+  height: 84px;
+  margin: 0 16px 8px 0;
+  border-radius: 6px;
+  box-shadow: none;
+}
+.booking-section .inc-col .booking-venue-image.no-photo {
+  float: none;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+.booking-section .inclusions-card:has(.booking-venue-image:not([hidden])) {
+  border-color: #a98656;
+  background: #fffaf2;
+}
+.booking-section .room-group-card.is-selected {
+  background: #f7eee0 !important;
+  box-shadow: inset 0 0 0 1px #67471f;
+}
+
+@media (max-width: 600px) {
+  .booking-section .inc-col .booking-venue-image {
+    width: 88px;
+    height: 72px;
+    margin-inline-end: 12px;
+  }
 }
 
 .venue-information-card .inc-col + .inc-col,
@@ -1117,7 +1158,7 @@ textarea:focus {
 
 /* Four-step booking flow */
 .booking-stepper {
-  margin: 0 0 1.5rem;
+  margin: 0 0 1.25rem;
   border-bottom: 1px solid rgba(42, 37, 34, 0.14);
 }
 
@@ -1134,7 +1175,7 @@ textarea:focus {
   display: flex;
   min-width: 0;
   width: 100%;
-  min-height: 52px;
+  min-height: 48px;
   align-items: center;
   gap: 0.55rem;
   padding: 0.55rem 0.4rem;
@@ -1213,6 +1254,7 @@ textarea:focus {
 }
 .booking-step-actions-end { justify-content: flex-end; }
 .booking-step-actions .btn {
+  transition: background-color 160ms ease, border-color 160ms ease, transform 120ms ease;
   min-height: 44px;
   padding: 0.8rem 1.05rem;
   border: 1px solid #67471f;
@@ -1234,6 +1276,14 @@ textarea:focus {
   color: #4b4035;
 }
 .booking-step-actions .booking-step-back:hover { background: #f0e9df; }
+.booking-step-actions .btn:active,
+.booking-choice-grid > .booking-choice-tile:active {
+  transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .booking-step-actions .btn:active,
+  .booking-choice-grid > .booking-choice-tile:active { transform: none; }
+}
 
 .booking-step-error {
   margin: 0 0 1rem;
@@ -1421,7 +1471,7 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
   .booking-section .booking-tabs { margin-bottom: 1.25rem; }
   .booking-section .booking-tabs .tab-btn { min-height: 48px; }
   .booking-section .booking-stepper { margin-bottom: 1rem; }
-  .booking-section .booking-step-link { flex-direction: column; gap: 4px; min-height: 58px; font-size: 0.8rem; }
+  .booking-section .booking-step-link { flex-direction: column; gap: 3px; min-height: 48px; font-size: 0.8rem; }
   .booking-section .tab-content > .section-title { font-size: 1.8rem; line-height: 1.15; margin-bottom: 1.25rem; letter-spacing: 0; }
   .booking-section .addons-section { padding: 12px; margin-bottom: 1rem; }
   .booking-section .addon-title { font-size: 1.3rem; margin-bottom: 1rem; }

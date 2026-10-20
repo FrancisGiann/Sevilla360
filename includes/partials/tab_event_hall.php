@@ -42,6 +42,10 @@ $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
         <div class="inclusions-card venue-information-card" id="event-venue-information">
             <div class="inc-col">
                 <h4>Venue Information</h4>
+                <div class="dynamic-img-wrapper booking-venue-image" id="event-image-panel" hidden>
+                    <img id="event-img" alt="" hidden>
+                    <p class="booking-image-placeholder" id="event-image-placeholder" role="status" hidden></p>
+                </div>
                 <p id="event-venue-description">Select an event hall to view its description.</p>
             </div>
             <div class="inc-col">
@@ -56,10 +60,7 @@ $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
             </div>
         </div>
 
-        <div class="dynamic-img-wrapper booking-venue-image" id="event-image-panel" hidden>
-            <img id="event-img" alt="" hidden>
-            <p class="booking-image-placeholder" id="event-image-placeholder" role="status" hidden></p>
-        </div>
+
         <div class="booking-step-actions booking-step-actions-end">
             <button type="button" class="btn booking-step-next" data-booking-step-next="2">Continue to dates</button>
         </div>

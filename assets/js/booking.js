@@ -2549,6 +2549,9 @@ class BookingController {
     // CALCULATION LOGIC
     // =========================================================================
     hasBookingSelection(context = this.getTabContextData()) {
+        if (this.state.activeTabId === 'resort-villa') {
+            return Boolean(context.roomName && context.baseAmt !== '' && context.baseAmt != null);
+        }
         return this.state.activeTabId === 'hotel-rooms'
             ? Boolean(context.roomType && context.roomName)
             : Boolean(context.venueId);

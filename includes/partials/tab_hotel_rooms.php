@@ -26,6 +26,10 @@
         <div class="inclusions-card hotel-information-card">
             <div class="inc-col">
                 <h4>Accommodation Information</h4>
+                <div class="dynamic-img-wrapper booking-venue-image hotel-image-panel" id="hotel-image-panel" hidden>
+                    <img id="hotel-img" alt="" hidden>
+                    <p class="booking-image-placeholder" id="hotel-image-placeholder" role="status" hidden></p>
+                </div>
                 <p id="hotel-description">Select a building to view its description.</p>
             </div>
             <div class="inc-col">
@@ -43,10 +47,7 @@
                 <div class="venue-fact"><span class="fact-label">Check-in / out</span><strong id="hotel-check-times">—</strong></div>
             </div>
         </div>
-        <div class="dynamic-img-wrapper booking-venue-image hotel-image-panel" id="hotel-image-panel" hidden>
-            <img id="hotel-img" alt="" hidden>
-            <p class="booking-image-placeholder" id="hotel-image-placeholder" role="status" hidden></p>
-        </div>
+
         <div class="booking-step-actions booking-step-actions-end">
             <button type="button" class="btn booking-step-next" data-booking-step-next="2">Continue to dates</button>
         </div>

@@ -38,6 +38,10 @@
         <div class="inclusions-card venue-information-card" id="villa-venue-information">
             <div class="inc-col">
                 <h4>Villa Information</h4>
+                <div class="dynamic-img-wrapper booking-venue-image" id="villa-image-panel" hidden>
+                    <img id="villa-img" alt="" hidden>
+                    <p class="booking-image-placeholder" id="villa-image-placeholder" role="status" hidden></p>
+                </div>
                 <p id="villa-description">Select a villa to view its description.</p>
             </div>
             <div class="inc-col">
@@ -67,10 +71,7 @@
             </div>
         </div>
 
-        <div class="dynamic-img-wrapper booking-venue-image" id="villa-image-panel" hidden>
-            <img id="villa-img" alt="" hidden>
-            <p class="booking-image-placeholder" id="villa-image-placeholder" role="status" hidden></p>
-        </div>
+
         <div class="booking-step-actions booking-step-actions-end">
             <button type="button" class="btn booking-step-next" data-booking-step-next="2">Continue to dates</button>
         </div>
