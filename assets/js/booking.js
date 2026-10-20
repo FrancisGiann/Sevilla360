@@ -1868,12 +1868,14 @@ class BookingController {
             list.appendChild(empty);
             return;
         }
-        (compact ? items.slice(0, 3) : items).forEach(item => {
+        // Keep a bounded desktop preview in the DOM; CSS shows three on narrow
+        // screens so resizing never rebuilds the list or interrupts focus.
+        (compact ? items.slice(0, 12) : items).forEach(item => {
             list.appendChild(this.createBookingAmenityItem(item, compact));
         });
         if (!compact || items.length <= 3) return;
         const controls = document.createElement('div');
-        controls.className = 'amenities-disclosure';
+        controls.className = `amenities-disclosure${items.length <= 12 ? ' is-desktop-complete' : ''}`;
         const count = document.createElement('span');
         count.textContent = `${items.length} included amenities`;
         const button = document.createElement('button');
@@ -1883,6 +1885,15 @@ class BookingController {
         button.addEventListener('click', () => this.openAmenitiesPanel(items, button));
         controls.append(count, button);
         list.after(controls);
+    }
+
+    restoreAmenitiesFocus(trigger) {
+        if (!trigger?.isConnected) return;
+        // A mobile disclosure can disappear after resizing to desktop when
+        // the complete list already fits. Return to a visible flow control.
+        const target = trigger.getClientRects().length
+            ? trigger : document.querySelector('[data-booking-step-nav].is-current');
+        target?.focus({ preventScroll: true });
     }
 
     openAmenitiesPanel(items, trigger) {
@@ -1941,7 +1952,7 @@ class BookingController {
             document.body.style.overflow = previousOverflow;
             panel.remove();
             this.amenitiesPanel = null;
-            if (trigger.isConnected) trigger.focus({ preventScroll: true });
+            this.restoreAmenitiesFocus(trigger);
             if (history.state?.bookingAmenities === historyKey) history.back();
         }, { once: true });
         close.addEventListener('click', () => panel.close());

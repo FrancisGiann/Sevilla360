@@ -1514,6 +1514,12 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 
 /* Included features stay compact; the complete read-only catalog scrolls separately. */
 .booking-section .amenities-preview { grid-template-columns: minmax(0,1fr); }
+@media (max-width: 992px) {
+  .booking-section .amenities-preview > li:nth-child(n + 4) { display:none; }
+}
+@media (min-width: 993px) {
+  .booking-section .amenities-disclosure.is-desktop-complete { display:none; }
+}
 .booking-section .inc-col ul li:not(.amenities-empty) { padding:8px 0;border:0;border-radius:0;background:transparent;gap:12px; }
 .booking-section .inc-col ul li::before { content:none; }
 .booking-amenity-icon { order:-1;flex:0 0 1.25rem;width:1.25rem;margin-top:.15em;color:#67471f;text-align:center;line-height:1.35; }

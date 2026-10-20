@@ -1395,6 +1395,7 @@
 /* Keep the page behind overview dialogs still; the dialog owns scrolling. */
 html:has(#overviewModalOverlay.active),
 body:has(#overviewModalOverlay.active) { overflow: hidden; }
+body:has(#overviewModalOverlay.active) .main-content { overflow: hidden; }
 #overviewModalOverlay { overflow: hidden; }
 #overviewBookingModal {
   box-sizing: border-box;
