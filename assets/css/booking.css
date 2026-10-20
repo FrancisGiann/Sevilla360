@@ -569,20 +569,27 @@ textarea:focus {
   min-width: 0;
 }
 
-/* Existing CMS photos identify the selected space without becoming a hero. */
+/* A useful venue preview fills its information column; details follow below. */
 .booking-section .inc-col:first-child { display: flow-root; }
 .booking-section .inc-col .booking-venue-image {
-  float: inline-start;
-  width: 112px;
-  height: 84px;
-  margin: 0 16px 8px 0;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  margin: 0 0 14px;
   border-radius: 6px;
   box-shadow: none;
 }
+.booking-section .inc-col .booking-venue-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
 .booking-section .inc-col .booking-venue-image.no-photo {
-  float: none;
   width: auto;
   height: auto;
+  aspect-ratio: auto;
   min-height: 0;
   margin: 0 0 12px;
   padding: 10px 12px;
@@ -594,14 +601,6 @@ textarea:focus {
 .booking-section .room-group-card.is-selected {
   background: #f7eee0 !important;
   box-shadow: inset 0 0 0 1px #67471f;
-}
-
-@media (max-width: 600px) {
-  .booking-section .inc-col .booking-venue-image {
-    width: 88px;
-    height: 72px;
-    margin-inline-end: 12px;
-  }
 }
 
 .venue-information-card .inc-col + .inc-col,
