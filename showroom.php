@@ -625,12 +625,11 @@ window.process = {
                 <p>Drag to explore</p>
             </div>
 
-            <!-- NEW: The Loading Placeholder that covers the black screen -->
-            <div id="pano-loading-overlay"
-                style="position: absolute; top:0; left:0; width:100%; height:100%; z-index: 4; background: url('assets/img/placeholder.jpg') center/cover no-repeat; display: none; align-items: center; justify-content: center;">
-                <div
-                    style="background: rgba(0,0,0,0.6); color: white; padding: 10px 25px; border-radius: 30px; font-family: var(--font-body); font-weight: 500; letter-spacing: 1px; backdrop-filter: blur(4px);">
-                    <i class="fa-solid fa-circle-notch fa-spin" style="margin-right: 8px;"></i> Loading 360° View...
+            <div id="pano-loading-overlay" style="display:none;">
+                <div class="pano-loading-card">
+                    <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+                    <span id="pano-loading-message" role="status" aria-live="polite" aria-atomic="true">Loading 360° view…</span>
+                    <button type="button" id="pano-loading-retry" hidden>Retry view</button>
                 </div>
             </div>
 

@@ -3860,3 +3860,15 @@ body.showroom-receptionist-open .showroom-container .details-box {
   .showroom-hotel-variant { max-width: none; }
   .showroom-room-option-summary { font-size: .72rem; }
 }
+
+/* Destination feedback stays above the stable panorama without blocking navigation. */
+#pano-loading-overlay { position:absolute;inset:0;z-index:8;align-items:flex-end;justify-content:center;padding:24px;pointer-events:none; }
+.pano-loading-card { display:flex;align-items:center;gap:12px;max-width:100%;padding:14px 18px;border-radius:8px;background:#27221df2;color:#fffaf2;font:500 .95rem/1.5 var(--font-body);box-shadow:0 4px 18px #0003;animation:pano-status-in 160ms ease-out; }
+#pano-loading-message { min-width:0;overflow-wrap:anywhere; }
+#pano-loading-retry { pointer-events:auto;flex-shrink:0;min-height:44px;padding:8px 12px;border:1px solid #dfbb88;border-radius:4px;background:#fffaf2;color:#513617;font:inherit;cursor:pointer; }
+#pano-loading-retry[hidden] { display:none; }
+#pano-loading-retry:focus-visible { outline:3px solid #dfbb88;outline-offset:3px; }
+#pano-loading-overlay.is-error .fa-spin { display:none; }
+@keyframes pano-status-in { from { opacity:0;transform:translateY(4px); } to { opacity:1;transform:none; } }
+@media (max-width:600px) { #pano-loading-overlay { padding:12px 12px 74px; }.pano-loading-card { flex-wrap:wrap;padding:12px;font-size:.85rem; } }
+@media (prefers-reduced-motion:reduce) { .pano-loading-card { animation:none; }#pano-loading-overlay .fa-spin { animation:none; } }

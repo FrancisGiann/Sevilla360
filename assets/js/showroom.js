@@ -57,6 +57,50 @@ function showroomBuildBookingUrl(room, startDate = null, endDate = null, guestRa
   return `booking.php?${params.toString()}`;
 }
 
+// Load before entering: a pending texture must not replace the stable view.
+function createShowroomSceneLoader({ show, hide, commit, ready, isCurrent = () => false, setTimer = setTimeout, clearTimer = clearTimeout, timeout = 25000 }) {
+  let pending = null;
+  const clean = request => {
+    clearTimer(request.timer);
+    request.pano.removeEventListener('load', request.loaded);
+    request.pano.removeEventListener('error', request.failed);
+    request.pano.removeEventListener('enter-fade-start', request.entered);
+  };
+  const cancel = () => { if (pending) clean(pending); pending = null; };
+  const enter = (pano, label, retry) => {
+    cancel();
+    const request = { pano, committed: false };
+    pending = request;
+    const fail = () => {
+      if (pending !== request) return;
+      clean(request); pending = null;
+      show(`Could not load ${label}. Check your connection and retry.`, retry, true);
+    };
+    request.failed = fail;
+    request.entered = () => {
+      if (pending !== request || !request.committed) return;
+      clean(request); pending = null; hide(); ready(pano);
+    };
+    request.loaded = () => {
+      if (pending !== request || request.committed) return;
+      request.committed = true;
+      show(`Opening ${label}…`, null, false);
+      if (isCurrent(pano)) { request.entered(); return; }
+      try { commit(pano); } catch (_) { fail(); }
+    };
+    show(`Loading ${label}…`, null, false);
+    pano.addEventListener('load', request.loaded);
+    pano.addEventListener('error', request.failed);
+    pano.addEventListener('enter-fade-start', request.entered);
+    request.timer = setTimer(fail, timeout);
+    try {
+      if (pano.loaded === true && pano.material?.map) request.loaded();
+      else pano.load();
+    } catch (_) { fail(); }
+  };
+  return { enter, cancel };
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   if (window.__sevilla360ShowroomInitialized === true) return;
   window.__sevilla360ShowroomInitialized = true;
@@ -95,6 +139,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const panoContainer = document.getElementById("pano-container");
   const viewerControls = document.getElementById("viewer-controls");
   const panoLoadingOverlay = document.getElementById("pano-loading-overlay");
+  const panoLoadingMessage = document.getElementById('pano-loading-message');
+  const panoLoadingRetry = document.getElementById('pano-loading-retry');
+  const retiredPanoramas = new Set();
   
   const valTitle = document.getElementById("val-title");
   const valCategory = document.getElementById("val-category");
@@ -437,10 +484,44 @@ document.addEventListener("DOMContentLoaded", () => {
       if (restoreFocus) destinationsButton.focus();
   }
 
-  function enterPanorama(pano, viewerRef = viewer) {
+  const sceneLoader = createShowroomSceneLoader({
+      show(message, retry, failed) {
+          if (!panoLoadingOverlay) return;
+          panoLoadingOverlay.style.display = 'flex';
+          panoLoadingOverlay.classList.toggle('is-error', failed);
+          if (failed && dataMap[currentRoomId]) valTitle.textContent = dataMap[currentRoomId].title;
+          if (panoLoadingMessage) panoLoadingMessage.textContent = message;
+          if (panoLoadingRetry) { panoLoadingRetry.hidden = !retry; panoLoadingRetry.onclick = retry; }
+          panoContainer.setAttribute('aria-busy', failed ? 'false' : 'true');
+      },
+      hide() {
+          if (panoLoadingOverlay) panoLoadingOverlay.style.display = 'none';
+          panoContainer.setAttribute('aria-busy', 'false');
+      },
+      commit(pano) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); },
+      isCurrent(pano) { return viewer.panorama === pano && panoramaControlReady.has(pano); },
+      ready(pano) {
+          valTitle.textContent = dataMap[currentRoomId]?.title || '';
+          window.setTimeout(() => {
+              retiredPanoramas.forEach(old => { if (old !== viewer.panorama) { try { viewer.remove(old); } catch (_) {} retiredPanoramas.delete(old); } });
+          }, reducedMotionQuery.matches ? 0 : 650);
+      }
+  });
+
+  function enterPanorama(pano, viewerRef = viewer, destinationName = '') {
       if (!pano) return;
-      panoramaControlReady.delete(pano);
-      viewerRef.setPanorama(pano);
+      const roomId = currentRoomId;
+      const room = dataMap[roomId];
+      const index = activePanoramas.indexOf(pano);
+      const label = destinationName || `${room?.title || '360° view'}${activePanoramas.length > 1 ? ` — view ${index + 1}` : ''}`;
+      sceneLoader.enter(pano, label, () => {
+          if (currentRoomId !== roomId) return;
+          room.panoFailed = false;
+          room.panoRetryCount = (Number(room.panoRetryCount) || 0) + 1;
+          delete panoCache[showroomPanoCacheKey(roomId, room, activeHotelVariant)];
+          activateVenue(roomId, true);
+          if (index > 0 && activePanoramas[index]) enterPanorama(activePanoramas[index], viewer, destinationName);
+      });
   }
 
   destinationsButton?.addEventListener('click', event => {
@@ -461,7 +542,7 @@ document.addEventListener("DOMContentLoaded", () => {
       closeDestinations();
       currentPanoIndex = index;
       viewerActivity();
-      enterPanorama(activePanoramas[index]);
+      enterPanorama(activePanoramas[index], viewer, destinationButton.textContent.trim());
   });
 
   destinationsList?.addEventListener('keydown', event => {
@@ -576,6 +657,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById('btn-reset-view')?.addEventListener('click', resetCurrentView);
 
   function showStandardFallback(room) {
+      sceneLoader.cancel();
+      panoContainer.setAttribute('aria-busy', 'false');
       const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
       if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
       hintPending = false;
@@ -638,6 +721,7 @@ document.addEventListener("DOMContentLoaded", () => {
       roomLoadToken++;
       activePanoramas = [];
       currentPanoIndex = 0;
+      if (viewer.panorama?.loaded === true && viewer.panorama?.material?.map && viewer.panorama !== failedPano) return;
       showStandardFallback(room);
   }
 
@@ -723,7 +807,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   if (targetIndex >= 0 && targetIndex < panoramasRef.length && panoramasRef[targetIndex]) {
                       currentPanoIndex = targetIndex;
                       viewerActivity();
-                      enterPanorama(panoramasRef[targetIndex], viewerRef);
+                      enterPanorama(panoramasRef[targetIndex], viewerRef, destinationLabel);
                   }
               });
           } else {
@@ -876,6 +960,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function activateVenue(roomId, preserveVariant = false) {
+    sceneLoader.cancel();
     clearInteractionHint();
     pauseAutoRotation();
     closeDestinations();
@@ -976,6 +1061,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // is toggled.  For the cached-re-entry branch below, we re-add them.
     if (activePanoramas.length > 0) {
         activePanoramas.forEach(oldPano => {
+            if (oldPano === viewer.panorama && oldPano.loaded === true) { retiredPanoramas.add(oldPano); return; }
             try { viewer.remove(oldPano); } catch (e) { /* already removed */ }
         });
         activePanoramas = [];
@@ -1052,7 +1138,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (failureHandled || roomLoadToken !== loadToken || room.panoFailed) return;
                 if (index === 0 && panoLoadingOverlay) {
                     valTitle.textContent = room.title;
-                    panoLoadingOverlay.style.display = "none";
                     
                     // Queue the hint until the guide has completed its exit
                     // transition. The queue also covers a guide opened while

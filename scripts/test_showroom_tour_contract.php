@@ -350,8 +350,10 @@ $checks['guest destinations, saved camera view and reset control are wired'] = s
     && str_contains($public_js, 'window.PanoramaViewCompat?.applyControlCenter(viewer, center, reducedMotionQuery.matches ? 0 : duration)')
     && str_contains($public_js, 'activeDestinations(roomData, viewIndex)')
     && str_contains($public_js, 'spot.material.rotation = rotation * Math.PI / 180');
-$enter_reset_listener_position = strpos($public_js, "pano.addEventListener('enter-fade-start'");
 $viewer_add_position = strpos($public_js, 'viewer.add(pano);');
+// The preload gate also listens for entry; this check concerns the framing
+// listener registered after Panolens installs its own control-reset listener.
+$enter_reset_listener_position = strpos($public_js, "pano.addEventListener('enter-fade-start'", $viewer_add_position === false ? 0 : $viewer_add_position);
 $initial_cache_assignment = strpos($public_js, 'panoCache[panoCacheKey] = panoramas;');
 $initial_activation_position = strpos($public_js, 'if (!canApplyImmediately) enterPanorama(initialPanorama);');
 $checks['public framing waits until Panolens resets controls at entry and avoids duplicate tweening'] = str_contains($public_js, 'function synchronizePanoramaState(')
@@ -366,13 +368,15 @@ $checks['public framing waits until Panolens resets controls at entry and avoids
     && str_contains($public_js, 'activateVenue(currentRoomId, true)')
     && str_contains($public_js, 'const panoramaControlReady = new WeakSet();')
     && str_contains($public_js, 'panoramaControlReady.add(pano);')
-    && str_contains($public_js, 'function enterPanorama(pano, viewerRef = viewer)')
+    && str_contains($public_js, "function enterPanorama(pano, viewerRef = viewer, destinationName = '')")
+    && str_contains($public_js, 'sceneLoader.enter(pano, label, () => {')
+    && str_contains($public_js, 'commit(pano) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); }')
     && str_contains($public_js, 'panoramaControlReady.delete(pano);')
     && str_contains($public_js, 'const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);')
     && substr_count($public_js, 'const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);') === 2
     && substr_count($public_js, 'if (!canApplyImmediately) enterPanorama(initialPanorama);') === 2
-    && str_contains($public_js, 'enterPanorama(panoramasRef[targetIndex], viewerRef);')
-    && str_contains($public_js, 'enterPanorama(activePanoramas[index]);')
+    && str_contains($public_js, 'enterPanorama(panoramasRef[targetIndex], viewerRef, destinationLabel);')
+    && str_contains($public_js, 'enterPanorama(activePanoramas[index], viewer, destinationButton.textContent.trim());')
     && $initial_cache_assignment !== false
     && $initial_activation_position !== false
     && $initial_cache_assignment < $initial_activation_position
