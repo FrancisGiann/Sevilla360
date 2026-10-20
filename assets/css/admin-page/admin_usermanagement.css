@@ -79,6 +79,7 @@
 .filter-pill:focus-visible,
 .staff-filter-btn:focus-visible,
 .um-actions button:focus-visible,
+.um-actions a:focus-visible,
 .customer-filter-select:focus-visible {
   outline: 3px solid rgba(214, 168, 112, .35);
   outline-offset: 2px;
@@ -184,7 +185,8 @@
 }
 
 /* --- Action Buttons --- */
-.um-actions button {
+.um-actions button,
+.um-profile-link {
   background: none;
   border: none;
   font-family: var(--font-body);
@@ -193,6 +195,8 @@
   cursor: pointer;
   margin-right: 1rem;
 }
+.um-profile-link { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
+#staffModal [hidden] { display: none !important; }
 
 .um-actions button:hover {
   opacity: 0.7;
@@ -617,6 +621,8 @@ body.um-modal-open {
   .um-tab::after {
     bottom: -.55rem;
   }
+  .um-tab { white-space: normal; text-align: left; min-height: 44px; }
+  .um-tabs { align-items: stretch; }
 
   .um-controls {
     width: 100%;
@@ -731,7 +737,8 @@ body.um-modal-open {
     margin-right: auto;
   }
 
-  .um-actions button {
+  .um-actions button,
+  .um-profile-link {
     margin-right: 0;
     padding: 7px 10px;
   }

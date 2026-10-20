@@ -229,7 +229,8 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("staff_department").value = edit ? (trigger.dataset.department || "") : "";
         document.getElementById("staff_job_title").value = edit ? (trigger.dataset.jobTitle || "") : "";
         document.getElementById("staff_hire_date").value = edit ? (trigger.dataset.hireDate || "") : "";
-        document.getElementById("staff_role").value = "Staff";
+        const isAdminDetails = edit && trigger.dataset.role === "admin";
+        document.getElementById("staff_role").value = isAdminDetails ? "Admin" : "Staff";
         document.getElementById("staff_status").value = edit ? (trigger.dataset.status || "Unknown") : "Active after creation";
         const profileFields = ["staff_name", "staff_email", "staff_phone", "staff_address", "staff_department", "staff_job_title", "staff_hire_date"];
         profileFields.forEach((id) => {
@@ -245,9 +246,9 @@ document.addEventListener("DOMContentLoaded", () => {
             saveButton.textContent = "Create Staff Account";
         }
         document.querySelector(".close-staff-modal")?.replaceChildren(document.createTextNode(edit ? "Close" : "Cancel"));
-        document.getElementById("staffModalTitle").textContent = edit ? "Staff Details" : "Add New Staff";
+        document.getElementById("staffModalTitle").textContent = edit ? (isAdminDetails ? "Admin Details" : "Staff Details") : "Add New Staff";
         document.getElementById("staffModalDescription").textContent = edit
-            ? "Staff details are read-only here. Staff can change only their own name, phone, and password from Settings."
+            ? (isAdminDetails ? "Administrator details are read-only here. Administrator access cannot be changed from this directory." : "Staff details are read-only here. Staff can change only their own name, phone, and password from Settings.")
             : "Create an active staff login. Administrator accounts cannot be created from User Management.";
         if (passwordInput) passwordInput.closest('.um-form-group')?.toggleAttribute('hidden', edit);
         passwordInput.value = "";

@@ -8,12 +8,12 @@ require_once 'config/db_connect.php';
 $e = static fn ($value): string => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 
 // Staff lifecycle is stored on staff.status. Customer suspension remains on users.status.
-$staff_query = $conn->query("SELECT s.user_id, s.full_name, s.phone, s.address, s.department, s.job_title,
+$staff_query = $conn->query("SELECT u.id AS user_id, COALESCE(NULLIF(s.full_name, ''), u.email) AS full_name, s.phone, s.address, s.department, s.job_title,
                                     s.hire_date, s.status, s.archived_at, u.email, u.role
-                             FROM staff s
-                             INNER JOIN users u ON s.user_id = u.id
-                             WHERE u.role = 'staff'
-                             ORDER BY (s.status = 'active') DESC, s.full_name ASC");
+                             FROM users u
+                             LEFT JOIN staff s ON s.user_id = u.id
+                             WHERE u.role IN ('admin', 'staff')
+                             ORDER BY (s.status = 'active') DESC, full_name ASC");
 $staff_list = $staff_query ? $staff_query->fetch_all(MYSQLI_ASSOC) : [];
 
 // Fetch customers with status and total booking counts. This path intentionally
@@ -32,7 +32,7 @@ $today = date('Y-m-d');
 <div class="um-container">
     <div class="um-header">
         <div class="um-tabs" role="tablist" aria-label="Account type">
-            <button type="button" class="um-tab active" id="staffAccountsTab" data-target="staffTable" role="tab" aria-selected="true" aria-controls="staffTable" tabindex="0">Staff Accounts</button>
+            <button type="button" class="um-tab active" id="staffAccountsTab" data-target="staffTable" role="tab" aria-selected="true" aria-controls="staffTable" tabindex="0">Admin &amp; Staff Accounts</button>
             <button type="button" class="um-tab" id="customerAccountsTab" data-target="customerTable" role="tab" aria-selected="false" aria-controls="customerTable" tabindex="-1">Customer Accounts</button>
         </div>
         <div class="um-controls">
@@ -50,7 +50,7 @@ $today = date('Y-m-d');
     </div>
 
     <div class="um-card">
-        <div class="staff-filter-controls" id="staffFilterControls" role="group" aria-label="Staff account status">
+        <div class="staff-filter-controls" id="staffFilterControls" role="group" aria-label="Admin and staff account status">
             <span class="staff-filter-label">Account access</span>
             <button type="button" class="staff-filter-btn active" data-staff-filter="active" aria-pressed="true">Active</button>
             <button type="button" class="staff-filter-btn" data-staff-filter="archived" aria-pressed="false">Archived</button>
@@ -58,7 +58,7 @@ $today = date('Y-m-d');
         </div>
         <!-- STAFF TABLE -->
         <table class="um-table active" id="staffTable" role="tabpanel" aria-labelledby="staffAccountsTab" tabindex="0">
-            <caption class="sr-only">Staff accounts</caption>
+            <caption class="sr-only">Admin and staff accounts</caption>
             <thead>
                 <tr>
                     <th scope="col">Staff ID</th>
@@ -74,8 +74,11 @@ $today = date('Y-m-d');
             <tbody>
                 <?php foreach ($staff_list as $s):
                     $staff_id = (int)$s['user_id'];
-                    $staff_status = (($s['status'] ?? '') === 'active') ? 'active' : 'archived';
-                    $status_label = $staff_status === 'active' ? 'Active' : 'Archived';
+                    $is_current_account = $staff_id === (int)($_SESSION['user_id'] ?? 0);
+                    $is_admin_account = $s['role'] === 'admin';
+                    $role_label = $is_admin_account ? 'Admin' : 'Staff';
+                    $staff_status = (($s['status'] ?? '') === 'active') ? 'active' : (($s['status'] ?? '') === 'inactive' ? 'archived' : 'unknown');
+                    $status_label = $staff_status === 'active' ? 'Active' : ($staff_status === 'archived' ? 'Archived' : 'Unavailable');
                     $status_class = $staff_status === 'active' ? 'status-active' : 'status-archived';
                     $position_title = trim((string)($s['job_title'] ?? ''));
                     $department = trim((string)($s['department'] ?? ''));
@@ -83,12 +86,13 @@ $today = date('Y-m-d');
                     $email = trim((string)($s['email'] ?? ''));
                     $phone = trim((string)($s['phone'] ?? ''));
                     $address = trim((string)($s['address'] ?? ''));
-                    $search_text = implode(' ', array_filter([$full_name, $email, $phone, $address, $position_title, $department, (string)$staff_id]));
+                    $search_text = implode(' ', array_filter([$full_name, $email, $phone, $address, $position_title, $department, $role_label, $is_current_account ? 'You' : '', (string)$staff_id]));
                 ?>
-                <tr class="staff-row" data-status="<?= $e($staff_status) ?>" data-search="<?= $e($search_text) ?>">
+                <tr class="staff-row" data-role="<?= $e($s['role']) ?>" data-current="<?= $e($is_current_account ? 'true' : 'false') ?>" data-status="<?= $e($staff_status) ?>" data-search="<?= $e($search_text) ?>">
                     <td data-label="Staff ID"><span class="um-staff-id">STF-<?= $e(str_pad((string)$staff_id, 5, '0', STR_PAD_LEFT)) ?></span></td>
                     <td data-label="Name">
                         <div class="um-primary-text"><?= $e($full_name) ?></div>
+                        <?php if ($is_current_account): ?><span class="um-current-account" aria-label="Current account">You</span><?php endif; ?>
                     </td>
                     <td data-label="Work contact">
                         <div class="um-primary-text"><?= $e($email) ?></div>
@@ -100,10 +104,13 @@ $today = date('Y-m-d');
                         <?php if ($department !== ''): ?><div class="um-secondary-text"><?= $e($department) ?></div><?php endif; ?>
                         <?php if ($position_title === '' && $department === ''): ?><span class="um-muted">—</span><?php endif; ?>
                     </td>
-                    <td data-label="Access role"><span class="um-role-text">Staff</span></td>
+                    <td data-label="Access role"><span class="um-role-text"><?= $e($role_label) ?></span></td>
                     <td data-label="Hire date"><span class="um-date-text"><?= $e($s['hire_date'] ?: '—') ?></span></td>
                     <td data-label="Status"><span class="um-status <?= $e($status_class) ?>"><?= $e($status_label) ?></span></td>
                     <td data-label="Actions" class="um-actions">
+                        <?php if ($is_current_account): ?>
+                            <a class="action-view um-profile-link" href="admin_dashboard.php?page=settings#panel-profile">Edit my profile</a>
+                        <?php else: ?>
                         <button type="button" class="action-view btn-staff-modal"
                             data-id="<?= $e($staff_id) ?>"
                             data-name="<?= $e($full_name) ?>"
@@ -114,14 +121,15 @@ $today = date('Y-m-d');
                             data-job-title="<?= $e($position_title) ?>"
                             data-hire-date="<?= $e($s['hire_date'] ?? '') ?>"
                             data-status="<?= $e($status_label) ?>"
-                            data-role="staff">View details</button>
-                        <?php if ($staff_id === (int)($_SESSION['user_id'] ?? 0)): ?>
-                            <span class="um-current-account">Current account</span>
+                            data-role="<?= $e($s['role']) ?>">View details</button>
+                        <?php if ($is_admin_account): ?>
+                            <span class="um-secondary-text">Read-only access</span>
                         <?php elseif ($staff_status === 'active'): ?>
                             <button type="button" class="action-archive btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="archive">Archive</button>
                             <button type="button" class="action-promote btn-staff-promote" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="promote" aria-haspopup="dialog" aria-controls="promoteStaffModal">Promote to admin</button>
-                        <?php else: ?>
+                        <?php elseif ($staff_status === 'archived'): ?>
                             <button type="button" class="action-restore btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="restore">Restore</button>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -129,7 +137,7 @@ $today = date('Y-m-d');
                 <tr class="um-empty-row" id="staffEmptyRow" hidden>
                     <td colspan="8">
                         <div class="um-empty-state">
-                            <strong>No staff accounts match this view.</strong>
+                            <strong>No admin or staff accounts match this view.</strong>
                             <span>Try another status filter or search term.</span>
                         </div>
                     </td>

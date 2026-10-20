@@ -124,6 +124,8 @@ function staff_management_validate_profile(array $data): array
 
 function staff_management_find_target(mysqli $conn, int $userId, bool $forUpdate = true): array
 {
+    // Every lifecycle/promotion target must still be Staff. This excludes all
+    // Admins, including the only active Admin; directory visibility grants no access.
     $sql = "SELECT u.email, u.role, s.full_name, s.status
             FROM users u
             INNER JOIN staff s ON s.user_id = u.id
@@ -191,6 +193,16 @@ if ($action === 'edit') {
 }
 if (!in_array($action, ['add', 'archive', 'restore', 'promote'], true)) {
     staff_management_error(422, 'Invalid staff action.');
+}
+if ($action !== 'add') {
+    try {
+        $directoryTargetId = staff_management_user_id($data);
+    } catch (StaffManagementException $error) {
+        staff_management_error($error->statusCode(), $error->getMessage());
+    }
+    if ($directoryTargetId === (int)($_SESSION['user_id'] ?? 0)) {
+        staff_management_error(409, 'Your current account cannot be changed from this directory. Use Settings to edit your profile.');
+    }
 }
 if ($action === 'add' && array_key_exists('role', $data)) {
     $requestedRole = $data['role'];

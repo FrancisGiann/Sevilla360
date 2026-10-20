@@ -90,6 +90,16 @@ foreach (['archive', 'restore', 'promote', 'staffFilter', 'aria-pressed', 'repla
 staff_account_contract_assert(strpos($script, 'action: "promote"') !== false
     && strpos($script, 'user_id: document.getElementById("promoteStaffUserId").value') !== false
     && strpos($script, 'current_password: promotePassword.value') !== false, 'promotion submits the minimal JSON payload with the existing CSRF request helper');
+staff_account_contract_assert(str_contains($view, "u.role IN ('admin', 'staff')")
+    && str_contains($view, 'Admin &amp; Staff Accounts')
+    && str_contains($view, 'LEFT JOIN staff'), 'the directory includes Admin and Staff identities, including missing work profiles');
+staff_account_contract_assert(str_contains($view, 'aria-label="Current account">You')
+    && str_contains($view, 'Edit my profile')
+    && str_contains($view, '<?php if ($is_admin_account): ?>'), 'own-profile navigation and read-only Admin actions remain distinct from Staff management');
+staff_account_contract_assert(str_contains($script, 'isAdminDetails ? "Admin" : "Staff"')
+    && str_contains($styles, '#staffModal [hidden] { display: none !important; }'), 'Admin details show the actual role and hidden write controls stay hidden');
+staff_account_contract_assert(str_contains($backend, '$directoryTargetId === (int)($_SESSION[\'user_id\'] ?? 0)')
+    && str_contains($backend, 'catch (StaffManagementException $error)'), 'all directory self-actions reject safely, including malformed target IDs');
 staff_account_contract_assert(strpos($script, 'if (!focusableElements.length) return;') !== false, 'modal focus trap is a no-op without focusable controls');
 staff_account_contract_assert(strpos($script, 'innerHTML') === false && strpos($script, 'insertAdjacentHTML') === false, 'script does not inject untrusted HTML');
 staff_account_contract_assert(strpos($styles, '.um-form-grid') !== false
