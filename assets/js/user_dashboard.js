@@ -861,21 +861,23 @@ document.addEventListener("DOMContentLoaded", () => {
           if (confirmBtn) confirmBtn.textContent = 'Submit Refund Request';
       }
 
+      refundDestinationControls?.sync();
+
       if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
       openModal("cancel");
   });
 
   const refundDestinationMethod = document.getElementById('cancel-refund-method');
+  const refundDestinationControls = window.SevillaRefundDestination?.bind({
+    method: refundDestinationMethod,
+    identifier: document.getElementById('cancel-refund-account-identifier'),
+    identifierLabel: document.getElementById('cancel-refund-identifier-label'),
+    identifierHelp: document.getElementById('cancel-refund-identifier-help'),
+    bankField: document.getElementById('cancel-refund-bank-field'),
+    bank: document.getElementById('cancel-refund-bank-name')
+  });
   if (refundDestinationMethod) {
     refundDestinationMethod.addEventListener('change', () => {
-      const bankField = document.getElementById('cancel-refund-bank-field');
-      const bankName = document.getElementById('cancel-refund-bank-name');
-      const isBankTransfer = refundDestinationMethod.value === 'Bank Transfer';
-      if (bankField) bankField.hidden = !isBankTransfer;
-      if (bankName) {
-        bankName.required = isBankTransfer;
-        if (!isBankTransfer) bankName.value = '';
-      }
       const error = document.getElementById('cancel-refund-destination-error');
       if (error) { error.hidden = true; error.textContent = ''; }
     });
@@ -902,6 +904,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const destinationIdentifier = document.getElementById('cancel-refund-account-identifier');
       const destinationBank = document.getElementById('cancel-refund-bank-name');
       if (isRefundable) {
+        refundDestinationControls?.validate();
         const requiredDestinationFields = [destinationMethod, destinationName, destinationIdentifier, ...(destinationBank?.required ? [destinationBank] : [])].filter(Boolean);
         const invalidDestinationField = requiredDestinationFields.find((field) => !field.checkValidity());
         if (invalidDestinationField) {
@@ -944,7 +947,7 @@ document.addEventListener("DOMContentLoaded", () => {
             destinationError.textContent = serverMessage;
             destinationError.hidden = false;
             const lowerMessage = serverMessage.toLowerCase();
-            const invalidField = lowerMessage.includes('bank') ? destinationBank
+            const invalidField = lowerMessage.includes('bank name') ? destinationBank
               : lowerMessage.includes('account holder') ? destinationName
                 : lowerMessage.includes('number') || lowerMessage.includes('mobile') || lowerMessage.includes('wallet') ? destinationIdentifier
                   : destinationMethod;

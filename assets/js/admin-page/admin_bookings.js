@@ -1245,15 +1245,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   
     const guestRefundForm = document.getElementById('guest-refund-form');
-    document.getElementById('guest-refund-method')?.addEventListener('change', event => {
-        const cash = event.target.value === 'Cash'; const bank = event.target.value === 'Bank Transfer';
-        document.getElementById('guest-refund-identifier-wrap').hidden = cash;
-        document.getElementById('guest-refund-identifier').required = !cash;
-        document.getElementById('guest-refund-bank-wrap').hidden = !bank;
-        document.getElementById('guest-refund-bank').required = bank;
+    const guestRefundControls = window.SevillaRefundDestination?.bind({
+        method: document.getElementById('guest-refund-method'),
+        identifier: document.getElementById('guest-refund-identifier'),
+        identifierField: document.getElementById('guest-refund-identifier-wrap'),
+        identifierLabel: document.getElementById('guest-refund-identifier-label'),
+        identifierHelp: document.getElementById('guest-refund-identifier-help'),
+        bankField: document.getElementById('guest-refund-bank-wrap'),
+        bank: document.getElementById('guest-refund-bank'),
+        allowCash: true
     });
     guestRefundForm?.addEventListener('submit', event => {
         event.preventDefault();
+        guestRefundControls?.validate();
+        if (!guestRefundForm.reportValidity()) return;
         const modal = document.getElementById('guestRefundRequestModal');
         processBookingAction(modal.dataset.bookingId, 'request_guest_refund', guestRefundForm.querySelector('[type="submit"]'), {
             reason: document.getElementById('guest-refund-reason').value.trim(),

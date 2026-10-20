@@ -106,9 +106,9 @@
             <p>The full paid amount will be refunded. The booking stays reserved until you separately mark the refund sent. Recording this request does not send money or void the receipt.</p>
             <form id="guest-refund-form">
                 <div class="form-group"><label for="guest-refund-reason">Guest’s cancellation reason</label><textarea id="guest-refund-reason" class="form-input-padded" rows="3" maxlength="1000" required></textarea></div>
-                <div class="form-group"><label for="guest-refund-method">Refund method</label><select id="guest-refund-method" class="form-input-padded"><option>Cash</option><option>GCash</option><option>Maya</option><option>Bank Transfer</option></select></div>
+                <div class="form-group"><label for="guest-refund-method">Refund method</label><select id="guest-refund-method" class="form-input-padded"><option>Cash</option><option>GCash</option><option value="Maya">Maya Wallet</option><option>Bank Transfer</option></select></div>
                 <div class="form-group"><label for="guest-refund-name">Recipient / account holder name</label><input id="guest-refund-name" class="form-input-padded" minlength="2" maxlength="120" autocomplete="off" required></div>
-                <div class="form-group" id="guest-refund-identifier-wrap" hidden><label for="guest-refund-identifier">Wallet / account number</label><input id="guest-refund-identifier" class="form-input-padded" maxlength="64" autocomplete="off"></div>
+                <div class="form-group" id="guest-refund-identifier-wrap" hidden><label for="guest-refund-identifier" id="guest-refund-identifier-label">Refund account number</label><input id="guest-refund-identifier" class="form-input-padded" maxlength="64" autocomplete="off" aria-describedby="guest-refund-identifier-help"><small id="guest-refund-identifier-help"></small></div>
                 <div class="form-group" id="guest-refund-bank-wrap" hidden><label for="guest-refund-bank">Bank name</label><input id="guest-refund-bank" class="form-input-padded" minlength="2" maxlength="100" autocomplete="off"></div>
                 <div class="modal-actions"><button type="button" class="btn-modal btn-modal-cancel close-modal">Close</button><button type="submit" class="btn-modal btn-modal-primary">Record request</button></div>
             </form>

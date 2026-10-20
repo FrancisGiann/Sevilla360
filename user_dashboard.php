@@ -667,15 +667,16 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                         <select id="cancel-refund-method" autocomplete="off">
                             <option value="">Choose a method</option>
                             <option value="GCash">GCash</option>
-                            <option value="Maya">Maya</option>
+                            <option value="Maya">Maya Wallet</option>
                             <option value="Bank Transfer">Bank Transfer</option>
                         </select>
                     </label>
                     <label class="cancel-destination-field" for="cancel-refund-account-name">Account holder name
                         <input type="text" id="cancel-refund-account-name" minlength="2" maxlength="120" autocomplete="name">
                     </label>
-                    <label class="cancel-destination-field" for="cancel-refund-account-identifier">Wallet / mobile / account number
-                        <input type="text" id="cancel-refund-account-identifier" minlength="4" maxlength="64" autocomplete="off" inputmode="tel">
+                    <label class="cancel-destination-field" for="cancel-refund-account-identifier"><span id="cancel-refund-identifier-label">Refund account number</span>
+                        <input type="text" id="cancel-refund-account-identifier" maxlength="64" autocomplete="off" aria-describedby="cancel-refund-identifier-help">
+                        <small id="cancel-refund-identifier-help">Choose a destination method first.</small>
                     </label>
                     <label class="cancel-destination-field" id="cancel-refund-bank-field" for="cancel-refund-bank-name" hidden>Bank name
                         <input type="text" id="cancel-refund-bank-name" minlength="2" maxlength="100" autocomplete="organization">
@@ -876,6 +877,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     <!-- Specific User Dashboard JS -->
     <script src="assets/js/manual_payment.js?v=<?= filemtime(__DIR__ . '/assets/js/manual_payment.js'); ?>"></script>
     <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js'); ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/refund_destination.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/user_dashboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
 </body>

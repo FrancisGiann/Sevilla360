@@ -17,6 +17,7 @@ $helper = $read('includes/refund_helper.php');
 $customerPage = $read('user_dashboard.php');
 $customerPage .= "\n" . $read('includes/customer-dashboard/booking_rows.php');
 $customerJs = $read('assets/js/user_dashboard.js');
+$refundClient = $read('assets/js/refund_destination.js');
 $customerCss = $read('assets/css/user_dashboard.css');
 $customerUiCss = $read('assets/css/ui-refinement.css');
 $adminBookings = $read('includes/admin-page/admin_bookings.php');
@@ -118,11 +119,14 @@ $assert(str_contains($customerCss, '.modal-details-scroll .modal-summary > p,')
     'Customer details, financial, refund, and payment rows share the right-aligned desktop treatment and stack left-aligned on narrow screens.');
 
 $assert(str_contains($customerPage, '<option value="GCash">GCash</option>')
-    && str_contains($customerPage, '<option value="Maya">Maya</option>')
+    && str_contains($customerPage, '<option value="Maya">Maya Wallet</option>')
     && str_contains($customerPage, '<option value="Bank Transfer">Bank Transfer</option>')
     && str_contains($customerPage, 'Never share your PIN or OTP.')
     && str_contains($customerPage, 'id="cancel-refund-bank-field"')
-    && str_contains($customerJs, "refundDestinationMethod.value === 'Bank Transfer'")
+    && str_contains($customerJs, 'window.SevillaRefundDestination?.bind')
+    && str_contains($refundClient, "selected === 'Bank Transfer'")
+    && str_contains($customerPage, 'assets/js/refund_destination.js')
+    && str_contains($customerCss, '.cancel-destination-field[hidden] { display: none !important; }')
     && str_contains($customerJs, "refund_destination: {")
     && str_contains($customerJs, 'invalidDestinationField.focus()')
     && str_contains($customerJs, 'destinationFields.hidden = true'),

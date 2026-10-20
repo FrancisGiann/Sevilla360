@@ -88,4 +88,38 @@ $throws(static fn() => normalize_refund_destination(['method' => 'Bank Transfer'
 $throws(static fn() => normalize_refund_destination(['method' => 'Bank Transfer', 'account_name' => 'Maria Cruz', 'account_identifier' => str_repeat('1', 65), 'bank_name' => 'Metro Bank']), 'Bank account identifiers are bounded.');
 $throws(static fn() => normalize_refund_destination(['method' => 'GCash', 'account_name' => ['Maria'], 'account_identifier' => '09171234567']), 'Non-string names are rejected rather than coerced.');
 
+$bankInput = ['method' => 'Bank Transfer', 'account_name' => 'QA Holder', 'bank_name' => 'QA Bank', 'account_identifier' => '00001234'];
+foreach (['0', '01', 'A01', '00001234', '001-234 AB', '-001 AB', str_repeat('0', 64)] as $identifier) {
+    $actual = normalize_refund_destination(array_replace($bankInput, ['account_identifier' => $identifier]));
+    $assert(is_string($actual['account_identifier']) && $actual['account_identifier'] === $identifier, 'Generic bank identifiers retain their exact string and leading zeros without provider-specific minimum lengths.');
+}
+$assert(normalize_refund_destination(array_replace($bankInput, ['account_identifier' => '  001  234-AB  ']))['account_identifier'] === '001 234-AB', 'Bank identifier formatting normalizes boundary and repeated spaces without numeric conversion.');
+foreach (['', '   ', '---', ' - - ', '123/456', '+639171234567', "001\t234", "\n001234", "001234\r", "001\x00234", "001\x7F234", str_repeat('1', 65)] as $identifier) {
+    $throws(static fn() => normalize_refund_destination(array_replace($bankInput, ['account_identifier' => $identifier])), 'Empty, unsupported, control-containing, separator-only or overlong bank identifiers are rejected.');
+}
+foreach (['method', 'account_name', 'bank_name', 'account_identifier'] as $field) {
+    $missing = $bankInput;
+    unset($missing[$field]);
+    $throws(static fn() => normalize_refund_destination($missing), 'Bank transfers require every destination field.');
+    foreach ([null, 123, ['value'], true] as $invalidType) {
+        $invalid = array_replace($bankInput, [$field => $invalidType]);
+        $throws(static fn() => normalize_refund_destination($invalid), 'Destination fields reject non-string values without coercion.');
+        $assert(!refund_destination_is_valid($invalid), 'Persisted destination checks fail closed on malformed field types.');
+    }
+    $throws(static fn() => normalize_refund_destination(array_replace($bankInput, [$field => "\n" . $bankInput[$field]])), 'Leading controls cannot be silently trimmed from destination fields.');
+}
+foreach (['Maya Wallet', 'PayMaya', 'bank transfer', 'Unknown'] as $method) {
+    $throws(static fn() => normalize_refund_destination(array_replace($bankInput, ['method' => $method])), 'Persisted refund methods retain their exact controlled values.');
+}
+foreach (['GCash', 'Maya'] as $method) {
+    foreach (['09171234567', '9171234567', '639171234567', '+63 917-123-4567'] as $identifier) {
+        $wallet = normalize_refund_destination(array_replace($bankInput, ['method' => $method, 'account_identifier' => $identifier]));
+        $assert($wallet['method'] === $method && $wallet['account_identifier'] === '+639171234567' && $wallet['bank_name'] === null, 'Known wallet methods preserve their stored method and normalize Philippine mobile formats.');
+    }
+    foreach (['001234', '02123456789', '+129171234567', '091712345678', '0917123456', "\t09171234567", "0917\n1234567"] as $identifier) {
+        $throws(static fn() => normalize_refund_destination(array_replace($bankInput, ['method' => $method, 'account_identifier' => $identifier])), 'Wallet destinations reject generic bank, landline, foreign, wrong-length and control-containing identifiers.');
+    }
+}
+$throws(static fn() => normalize_refund_wallet_identifier("0917\t1234567"), 'Direct wallet normalization also rejects control characters.');
+
 echo "Refund destination helper checks passed ({$assertions} assertions).\n";

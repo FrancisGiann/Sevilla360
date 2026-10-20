@@ -329,6 +329,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_calendar.js') ?>"></script>
     <?php elseif ($page === 'bookings'): ?>
     <script src="<?= $admin_asset_url('assets/js/receipt_preview.js') ?>"></script>
+    <script src="<?= $admin_asset_url('assets/js/refund_destination.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_bookings.js') ?>"></script>
     <?php elseif ($page === 'walkin'): ?>
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_walkin.js') ?>"></script>

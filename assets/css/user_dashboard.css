@@ -2387,6 +2387,8 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 .cancel-safety-copy { margin: 0 0 14px; color: #62584f; font-size: .86rem; line-height: 1.45; }
 .cancel-destination-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .cancel-destination-field { display: grid; gap: 6px; min-width: 0; color: var(--color-dark); font-size: .86rem; font-weight: 600; }
+.cancel-destination-field[hidden] { display: none !important; }
+.cancel-destination-field small { color: #62584f; font-weight: 400; line-height: 1.45; }
 .cancel-destination-field select,
 .cancel-destination-field input {
   box-sizing: border-box;

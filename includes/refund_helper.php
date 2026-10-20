@@ -7,7 +7,7 @@ function calculate_refund_breakdown(float $amountPaid): array {
 /** Validate and normalize the customer-selected destination for a paid refund. */
 function normalize_refund_destination(array $input, bool $allowCash = false): array {
     $methodValue = $input['method'] ?? null;
-    $method = is_string($methodValue) ? trim($methodValue) : '';
+    $method = is_string($methodValue) && !preg_match('/[\x00-\x1F\x7F]/', $methodValue) ? trim($methodValue) : '';
     if ($allowCash && $method === 'Cash') {
         return ['method' => 'Cash', 'account_name' => normalize_refund_destination_text($input['account_name'] ?? '', 2, 120, 'Enter the cash recipient name (2–120 characters).'), 'account_identifier' => null, 'bank_name' => null];
     }
@@ -19,15 +19,15 @@ function normalize_refund_destination(array $input, bool $allowCash = false): ar
     $accountName = normalize_refund_destination_text($input['account_name'] ?? '', 2, 120, 'Enter the account holder name (2–120 characters).');
     $identifierValue = $input['account_identifier'] ?? null;
     $rawIdentifier = is_string($identifierValue) ? trim($identifierValue) : '';
-    if ($rawIdentifier === '' || preg_match('/[\x00-\x1F\x7F]/', $rawIdentifier)) {
+    if ($rawIdentifier === '' || preg_match('/[\x00-\x1F\x7F]/', $identifierValue)) {
         throw new InvalidArgumentException('Enter a valid wallet, mobile, or account number.');
     }
 
     if ($method === 'Bank Transfer') {
         $identifier = preg_replace('/\s+/', ' ', $rawIdentifier);
-        if (!is_string($identifier) || strlen($identifier) < 4 || strlen($identifier) > 64
-            || !preg_match('/\A[A-Za-z0-9][A-Za-z0-9 -]*\z/D', $identifier)) {
-            throw new InvalidArgumentException('Enter a valid bank account number using letters, numbers, spaces, or hyphens (4–64 characters).');
+        if (!is_string($identifier) || strlen($identifier) > 64
+            || !preg_match('/\A[A-Za-z0-9 -]+\z/D', $identifier) || !preg_match('/[A-Za-z0-9]/', $identifier)) {
+            throw new InvalidArgumentException('Enter a bank account number using letters, numbers, spaces, or hyphens (up to 64 characters).');
         }
         $bankName = normalize_refund_destination_text($input['bank_name'] ?? '', 2, 100, 'Enter the bank name (2–100 characters).');
     } else {
@@ -46,7 +46,7 @@ function normalize_refund_destination(array $input, bool $allowCash = false): ar
 function normalize_refund_destination_text($value, int $minimum, int $maximum, string $errorMessage): string {
     if (!is_string($value)) throw new InvalidArgumentException($errorMessage);
     $text = trim($value);
-    if ($text === '' || preg_match('/[\x00-\x1F\x7F]/', $text) || preg_match('//u', $text) !== 1) {
+    if ($text === '' || preg_match('/[\x00-\x1F\x7F]/', $value) || preg_match('//u', $text) !== 1) {
         throw new InvalidArgumentException($errorMessage);
     }
     $text = preg_replace('/\s+/u', ' ', $text);
@@ -57,6 +57,7 @@ function normalize_refund_destination_text($value, int $minimum, int $maximum, s
 }
 
 function normalize_refund_wallet_identifier(string $value): string {
+    if (preg_match('/[\x00-\x1F\x7F]/', $value)) throw new InvalidArgumentException('Enter a valid Philippine mobile number for the selected e-wallet.');
     $compact = preg_replace('/[\s-]+/', '', trim($value));
     if (!is_string($compact)) throw new InvalidArgumentException('Enter a valid Philippine mobile number for the selected e-wallet.');
 
@@ -78,10 +79,10 @@ function normalize_refund_wallet_identifier(string $value): string {
 function refund_destination_is_valid(array $destination, bool $allowCash = false): bool {
     try {
         normalize_refund_destination([
-            'method' => (string)($destination['refund_destination_method'] ?? $destination['method'] ?? ''),
-            'account_name' => (string)($destination['refund_destination_account_name'] ?? $destination['account_name'] ?? ''),
-            'account_identifier' => (string)($destination['refund_destination_account_identifier'] ?? $destination['account_identifier'] ?? ''),
-            'bank_name' => (string)($destination['refund_destination_bank_name'] ?? $destination['bank_name'] ?? ''),
+            'method' => $destination['refund_destination_method'] ?? $destination['method'] ?? '',
+            'account_name' => $destination['refund_destination_account_name'] ?? $destination['account_name'] ?? '',
+            'account_identifier' => $destination['refund_destination_account_identifier'] ?? $destination['account_identifier'] ?? '',
+            'bank_name' => $destination['refund_destination_bank_name'] ?? $destination['bank_name'] ?? '',
         ], $allowCash);
         return true;
     } catch (InvalidArgumentException $error) {

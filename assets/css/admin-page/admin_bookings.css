@@ -161,6 +161,7 @@
 }
 
 /* Shared payment and protected-proof history in booking detail surfaces. */
+#guestRefundRequestModal [hidden],
 .admin-payment-history-section[hidden],
 .admin-proof-history[hidden],
 .admin-proof-history-preview[hidden] { display: none !important; }
