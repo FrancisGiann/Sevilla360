@@ -105,7 +105,8 @@ $assert(str_contains($historyApi, "'seminar'")
     && str_contains($historyUi, 'Open seminar')
     && str_contains($historyUi, 'record_type === \'seminar\''),
     'booking history paginates seminars with shared filters and routes back to the seminar plan');
-$assert(str_contains($historyCsv, "'Seminar' AS record_type")
+$assert(str_contains($historyCsv, '{$historyText("\'Seminar\'")} AS record_type')
+    && str_contains($historyCsv, 'COLLATE utf8mb4_unicode_ci')
     && str_contains($historyCsv, "'Record type'")
     && str_contains($historyCsv, 'seminarWhere'),
     'history CSV exports include clearly labeled seminar records');

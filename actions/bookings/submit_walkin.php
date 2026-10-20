@@ -275,9 +275,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         if ($res_cust->num_rows > 0) {
             $customer_id = $res_cust->fetch_assoc()['id'];
-            $stmt_update_cust = $conn->prepare("UPDATE customers SET phone = ? WHERE id = ?");
-            $stmt_update_cust->bind_param("si", $guest_phone, $customer_id);
-            $stmt_update_cust->execute();
+            // A reservation contact is not a customer profile edit. Keep the
+            // supplied number on bookings.contact_phone without replacing the
+            // existing customer's saved contact information.
         } else {
             $stmt_cust = $conn->prepare("INSERT INTO customers (first_name, last_name, email, phone) VALUES (?, ?, ?, ?)");
             $stmt_cust->bind_param("ssss", $first_name, $last_name, $guest_email, $guest_phone);

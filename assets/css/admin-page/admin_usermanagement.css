@@ -690,6 +690,8 @@ body.um-modal-open {
   .um-table.active > table tbody tr:not([hidden]),
   table.um-table.active tbody tr:not([hidden]) {
     display: block;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 10px 14px;
     border: 1px solid rgba(42, 37, 34, .1);
     border-radius: 8px;
@@ -699,10 +701,12 @@ body.um-modal-open {
 
   .um-table.active > table tbody td,
   table.um-table.active tbody td {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: minmax(82px, 34%) minmax(0, 1fr);
+    align-items: start;
+    gap: 6px 12px;
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 9px 0 !important;
     border-bottom: 1px solid rgba(42, 37, 34, .06) !important;
     font-size: .9rem;
@@ -712,13 +716,21 @@ body.um-modal-open {
   .um-table.active > table tbody td::before,
   table.um-table.active tbody td::before {
     content: attr(data-label);
-    flex: 0 0 auto;
+    grid-column: 1;
+    grid-row: 1;
     color: var(--color-dark-light);
     font-size: .7rem;
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
     text-align: left;
+  }
+
+  .um-table.active > table tbody td > *,
+  table.um-table.active tbody td > * {
+    grid-column: 2;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .um-table.active > table tbody td:last-child,
@@ -728,6 +740,7 @@ body.um-modal-open {
 
   .um-table.active > table tbody td.um-actions,
   table.um-table.active tbody td.um-actions {
+    display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
