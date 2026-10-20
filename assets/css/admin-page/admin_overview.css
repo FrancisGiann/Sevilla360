@@ -1384,10 +1384,22 @@
   }
 
   #overviewBookingModal .status-badge {
+    width: max-content;
     max-width: 100%;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    word-break: normal;
   }
+}
+
+/* Keep the page behind overview dialogs still; the dialog owns scrolling. */
+html:has(#overviewModalOverlay.active),
+body:has(#overviewModalOverlay.active) { overflow: hidden; }
+#overviewModalOverlay { overflow: hidden; }
+#overviewBookingModal {
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .maint-pill-type {

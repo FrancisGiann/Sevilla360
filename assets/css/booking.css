@@ -1514,6 +1514,10 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 
 /* Included features stay compact; the complete read-only catalog scrolls separately. */
 .booking-section .amenities-preview { grid-template-columns: minmax(0,1fr); }
+.booking-section .inc-col ul li:not(.amenities-empty) { padding:8px 0;border:0;border-radius:0;background:transparent;gap:12px; }
+.booking-section .inc-col ul li::before { content:none; }
+.booking-amenity-icon { order:-1;flex:0 0 1.25rem;width:1.25rem;margin-top:.15em;color:#67471f;text-align:center;line-height:1.35; }
+.booking-amenity-icon.fa-circle { font-size:.4rem;line-height:3; }
 .booking-section .amenities-preview li span { display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere; }
 .amenities-disclosure { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;color:var(--color-dark-light);font-size:.85rem; }
 .amenities-disclosure button,.booking-amenities-panel button { min-height:44px;padding:8px 12px;border:1px solid var(--color-gold);border-radius:6px;background:var(--color-white,#fffdf8);color:var(--color-dark);font:inherit;cursor:pointer; }
@@ -1526,5 +1530,6 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 .booking-amenities-panel input { box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid #c5bbaa;border-radius:6px;font:inherit;font-size:16px;background:#fff;color:var(--color-dark); }
 .amenities-panel-status { margin:0;font-size:.85rem;line-height:1.4;color:var(--color-dark-light); }
 .amenities-panel-list { min-height:0;overflow-y:auto;overscroll-behavior:contain;list-style:none;margin:0;padding:0;scrollbar-color:var(--color-gold) #f4eee5; }
-.amenities-panel-list li { padding:12px 0;border-bottom:1px solid #e6ded2;line-height:1.5;overflow-wrap:anywhere; }
+.amenities-panel-list li { display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid #e6ded2;line-height:1.5;overflow-wrap:anywhere; }
+.amenities-panel-list li span { min-width:0; }
 .booking-amenities-panel :focus-visible,.amenities-disclosure button:focus-visible { outline:2px solid #8a6335;outline-offset:2px; }

@@ -1813,6 +1813,48 @@ class BookingController {
         this.renderAmenityList(amenities, items, hasSelection ? 'No amenities listed.' : `Select ${article} ${itemLabel} to view its amenities.`);
     }
 
+    bookingAmenityIconClass(label) {
+        const words = String(label).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/)
+            .map(word => word.length > 4 && word.endsWith('ies') ? `${word.slice(0, -3)}y`
+                : word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word);
+        const has = (...phrases) => phrases.some(phrase => {
+            const expected = phrase.split(' ');
+            return words.some((_, index) => expected.every((word, offset) => words[index + offset] === word));
+        });
+        if (has('wheelchair', 'pwd')) return 'fa-wheelchair';
+        if (has('microphone', 'mic')) return 'fa-microphone';
+        if (has('sound system', 'audio system', 'speaker', 'audio')) return 'fa-volume-high';
+        if (has('table', 'chair', 'seating')) return 'fa-chair';
+        if (has('lighting', 'light')) return 'fa-lightbulb';
+        if (has('stage', 'platform')) return 'fa-masks-theater';
+        if (has('restroom', 'bathroom', 'toilet', 'comfort room')) return 'fa-restroom';
+        if (has('catering', 'breakfast', 'food', 'utensil', 'dining')) return 'fa-utensils';
+        if (has('parking')) return 'fa-square-parking';
+        if (has('wifi', 'wi fi')) return 'fa-wifi';
+        if (has('air conditioning', 'air conditioner', 'air conditioned', 'aircon', 'ac')) return 'fa-snowflake';
+        if (has('pool', 'swimming')) return 'fa-water-ladder';
+        if (has('tv', 'television')) return 'fa-tv';
+        if (has('fridge', 'refrigerator')) return 'fa-temperature-arrow-down';
+        if (has('gym', 'fitness')) return 'fa-dumbbell';
+        if (has('bed')) return 'fa-bed';
+        if (has('bath', 'shower')) return 'fa-bath';
+        return 'fa-circle';
+    }
+
+    createBookingAmenityItem(label, showIcon = true) {
+        const li = document.createElement('li');
+        const text = document.createElement('span');
+        text.textContent = label;
+        li.appendChild(text);
+        if (showIcon) {
+            const icon = document.createElement('i');
+            icon.className = `booking-amenity-icon fa-solid ${this.bookingAmenityIconClass(label)}`;
+            icon.setAttribute('aria-hidden', 'true');
+            li.appendChild(icon);
+        }
+        return li;
+    }
+
     renderAmenityList(list, items, emptyText) {
         // Staff keeps its full list; this disclosure belongs to public booking only.
         const compact = Boolean(list.closest('.booking-section'));
@@ -1827,11 +1869,7 @@ class BookingController {
             return;
         }
         (compact ? items.slice(0, 3) : items).forEach(item => {
-            const li = document.createElement('li');
-            const text = document.createElement('span');
-            text.textContent = item;
-            li.appendChild(text);
-            list.appendChild(li);
+            list.appendChild(this.createBookingAmenityItem(item, compact));
         });
         if (!compact || items.length <= 3) return;
         const controls = document.createElement('div');
@@ -1879,11 +1917,7 @@ class BookingController {
             const query = search.value.trim().toLocaleLowerCase();
             const matches = items.filter(item => item.toLocaleLowerCase().includes(query));
             status.textContent = matches.length ? `${matches.length} of ${items.length} amenities` : 'No matching amenities. Try another search.';
-            list.replaceChildren(...matches.map(item => {
-                const li = document.createElement('li');
-                li.textContent = item;
-                return li;
-            }));
+            list.replaceChildren(...matches.map(item => this.createBookingAmenityItem(item)));
         };
         search.addEventListener('input', render);
         panel.addEventListener('keydown', event => {

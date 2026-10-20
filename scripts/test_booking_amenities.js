@@ -35,3 +35,14 @@ test('labels remain plain text including HTML-like and long input',()=>{
     const f=fixture();const label='<img src=x onerror=alert(1)>'+ 'LongName'.repeat(100);
     f.controller.renderAmenityList(f.list,[label],'Empty');assert.equal(f.list.children[0].children[0].textContent,label);assert.equal(f.list.children[0].children[0].children.length,0);
 });
+test('booking amenities use meaningful decorative icons and a neutral custom fallback',()=>{
+    const f=fixture();
+    for(const [label,icon] of [['Free Wi-Fi','fa-wifi'],['Tables and chairs','fa-chair'],['sound system','fa-volume-high'],['microphones','fa-microphone'],['Parking area','fa-square-parking'],['Air conditioning','fa-snowflake'],['Swimming pool','fa-water-ladder'],['Custom package','fa-circle'],['Blackout curtains','fa-circle']]) {
+        const item=f.controller.createBookingAmenityItem(label);
+        assert.equal(item.children[0].textContent,label);
+        assert.equal(item.children[1].className,`booking-amenity-icon fa-solid ${icon}`);
+        assert.equal(item.children[1].attributes['aria-hidden'],'true');
+    }
+    const staff=fixture(false);staff.controller.renderAmenityList(staff.list,['Free Wi-Fi'],'Empty');
+    assert.equal(staff.list.children[0].children.length,1,'shared Staff renderer keeps its existing text-only DOM');
+});
