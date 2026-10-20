@@ -105,23 +105,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!toggle || !scrim) return;
 
-    const closeMenu = () => {
+    const closeMenu = (restoreFocus = false) => {
+        const wasOpen = sidebar.classList.contains('mobile-nav-open');
         sidebar.classList.remove('mobile-nav-open');
         scrim.classList.remove('mobile-nav-scrim-open');
         toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Open menu');
+        if (wasOpen && restoreFocus === true) toggle.focus();
     };
     const openMenu = () => {
         sidebar.classList.add('mobile-nav-open');
         scrim.classList.add('mobile-nav-scrim-open');
         toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', 'Close menu');
+        window.requestAnimationFrame(() => {
+            if (sidebar.classList.contains('mobile-nav-open')) sidebar.querySelector('a')?.focus();
+        });
     };
 
     toggle.addEventListener('click', () => {
-        sidebar.classList.contains('mobile-nav-open') ? closeMenu() : openMenu();
+        sidebar.classList.contains('mobile-nav-open') ? closeMenu(true) : openMenu();
     });
-    scrim.addEventListener('click', closeMenu);
-    sidebar.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
+    scrim.addEventListener('click', () => closeMenu(true));
+    sidebar.querySelector('#mobile-sidebar-close')?.addEventListener('click', () => closeMenu(true));
+    sidebar.querySelectorAll('a').forEach(link => link.addEventListener('click', () => closeMenu()));
+    desktopQuery.addEventListener?.('change', event => {
+        if (event.matches) closeMenu();
+    });
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closeMenu();
+        if (!sidebar.classList.contains('mobile-nav-open')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeMenu(true);
+        } else if (event.key === 'Tab') {
+            const controls = [...sidebar.querySelectorAll('a, button:not([disabled])')]
+                .filter(control => control.getClientRects().length > 0);
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first?.focus();
+            }
+        }
     });
 });

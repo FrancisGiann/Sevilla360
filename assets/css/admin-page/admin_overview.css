@@ -48,6 +48,8 @@
   row-gap: 4px;
 }
 
+.mobile-sidebar-close { display: none; }
+
 .sidebar-collapse-toggle {
   display: inline-flex;
   align-items: center;
@@ -792,12 +794,35 @@
   .sidebar.mobile-nav-open { transform: translateX(0); }
 
   .sidebar-header {
+    position: relative;
     display: flex;
     padding: 22px 20px;
     justify-content: space-between;
   }
 
   .sidebar-collapse-toggle { display: none; }
+
+  .mobile-sidebar-close {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border: 1px solid currentColor;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--color-gold);
+    cursor: pointer;
+  }
+
+  .mobile-sidebar-close:focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+  }
 
   .sidebar-header .navbar-brand,
   .admin-badge { display: inline-block; }

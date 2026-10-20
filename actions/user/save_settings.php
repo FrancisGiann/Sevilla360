@@ -5,6 +5,7 @@ header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
+require_once __DIR__ . '/../../includes/profile_fields.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -27,9 +28,9 @@ $action = $data['action'] ?? '';
 
 try {
     if ($action === 'update_profile') {
-        $fname = trim($data['fname']);
-        $lname = trim($data['lname']);
-        $phone = trim($data['phone']);
+        $fname = profile_input_text($data['fname'] ?? '', 'First name', 100);
+        $lname = profile_input_text($data['lname'] ?? '', 'Last name', 100);
+        $phone = profile_input_phone($data['phone'] ?? '');
         if (empty($fname) || empty($lname)) {
             throw new Exception("First and Last name are required.");
         }

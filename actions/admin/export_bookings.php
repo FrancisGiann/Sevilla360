@@ -4,6 +4,8 @@ require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 $booking_completion_sql = booking_completion_sql('b');
+// Match the dashboard history query across mixed legacy table/session collations.
+$historyText = static fn(string $expression): string => "CONVERT(({$expression}) USING utf8mb4) COLLATE utf8mb4_unicode_ci";
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff', 'admin'], true)) {
     http_response_code(403);
@@ -23,7 +25,8 @@ $where = [
 ];
 $params = [$search, $search, $search, $search, $search, $search];
 $types = 'ssssss';
-$seminarWhere = ["(CONCAT('SEM-',s.id) LIKE ? OR CAST(s.id AS CHAR) LIKE ? OR s.name LIKE ? OR v.name LIKE ?)"];
+$seminarSearchReference = $historyText("CONCAT('SEM-',s.id)");
+$seminarWhere = ["({$seminarSearchReference} LIKE ? OR CAST(s.id AS CHAR) LIKE ? OR s.name LIKE ? OR v.name LIKE ?)"];
 $seminarParams = [$search, $search, $search, $search];
 $seminarTypes = 'ssss';
 
@@ -67,23 +70,25 @@ switch ($statusFilter) {
 }
 
 $sql = "SELECT * FROM (
-        SELECT 'Booking' AS record_type, b.reference_no, CONCAT_WS(' ', c.first_name, c.last_name) AS customer_name,
-               v.name AS venue_name, v.category AS venue_category, b.start_date, b.end_date,
+        SELECT {$historyText("'Booking'")} AS record_type, {$historyText('b.reference_no')} AS reference_no,
+               {$historyText("CONCAT_WS(' ', c.first_name, c.last_name)")} AS customer_name,
+               {$historyText('v.name')} AS venue_name, {$historyText('v.category')} AS venue_category, b.start_date, b.end_date,
                b.guests_count, b.total_amount, b.amount_paid,
-               CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS booking_status,
-               b.payment_status, b.id AS record_id
+               {$historyText("CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END")} AS booking_status,
+               {$historyText('b.payment_status')} AS payment_status, b.id AS record_id
         FROM bookings b
         INNER JOIN customers c ON c.id = b.customer_id
         INNER JOIN venues v ON v.id = b.venue_id
         WHERE " . implode(' AND ', $where) . "
         UNION ALL
-        SELECT 'Seminar' AS record_type, CONCAT('SEM-',s.id) AS reference_no, CONCAT('Staff managed seminar · ',s.name) AS customer_name,
-               CONCAT('Event Hall · ',v.name) AS venue_name, 'Seminar' AS venue_category,
+        SELECT {$historyText("'Seminar'")} AS record_type, {$historyText("CONCAT('SEM-',s.id)")} AS reference_no,
+               {$historyText("CONCAT('Staff managed seminar · ',s.name)")} AS customer_name,
+               {$historyText("CONCAT('Event Hall · ',v.name)")} AS venue_name, {$historyText("'Seminar'")} AS venue_category,
                s.hall_start_date AS start_date, s.hall_end_date AS end_date,
                (SELECT COUNT(*) FROM seminar_attendees a WHERE a.seminar_id=s.id) AS guests_count,
                s.agreed_price AS total_amount, $paidSeminarSql AS amount_paid,
-               CASE s.status WHEN 'draft' THEN 'Draft' WHEN 'finalized' THEN 'Finalized' ELSE 'Cancelled' END AS booking_status,
-               CASE WHEN s.agreed_price IS NULL THEN 'Unpriced' WHEN $paidSeminarSql >= s.agreed_price THEN 'Paid' WHEN $paidSeminarSql > 0 THEN 'Partial' ELSE 'Unpaid' END AS payment_status,
+               {$historyText("CASE s.status WHEN 'draft' THEN 'Draft' WHEN 'finalized' THEN 'Finalized' ELSE 'Cancelled' END")} AS booking_status,
+               {$historyText("CASE WHEN s.agreed_price IS NULL THEN 'Unpriced' WHEN $paidSeminarSql >= s.agreed_price THEN 'Paid' WHEN $paidSeminarSql > 0 THEN 'Partial' ELSE 'Unpaid' END")} AS payment_status,
                s.id AS record_id
         FROM seminars s JOIN venues v ON v.id=s.hall_venue_id
         WHERE " . implode(' AND ', $seminarWhere) . "

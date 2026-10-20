@@ -74,6 +74,7 @@ class AdminWalkinController {
             this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
             this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
                 requireHotelRules: true,
+                updateSummaryDisplay: false,
                 allowSelectionWhilePrimaryLocked: true,
                 onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
             });
@@ -1790,15 +1791,28 @@ class AdminWalkinController {
             case 'tab-villa': this.calcVillaMath(); break;
         }
 
-        // Loop through line item builder for custom add-ons
+        // Room system rows share the builder, but only hall + rooms receive the bundle discount.
+        let roomAddonSubtotal = 0;
         document.querySelectorAll(".wi-row:not(.selected-room-row)").forEach(row => {
             const name = row.querySelector(".wi-item-name")?.value || "Custom Item";
             const cost = parseFloat(row.querySelector(".wi-item-cost").value) || 0;
             if (cost > 0) {
                 this.state.summary.total += cost;
+                if ((row.dataset.system || '').startsWith('room_')) roomAddonSubtotal += cost;
                 this.appendSummaryRow(name, cost);
             }
         });
+
+        if (this.state.activeTabId === 'tab-event' && roomAddonSubtotal > 0) {
+            const rawPercent = Number(document.querySelector('.admin-booking-container')?.dataset.eventBundleDiscountPercent);
+            const percent = Number.isFinite(rawPercent) && rawPercent >= 0 && rawPercent <= 100 ? rawPercent : 20;
+            const hallBase = this.safeFloat(this.getEl('event-venue')?.value) * (this.state.calendars.event?.totalNights || 1);
+            const discount = Math.round((hallBase + roomAddonSubtotal) * percent) / 100;
+            if (hallBase > 0 && discount > 0) {
+                this.state.summary.total = Math.round((this.state.summary.total - discount) * 100) / 100;
+                this.appendSummaryRow(`Event Hall + Hotel Bundle Discount (${percent}%)`, -discount);
+            }
+        }
 
         const venueSelectId = this.state.activeTabId === 'tab-event'
             ? 'event-venue'

@@ -140,7 +140,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <div class="form-grid profile-form-grid">
                         <div class="form-group">
                             <label for="prof-name">Full Name</label>
-                            <input type="text" class="form-control" id="prof-name" name="name" autocomplete="name" placeholder="John Doe" value="<?php echo $admin_name; ?>">
+                            <input type="text" class="form-control" id="prof-name" name="name" maxlength="150" required autocomplete="name" placeholder="John Doe" value="<?php echo $admin_name; ?>">
                         </div>
                         <div class="form-group">
                             <label for="prof-email">Email Address</label>
@@ -149,7 +149,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         </div>
                         <div class="form-group">
                             <label for="prof-contact">Contact Number</label>
-                            <input type="tel" class="form-control" id="prof-contact" name="phone" autocomplete="tel" placeholder="+63 912 345 6789" value="<?php echo $admin_phone; ?>">
+                            <input type="tel" class="form-control" id="prof-contact" name="phone" maxlength="20" autocomplete="tel" placeholder="+63 912 345 6789" value="<?php echo $admin_phone; ?>">
                         </div>
                         </div>
                     </section>

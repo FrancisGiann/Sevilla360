@@ -228,6 +228,45 @@ document.addEventListener('DOMContentLoaded', () => {
   const fileInputEl = document.getElementById('fileInput');
   const uploadForm = document.getElementById("cms-upload-form");
 
+  let uploadReturnFocus = null;
+  let uploadPreviousOverflow = '';
+  const openUploadModal = () => {
+    if (!uploadModal.classList.contains('active')) {
+      uploadReturnFocus = document.activeElement;
+      uploadPreviousOverflow = document.body.style.overflow;
+    }
+    uploadModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    window.requestAnimationFrame(() => {
+      if (uploadModal.classList.contains('active')) typeDropdown?.focus();
+    });
+  };
+  const closeUploadModal = () => {
+    uploadModal.classList.remove('active');
+    document.body.style.overflow = uploadPreviousOverflow;
+    if (uploadReturnFocus?.isConnected) uploadReturnFocus.focus({ preventScroll: true });
+  };
+  uploadModal?.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeUploadModal();
+    } else if (event.key === 'Tab') {
+      const controls = [...uploadModal.querySelectorAll('button:not(:disabled), select:not(:disabled), [tabindex="0"]')]
+        .filter(control => control.getClientRects().length > 0);
+      if (event.shiftKey && document.activeElement === controls[0]) {
+        event.preventDefault(); controls.at(-1)?.focus();
+      } else if (!event.shiftKey && document.activeElement === controls.at(-1)) {
+        event.preventDefault(); controls[0]?.focus();
+      }
+    }
+  });
+  dragDropArea?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault(); fileInputEl?.click();
+    }
+  });
+
   // Progress Bar Elements
   const progContainer = document.getElementById('upload-progress-container');
   const progBar = document.getElementById('upload-progress-bar');
@@ -245,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dropText = document.querySelector('.drop-text');
       if (dropText) dropText.innerHTML = `<strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to browse</span>`;
       if (progContainer) progContainer.style.display = 'none';
-      uploadModal.classList.add('active');
+      openUploadModal();
     });
   }
 
@@ -263,12 +302,12 @@ document.addEventListener('DOMContentLoaded', () => {
           slotDropdown.value = targetSlot;
       }
       if (progContainer) progContainer.style.display = 'none';
-      uploadModal.classList.add('active');
+      openUploadModal();
     });
   });
 
-  if (btnCloseModal) btnCloseModal.addEventListener('click', () => uploadModal.classList.remove('active'));
-  window.addEventListener('click', (e) => { if (e.target === uploadModal) uploadModal.classList.remove('active'); });
+  if (btnCloseModal) btnCloseModal.addEventListener('click', () => closeUploadModal());
+  window.addEventListener('click', (e) => { if (e.target === uploadModal) closeUploadModal(); });
 
   // Cascading Dropdown
   if (typeDropdown && slotDropdown) {
@@ -432,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   }
                   if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true) {
                       resetUploadUi();
-                      uploadModal.classList.remove('active');
+                      closeUploadModal();
                       persistCMSFilterState();
                       showAlert("Success", serverMessage || "Media uploaded successfully.", "success", true);
                   } else {
@@ -893,7 +932,7 @@ document.addEventListener('DOMContentLoaded', () => {
               });
               slotDropdown.value = currentManageSlot;
           }
-          uploadModal.classList.add('active');
+          openUploadModal();
       });
   }
 

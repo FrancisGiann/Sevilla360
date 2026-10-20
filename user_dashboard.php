@@ -524,12 +524,12 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                                 <div class="form-grid">
                                     <div class="form-group">
                                         <label for="set-fname">First Name</label>
-                                        <input type="text" id="set-fname" class="form-control"
+                                        <input type="text" id="set-fname" class="form-control" maxlength="100" required
                                             autocomplete="given-name" value="<?php echo htmlspecialchars($customer['first_name']); ?>">
                                     </div>
                                     <div class="form-group">
                                         <label for="set-lname">Last Name</label>
-                                        <input type="text" id="set-lname" class="form-control"
+                                        <input type="text" id="set-lname" class="form-control" maxlength="100" required
                                             autocomplete="family-name" value="<?php echo htmlspecialchars($customer['last_name']); ?>">
                                     </div>
                                     <div class="form-group">
@@ -540,7 +540,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                                     </div>
                                     <div class="form-group">
                                         <label for="set-phone">Phone Number</label>
-                                        <input type="tel" id="set-phone" class="form-control"
+                                        <input type="tel" id="set-phone" class="form-control" maxlength="20"
                                             autocomplete="tel" value="<?php echo htmlspecialchars($customer['phone']); ?>">
                                     </div>
                                 </div>

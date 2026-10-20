@@ -22,7 +22,9 @@
         if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
         return `${(size / (1024 * 1024)).toFixed(1)} MB`;
     };
-    const setMessage = (text, isError = false) => {
+    let messageSource = '';
+    const setMessage = (text, isError = false, source = 'action') => {
+        messageSource = text ? source : '';
         message.textContent = text;
         message.classList.toggle('database-backup-alert-info', !isError);
         message.hidden = !text;
@@ -61,6 +63,7 @@
     }
 
     function renderArchives(archives, canRestore) {
+        const selectedId = restoreId.value;
         archiveBody.replaceChildren();
         restoreId.replaceChildren();
         const placeholder = document.createElement('option');
@@ -70,6 +73,7 @@
         document.getElementById('database-backup-archive-count').textContent = String(archives.length);
         if (!archives.length) {
             setEmpty(archiveBody, 5, 'No private archives have been created or uploaded.');
+            restoreButton.disabled = true;
             return;
         }
         for (const archive of archives) {
@@ -96,6 +100,7 @@
             row.appendChild(actions);
             archiveBody.appendChild(row);
         }
+        if ([...restoreId.options].some(option => option.value === selectedId)) restoreId.value = selectedId;
         restoreButton.disabled = !canRestore || restoreId.options.length < 2;
     }
 
@@ -150,15 +155,16 @@
             }
             renderArchives(data.archives || [], data.capabilities.restore_enabled);
             renderJobs(data.jobs || []);
-            setMessage('');
+            if (messageSource === 'status') setMessage('');
             if ((data.jobs || []).some((job) => ['queued', 'running'].includes(job.status))) window.setTimeout(refresh, 5000);
         } catch (error) {
-            setMessage(error.message || 'Backup status could not be loaded.', true);
+            setMessage(error.message || 'Backup status could not be loaded.', true, 'status');
         }
     }
 
     createButton.addEventListener('click', async () => {
         createButton.disabled = true;
+        setMessage('');
         try {
             const data = await requestJson('actions/admin/create_database_backup.php', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf } });
             setMessage(data.message);
@@ -174,6 +180,7 @@
         event.preventDefault();
         const form = event.currentTarget;
         uploadButton.disabled = true;
+        setMessage('');
         try {
             const data = await requestJson('actions/admin/upload_database_backup.php', {
                 method: 'POST',
@@ -195,6 +202,7 @@
         const passwordInput = document.getElementById('database-backup-password');
         const confirmationInput = document.getElementById('database-backup-confirmation');
         restoreButton.disabled = true;
+        setMessage('');
         try {
             const data = await requestJson('actions/admin/restore_database_backup.php', {
                 method: 'POST',

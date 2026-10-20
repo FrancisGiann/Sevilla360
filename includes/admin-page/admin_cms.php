@@ -827,11 +827,11 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
      ============================================== -->
 
 <!-- 1. UPLOAD MODAL -->
-<div class="cms-modal-overlay" id="uploadModal">
+<div class="cms-modal-overlay" id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="cms-upload-title">
     <div class="cms-modal-content">
-        <h3 class="cms-modal-title">Upload Website Media</h3>
+        <h3 class="cms-modal-title" id="cms-upload-title">Upload Website Media</h3>
         <form class="cms-form" id="cms-upload-form">
-            <div class="cms-drag-drop" id="dragDropArea">
+            <div class="cms-drag-drop" id="dragDropArea" role="button" tabindex="0" aria-label="Choose images to upload">
                 <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
                 <p class="drop-text"><strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to
                         browse</span></p>
@@ -839,7 +839,7 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             </div>
 
             <div class="cms-form-group">
-                <label>Media Type</label>
+                <label for="modal-media-type">Media Type</label>
                 <select name="media_type" id="modal-media-type" required>
                     <option value="" disabled selected>Select media type...</option>
                     <option value="standard">Standard Photo (Multiple Allowed)</option>
@@ -848,7 +848,7 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
             </div>
 
             <div class="cms-form-group">
-                <label>Assign to Website Slot</label>
+                <label for="modal-website-slot">Assign to Website Slot</label>
                 <select name="website_slot" id="modal-website-slot" required>
                     <option value="" disabled selected>Select where this image goes...</option>
 

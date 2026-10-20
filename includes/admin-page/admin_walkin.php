@@ -1,6 +1,8 @@
 <?php
 require_once 'config/db_connect.php';
 require_once 'includes/media_helper.php';
+require_once 'includes/event_bundle.php';
+$walkin_bundle_discount_percent = load_event_bundle_discount_percent($conn);
 
 // Fetch Event Halls with CMS image and the venue details shown in the booking flow.
 $halls_query = $conn->query("SELECT v.id, v.name, v.description, v.amenities, e.base_rate, e.capacity_theater, e.capacity_classroom, e.capacity_banquet FROM venues v JOIN event_halls e ON v.id = e.venue_id WHERE v.status = 'Available'");
@@ -76,7 +78,7 @@ foreach ($villas as &$villa) {
 }
 unset($villa);
 ?>
-<div class="admin-booking-container">
+<div class="admin-booking-container" data-event-bundle-discount-percent="<?php echo htmlspecialchars((string)$walkin_bundle_discount_percent, ENT_QUOTES, 'UTF-8'); ?>">
 
     <!-- Direct Walk-in Header -->
     <div class="walkin-header">

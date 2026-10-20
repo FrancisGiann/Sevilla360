@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const source=fs.readFileSync(path.join(__dirname,'../assets/js/admin-page/admin_cms.js'),'utf8');
+const document={body:{style:{overflow:'scroll'}},activeElement:null};
+const control=()=>({isConnected:true,handlers:{},getClientRects:()=>[{}],focus(){document.activeElement=this;},addEventListener(k,fn){this.handlers[k]=fn;}});
+const invoker=control(),picker=control(),typeDropdown=control(),slot=control(),cancel=control(),submit=control();
+document.activeElement=invoker;const active=new Set();let chooserClicks=0;
+const uploadModal={classList:{contains:k=>active.has(k),add:k=>active.add(k),remove:k=>active.delete(k)},handlers:{},addEventListener(k,f){this.handlers[k]=f;},querySelectorAll:()=>[picker,typeDropdown,slot,cancel,submit]};
+const context=vm.createContext({document,uploadModal,typeDropdown,dragDropArea:picker,fileInputEl:{click(){chooserClicks++;}},window:{requestAnimationFrame:fn=>fn()}});
+const start=source.indexOf('  let uploadReturnFocus = null;'),end=source.indexOf('  // Progress Bar Elements',start);assert(start>0&&end>start);vm.runInContext(source.slice(start,end),context);
+vm.runInContext('openUploadModal()',context);assert.equal(document.activeElement,typeDropdown);assert.equal(document.body.style.overflow,'hidden');
+document.activeElement=picker;uploadModal.handlers.keydown({key:'Tab',shiftKey:true,preventDefault(){}});assert.equal(document.activeElement,submit);
+uploadModal.handlers.keydown({key:'Tab',preventDefault(){}});assert.equal(document.activeElement,picker);
+uploadModal.handlers.keydown({key:'Escape',preventDefault(){},stopPropagation(){}});assert.equal(active.has('active'),false);assert.equal(document.activeElement,invoker);assert.equal(document.body.style.overflow,'scroll');
+picker.handlers.keydown({key:'Enter',preventDefault(){}});assert.equal(chooserClicks,1,'keyboard picker uses same input through a stub, no actual chooser');
+const php=fs.readFileSync(path.join(__dirname,'../includes/admin-page/admin_cms.php'),'utf8');assert.match(php,/id="uploadModal" role="dialog" aria-modal="true" aria-labelledby="cms-upload-title"/);assert.match(php,/<label for="modal-media-type">/);assert.match(php,/<label for="modal-website-slot">/);
+console.log('PASS CMS upload: initial focus, scroll lock/restore, Tab containment, Escape focus return, labelled fields and keyboard picker stub');

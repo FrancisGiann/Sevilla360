@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const root=require('node:path').join(__dirname,'..');
+const dateLabel={innerText:''};let recalculations=0;
+const scope={Date,console,window:{calculateSummary:()=>recalculations++},document:{getElementById:id=>id==='summary-dates'?dateLabel:{querySelector:()=>null},querySelectorAll:()=>[]}};
+vm.createContext(scope);vm.runInContext(fs.readFileSync(root+'/assets/js/calendar.js','utf8')+'\nthis.Calendar=SevillaCalendar;',scope);
+scope.Calendar.prototype.init=function(){};scope.Calendar.prototype.render=function(){};
+const controllerSource=fs.readFileSync(root+'/assets/js/admin-page/admin_walkin.js','utf8');const start=controllerSource.indexOf('    initCalendars() {'),end=controllerSource.indexOf('    bindTabs()',start);
+assert.ok(start>=0&&end>start,'actual walk-in calendar initializer available');
+vm.runInContext('this.Controller=class{'+controllerSource.slice(start,end)+'}',scope);const controller=new scope.Controller();controller.state={calendars:{}};controller.handleAddonRangeSelected=()=>{};controller.initCalendars();
+controller.state.calendars.event.setSelection('2026-10-24','2026-10-24');const eventLabel=dateLabel.innerText;
+controller.state.calendars.addonHotel.setSelection('2026-10-24','2026-10-26');assert.equal(dateLabel.innerText,eventLabel,'hotel checkout must not replace event date in walk-in review');assert.equal(controller.state.calendars.addonHotel.totalNights,2,'two-night price input remains correct');controller.state.calendars.addonHotel.clearSelection();assert.equal(dateLabel.innerText,eventLabel,'clearing add-on preserves event label');assert.equal(recalculations,3,'all date changes still recalculate price');console.log('4 actual walk-in calendar-initializer checks: PASS');

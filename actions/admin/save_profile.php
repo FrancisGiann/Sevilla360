@@ -4,6 +4,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
+require_once __DIR__ . '/../../includes/profile_fields.php';
 
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['staff', 'admin'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -20,8 +21,14 @@ if (!session_account_require_active_json($conn, ['staff', 'admin'], ['success' =
 
 $data = json_decode(file_get_contents('php://input'), true);
 
-$name = trim($data['name'] ?? '');
-$phone = trim($data['phone'] ?? '');
+try {
+    if (!is_array($data)) throw new InvalidArgumentException('Enter valid profile information.');
+    $name = profile_input_text($data['name'] ?? '', 'Full name', 150);
+    $phone = profile_input_phone($data['phone'] ?? '');
+} catch (InvalidArgumentException $error) {
+    echo json_encode(['success' => false, 'message' => $error->getMessage()]);
+    exit;
+}
 $currPass = is_string($data['curr_pass'] ?? null) ? $data['curr_pass'] : '';
 $newPass = is_string($data['new_pass'] ?? null) ? $data['new_pass'] : '';
 $confPass = is_string($data['conf_pass'] ?? null) ? $data['conf_pass'] : '';

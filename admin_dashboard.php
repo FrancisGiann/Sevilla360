@@ -107,6 +107,9 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                         <?php echo (isset($_SESSION['role']) && $_SESSION['role'] === 'admin') ? 'ADMIN' : 'STAFF'; ?>
                     </span>
                 </div>
+                <button type="button" class="mobile-sidebar-close" id="mobile-sidebar-close" aria-label="Close menu">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
                 <button type="button" class="sidebar-collapse-toggle" id="sidebar-collapse-toggle"
                     aria-label="Minimize sidebar" aria-pressed="false" title="Minimize sidebar">
                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
@@ -196,7 +199,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
             <!-- Top Header -->
             <header class="admin-header">
                 <div class="admin-header-title-row">
-                    <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="admin-sidebar">
+                    <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="admin-sidebar">
                         <i class="fa-solid fa-bars" aria-hidden="true"></i><span>Menu</span>
                     </button>
                     <h2 class="page-title">
