@@ -713,11 +713,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (bookingPollingStopped || !tbody) return;
         if (adminBookingsInteractionOpen()) {
             deferredBookingsRefresh = true;
-            bookingPollTimer = window.setTimeout(scheduleBookingPoll, 15000);
+            bookingPollTimer = window.setTimeout(scheduleBookingPoll, 10000);
             return;
         }
         const delay = document.visibilityState === 'visible'
-            ? Math.min(120000, 15000 * (2 ** bookingPollFailures))
+            ? Math.min(120000, 10000 * (2 ** bookingPollFailures))
             : 120000;
         bookingPollTimer = window.setTimeout(() => {
             if (bookingPollingStopped) return;

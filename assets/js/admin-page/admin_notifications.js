@@ -34,7 +34,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 2. MASTER FETCH: Grabs all data and shares it
+    let globalDataInFlight = false;
+    let queuedGlobalRefresh = false;
     async function fetchGlobalData() {
+        if (globalDataInFlight) {
+            queuedGlobalRefresh = true;
+            return;
+        }
+        globalDataInFlight = true;
         try {
             const response = await fetch('actions/admin/get_dashboard_stats.php', {
                 headers: { 'X-Sevilla-Background': '1', 'Accept': 'application/json' }
@@ -79,6 +86,12 @@ document.addEventListener("DOMContentLoaded", () => {
             window.dispatchEvent(new CustomEvent('SevillaDashboardError', {
                 detail: { message: 'Dashboard data could not be loaded. Please retry.' }
             }));
+        } finally {
+            globalDataInFlight = false;
+            if (queuedGlobalRefresh) {
+                queuedGlobalRefresh = false;
+                fetchGlobalData();
+            }
         }
     }
 
@@ -129,12 +142,15 @@ document.addEventListener("DOMContentLoaded", () => {
     let pollTimer = null;
     const schedulePoll = () => {
         clearTimeout(pollTimer);
-        const delay = document.visibilityState === 'visible' ? 30000 : 120000;
+        const delay = document.visibilityState === 'visible' ? 10000 : 120000;
         pollTimer = setTimeout(() => {
             fetchGlobalData();
             schedulePoll();
         }, delay);
     };
-    document.addEventListener('visibilitychange', schedulePoll);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') fetchGlobalData();
+        schedulePoll();
+    });
     schedulePoll();
 });
