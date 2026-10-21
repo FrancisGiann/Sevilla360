@@ -198,6 +198,7 @@
     let chatOpenGeneration = 0;
     let pendingChatOpen = false;
     let pendingMessage = "";
+    let resetConfirmation = null;
     const setNonChatMode = active => {
       root.classList.toggle("is-chat-open", active);
       [root.querySelector(".receptionist-panel-head"), root.querySelector(".receptionist-message"), document.getElementById("receptionist-continue")].filter(Boolean).forEach(element => {
@@ -451,9 +452,9 @@
       return false;
     };
     const quickActionLabels = {
-      category_event_hall: "Event halls",
-      category_hotel_room: "Hotel rooms",
-      category_resort_villa: "Resort villas",
+      category_event_hall: "Event",
+      category_hotel_room: "Hotel",
+      category_resort_villa: "Villa",
       support_faqs: "Support FAQs",
       venue_details: "See details",
       venue_change: "Change venue",
@@ -492,6 +493,7 @@
     };
     const renderQuickReplies = (items, actionIds = [], contextualChoices = false, maxItems = 4) => {
       suggestedReplies.replaceChildren();
+      suggestedReplies.classList.remove("receptionist-chat-category-actions");
       const limit = Math.max(1, Math.min(6, Number(maxItems) || 4));
       const addedActionIds = new Set();
       const addAction = id => {
@@ -525,6 +527,15 @@
         else addPrompt(label, contextualChoices);
       });
       removeRedundantPromptChips();
+    };
+    const renderCategoryChoices = () => {
+      renderQuickReplies([], ["category_event_hall", "category_hotel_room", "category_resort_villa"]);
+      suggestedReplies.classList.add("receptionist-chat-category-actions");
+      setStatus("Choose a booking type, or type your question.");
+    };
+    const renderFreshConversationChoices = () => {
+      if (stored.messages.some(turn => turn.role === "user") || safeContext().intent || hasActiveGuidedContent()) return;
+      renderCategoryChoices();
     };
     root.sevillaReceptionistShowGuidedChoices = items => renderQuickReplies(items, [], true, 6);
     if (choices && typeof MutationObserver === "function") {
@@ -773,20 +784,122 @@
           body: JSON.stringify({ expected_revision: stored.revision })
         }, CHAT_REQUEST_TIMEOUT_MS, async response => ({ response, data: await response.json().catch(() => ({})) }));
         if (response.status === 409 && data?.code === "stale_state") {
-          await restoreServerHistory();
-          setStatus("Conversation refreshed. Start over again to clear the latest details.");
+          setStatus("The conversation changed elsewhere. Your current chat is still here; send a message to refresh before trying Start over again.");
           return false;
         }
-        if (!response.ok) {
-          setStatus("Chat was reset here, but the server reset could not be confirmed.");
+        if (!response.ok || data?.success !== true) {
+          setStatus("The reset could not be confirmed. Your chat, draft, and answers are still here.");
           return false;
         }
         if (Number.isSafeInteger(Number(data.revision)) && Number(data.revision) >= 0) stored.revision = Number(data.revision);
         return true;
       } catch (error) {
-        setStatus("Chat was reset here, but the server reset could not be confirmed.");
+        setStatus("The reset could not be confirmed. Your chat, draft, and answers are still here.");
         return false;
       }
+    };
+    const confirmStartOver = trigger => {
+      if (resetConfirmation || form.dataset.resetting === "true") return;
+      if (form.dataset.busy === "true") {
+        setStatus("Please wait for the current reply before starting over.");
+        return;
+      }
+      const dialog = document.createElement("dialog");
+      resetConfirmation = dialog;
+      dialog.setAttribute("aria-labelledby", "receptionist-reset-title");
+      dialog.setAttribute("aria-describedby", "receptionist-reset-description");
+      dialog.style.cssText = "width:min(24rem,calc(100% - 2rem));padding:1rem;border:1px solid #e7c891;border-radius:.6rem;background:#17120e;color:#fffaf1;";
+      const title = document.createElement("h4");
+      title.id = "receptionist-reset-title";
+      title.textContent = "Start a new conversation?";
+      title.style.color = "#fffaf1";
+      const description = document.createElement("p");
+      description.id = "receptionist-reset-description";
+      description.textContent = "This will clear this chat, your draft, and your guided answers. You can cancel to keep them.";
+      description.style.marginBlock = ".75rem";
+      description.style.color = "#fffaf1";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "receptionist-choice receptionist-choice-secondary";
+      cancel.textContent = "Cancel";
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.className = "receptionist-choice receptionist-choice-primary";
+      confirm.textContent = "Start over";
+      let completed = false;
+      let resetting = false;
+      cancel.addEventListener("click", () => dialog.close());
+      dialog.addEventListener("cancel", event => { if (resetting) event.preventDefault(); });
+      // Keep keyboard focus in the dialog, including while both actions are locked.
+      dialog.addEventListener("keydown", event => {
+        event.stopPropagation();
+        if (event.key !== "Tab") return;
+        const controls = [cancel, confirm].filter(control => !control.disabled && control.getClientRects().length > 0);
+        if (!controls.length) { event.preventDefault(); return; }
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      });
+      dialog.addEventListener("close", () => {
+        resetConfirmation = null;
+        dialog.remove();
+        if (!completed) trigger.focus();
+      });
+      confirm.addEventListener("click", () => {
+        if (resetting) return;
+        resetting = true;
+        cancel.disabled = confirm.disabled = true;
+        confirm.textContent = "Starting over…";
+        description.setAttribute("role", "status");
+        description.textContent = "Starting a new conversation…";
+        description.tabIndex = -1;
+        description.focus();
+        form.dataset.resetting = "true";
+        serverResetPromise = Promise.all([serverHistoryPromise, guidedSyncPromise]).then(() => resetServerSession()).then(acknowledged => {
+          if (!acknowledged) {
+            description.setAttribute("role", "alert");
+            description.textContent = "The reset could not be confirmed. Your chat, draft, and answers are still here. Retry or cancel to keep chatting.";
+            resetting = false;
+            cancel.disabled = confirm.disabled = false;
+            confirm.textContent = "Try again";
+            cancel.focus();
+            return;
+          }
+          completed = true;
+          chatOpenGeneration++;
+          conversationGeneration++;
+          preferGuidedContent = false;
+          serverHistoryPromise = Promise.resolve();
+          pendingMessage = "";
+          input.value = "";
+          removeTypingIndicator();
+          stored = { messages: [], context: {}, revision: stored.revision };
+          transcript.replaceChildren();
+          renderQuickReplies([], []);
+          if (typeof options.onStartOver === "function") {
+            suppressDialogueEvents++;
+            try { options.onStartOver(); } finally { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }
+          }
+          ensureGreeting();
+          renderFreshConversationChoices();
+          trigger.closest("details")?.removeAttribute("open");
+          dialog.close();
+          if (chatOpen) input.focus();
+        }).finally(() => { delete form.dataset.resetting; });
+      });
+      dialog.appendChild(title);
+      dialog.appendChild(description);
+      dialog.appendChild(cancel);
+      dialog.appendChild(confirm);
+      chatShell.appendChild(dialog);
+      dialog.showModal();
+      cancel.focus();
     };
     const syncGuidedContext = () => {
       if (root.dataset.receptionistNaturalEnabled !== "true") return Promise.resolve(null);
@@ -875,7 +988,7 @@
         const handled = typeof options.onQuickAction === "function" && options.onQuickAction(actionId, prompt => submit(prompt)) === true;
         if (isCategoryAction) window.setTimeout(() => { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }, 0);
         if (handled) {
-          if (Object.prototype.hasOwnProperty.call(categoryActionCommands, actionId)) submitCategoryAction(actionId);
+          if (isCategoryAction) { submitCategoryAction(actionId); input.focus(); }
           else if (actionId !== "start_over" && actionId !== "support_faqs") appendMessage("user", button.textContent.trim());
         }
         return;
@@ -899,12 +1012,13 @@
         // Guide state is stored separately from chat history. Reconcile it
         // before revealing chat so stale recommendations never paint beside
         // a fresh greeting while the history request is still in flight.
-        serverHistoryPromise.then(() => {
+        serverHistoryPromise.then(() => serverResetPromise).then(resetReady => {
           if (!pendingChatOpen || openGeneration !== chatOpenGeneration || chatOpen) return;
           pendingChatOpen = false;
           const hasPriorConversation = stored.messages.some(turn => turn.role === "user");
           if (!hasPriorConversation && typeof options.onFreshChatOpen === "function") options.onFreshChatOpen();
           ensureGreeting();
+          if (resetReady !== false) renderFreshConversationChoices();
           setChatOpen(true);
         });
         return;
@@ -928,27 +1042,15 @@
         input.focus();
         return;
       }
+      const backToWelcome = event.target instanceof Element ? event.target.closest("[data-receptionist-back]") : null;
+      if (chatOpen && backToWelcome) {
+        renderCategoryChoices();
+        input.focus();
+        return;
+      }
       const target = event.target instanceof Element ? event.target.closest("[data-receptionist-chat-start-over]") : null;
       if (target) {
-        target.closest("details")?.removeAttribute("open");
-        chatOpenGeneration++;
-        conversationGeneration++;
-        preferGuidedContent = false;
-        serverHistoryPromise = Promise.resolve();
-        pendingMessage = "";
-        input.value = "";
-        removeTypingIndicator();
-        stored = { messages: [], context: {}, revision: stored.revision };
-        transcript.replaceChildren();
-        renderQuickReplies([], []);
-        form.dataset.resetting = "true";
-        serverResetPromise = resetServerSession().finally(() => { delete form.dataset.resetting; });
-        if (typeof options.onStartOver === "function") {
-          suppressDialogueEvents++;
-          try { options.onStartOver(); } finally { if (suppressDialogueEvents > 0) suppressDialogueEvents--; }
-        }
-        ensureGreeting();
-        if (chatOpen) input.focus();
+        confirmStartOver(target);
         return;
       }
       const guidedCategory = event.target instanceof Element ? event.target.closest(".receptionist-choices [data-receptionist-intent]") : null;

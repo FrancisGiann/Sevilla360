@@ -613,11 +613,14 @@ $checks['same-page chat reopen does not duplicate the greeting'] = str_contains(
     && str_contains($chatJs, 'chatShell.hidden = !next')
     && str_contains($chatJs, 'setChatOpen(true)')
     && str_contains($chatJs, 'if (chatOpen) { setChatOpen(false); return; }');
-$checks['Start over clears server and visible turns and reseeds the greeting'] = str_contains($chatJs, 'conversationGeneration++')
+$checks['Start over requires user confirmation and server acknowledgement before reseeding the greeting'] = str_contains($chatJs, 'conversationGeneration++')
     && str_contains($chatJs, 'requestGeneration !== conversationGeneration')
     && str_contains($chatJs, 'pendingMessage = "";')
     && str_contains($chatJs, 'serverHistoryPromise = Promise.resolve();')
-    && str_contains($chatJs, 'serverResetPromise = resetServerSession()')
+    && str_contains($chatJs, 'confirmStartOver(target);')
+    && str_contains($chatJs, 'dialog.showModal();')
+    && str_contains($chatJs, 'then(() => resetServerSession()).then(acknowledged => {')
+    && strpos($chatJs, 'if (!acknowledged) {') < strpos($chatJs, 'completed = true;')
     && str_contains($chatJs, 'stored = { messages: [], context: {}, revision: stored.revision };')
     && str_contains($chatJs, 'transcript.replaceChildren();')
     && substr_count($chatJs, 'ensureGreeting();') >= 2
