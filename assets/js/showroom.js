@@ -109,7 +109,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 1. Global State Variables ---
   const dataMap = window.showroomData || {};
   let currentGallery = [];
-  let currentImageIndex = 0;
   
   let panoCache = {};
   let currentRoomId = null; 
@@ -123,12 +122,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const panoramaControlReady = new WeakSet();
   const viewerAddedPanoramas = new WeakSet();
 
-  let currentZoom = 1;
-  let panX = 0;
-  let panY = 0;
-  let isDragging = false;
-  let startX = 0;
-  let startY = 0;
   let hasSeenHint = false;
   let hintPending = false;
   let hintReadyRoomId = null;
@@ -154,10 +147,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const valRating = document.getElementById("val-rating");
   const valDesc = document.getElementById("val-desc");
   const amenitiesGrid = document.querySelector(".amenities-grid");
-  const galleryTitle = document.getElementById("gallery-title");
   const btnViewPhotos = document.getElementById("btn-view-photos");
   const btnSwitch = document.getElementById("btn-switch-mode");
-  const currentSlideImg = document.getElementById("current-slide-img");
   const wrapper = document.getElementById("showroom-wrapper");
   const bigViewerBox = document.querySelector('.big-viewer-box');
   const topRoomLabel = document.getElementById("top-room-label");
@@ -268,6 +259,16 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       applyCandidate();
   };
+
+  window.addEventListener("SevillaShowroomPhotoChanged", event => {
+      const { roomId, index } = event.detail || {};
+      const room = dataMap[roomId];
+      if (!room || !receptionistBackdropImage) return;
+      const images = Array.isArray(room.gallery) ? room.gallery.filter(Boolean) : [];
+      if (!images.length) return;
+      const selectedIndex = Math.min(Math.max(Number(index) || 0, 0), images.length - 1);
+      transitionImage(receptionistBackdropImage, images[selectedIndex], images.filter((_, imageIndex) => imageIndex !== selectedIndex), "is-transitioning");
+  });
 
   const reviewCache = new Map();
   const reviewRequests = new Map();
@@ -436,6 +437,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 5000);
   };
   const viewerActivity = () => scheduleAutoRotation();
+  window.addEventListener("SevillaShowroomPhotoModeOpened", pauseAutoRotation);
+  window.addEventListener("SevillaShowroomPhotoModeClosed", scheduleAutoRotation);
 
   bigViewerBox?.addEventListener('pointerdown', viewerActivity, { passive: true });
   bigViewerBox?.addEventListener('pointermove', viewerActivity, { passive: true });
@@ -978,15 +981,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentGallery.length === 0) {
           btnViewPhotos.disabled = true;
           btnViewPhotos.textContent = "NO PHOTOS";
-          transitionImage(currentSlideImg, "assets/img/placeholder.jpg", [], "fade-out");
-          if (wrapper.classList.contains("mode-photos")) document.getElementById("btn-back-to-360").click();
+          window.SevillaShowroomPhotoGallery?.close();
           return;
       }
       btnViewPhotos.disabled = false;
       btnViewPhotos.textContent = "VIEW PHOTOS";
-      transitionImage(currentSlideImg, currentGallery[0], currentGallery.slice(1), "fade-out");
-      const galleryCounter = document.getElementById("gallery-counter");
-      if (galleryCounter) galleryCounter.textContent = `1 / ${currentGallery.length}`;
   }
 
   function activateVenue(roomId, preserveVariant = false) {
@@ -1060,7 +1059,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (room.category === 'Hotel Room') updateHotelVariantDetails(room);
     setReviewsLoading();
     loadVenueReviews(room);
-    galleryTitle.textContent = room.title + " Gallery";
     if (valDesc) valDesc.textContent = room.description;
     if (topRoomLabel) topRoomLabel.textContent = room.title;
 
@@ -1083,7 +1081,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     currentGallery = room.gallery || [];
-    currentImageIndex = 0;
+    window.SevillaShowroomPhotoGallery?.setGallery(roomId, currentGallery, room.title);
 
     // Keep venue details, guide interactions, and the photo gallery available
     // when the optional CDN-backed 360 renderer cannot start.
@@ -4233,135 +4231,5 @@ document.addEventListener("DOMContentLoaded", () => {
     window.setTimeout(() => { if (receptionistAutoOpen && !receptionistState.hasOpened) openGreeting(); }, 0);
   }
 
-  // --- 10. Photo Gallery Swap Mode ---
-  btnViewPhotos.addEventListener("click", () => {
-    pauseAutoRotation();
-    window.scrollTo({ top: 0, behavior: "instant" });
-    wrapper.classList.add("mode-photos");
-    document.body.classList.add("no-scroll");
-  });
-  const exitPhotoMode = () => {
-    wrapper.classList.remove("mode-photos");
-    document.body.classList.remove("no-scroll");
-    scheduleAutoRotation();
-  };
-  // Delegate so both static controls continue to work even if the gallery
-  // markup is replaced by a partial or browser interaction targets a child.
-  document.addEventListener("click", (event) => {
-    const target = event.target instanceof Element
-      ? event.target.closest("#btn-back-to-360, #btn-back-to-360-gallery")
-      : null;
-    if (target) exitPhotoMode();
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const target = event.target instanceof Element
-      ? event.target.closest("#btn-back-to-360, #btn-back-to-360-gallery")
-      : null;
-    if (!target) return;
-    event.preventDefault();
-    exitPhotoMode();
-  });
-
-  // --- 10. Photo Slider Logic ---
-  function updateGalleryUI(index) {
-    if (currentGallery.length === 0) return;
-    currentImageIndex = index;
-    currentZoom = 1; panX = 0; panY = 0;
-    
-    currentSlideImg.style.transform = `translate(0px, 0px) scale(1)`;
-    currentSlideImg.style.cursor = "default";
-    currentSlideImg.classList.remove("slide-in-left", "slide-in-right");
-    
-    void currentSlideImg.offsetWidth; // Reflow for animation
-    
-    if (window.lastGalleryDirection === "prev") currentSlideImg.classList.add("slide-in-left");
-    else currentSlideImg.classList.add("slide-in-right");
-
-    const gallerySource = currentGallery[currentImageIndex];
-    const galleryFallbacks = currentGallery.filter((_, galleryIndex) => galleryIndex !== currentImageIndex);
-    transitionImage(currentSlideImg, gallerySource, galleryFallbacks, "fade-out");
-    if (receptionistBackdropImage) transitionImage(receptionistBackdropImage, gallerySource, galleryFallbacks, "is-transitioning");
-    document.getElementById("gallery-counter").textContent = `${currentImageIndex + 1} / ${currentGallery.length}`;
-  }
-
-  document.getElementById("slide-prev")?.addEventListener("click", () => {
-    window.lastGalleryDirection = "prev"; 
-    updateGalleryUI((currentImageIndex - 1 + currentGallery.length) % currentGallery.length);
-  });
-
-  document.getElementById("slide-next")?.addEventListener("click", () => {
-    window.lastGalleryDirection = "next"; 
-    updateGalleryUI((currentImageIndex + 1) % currentGallery.length);
-  });
-
-  // --- 11. Desktop Zoom & Pan ---
-  currentSlideImg.addEventListener("wheel", (e) => {
-      if (!wrapper.classList.contains("mode-photos")) return;
-      e.preventDefault();
-      const oldZoom = currentZoom;
-      currentZoom += (e.deltaY < 0) ? 0.2 : -0.2;
-      currentZoom = Math.min(Math.max(currentZoom, 1), 5);
-
-      if (currentZoom === 1) {
-        panX = 0; panY = 0;
-        currentSlideImg.style.cursor = "default"; 
-      } else {
-        const mouseX = e.clientX - window.innerWidth / 2;
-        const mouseY = e.clientY - window.innerHeight / 2;
-        const scaleRatio = currentZoom / oldZoom;
-        panX = mouseX - (mouseX - panX) * scaleRatio;
-        panY = mouseY - (mouseY - panY) * scaleRatio;
-        currentSlideImg.style.cursor = "grab"; 
-      }
-      currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
-  }, { passive: false });
-
-  currentSlideImg.addEventListener("mousedown", (e) => {
-    if (currentZoom > 1) {
-      e.preventDefault();
-      isDragging = true;
-      currentSlideImg.style.cursor = "grabbing"; 
-      startX = e.clientX - panX;
-      startY = e.clientY - panY;
-    }
-  });
-
-  window.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-    panX = e.clientX - startX;
-    panY = e.clientY - startY;
-    currentSlideImg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
-  });
-
-  window.addEventListener("mouseup", () => {
-    if (isDragging) {
-      isDragging = false;
-      if (currentZoom > 1) currentSlideImg.style.cursor = "grab";
-    }
-  });
-
-  // --- 12. Mobile Native Swipe Interceptor ---
-  let touchStartX = 0;
-  let touchEndX = 0;
-
-  currentSlideImg.addEventListener('touchstart', (e) => {
-      if (!wrapper.classList.contains("mode-photos")) return;
-      touchStartX = e.changedTouches[0].screenX;
-  }, { passive: true });
-
-  currentSlideImg.addEventListener('touchmove', (e) => {
-      if (!wrapper.classList.contains("mode-photos")) return;
-      const touchCurrentX = e.changedTouches[0].screenX;
-      if (Math.abs(touchStartX - touchCurrentX) > 10) e.preventDefault(); // Block browser "Back" swipe
-  }, { passive: false });
-
-  currentSlideImg.addEventListener('touchend', (e) => {
-      if (!wrapper.classList.contains("mode-photos")) return;
-      touchEndX = e.changedTouches[0].screenX;
-      const diff = touchEndX - touchStartX;
-      if (diff < -50) document.getElementById("slide-next")?.click(); 
-      else if (diff > 50) document.getElementById("slide-prev")?.click(); 
-  }, { passive: true });
 
 });
