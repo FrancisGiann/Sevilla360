@@ -315,7 +315,7 @@ document.addEventListener("DOMContentLoaded", function () {
       book.addEventListener('click', () => openVenueModal(venue, book));
     } else {
       book.href = bookingUrl(venue);
-      book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : 'Choose dates';
+      book.textContent = venue.category === 'Event Hall' ? 'Start inquiry' : (venue.category === 'Hotel Room' ? 'Book Now' : 'Choose dates');
     }
     actions.append(details, book); body.append(title, kind, rate, rating);
     if (factText) body.appendChild(facts);

@@ -5,6 +5,8 @@ $root = dirname(__DIR__);
 $read = static fn(string $path): string => (string)file_get_contents($root . '/' . $path);
 $customerCancel = $read('actions/user/request_cancel.php');
 $adminStatus = $read('actions/admin/update_booking_status.php');
+$adminBookingsMarkup = $read('includes/admin-page/admin_bookings.php');
+$adminBookingsCss = $read('assets/css/admin-page/admin_bookings.css');
 $manualPayment = $read('includes/manual_payment.php');
 $customerDashboard = $read('user_dashboard.php')
     . $read('includes/customer-dashboard/booking_rows.php')
@@ -136,7 +138,11 @@ $checks['details failures replace loading placeholders and provide retry recover
     && str_contains($paymentClient, "this.deadline.textContent = 'Unavailable'")
     && str_contains($paymentClient, "{ retry: true, contact: true }")
     && str_contains($paymentModal, 'manual-payment-retry');
-$checks['proof submission blocks repeats and continues to use CSRF-protected endpoint'] = str_contains($paymentClient, 'if (this.isSubmitting || !this.detailsReady || !this.methods.length) return;')
+$checks['proof submission blocks repeats and closing/reopening during upload'] = str_contains($paymentClient, 'if (this.isSubmitting || !this.detailsReady || !this.methods.length) return;')
+    && str_contains($paymentClient, 'if (this.isSubmitting) return;')
+    && str_contains($paymentClient, "if (this.isSubmitting || !this.modal.classList.contains('active')) return;")
+    && str_contains($paymentClient, 'this.closeButtons.forEach((button) => { button.disabled = true; });')
+    && str_contains($paymentClient, 'this.closeButtons.forEach((button) => { button.disabled = false; });')
     && str_contains($paymentClient, "headers: { 'X-CSRF-Token': this.options.csrfToken || '', Accept: 'application/json' }")
     && str_contains($paymentClient, "actions/user/submit_manual_payment.php")
     && str_contains($paymentClient, 'new FormData(this.form)');
@@ -145,6 +151,21 @@ $checks['shared payment dialog preserves accessible semantics and dashboard cont
     && str_contains($paymentClient, "event.key === 'Escape'")
     && str_contains($paymentClient, "event.key !== 'Tab'")
     && str_contains($dashboardClient, "window.ManualPayment?.create({ csrfToken, openModal, closeModal })");
+$closeCssStart = strpos($paymentCss, '.manual-payment-close {');
+$closeCssEnd = $closeCssStart === false ? false : strpos($paymentCss, '}', $closeCssStart);
+$closeCss = $closeCssStart === false || $closeCssEnd === false ? '' : substr($paymentCss, $closeCssStart, $closeCssEnd - $closeCssStart);
+$checks['payment modal close control stays visible while its content scrolls'] = str_contains($paymentModal, 'class="manual-payment-close close-modal" aria-label="Close payment form"')
+    && str_contains($closeCss, 'position: sticky;')
+    && str_contains($closeCss, 'top: 0;')
+    && str_contains($closeCss, 'margin: 0 0 -44px auto;');
+$adminCloseStart = strpos($adminBookingsCss, '#viewDetailsModal .vd-header {');
+$adminCloseEnd = $adminCloseStart === false ? false : strpos($adminBookingsCss, '}', $adminCloseStart);
+$adminCloseCss = $adminCloseStart === false || $adminCloseEnd === false ? '' : substr($adminBookingsCss, $adminCloseStart, $adminCloseEnd - $adminCloseStart);
+$checks['admin booking details close control remains visible with the sticky modal header'] = str_contains($adminBookingsMarkup, 'id="viewDetailsModal" role="dialog"')
+    && str_contains($adminBookingsMarkup, 'class="booking-detail-close close-modal" aria-label="Close booking details"')
+    && str_contains($adminBookingsMarkup, 'class="vd-content-scroll" id="vd-content-scroll"')
+    && str_contains($adminCloseCss, 'position: sticky;')
+    && str_contains($adminCloseCss, 'top: 0;');
 $checks['payment QR is centered below instructions with same-page zoom and save actions'] = str_contains($paymentModal, 'id="manual-payment-qr-panel"')
     && str_contains($paymentModal, 'id="manual-payment-qr-view"')
     && str_contains($paymentModal, 'aria-controls="manual-payment-qr-lightbox"')

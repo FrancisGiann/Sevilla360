@@ -35,7 +35,8 @@ class BookingController {
             addonAvailabilityPending: false,
             addonAvailabilityReady: false,
             addonAvailabilityRangeKey: '',
-            confirmedSelectionKey: ''
+            confirmedSelectionKey: '',
+            savedPaymentBookingId: null
         };
         this.state.lockExpiresAt = null;
         window.isDatesLocked = false;
@@ -59,17 +60,22 @@ class BookingController {
         this.determineActiveTab();
         this.syncHotelRoomSelection();
         this.syncVenueSelectionDisplays();
-        window.addEventListener('pageshow', () => {
-            this.syncHotelRoomSelection();
-            this.syncVenueSelectionDisplays();
-            this.calculateSummary();
-        });
+        window.addEventListener('pageshow', event => this.handleBookingPageShow(event));
         this.preselectFromURL()
             .then(() => this.preselectDatesFromURL())
             .then(() => this.restoreDraftIfRequested())
             .catch(error => console.error('Booking preselection could not be restored.', error));
         this.calculateSummary();
         this.updateBookingStepUI();
+    }
+
+    handleBookingPageShow(event) {
+        // pageshow also fires on normal navigations. Only refresh after a
+        // BFCache return, and never while auth draft restoration is in flight.
+        if (!event?.persisted || this.isRestoringDraft) return;
+        this.syncHotelRoomSelection();
+        this.syncVenueSelectionDisplays();
+        this.calculateSummary();
     }
 
     isValidDraftDate(value) {
@@ -2056,6 +2062,12 @@ class BookingController {
     updateBookingSubmitLabel() {
         const button = this.getEl('btn-proceed');
         if (!button) return;
+        if (this.state.savedPaymentBookingId) {
+            button.textContent = 'SUBMIT PAYMENT PROOF';
+            button.disabled = false;
+            button.style.opacity = '';
+            return;
+        }
         const labels = {
             'event-hall': this.auth.isCustomer ? 'SUBMIT EVENT INQUIRY' : 'SIGN IN TO SUBMIT EVENT INQUIRY',
             'hotel-rooms': this.auth.isCustomer ? 'RESERVE HOTEL ROOM' : 'SIGN IN TO RESERVE A HOTEL ROOM',
@@ -2063,6 +2075,17 @@ class BookingController {
         };
         button.textContent = labels[this.state.activeTabId] || 'SUBMIT BOOKING';
         button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
+    }
+
+    rememberSavedPaymentBooking(rawId) {
+        const bookingId = String(rawId ?? '');
+        if (!/^[1-9]\d*$/.test(bookingId)) return false;
+        this.state.savedPaymentBookingId = bookingId;
+        // The reservation endpoint consumes the temporary date hold.
+        // Stop its client timer so it cannot disable payment recovery.
+        this.stopTimerAndReset();
+        this.updateBookingSubmitLabel();
+        return true;
     }
 
     updateHoldTimerVisibility() {
@@ -2944,6 +2967,15 @@ class BookingController {
     // Submit a booking or Event Hall inquiry.
     // =========================================================================
     async submitOnlineBooking() {
+        const btn = this.getEl('btn-proceed');
+        if (this.state.savedPaymentBookingId) {
+            if (this.manualPayment) {
+                this.manualPayment.openBooking(this.state.savedPaymentBookingId, btn);
+            } else {
+                showAlert("Booking reserved", "Your booking is saved. Go to My Bookings and choose Submit payment to continue.", 'error');
+            }
+            return;
+        }
         if (!this.state.activeCalendar?.startDate) {
             showAlert("Notice", "Please select dates on the calendar and confirm them first!");
             return;
@@ -2974,7 +3006,6 @@ class BookingController {
             return;
         }
 
-        const btn = this.getEl("btn-proceed");
         const context = this.getTabContextData();
         
         if (!context.roomName && !context.venueId) { showAlert("Notice", "Please ensure a valid room/venue is selected."); return; }
@@ -3114,11 +3145,15 @@ class BookingController {
                 if (context.roomType === 'Event Hall') {
                     showAlert("Inquiry submitted", "Your Event Hall inquiry is on its way. We will send the finalized quotation to your dashboard.", 'success');
                 } else {
-                    const bookingId = response[2] || '';
-                    if (!this.manualPayment || !/^[1-9]\d*$/.test(bookingId)) {
+                    const bookingId = String(response[2] || '');
+                    if (!this.rememberSavedPaymentBooking(bookingId)) {
                         showAlert("Booking reserved", "Your booking was saved, but payment details could not be opened. Go to My Bookings and choose Submit payment to continue.", 'error');
                     } else {
-                        this.manualPayment.openBooking(bookingId, btn);
+                        if (this.manualPayment) {
+                            this.manualPayment.openBooking(bookingId, btn);
+                        } else {
+                            showAlert("Booking reserved", "Your booking is saved. Go to My Bookings and choose Submit payment to continue.", 'error');
+                        }
                     }
                 }
             } else {
@@ -3129,6 +3164,8 @@ class BookingController {
             if (!bookingSaved) {
                 btn.innerText = (this.state.activeTabId === 'event-hall') ? "SUBMIT EVENT INQUIRY" : "SUBMIT BOOKING";
                 btn.disabled = false;
+            } else if (this.state.savedPaymentBookingId) {
+                this.updateBookingSubmitLabel();
             } else {
                 btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "BOOKING RESERVED";
             }

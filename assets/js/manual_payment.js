@@ -13,6 +13,7 @@
     constructor(options = {}) {
       this.options = options;
       this.modal = document.getElementById('modal-manual-payment');
+      this.closeButtons = Array.from(this.modal?.querySelectorAll('.close-modal') || []);
       this.form = document.getElementById('manual-payment-form');
       this.title = document.getElementById('manual-payment-title');
       this.intro = document.getElementById('manual-payment-intro');
@@ -74,6 +75,7 @@
 
       this.modal.addEventListener('click', (event) => {
         if (event.target !== this.modal) return;
+        if (this.isSubmitting) return;
         this.clearQr();
         if (typeof this.options.openModal !== 'function') this.closeStandalone();
       });
@@ -87,13 +89,14 @@
       document.addEventListener('keydown', (event) => this.handleKeydown(event), true);
 
       if (typeof this.options.openModal !== 'function') {
-        this.modal.querySelectorAll('.close-modal').forEach((button) => {
+        this.closeButtons.forEach((button) => {
           button.addEventListener('click', () => this.closeStandalone());
         });
       }
     }
 
     openBooking(rawId, invoker = document.activeElement) {
+      if (this.isSubmitting) return;
       this.activeInvoker = invoker instanceof HTMLElement ? invoker : document.activeElement;
       const idText = String(rawId ?? '');
       if (!/^[1-9]\d*$/.test(idText) || !Number.isSafeInteger(Number(idText))) {
@@ -124,6 +127,7 @@
       this.requestGeneration++;
       this.detailsReady = false;
       this.isSubmitting = false;
+      this.closeButtons.forEach((button) => { button.disabled = false; });
       this.setSummaryBusy(false);
       this.methods = [];
       this.submissionMode = 'submit';
@@ -365,6 +369,7 @@
       if (!this.form.reportValidity()) return;
 
       this.isSubmitting = true;
+      this.closeButtons.forEach((button) => { button.disabled = true; });
       this.submitButton.disabled = true;
       this.submitButton.textContent = 'Submitting…';
       this.form.setAttribute('aria-busy', 'true');
@@ -397,6 +402,7 @@
         this.showStatus(error?.message || 'Payment proof could not be submitted. Please try again.', { retry: false, contact: true });
       } finally {
         this.isSubmitting = false;
+        this.closeButtons.forEach((button) => { button.disabled = false; });
         this.form.removeAttribute('aria-busy');
         this.submitButton.textContent = this.submitButtonLabel;
         this.submitButton.disabled = !this.detailsReady;
@@ -433,7 +439,7 @@
     }
 
     closeStandalone() {
-      if (!this.modal.classList.contains('active')) return;
+      if (this.isSubmitting || !this.modal.classList.contains('active')) return;
       this.closeModal();
     }
 
@@ -458,7 +464,7 @@
       if (typeof this.options.openModal === 'function') return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        this.closeStandalone();
+        if (!this.isSubmitting) this.closeStandalone();
         return;
       }
       if (event.key !== 'Tab') return;
