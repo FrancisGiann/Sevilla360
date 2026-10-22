@@ -118,7 +118,7 @@ if ($venueFilter !== 'All') {
 $paidSeminarSql = "COALESCE((SELECT SUM(sp.amount) FROM seminar_payments sp WHERE sp.seminar_id=s.id AND sp.status='posted'),0)";
 switch ($statusFilter) {
     case 'action_req':
-        $bookingWhere[] = "b.booking_status <> 'Cancelled' AND (EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id=b.id AND mps_action.status='pending') OR (NOT {$bookingCompletionSql} AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id=b.id AND cx.status='Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id=b.id AND rr.status='Pending') OR b.booking_status='Pending' OR (b.booking_status='Confirmed' AND b.payment_status='Unpaid'))))";
+        $bookingWhere[] = "b.booking_status <> 'Cancelled' AND (EXISTS (SELECT 1 FROM manual_payment_submissions mps_action WHERE mps_action.booking_id=b.id AND mps_action.status='pending') OR (NOT {$bookingCompletionSql} AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id=b.id AND cx.status='Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id=b.id AND rr.status='Pending') OR b.booking_status='Pending')))";
         $seminarWhere[] = "s.status <> 'cancelled' AND (s.agreed_price IS NULL OR $paidSeminarSql < s.agreed_price)";
         break;
     case 'awaiting_verification':
@@ -179,7 +179,7 @@ try {
 
     $dataSql = "SELECT * FROM (
         SELECT {$historyText("'booking'")} AS record_type, b.id, {$historyText('b.reference_no')} AS reference_no, b.venue_id, b.start_date, b.end_date,
-            b.total_amount, b.amount_paid, {$historyText('b.booking_status')} AS booking_status,
+            b.total_amount, b.amount_paid, b.created_at, {$historyText('b.booking_status')} AS booking_status,
             {$historyText("CASE WHEN {$bookingCompletionSql} THEN 'Completed' ELSE b.booking_status END")} AS display_booking_status,
             CASE WHEN b.end_date < CURDATE() THEN 1 ELSE 0 END AS event_ended,
             CASE WHEN b.end_date < CURDATE() AND EXISTS (SELECT 1 FROM manual_payment_submissions mps_overdue WHERE mps_overdue.booking_id=b.id AND mps_overdue.status='pending') THEN 1 ELSE 0 END AS proof_overdue,
@@ -194,8 +194,7 @@ try {
             {$historyText("(SELECT mps.payment_method FROM manual_payment_submissions mps WHERE mps.booking_id=b.id AND mps.status='pending' ORDER BY mps.id DESC LIMIT 1)")} AS pending_payment_method,
             (SELECT mps.expected_amount FROM manual_payment_submissions mps WHERE mps.booking_id=b.id AND mps.status='pending' ORDER BY mps.id DESC LIMIT 1) AS pending_payment_expected_amount,
             {$historyText("(SELECT mps.transaction_reference FROM manual_payment_submissions mps WHERE mps.booking_id=b.id AND mps.status='pending' ORDER BY mps.id DESC LIMIT 1)")} AS pending_payment_reference,
-            {$historyText("''")} AS seminar_name, 0 AS attendee_count,
-            CASE WHEN EXISTS (SELECT 1 FROM manual_payment_submissions mps_order WHERE mps_order.booking_id=b.id AND mps_order.status='pending') THEN 2 WHEN cx.status='Pending' OR rr.status='Pending' THEN 1 ELSE 0 END AS record_priority
+            {$historyText("''")} AS seminar_name, 0 AS attendee_count
         FROM bookings b
         JOIN customers c ON c.id=b.customer_id
         JOIN venues v ON v.id=b.venue_id
@@ -209,7 +208,7 @@ try {
 
         SELECT {$historyText("'seminar'")} AS record_type, s.id, {$historyText("CONCAT('SEM-',s.id)")} AS reference_no, s.hall_venue_id AS venue_id,
             s.hall_start_date AS start_date, s.hall_end_date AS end_date, s.agreed_price AS total_amount,
-            {$paidSeminarSql} AS amount_paid, {$historyText('s.status')} AS booking_status,
+            {$paidSeminarSql} AS amount_paid, s.created_at, {$historyText('s.status')} AS booking_status,
             {$historyText("CASE s.status WHEN 'draft' THEN 'Draft' WHEN 'finalized' THEN 'Finalized' ELSE 'Cancelled' END")} AS display_booking_status,
             0 AS event_ended, 0 AS proof_overdue,
             {$historyText("CASE WHEN s.agreed_price IS NULL THEN 'Unpriced' WHEN {$paidSeminarSql} >= s.agreed_price THEN 'Paid' WHEN {$paidSeminarSql} > 0 THEN 'Partial' ELSE 'Unpaid' END")} AS payment_status, 0 AS is_guest_walkin,
@@ -219,12 +218,11 @@ try {
             {$historyText('NULL')} AS resched_status, NULL AS new_start_date, NULL AS new_end_date, {$historyText('NULL')} AS resched_reason,
             0 AS has_rescheduled, NULL AS pending_payment_submission_id, NULL AS pending_payment_method,
             NULL AS pending_payment_expected_amount, NULL AS pending_payment_reference,
-            {$historyText('s.name')} AS seminar_name, (SELECT COUNT(*) FROM seminar_attendees sa WHERE sa.seminar_id=s.id) AS attendee_count,
-            CASE WHEN s.status <> 'cancelled' AND (s.agreed_price IS NULL OR {$paidSeminarSql} < s.agreed_price) THEN 1 ELSE 0 END AS record_priority
+            {$historyText('s.name')} AS seminar_name, (SELECT COUNT(*) FROM seminar_attendees sa WHERE sa.seminar_id=s.id) AS attendee_count
         FROM seminars s JOIN venues v ON v.id=s.hall_venue_id
         WHERE {$seminarWhereSql}
     ) AS history
-    ORDER BY record_priority DESC, start_date DESC, record_type ASC, id DESC
+    ORDER BY created_at DESC, record_type ASC, id DESC
     LIMIT ? OFFSET ?";
     $queryParams = array_merge($bookingParams, $seminarParams, [$limit, $offset]);
     $queryTypes = $bookingTypes . $seminarTypes . 'ii';

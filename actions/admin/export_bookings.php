@@ -52,7 +52,7 @@ if (in_array($venueFilter, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) 
 $paidSeminarSql = "COALESCE((SELECT SUM(sp.amount) FROM seminar_payments sp WHERE sp.seminar_id=s.id AND sp.status='posted'),0)";
 switch ($statusFilter) {
     case 'action_req':
-        $where[] = "b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') OR b.booking_status = 'Pending' OR (b.booking_status = 'Confirmed' AND b.payment_status = 'Unpaid') OR EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id=b.id AND mps.status='pending'))";
+        $where[] = "b.booking_status <> 'Cancelled' AND (EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id=b.id AND mps.status='pending') OR (NOT $booking_completion_sql AND (EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') OR EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') OR b.booking_status = 'Pending')))";
         $seminarWhere[] = "s.status <> 'cancelled' AND (s.agreed_price IS NULL OR $paidSeminarSql < s.agreed_price)";
         break;
     case 'awaiting_verification':
@@ -91,7 +91,7 @@ $sql = "SELECT * FROM (
         SELECT {$historyText("'Booking'")} AS record_type, {$historyText('b.reference_no')} AS reference_no,
                {$historyText("CONCAT_WS(' ', c.first_name, c.last_name)")} AS customer_name,
                {$historyText('v.name')} AS venue_name, {$historyText('v.category')} AS venue_category, b.start_date, b.end_date,
-               b.guests_count, b.total_amount, b.amount_paid,
+               b.guests_count, b.total_amount, b.amount_paid, b.created_at,
                {$historyText("CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END")} AS booking_status,
                {$historyText('b.payment_status')} AS payment_status, b.id AS record_id
         FROM bookings b
@@ -104,13 +104,13 @@ $sql = "SELECT * FROM (
                {$historyText("CONCAT('Event Hall · ',v.name)")} AS venue_name, {$historyText("'Seminar'")} AS venue_category,
                s.hall_start_date AS start_date, s.hall_end_date AS end_date,
                (SELECT COUNT(*) FROM seminar_attendees a WHERE a.seminar_id=s.id) AS guests_count,
-               s.agreed_price AS total_amount, $paidSeminarSql AS amount_paid,
+               s.agreed_price AS total_amount, $paidSeminarSql AS amount_paid, s.created_at,
                {$historyText("CASE s.status WHEN 'draft' THEN 'Draft' WHEN 'finalized' THEN 'Finalized' ELSE 'Cancelled' END")} AS booking_status,
                {$historyText("CASE WHEN s.agreed_price IS NULL THEN 'Unpriced' WHEN $paidSeminarSql >= s.agreed_price THEN 'Paid' WHEN $paidSeminarSql > 0 THEN 'Partial' ELSE 'Unpaid' END")} AS payment_status,
                s.id AS record_id
         FROM seminars s JOIN venues v ON v.id=s.hall_venue_id
         WHERE " . implode(' AND ', $seminarWhere) . "
-    ) AS history ORDER BY start_date DESC, record_type ASC, record_id DESC";
+    ) AS history ORDER BY created_at DESC, record_type ASC, record_id DESC";
 $allParams = array_merge($params, $seminarParams);
 $allTypes = $types . $seminarTypes;
 $stmt = $conn->prepare($sql);

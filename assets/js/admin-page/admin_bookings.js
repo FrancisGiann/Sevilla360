@@ -1218,7 +1218,14 @@ document.addEventListener("DOMContentLoaded", () => {
           buttonElement.innerText = "Success!";
           buttonElement.style.backgroundColor = "#4ade80"; 
           buttonElement.style.borderColor = "#4ade80";
-          showAlert("Success!", data.message, "success", true);
+          if (['confirm', 'cancel', 'reschedule', 'reject_reschedule', 'refund', 'reject_refund', 'finalize_event_invoice'].includes(action)) {
+            const viewInvoker = findBookingViewButton(bookingId);
+            closeModal();
+            showBookingSuccessAlert("Success!", data.message, bookingId, viewInvoker);
+            loadBookings({ suppressUrlSearchAction: true });
+          } else {
+            showAlert("Success!", data.message, "success", true);
+          }
         } else {
           showAlert("Error", data.message, "error", false);
           buttonElement.innerText = originalText;
@@ -1266,6 +1273,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (lateAckWrap) lateAckWrap.hidden = true;
       if (manualProofModal) {
         delete manualProofModal.dataset.submissionId;
+        delete manualProofModal.dataset.bookingId;
         delete manualProofModal.dataset.eventEnded;
       }
       proofReviewInvoker = null;
@@ -1300,6 +1308,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const reviewManualProof = async decision => {
       const submissionId = manualProofModal?.dataset.submissionId;
+      const bookingId = manualProofModal?.dataset.bookingId;
       const reason = document.getElementById('manual-proof-rejection-reason')?.value.trim() || '';
       const lateAck = document.getElementById('manual-proof-late-ack');
       const lateAckRequired = manualProofModal?.dataset.eventEnded === '1';
@@ -1336,8 +1345,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || 'Payment review could not be completed.');
+        const viewInvoker = decision === 'approve' ? findBookingViewButton(bookingId) : null;
         closeModal();
-        showAlert(decision === 'approve' ? 'Payment verified' : 'Proof rejected', result.message, 'success');
+        if (decision === 'approve') showBookingSuccessAlert('Payment verified', result.message, bookingId, viewInvoker);
+        else showAlert('Proof rejected', result.message, 'success');
         loadBookings({ suppressUrlSearchAction: true });
       } catch (error) {
         manualProofStatus.textContent = error.message || 'Payment review could not be completed.';
@@ -1395,6 +1406,54 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (event.shiftKey && document.activeElement===fields[0]) { event.preventDefault(); fields.at(-1).focus(); }
         else if (!event.shiftKey && document.activeElement===fields.at(-1)) { event.preventDefault(); fields[0].focus(); }
     });
+
+    function showBookingSuccessAlert(title, message, bookingId, viewInvoker) {
+        document.querySelectorAll('#globalAlertModal [data-booking-view-action]').forEach(button => button.remove());
+        showAlert(title, message, 'success', false);
+
+        const id = String(bookingId ?? '');
+        const messageElement = document.getElementById('ga-message');
+        if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || !viewInvoker || !messageElement) return;
+
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.className = 'btn btn-outline';
+        viewButton.dataset.bookingViewAction = 'true';
+        viewButton.textContent = 'View booking';
+        viewButton.setAttribute('aria-label', `View booking ${id}`);
+        viewButton.style.display = 'block';
+        viewButton.style.margin = '12px auto 0';
+        let openAfterDismiss = false;
+        const okButton = document.getElementById('ga-btn-ok');
+        const overlay = document.getElementById('globalModalOverlay');
+        if (!okButton || !overlay) return;
+        okButton.addEventListener('click', () => {
+            viewButton.remove();
+            if (!openAfterDismiss) return;
+            if (overlay.style.visibility === 'hidden') {
+                viewInvoker.click();
+                return;
+            }
+            const observer = new MutationObserver(() => {
+                if (overlay.style.visibility !== 'hidden') return;
+                observer.disconnect();
+                viewInvoker.click();
+            });
+            observer.observe(overlay, { attributes: true, attributeFilter: ['style'] });
+        }, { once: true });
+        viewButton.addEventListener('click', () => {
+            openAfterDismiss = true;
+            okButton.click();
+        });
+        messageElement.appendChild(viewButton);
+    }
+
+    function findBookingViewButton(bookingId) {
+        const id = String(bookingId ?? '');
+        if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) return null;
+        return Array.from(document.querySelectorAll('.btn-view[data-id]'))
+            .find(button => button.dataset.id === id) || null;
+    }
 
     // =========================================================
     // 5. HELPER TO RE-BIND DYNAMIC BUTTONS AFTER AJAX LOAD
@@ -1726,6 +1785,7 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.addEventListener('click', function() {
                 proofReviewInvoker = this;
                 manualProofModal.dataset.submissionId = this.dataset.submissionId;
+                manualProofModal.dataset.bookingId = this.dataset.id;
                 manualProofModal.dataset.eventEnded = this.dataset.eventEnded === '1' ? '1' : '0';
                 const lateAckWrap = document.getElementById('manual-proof-late-ack-wrap');
                 const lateAck = document.getElementById('manual-proof-late-ack');
@@ -1955,7 +2015,7 @@ document.addEventListener("DOMContentLoaded", () => {
                       btnAdminResend.style.display = canResendReceipt ? 'inline-flex' : 'none';
                   }
       
-                  bookingDetailInvoker = this;
+                  bookingDetailInvoker = this.isConnected ? this : btnRefresh;
                   if (!bookingDetailBodyLockActive) {
                       bookingDetailPreviousOverflow = document.body.style.overflow;
                       document.body.style.overflow = 'hidden';
