@@ -123,6 +123,24 @@ $run = static function (array $turnState, string $message, ReceptionistNaturalCo
 };
 
 $baseState = receptionist_natural_empty_state();
+$simpleBookingProvider = new ReceptionistNaturalContractProvider([]);
+[$simpleBookingResult, $simpleBookingStatus] = $run($baseState, 'i want to book', $simpleBookingProvider);
+$assert('a simple booking opener offers categories without an AI call', $simpleBookingStatus === 200
+    && $simpleBookingProvider->calls === [] && ($simpleBookingResult['missing_slots'] ?? null) === ['intent']
+    && ($simpleBookingResult['quick_actions'] ?? null) === ['category_event_hall', 'category_hotel_room', 'category_resort_villa']
+    && ($simpleBookingResult['reply'] ?? null) === receptionist_natural_local_reply('intent', 'en'));
+$existingBookingState = array_replace(receptionist_natural_empty_state(), [
+    'revision' => 3, 'slots' => ['intent' => 'Hotel Room', 'group_size' => 2], 'pending_question' => 'start_date',
+]);
+$existingBookingProvider = new ReceptionistNaturalContractProvider([]);
+[$existingBookingResult] = $run($existingBookingState, 'I want to book', $existingBookingProvider);
+$assert('a simple booking opener retains existing details and asks the current question',
+    $existingBookingProvider->calls === [] && ($existingBookingResult['slots']['group_size'] ?? null) === 2
+    && ($existingBookingResult['missing_slots'] ?? null) === ['start_date']);
+$assert('simple booking routing leaves substantive and unrelated questions to interpretation',
+    !receptionist_natural_simple_booking_start('How do I book a hotel?')
+    && !receptionist_natural_simple_booking_start('I want to book a villa for four guests')
+    && !receptionist_natural_simple_booking_start('What is the price?'));
 $firstInterpretation = $payload('booking', [
     'intent' => 'Hotel Room', 'group_size' => 3, 'preference' => 'comfort', 'room_type_code' => 'any', 'start_date' => $date1, 'end_date' => $date2,
 ], 'Sure.');
@@ -146,7 +164,8 @@ $assert('full typed booking interprets multiple slots and makes a grounded wordi
     && ($searchRequest['room_type_code'] ?? null) === 'any'
     && count($provider->calls) === 2 && array_column($provider->calls, 'attempt_limit') === [1, 1]
     && array_column($provider->calls, 'max_tokens') === [1400, 1400]
-    && max(array_column($provider->calls, 'timeout')) <= 10 && str_contains((string)$result['reply'], 'Rafael')
+    && $provider->calls[0]['timeout'] === 28 && max(array_column($provider->calls, 'timeout')) <= 28
+    && str_contains((string)$result['reply'], 'Rafael')
     && str_contains((string)$result['reply'], 'enough room for your group') && !str_contains((string)$result['reply'], '4 beds')
     && str_contains($provider->calls[0]['messages'][0]['content'], 'Claimable evidence')
     && str_contains($provider->calls[0]['messages'][0]['content'], '₱1,200.00 per night'));
@@ -221,15 +240,24 @@ $timeoutProvider = new ReceptionistNaturalContractProvider([
         return ['reply' => 'How many guests are included in the hotel stay?'];
     },
 ]);
-$assert('a retryable provider timeout records a canonical outage instead of repeating a stale pending question',
+$assert('a provider timeout keeps context and offers booking choices without a retry trap',
     $timeoutFallbackStatus === 200 && $timeoutFallbackResult['success'] === true
     && ($timeoutFallbackResult['fallback_code'] ?? null) === 'provider_timeout'
-    && ($timeoutFallbackResult['retryable'] ?? null) === true
+    && ($timeoutFallbackResult['retryable'] ?? null) === false
     && ($timeoutFallbackResult['revision'] ?? null) === 4
-    && ($timeoutFallbackResult['reply'] ?? null) === receptionist_natural_local_reply('outage', 'en')
+    && str_contains((string)$timeoutFallbackResult['reply'], 'contact reception')
+    && ($timeoutFallbackResult['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($timeoutFallbackResult['quick_actions'] ?? null) === ['category_event_hall', 'category_hotel_room', 'category_resort_villa']
+    && ($timeoutFallbackResult['show_support_contact_cta'] ?? null) === true
     && !str_contains((string)$timeoutFallbackResult['reply'], 'How many guests')
     && $timeoutFallbackCalls === 0 && count($timeoutProvider->calls) === 1
-    && $timeoutProvider->calls[0]['timeout'] === 10);
+    && $timeoutProvider->calls[0]['timeout'] === 28);
+$shortTimeoutProvider = new ReceptionistNaturalContractProvider([['success' => false, 'error_class' => 'provider_timeout']]);
+$run($staleQuestionState, 'Can you tell me about your resort?', $shortTimeoutProvider, [
+    'provider_limits' => ['timeout' => 7, 'tokens' => 800],
+]);
+$assert('natural interpretation respects a configured timeout below the browser-safe cap',
+    count($shortTimeoutProvider->calls) === 1 && $shortTimeoutProvider->calls[0]['timeout'] === 7);
 
 $seed = array_replace(receptionist_natural_empty_state(), [
     'revision' => 4, 'slots' => ['intent' => 'Hotel Room', 'group_size' => 2, 'preference' => 'save', 'room_type_code' => 'any', 'start_date' => $date1, 'end_date' => $date2],
@@ -1302,7 +1330,7 @@ $deadlineSearches = 0;
         return $fixtureSnapshot(['slots' => ['group_size' => $request['group_size']]], (string)$request['check_in'], (string)$request['check_out']);
     },
 ]);
-$assert('an exhausted 12-second deadline skips wording and never makes a third provider call', $deadlineStatus === 200
+$assert('an exhausted total provider budget skips wording and never makes a third provider call', $deadlineStatus === 200
     && $deadlineSearches === 1 && count($deadlineProvider->calls) === 1 && ($deadlineResult['presentation'] ?? null) === 'show_results');
 
 $failed = array_filter($checks, static fn(bool $pass): bool => !$pass);

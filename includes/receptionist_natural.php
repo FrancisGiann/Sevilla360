@@ -467,6 +467,11 @@ function receptionist_natural_local_action_patch(?string $actionId): ?array
     return $intent === null ? null : ['slots_patch' => ['intent' => $intent], 'clear_slots' => [], 'kind' => 'booking'];
 }
 
+function receptionist_natural_simple_booking_start(string $message): bool
+{
+    return preg_match('/\A\s*(?:(?:i|we)\s+(?:want|need|would like)\s+to\s+)?(?:book|reserve)(?:\s+(?:something|a place))?[.!]?\s*\z/iu', $message) === 1;
+}
+
 /** Resolve only a unique published venue plus hotel room-group identity. */
 function receptionist_natural_named_availability_target(array $records, string $message, array $slots): array
 {
@@ -1640,6 +1645,20 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
     }
 
     $actionId = is_string($request['action_id'] ?? null) ? $request['action_id'] : null;
+    if ($actionId === null && receptionist_natural_simple_booking_start($message)) {
+        $intent = $state['slots']['intent'] ?? null;
+        $pending = $intent === null ? 'intent' : ($state['pending_question'] ?? null);
+        if (!is_string($pending) || $pending === '') {
+            $pending = !isset($state['slots']['group_size']) ? 'group_size'
+                : (!isset($state['slots']['start_date']) ? 'start_date'
+                : ($intent === 'Hotel Room' && !isset($state['slots']['end_date']) ? 'end_date' : 'intent'));
+        }
+        $state['pending_question'] = $pending;
+        $extra = ['slots' => $state['slots'], 'validated_slots' => $state['slots'], 'missing_slots' => [$pending]];
+        if ($pending === 'intent') $extra['quick_actions'] = ['category_event_hall', 'category_hotel_room', 'category_resort_villa'];
+        return receptionist_natural_finish($state, $message, receptionist_natural_local_reply($pending, $language, $intent),
+            in_array($pending, ['start_date', 'end_date'], true) ? 'show_dates' : 'keep', $extra, null, $requestId);
+    }
     $localPatch = receptionist_natural_guided_context_patch($request, $state)
         ?? receptionist_natural_local_action_patch($actionId)
         ?? receptionist_natural_local_availability_patch($message, $state)
@@ -1695,8 +1714,10 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             try {
                 $limits = is_array($dependencies['provider_limits'] ?? null) ? $dependencies['provider_limits'] : receptionist_ai_limits();
                 $providerLimits = $limits;
-                $providerDeadline = $started + 12.0;
-                $timeout = min(10, max(1, (int)$limits['timeout']));
+                // The browser stops waiting after 35 seconds. Reserve time for
+                // server work and a local reply, including an optional wording pass.
+                $providerDeadline = $started + 30.0;
+                $timeout = min(28, max(1, (int)$limits['timeout']));
                 $naturalOutputTokens = min(1600, max(1400, (int)$limits['tokens']));
                 $schema = receptionist_natural_provider_schema($knowledgeCandidates, $state);
                 // Only model-bound turns consume the AI visit allowance. Local
@@ -1722,11 +1743,13 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         if ($providerError !== null) {
             $failureMetadata = receptionist_ai_fallback_metadata($providerError);
             if (($failureMetadata['retryable'] ?? false) === true) {
-                // Do not turn an unavailable model call into an unrelated
-                // booking follow-up based on stale session context. The
-                // canonical outage reply is also recognizable after history
-                // restoration, so the client can offer a manual retry.
-                $reply = receptionist_natural_local_reply('outage', $language);
+                // Preserve the booking state and offer local routes instead
+                // of sending the visitor back into the same provider retry.
+                $reply = match ($language) {
+                    'fil' => 'Hindi ko masagot iyon ngayon. Naka-save pa rin ang detalye ng booking ninyo. Pumili ng event, hotel, o villa sa ibaba, o kontakin ang reception.',
+                    'taglish' => 'Hindi ko masagot iyon ngayon. Saved pa rin ang booking details mo. Choose event, hotel, or villa below, or contact reception.',
+                    default => 'I can’t answer that right now. Your booking details are saved. Choose Event, Hotel, or Villa below, or contact reception.',
+                };
             } else {
                 $fallback = is_callable($dependencies['fallback'] ?? null)
                     ? ($dependencies['fallback'])($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id'])
@@ -1735,7 +1758,9 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             }
             receptionist_natural_emit_reply_log($dependencies, $requestId, 'local_fallback', 'unavailable', $providerCallCount, $providerError);
             return receptionist_natural_finish($state, $message, $reply, 'keep',
-                ['slots' => $state['slots'], 'validated_slots' => $state['slots']], $providerError, $requestId);
+                ['slots' => $state['slots'], 'validated_slots' => $state['slots'], 'missing_slots' => ['intent'],
+                    'quick_actions' => ['category_event_hall', 'category_hotel_room', 'category_resort_villa'],
+                    'show_support_contact_cta' => true, 'retryable' => false], $providerError, $requestId);
         }
     } else {
         $proposal = receptionist_natural_validate_proposal($localPatch + ['kind' => 'booking'], $state, $catalog, $message,
