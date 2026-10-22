@@ -472,6 +472,67 @@ function receptionist_natural_simple_booking_start(string $message): bool
     return preg_match('/\A\s*(?:(?:i|we)\s+(?:want|need|would like)\s+to\s+)?(?:book|reserve)(?:\s+(?:something|a place))?[.!]?\s*\z/iu', $message) === 1;
 }
 
+/** Answer only a narrow factual question with a confirmed published source. */
+function receptionist_natural_local_knowledge_answer(array $records, string $message, string $language, array $state): ?array
+{
+    if (preg_match('/\A\s*(?:how (?:can|do) i contact you|what(?: is|\x27s) your (?:phone|email)|paano (?:ko kayo|kayo) (?:makontak|ma-contact)|ano(?:ng| ang) (?:contact|phone|email)(?: ninyo| nyo)?)\s*[?.!]?\s*\z/iu', $message) === 1) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'contact' && is_string($record['id'] ?? null)) {
+            return receptionist_knowledge_compose_selection($records, [$record], $record['id'], 'contact', $language, $state['slots'], $message);
+        }
+    }
+    $route = receptionist_knowledge_intent($message);
+    if (($route['kind'] ?? null) === 'booking') return null;
+    // One published fact at a time. Mixed questions need the existing
+    // interpretation and grounding path to avoid answering only one half.
+    $topics = 0;
+    foreach (['/\b(?:price|rates?|cost|magkano|presyo|₱)\b/iu',
+              '/\b(?:capacity|fit|guests?|ilang|kasya)\b/iu',
+              '/\b(?:cancel|refund|payment|policy|policies|check[ -]?in|check[ -]?out)\b/iu',
+              '/\b(?:available|availability|bakante)\b/iu'] as $topic) {
+        if (preg_match($topic, $message) === 1) $topics++;
+    }
+    if ($topics > 1) return null;
+    if (receptionist_knowledge_booking_dates($message) !== []) return null;
+    $faqList = receptionist_knowledge_is_support_faq_request($message);
+    $question = preg_match('/\A\s*(?:what|which|where|when|how|is|are|do|does|can|could|may|magkano|saan|nasaan|ilan|ilang|kasya|ano|anong|paano|pwede|puwede|may|bawal|mayroon)\b/iu', $message) === 1;
+    if (!$faqList && !$question) return null;
+    $property = receptionist_knowledge_property_from_message($message);
+    $exactFaq = null;
+    foreach ($records as $record) if (($record['kind'] ?? null) === 'faq'
+        && mb_strtolower(rtrim(trim((string)($record['question'] ?? '')), '?.!'), 'UTF-8')
+            === mb_strtolower(rtrim(trim($message), '?.!'), 'UTF-8')) $exactFaq = $record;
+    if (!$faqList && ($property === null || $property === 'availability' || $property === 'description')
+        && $exactFaq === null && ($route['kind'] ?? null) !== 'booking_process') return null;
+    if ($exactFaq !== null && is_string($exactFaq['id'] ?? null)
+        && ($published = receptionist_faq_text($exactFaq['answer'] ?? '', 3000)) !== null) {
+        $reply = $language === 'fil' ? 'Narito ang naka-publish na sagot: ' . $published
+            : ($language === 'taglish' ? 'Here is the published answer: ' . $published : $published);
+        return ['action' => 'ask', 'reply' => $reply, 'faq_id' => $exactFaq['id'], 'quick_replies' => []];
+    }
+    $answer = receptionist_knowledge_reply($records, $message, $language, $state['slots'], $state['history'], $state['focused_faq_id']);
+    if (!is_array($answer) || !in_array($answer['action'] ?? null, ['ask', 'faq'], true)
+        || !is_string($answer['reply'] ?? null)) return null;
+    $reply = $answer['reply'];
+    if (is_string($answer['faq_id'] ?? null)) {
+        foreach ($records as $record) if (($record['kind'] ?? null) === 'faq'
+            && ($record['id'] ?? null) === $answer['faq_id']) {
+            if (preg_match('/\b(?:what time|anong oras|oras ng)\b/iu', $message) === 1
+                && preg_match('/\b(?:time|oras|\d{1,2}:\d{2})\b/iu', (string)($record['answer'] ?? '')) !== 1) return null;
+            $published = receptionist_faq_text($record['answer'] ?? '', 3000);
+            if ($published !== null) $answer['reply'] = $reply = $language === 'fil'
+                ? 'Narito ang naka-publish na sagot: ' . $published
+                : ($language === 'taglish' ? 'Here is the published answer: ' . $published : $published);
+            break;
+        }
+    }
+    $confirmed = $faqList || is_string($answer['faq_id'] ?? null)
+        || ($property === 'price' && str_contains($reply, '₱'))
+        || ($property === 'capacity' && preg_match('/\b(?:capacity|guests|bisita)\b/iu', $reply) === 1)
+        || ($property === 'location' && str_contains($reply, 'Address:'))
+        || (($route['kind'] ?? null) === 'booking_process' && str_contains($reply, 'booking page'));
+    return $confirmed ? $answer : null;
+}
+
 /** Resolve only a unique published venue plus hotel room-group identity. */
 function receptionist_natural_named_availability_target(array $records, string $message, array $slots): array
 {
@@ -1664,6 +1725,21 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         ?? receptionist_natural_local_availability_patch($message, $state)
         ?? receptionist_natural_local_pending_patch($message, $state)
         ?? receptionist_natural_local_group_count_patch($message, $state);
+    if ($localPatch === null && $actionId === null) {
+        $localAnswer = receptionist_natural_local_knowledge_answer($records, $message, $language, $state);
+        if ($localAnswer !== null) {
+            if (is_string($localAnswer['faq_id'] ?? null)) $state['focused_faq_id'] = $localAnswer['faq_id'];
+            $pending = $state['pending_question'] ?? null;
+            $reply = $localAnswer['reply'];
+            if (is_string($pending) && $pending !== '') $reply = rtrim($reply) . ' ' . receptionist_natural_local_reply($pending, $language, $state['slots']['intent'] ?? null);
+            $extra = ['slots' => $state['slots'], 'validated_slots' => $state['slots'], 'missing_slots' => is_string($pending) ? [$pending] : [],
+                'local_reply' => true];
+            if (is_array($localAnswer['quick_replies'] ?? null)) $extra['quick_replies'] = $localAnswer['quick_replies'];
+            if (($localAnswer['show_support_faq_cta'] ?? false) === true) $extra['show_support_faq_cta'] = true;
+            if (($localAnswer['show_support_contact_cta'] ?? false) === true) $extra['show_support_contact_cta'] = true;
+            return receptionist_natural_finish($state, $message, $reply, 'keep', $extra, null, $requestId);
+        }
+    }
     $requestRoomType = ($localPatch['request_room_type'] ?? false) === true;
     if (($localPatch['clarify_room_type'] ?? false) === true
         || (($localPatch['request_room_type'] ?? false) === true && ($localPatch['guided_sync'] ?? false) !== true)) {

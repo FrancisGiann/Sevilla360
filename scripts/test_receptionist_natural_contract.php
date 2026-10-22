@@ -123,6 +123,55 @@ $run = static function (array $turnState, string $message, ReceptionistNaturalCo
 };
 
 $baseState = receptionist_natural_empty_state();
+$commonRecords = [...$records,
+    ['id' => 'faq-policy-local', 'kind' => 'faq', 'question' => 'What is the cancellation policy?',
+        'answer' => 'Published cancellation requests are reviewed by reception.'],
+    ['id' => 'faq-hotel-nightly', 'kind' => 'faq', 'question' => 'Are hotel rooms priced per night?',
+        'answer' => 'Hotel stays require at least one night, and checkout must follow check-in.'],
+    ['id' => 'contact-local', 'kind' => 'contact', 'contact' => ['address' => 'Published resort address', 'phone' => 'Published reception phone']],
+];
+$commonCases = [
+    ['Magkano ang event hall?', 'fil', '₱', null],
+    ['Magkano ang event hall?', 'taglish', '₱', null],
+    ['How much is the event hall?', 'en', '₱', null],
+    ['Ilang bisita ang kasya sa Infinity Hall?', 'fil', 'guests', null],
+    ['Saan ang resort?', 'fil', 'Published resort address', null],
+    ['How can I contact you?', 'en', 'Published reception phone', null],
+    ['What is the cancellation policy?', 'en', 'Published cancellation requests', 'faq-policy-local'],
+    ['What is the cancellation policy?', 'fil', 'Narito ang naka-publish na sagot', 'faq-policy-local'],
+    ['Are hotel rooms priced per night?', 'en', 'checkout must follow check-in', 'faq-hotel-nightly'],
+];
+foreach ($commonCases as [$commonQuestion, $commonLanguage, $expectedText, $expectedFaq]) {
+    $commonProvider = new ReceptionistNaturalContractProvider([]);
+    [$commonResult, $commonStatus] = $run($baseState, $commonQuestion, $commonProvider, [
+        '_records' => $commonRecords, '_language' => $commonLanguage,
+    ]);
+    $assert('published common question stays local: ' . $commonQuestion,
+        $commonStatus === 200 && $commonProvider->calls === []
+        && str_contains((string)($commonResult['reply'] ?? ''), $expectedText)
+        && ($commonResult['natural_state']['focused_faq_id'] ?? null) === $expectedFaq);
+}
+$faqInterruptProvider = new ReceptionistNaturalContractProvider([]);
+$faqInterruptState = array_replace(receptionist_natural_empty_state(), [
+    'slots' => ['intent' => 'Hotel Room', 'group_size' => 2, 'start_date' => $date1], 'pending_question' => 'end_date',
+]);
+[$faqInterruptResult] = $run($faqInterruptState, 'What is the cancellation policy?', $faqInterruptProvider, [
+    '_records' => $commonRecords,
+]);
+$assert('a local FAQ interruption retains guest count, date, checkout question and focus',
+    $faqInterruptProvider->calls === [] && ($faqInterruptResult['slots']['group_size'] ?? null) === 2
+    && ($faqInterruptResult['slots']['start_date'] ?? null) === $date1
+    && ($faqInterruptResult['natural_state']['pending_question'] ?? null) === 'end_date'
+    && ($faqInterruptResult['natural_state']['focused_faq_id'] ?? null) === 'faq-policy-local');
+$assert('automatic Filipino cues and explicit Taglish selection remain distinct',
+    receptionist_ai_language('auto', 'Magkano ang event hall?') === 'fil'
+    && receptionist_ai_language('auto', 'Saan ang resort?') === 'fil'
+    && receptionist_ai_language('taglish', 'How much is the event hall?') === 'taglish');
+$assert('ambiguous or mixed questions still require interpretation',
+    receptionist_natural_local_knowledge_answer($commonRecords, 'What time is check-in?', 'en', $baseState) === null
+    && receptionist_natural_local_knowledge_answer($commonRecords, "How much is the hotel on {$date1}?", 'en', $baseState) === null
+    && receptionist_natural_local_knowledge_answer($commonRecords, 'Is Rafael free to cancel, and will it cost ₱500?', 'en', $baseState) === null
+    && receptionist_natural_local_knowledge_answer($commonRecords, 'May private pool ba?', 'fil', $baseState) === null);
 $simpleBookingProvider = new ReceptionistNaturalContractProvider([]);
 [$simpleBookingResult, $simpleBookingStatus] = $run($baseState, 'i want to book', $simpleBookingProvider);
 $assert('a simple booking opener offers categories without an AI call', $simpleBookingStatus === 200

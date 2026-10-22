@@ -534,7 +534,8 @@ function receptionist_ai_language(string $requested, string $message): string
 {
     if (in_array($requested, ['en', 'fil', 'taglish'], true)) return $requested;
     $lower = strtolower($message);
-    if (preg_match('/\b(?:pwede|puwede|maaari)\s+(?:po\s+)?(?:ba|bang)\b|\bmag[- ]?walk[ -]?in\b/u', $lower) === 1) return 'fil';
+    if (preg_match('/\b(?:pwede|puwede|maaari)\s+(?:po\s+)?(?:ba|bang)\b|\bmag[- ]?walk[ -]?in\b/u', $lower) === 1
+        || preg_match('/\A\s*(?:magkano|saan|nasaan|paano|ilang|anong|ano\s+ang|may\s+.+\s+ba)\b/u', $lower) === 1) return 'fil';
     $filipinoWords = ['magkano', 'paano', 'saan', 'salamat', 'gusto', 'kailangan', 'pwede', 'mayroon', 'booking'];
     $hits = 0;
     foreach ($filipinoWords as $word) if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $lower)) $hits++;
