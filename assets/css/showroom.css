@@ -1898,6 +1898,13 @@ body.no-scroll .footer {
 .receptionist-primary-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .receptionist-secondary-actions { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
 
+.receptionist-venue-details {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: .55rem;
+  min-width: 0;
+}
+
 .receptionist-response {
   display: grid;
   grid-column: 1 / -1;

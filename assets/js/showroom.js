@@ -3361,7 +3361,7 @@ document.addEventListener("DOMContentLoaded", () => {
         primaryActions.appendChild(bookLink);
         primaryActions.appendChild(createChoice("Back to recommendations", "receptionist-choice-secondary", { "data-receptionist-hotel-back": "true" }));
       } else {
-        const askAction = createChoice("More details", "receptionist-choice-secondary", { "data-receptionist-menu": "true" });
+        const askAction = createChoice("More details", "receptionist-choice-secondary", { "data-receptionist-menu": "true", "aria-expanded": "false", "aria-controls": "receptionist-venue-details" });
         primaryActions.append(tourAction, bookLink, askAction);
       }
       receptionistChoices.appendChild(primaryActions);
@@ -3397,10 +3397,21 @@ document.addEventListener("DOMContentLoaded", () => {
       renderVenue(room);
       return true;
     };
+    const venueDetailsRegion = () => {
+      let region = receptionistChoices.querySelector("[data-receptionist-venue-details]");
+      if (!region) {
+        region = document.createElement("div");
+        region.id = "receptionist-venue-details";
+        region.className = "receptionist-venue-details";
+        region.dataset.receptionistVenueDetails = "true";
+        receptionistChoices.appendChild(region);
+      }
+      return region;
+    };
     const renderVenueMenu = room => {
       receptionistRoot.classList.add("is-venue-state");
-      receptionistRoot.classList.remove("is-date-state", "is-venue-overview");
-      receptionistRoot.classList.add("is-venue-dialogue");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-dialogue");
+      receptionistRoot.classList.add("is-venue-overview");
       guideState.responseMode = "menu";
       guideState.returnStep = "venueOverview";
       setDialogue("More about this venue", "Choose one next step and I’ll keep the current venue, answers, date, and photo in place.");
@@ -3408,19 +3419,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const compareAction = window.matchMedia?.("(min-width: 701px)").matches
         ? [createChoice(category === "Hotel Room" ? "Compare rooms" : "Compare venues", "receptionist-choice-secondary", { "data-receptionist-compare": "true" })]
         : [];
-      receptionistChoices.replaceChildren(
+      const region = venueDetailsRegion();
+      region.replaceChildren(
         createChoice("Why this fits", "receptionist-choice-secondary", { "data-receptionist-why": "true" }),
         createChoice("What’s included", "receptionist-choice-secondary", { "data-receptionist-included": "true" }),
         ...compareAction,
         createChoice("Change search", "receptionist-choice-secondary", { "data-receptionist-change-search": "true" }),
         ...(guideContext.startDate ? [createChoice("Change date", "receptionist-choice-secondary", { "data-receptionist-change-date": "true" })] : []),
-        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" })
+        createChoice("Start over", "receptionist-choice-secondary", { "data-receptionist-start-over": "true", "data-receptionist-chat-start-over": "true" }),
+        createChoice("Collapse details", "receptionist-back-text", { "data-receptionist-overview": "true" })
       );
+      receptionistChoices.querySelector("[data-receptionist-menu]")?.setAttribute("aria-expanded", "true");
+      region.querySelector("button")?.focus({ preventScroll: true });
     };
     const renderResponse = (room, mode) => {
       receptionistRoot.classList.add("is-venue-state");
-      receptionistRoot.classList.remove("is-date-state", "is-venue-overview");
-      receptionistRoot.classList.add("is-venue-dialogue");
+      receptionistRoot.classList.remove("is-date-state", "is-venue-dialogue");
+      receptionistRoot.classList.add("is-venue-overview");
       guideState.responseMode = mode;
       guideState.returnStep = "venueOverview";
       const title = mode === "why" ? "Why this fits" : "What’s included";
@@ -3484,8 +3499,8 @@ document.addEventListener("DOMContentLoaded", () => {
         setDialogue(title, "These are the inclusions currently listed for this venue. Use the page controls to review the complete list.");
       }
       if (list.children.length && !response.contains(list)) response.appendChild(list);
-      const back = createChoice("Back to venue", "receptionist-back-text", { "data-receptionist-overview": "true" });
-      receptionistChoices.replaceChildren(response, back);
+      const back = createChoice("Collapse details", "receptionist-back-text", { "data-receptionist-overview": "true" });
+      venueDetailsRegion().replaceChildren(response, back);
       focusResponse(heading);
     };
     const restoreBackgroundInert = () => {
@@ -3937,7 +3952,22 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (target.hasAttribute("data-receptionist-back")) { renderGreeting({ announce: true, reset: true }); focusFirstChoice(); return; }
-      if (target.hasAttribute("data-receptionist-overview")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueOverview(room); focusFirstChoice(); } return; }
+      if (target.hasAttribute("data-receptionist-overview")) {
+        const region = receptionistChoices.querySelector("[data-receptionist-venue-details]");
+        if (region) {
+          region.remove();
+          guideState.responseMode = "overview";
+          const room = dataMap[receptionistState.activeRoomId];
+          setDialogue(room?.title || room?.venue_name || "Venue details", availabilityDateSummary(receptionistState.activeCategory));
+          const menu = receptionistChoices.querySelector("[data-receptionist-menu]");
+          menu?.setAttribute("aria-expanded", "false");
+          menu?.focus({ preventScroll: true });
+        } else {
+          const room = dataMap[receptionistState.activeRoomId];
+          if (room) { renderVenueOverview(room); focusFirstChoice(); }
+        }
+        return;
+      }
       if (target.hasAttribute("data-receptionist-hotel-back")) { renderHotelRecommendationList(); focusFirstChoice(); return; }
       if (target.hasAttribute("data-receptionist-hotel-retry")) { requestHotelRecommendations(); return; }
       if (target.hasAttribute("data-receptionist-availability-retry")) { checkGuideAvailability(); return; }
@@ -3953,7 +3983,7 @@ document.addEventListener("DOMContentLoaded", () => {
         else renderGreeting({ announce: true });
         return;
       }
-      if (target.hasAttribute("data-receptionist-menu")) { const room = dataMap[receptionistState.activeRoomId]; if (room) { renderVenueMenu(room); focusFirstChoice(); } return; }
+      if (target.hasAttribute("data-receptionist-menu")) { const room = dataMap[receptionistState.activeRoomId]; if (room) renderVenueMenu(room); return; }
       if (target.hasAttribute("data-receptionist-date-later")) {
         guideContext.startDate = null;
         guideContext.endDate = null;

@@ -468,7 +468,7 @@
     suggestedReplies.setAttribute("aria-label", "Suggested replies");
     quickReplies.replaceChildren(suggestedReplies);
     const hasActiveGuidedContent = () => Boolean(choices?.querySelector(
-      ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-room], [data-receptionist-answer], [data-receptionist-group-input]"
+      ".receptionist-calendar, .receptionist-hotel-results-grid, [data-receptionist-venue-card], [data-receptionist-venue-details], [data-receptionist-room], [data-receptionist-answer], [data-receptionist-group-input]"
     ));
     const removeRedundantPromptChips = () => {
       if (!hasActiveGuidedContent()) return;

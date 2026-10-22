@@ -63,6 +63,56 @@ check("selecting a recommended hotel room opens details without replaying the re
   assert.ok(roomSelection.indexOf("naturalSyncStartedThisClick = true;") < roomSelection.indexOf("renderVenue(room)"));
   assert.ok(showroomSource.includes("if (!naturalHybridEnabled || !event.isTrusted || naturalSyncStartedThisClick) return;"));
 });
+check("venue detail menu preserves the card and actions across repeated opens and venue changes", () => {
+  class Node {
+    constructor(name = "div") { this.name = name; this.children = []; this.dataset = {}; this.attributes = {}; }
+    appendChild(child) { this.children.push(child); return child; }
+    replaceChildren(...children) { this.children = children; }
+    querySelector(selector) {
+      if (selector === "[data-receptionist-venue-details]") return this.children.find(child => child.dataset.receptionistVenueDetails) || null;
+      if (selector === "[data-receptionist-menu]") return this.children.find(child => child.attributes["data-receptionist-menu"]) || null;
+      if (selector === "button") return this.children.find(child => child.name === "button") || null;
+      return null;
+    }
+    setAttribute(name, value) { this.attributes[name] = value; }
+    focus() { this.focused = true; }
+  }
+  const choices = new Node();
+  const card = new Node();
+  const book = new Node("a");
+  const tour = new Node("button");
+  const menu = new Node("button");
+  menu.attributes["data-receptionist-menu"] = "true";
+  choices.replaceChildren(card, book, tour, menu);
+  const classes = new Set(["is-venue-overview"]);
+  const context = {
+    document: { createElement: name => new Node(name) },
+    receptionistChoices: choices,
+    receptionistRoot: { classList: { add: name => classes.add(name), remove: (...names) => names.forEach(name => classes.delete(name)) } },
+    guideState: {}, guideContext: { startDate: "2026-10-24" }, receptionistState: { activeCategory: "Event Hall" },
+    window: { matchMedia: () => ({ matches: true }) },
+    setDialogue: () => {},
+    createChoice: (label, className, attributes) => { const node = new Node("button"); node.label = label; node.attributes = attributes; return node; }
+  };
+  const start = showroomSource.indexOf("    const venueDetailsRegion = () => {");
+  const end = showroomSource.indexOf("    const renderResponse = (room, mode) => {", start);
+  assert.ok(start > 0 && end > start);
+  const renderMenu = vm.runInNewContext(`${showroomSource.slice(start, end)}; renderVenueMenu`, context);
+  renderMenu({ category: "Event Hall" });
+  let region = choices.querySelector("[data-receptionist-venue-details]");
+  assert.equal(choices.children.length, 5);
+  assert.deepEqual(choices.children.slice(0, 4), [card, book, tour, menu]);
+  assert.equal(menu.attributes["aria-expanded"], "true");
+  assert.equal(region.children.at(-1).label, "Collapse details");
+  assert.equal(region.children[0].focused, true);
+  renderMenu({ category: "Resort Villa" });
+  assert.equal(choices.querySelector("[data-receptionist-venue-details]"), region);
+  assert.equal(choices.children.length, 5);
+  assert.equal(context.guideContext.startDate, "2026-10-24");
+  assert.ok(chatSource.includes("[data-receptionist-venue-details]"));
+  assert.ok(showroomCss.includes(".receptionist-venue-details"));
+  assert.ok(showroomSource.includes('menu?.setAttribute("aria-expanded", "false")'));
+});
 check("intent clarification uses server category action ids when present", () => {
   assert.deepEqual(plain(chat.resolveBookingSuggestions({
     booking_continuation: true, missing_slots: ["intent"], quick_actions: ["category_hotel_room"]
