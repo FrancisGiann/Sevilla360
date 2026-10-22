@@ -218,7 +218,7 @@
             <button type="button" class="close-overview-modal btn-icon-close" aria-label="Close booking details"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         </div>
 
-        <div>
+        <div class="overview-booking-body-scroll" id="overviewBookingBodyScroll">
             <h4 class="modal-subtitle overview-subtitle-first">Customer Information</h4>
             <div class="summary-grid overview-grid-info">
                 <span class="label">Name:</span> <span class="value" id="ov-vd-customer-name">--</span>
@@ -287,13 +287,12 @@
                 <span class="label">Payment Scheme:</span> <span class="value" id="ov-vd-scheme">--</span>
                 <span class="label">Amount Paid:</span> <span class="value overview-paid-value" id="ov-vd-paid-amt">₱0.00</span>
             </div>
-        </div>
-
-        <div class="modal-actions maint-modal-footer">
-            <button type="button" class="btn-modal btn-modal-cancel close-overview-modal btn-modal-padded">Close</button>
-            <a id="ov-btn-manage-link" href="admin_dashboard.php?page=bookings" class="btn-modal btn-manage-dark">
-                <i class="fa-solid fa-arrow-right-to-bracket"></i> Manage in Bookings
-            </a>
+            <div class="modal-actions maint-modal-footer">
+                <button type="button" class="btn-modal btn-modal-cancel close-overview-modal btn-modal-padded">Close</button>
+                <a id="ov-btn-manage-link" href="admin_dashboard.php?page=bookings" class="btn-modal btn-manage-dark">
+                    <i class="fa-solid fa-arrow-right-to-bracket"></i> Manage in Bookings
+                </a>
+            </div>
         </div>
     </div>
 </div>

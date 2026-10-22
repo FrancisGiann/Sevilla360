@@ -211,6 +211,8 @@ document.addEventListener("DOMContentLoaded", () => {
         overlay.setAttribute('aria-hidden', 'false');
         modal.classList.add('active');
         modal.setAttribute('aria-hidden', 'false');
+        const modalBody = modal.querySelector('.overview-booking-body-scroll');
+        if (modalBody) modalBody.scrollTop = 0;
         window.requestAnimationFrame(() => {
             const heading = modal.querySelector('[id][tabindex="-1"]');
             (heading || getModalFocusableElements(modal)[0] || modal).focus();
@@ -742,6 +744,20 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderRecentBookings(bookings) {
         const tbody = document.getElementById('recent-bookings-tbody');
         if (!tbody) return;
+        if (!tbody.dataset.rowOpenBound) {
+            tbody.dataset.rowOpenBound = 'true';
+            tbody.addEventListener('click', event => {
+                const target = event.target;
+                if (!(target instanceof Element)) return;
+                const row = target.closest('tr');
+                if (!row || row.parentElement !== tbody) return;
+                if (target.closest('a, button, input, select, textarea, details, summary, [contenteditable="true"]')) return;
+                const detailButton = row.querySelector('.overview-table-action');
+                if (!detailButton) return;
+                detailButton.focus({ preventScroll: true });
+                detailButton.click();
+            });
+        }
         tbody.innerHTML = ''; 
 
         if (!Array.isArray(bookings)) {

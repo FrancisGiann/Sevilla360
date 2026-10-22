@@ -202,7 +202,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                     <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="admin-sidebar">
                         <i class="fa-solid fa-bars" aria-hidden="true"></i><span>Menu</span>
                     </button>
-                    <h2 class="page-title">
+                    <h1 class="page-title">
                     <?php 
                         if ($page === 'overview') echo 'Operations Overview';
                         elseif ($page === 'calendar') echo 'Master Calendar';
@@ -218,7 +218,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                         elseif ($page === 'usermanagement') echo 'User Management';
                         elseif ($page === 'cms') echo 'Media CMS';
                     ?>
-                    </h2>
+                    </h1>
                 </div>
                 <div class="header-actions">
                     <!-- Notification Center -->

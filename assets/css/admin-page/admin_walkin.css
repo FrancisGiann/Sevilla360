@@ -1122,15 +1122,6 @@ textarea:focus {
 .walkin-header {
   margin: 0 0 2px;
 }
-.walkin-header h2 {
-  margin: 0;
-  color: var(--color-dark);
-  font-family: var(--font-heading);
-  font-size: clamp(1.8rem, 3vw, 2.45rem);
-  font-weight: 500;
-  letter-spacing: -.025em;
-  line-height: 1.15;
-}
 .walkin-subtitle {
   margin: 8px 0 0;
   color: var(--color-dark-light);

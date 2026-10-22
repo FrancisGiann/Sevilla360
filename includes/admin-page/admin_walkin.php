@@ -82,7 +82,6 @@ unset($villa);
 
     <!-- Direct Walk-in Header -->
     <div class="walkin-header">
-        <h2>Walk-in booking</h2>
         <p class="walkin-subtitle">Create a reservation for a guest at the front desk.</p>
     </div>
 

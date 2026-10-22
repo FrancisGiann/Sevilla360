@@ -185,7 +185,7 @@
 }
 
 .page-title {
-  margin-bottom: 0;
+  margin: 0;
   font-size: 1.6rem;
   font-family: var(--font-heading);
 }
@@ -2061,6 +2061,9 @@ body:has(#overviewModalOverlay.active) .main-content { overflow: hidden; }
 .overview-widget-action:hover { background: rgba(214, 168, 112, .1); transform: translateX(2px); }
 .overview-table-action { padding: 2px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .overview-table-action:hover { color: #76572f; text-decoration: underline; text-underline-offset: 3px; }
+.overview-table-action:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: 2px; }
+.overview-recent-bookings #recent-bookings-tbody tr:has(.overview-table-action) { cursor: pointer; }
+.overview-recent-bookings #recent-bookings-tbody tr:has(.overview-table-action):focus-within { outline: 2px solid var(--color-gold); outline-offset: 2px; }
 .overview-modal[aria-hidden="true"] { display: none; }
 .overview-modal[aria-hidden="false"] { display: block; }
 .close-overview-modal:hover { color: var(--color-dark); }

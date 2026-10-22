@@ -1,7 +1,6 @@
 <section class="seminars-page" id="seminars-app" data-endpoint="actions/admin/seminars.php" data-payments-endpoint="actions/admin/seminar_payments.php">
     <header class="seminars-heading">
         <div>
-            <h1>Seminar rooming</h1>
             <p>Build an attendee roster, hold the Event Hall and hotel rooms, then prepare room sheets.</p>
         </div>
     </header>

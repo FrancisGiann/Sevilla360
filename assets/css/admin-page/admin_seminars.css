@@ -14,10 +14,9 @@
 .seminars-page * { box-sizing: border-box; }
 .seminars-heading, .seminar-flow-head, .seminar-plan-head, .seminar-room-picker__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .seminars-heading { margin: 0 auto 20px; max-width: 1520px; }
-.seminars-heading h1, .seminar-flow-head h2, .seminar-plan-head h2 { color: #493623; font: 500 clamp(25px, 3vw, 34px)/1.14 "Playfair Display", Georgia, serif; margin: 0; }
+.seminar-flow-head h2, .seminar-plan-head h2 { color: #493623; font: 500 clamp(25px, 3vw, 34px)/1.14 "Playfair Display", Georgia, serif; margin: 0; }
 .seminars-heading p, .seminar-flow-head p, .seminar-plan-head p, .seminar-room-picker__head p { color: var(--seminar-muted); margin: 0; line-height: 1.55; }
 .seminars-heading { margin-bottom: 30px; }
-.seminars-heading h1 { font-size: clamp(27px, 3.2vw, 38px); }
 .seminars-heading p { margin-top: 7px; max-width: 70ch; }
 .seminar-layout { align-items: start; display: grid; gap: 38px; grid-template-columns: minmax(0, 1fr); margin: auto; max-width: 1320px; }
 .seminar-workspace { min-height: 0; min-width: 0; }

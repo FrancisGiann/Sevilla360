@@ -21,12 +21,6 @@
   padding-bottom: 1.25rem;
 }
 
-.reviews-header h2 {
-  color: var(--color-dark, #2b2723);
-  font: 500 clamp(1.45rem, 2vw, 1.8rem)/1.2 var(--font-heading, "Playfair Display", Georgia, serif);
-  margin: 0 0 .4rem;
-}
-
 .reviews-header p {
   color: var(--color-dark-light, #665d54);
   line-height: 1.55;

@@ -23,7 +23,7 @@ if ($statement) $statement->close();
 ?>
 <div class="reviews-container">
     <div class="reviews-header">
-        <div><h2>Venue Reviews</h2><p>Moderate customer feedback before it appears in the public venue catalogue.</p></div>
+        <div><p>Moderate customer feedback before it appears in the public venue catalogue.</p></div>
         <label for="review-status-filter">Status
             <select id="review-status-filter">
                 <?php foreach (['All', 'Pending', 'Approved', 'Rejected'] as $status): ?>
