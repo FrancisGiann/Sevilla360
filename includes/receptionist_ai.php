@@ -601,11 +601,12 @@ function receptionist_ai_clean_message(string $message): string
 function receptionist_ai_canonical_date($value, ?DateTimeImmutable $today = null): ?string
 {
     if (!is_string($value) || trim($value) === '') return null;
-    $today ??= new DateTimeImmutable('today');
+    $manila = new DateTimeZone('Asia/Manila');
+    $today ??= new DateTimeImmutable('today', $manila);
     $value = trim($value);
     $date = null;
     if (preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value) === 1) {
-        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value, $manila);
         $errors = DateTimeImmutable::getLastErrors();
         if (!$date || ($errors !== false && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0)) || $date->format('Y-m-d') !== $value) return null;
     } elseif (preg_match('/\A\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\z/', $value) === 1) {
@@ -613,7 +614,7 @@ function receptionist_ai_canonical_date($value, ?DateTimeImmutable $today = null
         // model to send canonical Y-m-d rather than guessing.
         return null;
     } else {
-        try { $date = new DateTimeImmutable($value); } catch (Exception $e) { return null; }
+        try { $date = new DateTimeImmutable($value, $manila); } catch (Exception $e) { return null; }
         if (!$date) return null;
     }
     $formatted = $date->format('Y-m-d');
@@ -805,7 +806,11 @@ function receptionist_ai_validate_slots(mysqli $conn, $raw, array $base = [], ?a
         if ($date === null) throw new InvalidArgumentException('Invalid date.');
         $slots[$key] = $date;
     }
-    if (isset($slots['start_date'], $slots['end_date']) && $slots['end_date'] <= $slots['start_date']) throw new InvalidArgumentException('Checkout must be after check-in.');
+    if (isset($slots['start_date'], $slots['end_date'])
+        && ($slots['end_date'] < $slots['start_date']
+            || ($slots['end_date'] === $slots['start_date'] && !in_array($intent, ['Event Hall', 'Resort Villa'], true)))) {
+        throw new InvalidArgumentException('Checkout must be after check-in.');
+    }
     if (array_key_exists('active_room_group_id', $source) && $source['active_room_group_id'] !== null && $source['active_room_group_id'] !== '') {
         $groupId = filter_var($source['active_room_group_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($groupId === false) throw new InvalidArgumentException('Invalid hotel room identity.');
@@ -854,7 +859,11 @@ function receptionist_ai_recover_session_slots(mysqli $conn, array $raw, array $
     }
     // A stale checkout is the dependent field. Keep a valid check-in and ask
     // for checkout again rather than throwing away the entire conversation.
-    if (isset($slots['start_date'], $slots['end_date']) && $slots['end_date'] <= $slots['start_date']) unset($slots['end_date']);
+    if (isset($slots['start_date'], $slots['end_date'])
+        && ($slots['end_date'] < $slots['start_date']
+            || ($slots['end_date'] === $slots['start_date'] && !in_array($intent, ['Event Hall', 'Resort Villa'], true)))) {
+        unset($slots['end_date']);
+    }
 
     if (array_key_exists('active_venue_id', $raw)) {
         $groupId = $raw['active_room_group_id'] ?? null;

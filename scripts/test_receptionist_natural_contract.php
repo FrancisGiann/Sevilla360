@@ -1230,6 +1230,68 @@ $assert('guided dates persist as sanitized user and assistant history pairs and 
     && !str_contains(json_encode($guidedHistory, JSON_UNESCAPED_UNICODE), 'guided search update')
     && $guidedSearches === 1 && $guidedStartProvider->calls === [] && $guidedCheckoutProvider->calls === []);
 
+$strictSlots = static fn(array $patch, array $base, array $publicCatalog, array $clear = []): array =>
+    receptionist_ai_validate_slots($testConn, $patch, $base, $publicCatalog, $clear);
+$eventToday = (new DateTimeImmutable('today', new DateTimeZone('Asia/Manila')))->format('Y-m-d');
+$eventFuture = (new DateTimeImmutable('today', new DateTimeZone('Asia/Manila')))->modify('+3 days')->format('Y-m-d');
+$eventDateRequest = static fn(string $date): array => ['action_id' => 'guided_search_update', 'guided_context' => [
+    'intent' => 'Event Hall', 'occasion' => null, 'purpose' => null, 'groupSizeExact' => null,
+    'preference' => null, 'roomTypeCode' => null, 'roomTypeRequested' => false,
+    'startDate' => $date, 'endDate' => $date, 'activeVenueId' => null, 'activeRoomGroupId' => null,
+]];
+$eventDateState = array_replace(receptionist_natural_empty_state(), ['slots' => ['intent' => 'Event Hall']]);
+[$eventTodayResult, $eventTodayStatus] = $run($eventDateState, 'guided search update', new ReceptionistNaturalContractProvider([]), [
+    '_request' => $eventDateRequest($eventToday), 'validate_slots' => $strictSlots,
+]);
+[$eventFutureResult, $eventFutureStatus] = $run($_SESSION['receptionist_natural_state'], 'guided search update', new ReceptionistNaturalContractProvider([]), [
+    '_request' => $eventDateRequest($eventFuture), 'validate_slots' => $strictSlots,
+]);
+$eventInvalidPast = (new DateTimeImmutable('today', new DateTimeZone('Asia/Manila')))->modify('-1 day')->format('Y-m-d');
+[$eventPastResult, $eventPastStatus] = $run($_SESSION['receptionist_natural_state'], 'guided search update', new ReceptionistNaturalContractProvider([]), [
+    '_request' => $eventDateRequest($eventInvalidPast), 'validate_slots' => $strictSlots,
+]);
+[$eventRecoveredResult, $eventRecoveredStatus] = $run($_SESSION['receptionist_natural_state'], 'guided search update', new ReceptionistNaturalContractProvider([]), [
+    '_request' => $eventDateRequest($eventFuture), 'validate_slots' => $strictSlots,
+]);
+$assert('guided event accepts Manila today as a one-day date', $eventTodayStatus === 200
+    && ($eventTodayResult['slots']['start_date'] ?? null) === $eventToday && ($eventTodayResult['slots']['end_date'] ?? null) === $eventToday);
+$assert('guided event accepts a future one-day date correction', $eventFutureStatus === 200
+    && ($eventFutureResult['slots']['start_date'] ?? null) === $eventFuture && ($eventFutureResult['slots']['end_date'] ?? null) === $eventFuture);
+$assert('guided event rejects past dates without losing the previous valid date', $eventPastStatus === 200
+    && str_starts_with((string)($eventPastResult['reply'] ?? ''), receptionist_natural_local_reply('invalid_date', 'en'))
+    && ($eventPastResult['slots']['start_date'] ?? null) === $eventFuture);
+$assert('guided event recovers on a valid date after a past-date error', $eventRecoveredStatus === 200
+    && ($eventRecoveredResult['slots']['start_date'] ?? null) === $eventFuture
+    && ($eventRecoveredResult['slots']['end_date'] ?? null) === $eventFuture
+    && ($eventRecoveredResult['reply'] ?? '') !== receptionist_natural_local_reply('invalid_date', 'en'));
+$sameDayHotelRejected = false;
+try {
+    receptionist_ai_validate_slots($testConn, ['intent' => 'Hotel Room', 'start_date' => $eventFuture, 'end_date' => $eventFuture], [], $catalog);
+} catch (InvalidArgumentException $error) {
+    $sameDayHotelRejected = $error->getMessage() === 'Checkout must be after check-in.';
+}
+$reversedEventRejected = false;
+try {
+    receptionist_ai_validate_slots($testConn, ['intent' => 'Event Hall', 'start_date' => $eventFuture, 'end_date' => $eventToday], [], $catalog);
+} catch (InvalidArgumentException $error) {
+    $reversedEventRejected = $error->getMessage() === 'Checkout must be after check-in.';
+}
+$assert('hotel checkout ordering remains strict while equal event dates are valid', $sameDayHotelRejected
+    && receptionist_ai_validate_slots($testConn, ['intent' => 'Event Hall', 'start_date' => $eventFuture, 'end_date' => $eventFuture], [], $catalog)
+        === ['intent' => 'Event Hall', 'start_date' => $eventFuture, 'end_date' => $eventFuture]);
+$assert('reversed event date ranges remain invalid', $reversedEventRejected);
+$eventRecoveredSameDay = receptionist_ai_recover_session_slots($testConn, [
+    'intent' => 'Event Hall', 'start_date' => $eventFuture, 'end_date' => $eventFuture,
+], $catalog);
+$hotelRecoveredSameDay = receptionist_ai_recover_session_slots($testConn, [
+    'intent' => 'Hotel Room', 'start_date' => $eventFuture, 'end_date' => $eventFuture,
+], $catalog);
+$assert('session recovery preserves same-day event visits and requests a later hotel checkout',
+    ($eventRecoveredSameDay['start_date'] ?? null) === $eventFuture
+    && ($eventRecoveredSameDay['end_date'] ?? null) === $eventFuture
+    && ($hotelRecoveredSameDay['start_date'] ?? null) === $eventFuture
+    && !isset($hotelRecoveredSameDay['end_date']));
+
 $clockValue = 1000.0;
 $deadlineProvider = new ReceptionistNaturalContractProvider([['payload' => $mixedBooking], ['payload' => $mixedWording]]);
 $deadlineSearches = 0;

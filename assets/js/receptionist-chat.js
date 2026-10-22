@@ -808,7 +808,21 @@
       resetConfirmation = dialog;
       dialog.setAttribute("aria-labelledby", "receptionist-reset-title");
       dialog.setAttribute("aria-describedby", "receptionist-reset-description");
-      dialog.style.cssText = "width:min(24rem,calc(100% - 2rem));padding:1rem;border:1px solid #e7c891;border-radius:.6rem;background:#17120e;color:#fffaf1;";
+      Object.assign(dialog.style, {
+        position: "fixed",
+        inset: "0",
+        margin: "auto",
+        boxSizing: "border-box",
+        width: "min(24rem,calc(100vw - 2rem - max(0px,env(safe-area-inset-left,0px)) - max(0px,env(safe-area-inset-right,0px))))",
+        maxWidth: "none",
+        maxHeight: "calc(100dvh - max(16px,env(safe-area-inset-top,0px)) - max(16px,env(safe-area-inset-bottom,0px)))",
+        overflow: "auto",
+        padding: "1rem",
+        border: "1px solid #e7c891",
+        borderRadius: ".6rem",
+        background: "#17120e",
+        color: "#fffaf1"
+      });
       const title = document.createElement("h4");
       title.id = "receptionist-reset-title";
       title.textContent = "Start a new conversation?";

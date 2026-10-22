@@ -95,6 +95,13 @@ check("natural guided turns append the server reply once instead of scripted sho
   assert.ok(chatSource.includes('if (guidedReply || guidedUserMessage) window.dispatchEvent(new CustomEvent("SevillaReceptionistGuidedServerReply"'));
   assert.ok(chatSource.includes('window.addEventListener("SevillaReceptionistGuidedServerReply"'));
 });
+check("start-over confirmation overrides the global margin reset and stays inside viewport safe areas", () => {
+  assert.ok(chatSource.includes('position: "fixed"'));
+  assert.ok(chatSource.includes('inset: "0"'));
+  assert.ok(chatSource.includes('margin: "auto"'));
+  assert.ok(chatSource.includes('maxHeight: "calc(100dvh - max(16px,env(safe-area-inset-top,0px)) - max(16px,env(safe-area-inset-bottom,0px)))"'));
+  assert.ok(chatSource.includes('if (!completed) trigger.focus();'), "cancelling still restores focus to the invoking control");
+});
 check("reopening natural chat restores its pending guided date question without a server turn", () => {
   assert.ok(chatSource.includes('window.dispatchEvent(new CustomEvent("SevillaReceptionistChatOpened"))'));
   assert.ok(showroomSource.includes('window.addEventListener("SevillaReceptionistChatOpened"'));

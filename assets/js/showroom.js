@@ -403,28 +403,34 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 4. Initialize Panolens 360 Viewer ---
   if (!panoContainer) return;
 
-  const viewer = new PANOLENS.Viewer({
-    container: panoContainer,
-    controlBar: false, 
-    autoRotate: false,
-    autoHideInfospot: false,
-    autoRotateSpeed: 0.5,
-    antialias: true, 
-    cameraFov: 85    
-  });
-  
-  viewer.renderer.setPixelRatio(window.devicePixelRatio);
+  let viewer = null;
+  try {
+      if (typeof window.PANOLENS?.Viewer !== 'function' || !window.THREE) throw new Error('Viewer libraries unavailable');
+      viewer = new window.PANOLENS.Viewer({
+          container: panoContainer,
+          controlBar: false,
+          autoRotate: false,
+          autoHideInfospot: false,
+          autoRotateSpeed: 0.5,
+          antialias: true,
+          cameraFov: 85
+      });
+      viewer.renderer.setPixelRatio(window.devicePixelRatio);
+  } catch (_) {
+      viewer = null;
+      window.showroomShowBootError?.('The 360° viewer');
+  }
 
   const pauseAutoRotation = () => {
       window.clearTimeout(autoRotateTimer);
       autoRotateTimer = null;
-      if (typeof viewer.disableAutoRate === 'function') viewer.disableAutoRate();
+      if (typeof viewer?.disableAutoRate === 'function') viewer.disableAutoRate();
   };
   const scheduleAutoRotation = () => {
       pauseAutoRotation();
       if (reducedMotionQuery.matches || document.hidden || wrapper.classList.contains('mode-photos') || !currentRoomId || activePanoramas.length === 0) return;
       autoRotateTimer = window.setTimeout(() => {
-          if (!reducedMotionQuery.matches && !document.hidden && !wrapper.classList.contains('mode-photos') && activePanoramas.length > 0 && typeof viewer.enableAutoRate === 'function') {
+          if (!reducedMotionQuery.matches && !document.hidden && !wrapper.classList.contains('mode-photos') && activePanoramas.length > 0 && typeof viewer?.enableAutoRate === 'function') {
               viewer.enableAutoRate();
           }
       }, 5000);
@@ -453,18 +459,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- 5. Custom 360 UI Controls ---
   document.getElementById("btn-zoom-in")?.addEventListener("click", () => {
+      if (!viewer) return;
       viewerActivity();
       viewer.camera.fov = Math.max(30, viewer.camera.fov - 10); 
       viewer.camera.updateProjectionMatrix(); 
   });
   
   document.getElementById("btn-zoom-out")?.addEventListener("click", () => {
+      if (!viewer) return;
       viewerActivity();
       viewer.camera.fov = Math.min(100, viewer.camera.fov + 10); 
       viewer.camera.updateProjectionMatrix(); 
   });
   
   document.getElementById("btn-fullscreen")?.addEventListener("click", () => {
+      if (!viewer) return;
       viewerActivity();
       if (!document.fullscreenElement) {
           panoContainer.requestFullscreen().then(() => { setTimeout(() => viewer.onWindowResize(), 100); });
@@ -475,7 +484,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById('btn-info')?.addEventListener('click', viewerActivity);
   const resetViewButton = document.getElementById('btn-reset-view');
   if (resetViewButton) resetViewButton.disabled = true;
-  document.addEventListener('fullscreenchange', () => setTimeout(() => viewer.onWindowResize(), 100));
+  document.addEventListener('fullscreenchange', () => { if (viewer) setTimeout(() => viewer.onWindowResize(), 100); });
 
   function closeDestinations(restoreFocus = false) {
       if (!destinationsList || !destinationsButton) return;
@@ -498,12 +507,12 @@ document.addEventListener("DOMContentLoaded", () => {
           if (panoLoadingOverlay) panoLoadingOverlay.style.display = 'none';
           panoContainer.setAttribute('aria-busy', 'false');
       },
-      commit(pano) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); },
-      isCurrent(pano) { return viewer.panorama === pano && panoramaControlReady.has(pano); },
+      commit(pano) { if (viewer) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); } },
+      isCurrent(pano) { return Boolean(viewer && viewer.panorama === pano && panoramaControlReady.has(pano)); },
       ready(pano) {
           valTitle.textContent = dataMap[currentRoomId]?.title || '';
           window.setTimeout(() => {
-              retiredPanoramas.forEach(old => { if (old !== viewer.panorama) { try { viewer.remove(old); } catch (_) {} retiredPanoramas.delete(old); } });
+              retiredPanoramas.forEach(old => { if (old !== viewer?.panorama) { try { viewer?.remove(old); } catch (_) {} retiredPanoramas.delete(old); } });
           }, reducedMotionQuery.matches ? 0 : 650);
       }
   });
@@ -557,7 +566,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function disposePanorama(pano) {
       if (!pano) return;
-      try { viewer.remove(pano); } catch (e) { /* already removed */ }
+      try { viewer?.remove(pano); } catch (e) { /* already removed */ }
       try {
           if (pano.material) {
               if (pano.material.map) pano.material.map.dispose();
@@ -608,6 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyPanoramaView(roomData, mediaIndex, duration) {
+      if (!viewer || !window.THREE) return;
       const mediaId = Array.isArray(roomData?.pano_media_ids) ? Number(roomData.pano_media_ids[mediaIndex]) : 0;
       const saved = mediaId > 0 ? roomData?.showroom_views?.[String(mediaId)] : null;
       const view = saved && [saved.x, saved.y, saved.z, saved.fov].every(value => Number.isFinite(Number(value)))
@@ -626,7 +636,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function synchronizePanoramaState(roomId, room, index, pano, panoramasRef, cacheKey, activationToken = venueActivationToken, transitionReady = false) {
-      if (activationToken !== venueActivationToken || currentRoomId !== roomId || room.panoFailed || viewer.panorama !== pano ||
+      if (!viewer || activationToken !== venueActivationToken || currentRoomId !== roomId || room.panoFailed || viewer.panorama !== pano ||
           panoCache[cacheKey] !== panoramasRef || activePanoramas !== panoramasRef || panoramasRef[index] !== pano) return false;
 
       currentPanoIndex = index;
@@ -647,7 +657,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function resetCurrentView() {
-      if (!currentRoomId || !activePanoramas.length) return;
+      if (!viewer || !currentRoomId || !activePanoramas.length) return;
       const room = dataMap[currentRoomId];
       if (!room) return;
       applyPanoramaView(room, currentPanoIndex, reducedMotionQuery.matches ? 0 : 650);
@@ -660,7 +670,10 @@ document.addEventListener("DOMContentLoaded", () => {
       sceneLoader.cancel();
       panoContainer.setAttribute('aria-busy', 'false');
       const bgImg = currentGallery.length > 0 ? currentGallery[0] : "assets/img/placeholder.jpg";
-      if (panoLoadingOverlay) panoLoadingOverlay.style.display = "none";
+      if (panoLoadingOverlay) {
+          panoLoadingOverlay.style.display = viewer ? "none" : "flex";
+          panoLoadingOverlay.classList.toggle('is-error', !viewer);
+      }
       hintPending = false;
       hintReadyRoomId = null;
       clearInteractionHint();
@@ -670,8 +683,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const fallbackTitle = no360Wrapper.querySelector('.showroom-view-fallback-title');
       const fallbackMessage = no360Wrapper.querySelector('.showroom-view-fallback-message');
       const retryButton = no360Wrapper.querySelector('.showroom-retry-button');
-      if (fallbackTitle) fallbackTitle.textContent = failed ? '360° VIEW UNAVAILABLE' : 'STANDARD VIEW';
-      if (fallbackMessage) fallbackMessage.textContent = failed
+      if (fallbackTitle) fallbackTitle.textContent = (failed || !viewer) ? '360° VIEW UNAVAILABLE' : 'STANDARD VIEW';
+      if (fallbackMessage) fallbackMessage.textContent = !viewer
+          ? 'The 360° viewer could not be started. Reload the page or browse the venue photos.'
+          : failed
           ? 'This 360° tour could not be loaded. Retry the view or browse the venue photos.'
           : 'No 360° tour available for this venue.';
       if (retryButton) {
@@ -721,7 +736,7 @@ document.addEventListener("DOMContentLoaded", () => {
       roomLoadToken++;
       activePanoramas = [];
       currentPanoIndex = 0;
-      if (viewer.panorama?.loaded === true && viewer.panorama?.material?.map && viewer.panorama !== failedPano) return;
+      if (viewer?.panorama?.loaded === true && viewer.panorama?.material?.map && viewer.panorama !== failedPano) return;
       showStandardFallback(room);
   }
 
@@ -959,6 +974,21 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${roomId}::${variant?.room_group_id || variant?.variant_key || 'shared'}`;
   }
 
+  function updatePhotoButtonStatus() {
+      if (currentGallery.length === 0) {
+          btnViewPhotos.disabled = true;
+          btnViewPhotos.textContent = "NO PHOTOS";
+          transitionImage(currentSlideImg, "assets/img/placeholder.jpg", [], "fade-out");
+          if (wrapper.classList.contains("mode-photos")) document.getElementById("btn-back-to-360").click();
+          return;
+      }
+      btnViewPhotos.disabled = false;
+      btnViewPhotos.textContent = "VIEW PHOTOS";
+      transitionImage(currentSlideImg, currentGallery[0], currentGallery.slice(1), "fade-out");
+      const galleryCounter = document.getElementById("gallery-counter");
+      if (galleryCounter) galleryCounter.textContent = `1 / ${currentGallery.length}`;
+  }
+
   function activateVenue(roomId, preserveVariant = false) {
     sceneLoader.cancel();
     clearInteractionHint();
@@ -1054,6 +1084,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     currentGallery = room.gallery || [];
     currentImageIndex = 0;
+
+    // Keep venue details, guide interactions, and the photo gallery available
+    // when the optional CDN-backed 360 renderer cannot start.
+    if (!viewer) {
+        showStandardFallback(room);
+        updatePhotoButtonStatus();
+        return;
+    }
 
     // Remove previous room's panoramas from the Three.js scene so their child
     // hotspot sprites (depthTest = false) cannot render on top of the new room.
@@ -1199,19 +1237,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showStandardFallback(room);
     }
 
-    // Photo Button Status
-    if (currentGallery.length === 0) {
-      btnViewPhotos.disabled = true;
-      btnViewPhotos.textContent = "NO PHOTOS";
-      transitionImage(currentSlideImg, "assets/img/placeholder.jpg", [], "fade-out");
-      if (wrapper.classList.contains("mode-photos")) document.getElementById("btn-back-to-360").click();
-    } else {
-      btnViewPhotos.disabled = false;
-      btnViewPhotos.textContent = "VIEW PHOTOS";
-      transitionImage(currentSlideImg, currentGallery[0], currentGallery.slice(1), "fade-out");
-      const galleryCounter = document.getElementById("gallery-counter");
-      if (galleryCounter) galleryCounter.textContent = `1 / ${currentGallery.length}`;
-    }
+    updatePhotoButtonStatus();
   }
 
   // --- 8. Dropdown Pill Navigation Initialization ---
