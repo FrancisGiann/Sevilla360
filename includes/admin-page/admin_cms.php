@@ -837,6 +837,7 @@ echo json_encode($hotel_source_pano_payload, JSON_HEX_TAG | JSON_HEX_APOS | JSON
                         browse</span></p>
                 <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp" multiple hidden>
             </div>
+            <div class="cms-upload-previews" id="upload-file-previews" role="list" aria-label="Selected image previews" hidden></div>
 
             <div class="cms-form-group">
                 <label for="modal-media-type">Media Type</label>

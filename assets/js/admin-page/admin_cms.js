@@ -227,6 +227,102 @@ document.addEventListener('DOMContentLoaded', () => {
   const dragDropArea = document.getElementById('dragDropArea');
   const fileInputEl = document.getElementById('fileInput');
   const uploadForm = document.getElementById("cms-upload-form");
+  const uploadPreviewList = document.getElementById('upload-file-previews');
+  let uploadPreviewUrls = [];
+
+  function clearUploadPreviews() {
+    uploadPreviewUrls.forEach(url => {
+      try { window.URL?.revokeObjectURL?.(url); } catch (_error) { /* Preview cleanup must not block closing the dialog. */ }
+    });
+    uploadPreviewUrls = [];
+    uploadPreviewList?.replaceChildren();
+    if (uploadPreviewList) uploadPreviewList.hidden = true;
+  }
+
+  function updateDropText(files = []) {
+    const dropText = dragDropArea?.querySelector('.drop-text');
+    if (!dropText) return;
+    dropText.replaceChildren();
+    if (!files.length) {
+      const strong = document.createElement('strong');
+      strong.textContent = 'Drag and drop';
+      const browse = document.createElement('span');
+      browse.className = 'highlight';
+      browse.textContent = 'Click to browse';
+      dropText.append(strong, document.createTextNode(' images here'), document.createElement('br'), document.createTextNode('or '), browse);
+      return;
+    }
+    const strong = document.createElement('strong');
+    strong.textContent = `${files.length} image${files.length === 1 ? '' : 's'} selected`;
+    const hint = document.createElement('span');
+    hint.className = 'drop-hint';
+    hint.textContent = 'Review each preview below before uploading.';
+    dropText.append(strong, document.createElement('br'), hint);
+  }
+
+  function renderUploadPreviews(files) {
+    clearUploadPreviews();
+    const selectedFiles = Array.from(files || []);
+    updateDropText(selectedFiles);
+    if (!uploadPreviewList || !selectedFiles.length) return;
+    uploadPreviewList.hidden = false;
+
+    selectedFiles.forEach(file => {
+      const item = document.createElement('div');
+      item.className = 'cms-upload-preview';
+      item.setAttribute('role', 'listitem');
+      const thumbnail = document.createElement('div');
+      thumbnail.className = 'cms-upload-preview-thumbnail';
+      const image = document.createElement('img');
+      image.alt = `Preview of ${String(file?.name || 'selected image')}`;
+      image.loading = 'lazy';
+      const unavailable = document.createElement('span');
+      unavailable.className = 'cms-upload-preview-unavailable';
+      unavailable.textContent = 'Preview unavailable';
+      unavailable.hidden = true;
+      image.addEventListener('error', () => {
+        image.removeAttribute('src');
+        image.hidden = true;
+        unavailable.hidden = false;
+      }, { once: true });
+      thumbnail.append(image, unavailable);
+
+      const details = document.createElement('div');
+      details.className = 'cms-upload-preview-details';
+      const filename = document.createElement('span');
+      filename.className = 'cms-upload-preview-filename';
+      filename.textContent = String(file?.name || 'Unnamed image');
+      const size = document.createElement('span');
+      size.className = 'cms-upload-preview-size';
+      const bytes = Number(file?.size);
+      size.textContent = Number.isFinite(bytes) && bytes >= 0
+        ? (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`)
+        : 'Size unavailable';
+      details.append(filename, size);
+      item.append(thumbnail, details);
+      uploadPreviewList.appendChild(item);
+
+      try {
+        const url = window.URL?.createObjectURL?.(file);
+        if (typeof url === 'string' && url.startsWith('blob:')) {
+          uploadPreviewUrls.push(url);
+          image.src = url;
+        } else {
+          image.hidden = true;
+          unavailable.hidden = false;
+        }
+      } catch (_error) {
+        image.hidden = true;
+        unavailable.hidden = false;
+      }
+    });
+  }
+
+  function clearUploadSelection() {
+    clearUploadPreviews();
+    if (fileInputEl) fileInputEl.value = '';
+    updateDropText([]);
+  }
 
   let uploadReturnFocus = null;
   let uploadPreviousOverflow = '';
@@ -244,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeUploadModal = () => {
     uploadModal.classList.remove('active');
     document.body.style.overflow = uploadPreviousOverflow;
+    clearUploadSelection();
     if (uploadReturnFocus?.isConnected) uploadReturnFocus.focus({ preventScroll: true });
   };
   uploadModal?.addEventListener('keydown', event => {
@@ -279,10 +376,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================
   if (btnOpenUpload) {
     btnOpenUpload.addEventListener('click', () => {
+      clearUploadSelection();
       uploadForm.reset();
       slotOptions.forEach(opt => opt.style.display = 'none');
-      const dropText = document.querySelector('.drop-text');
-      if (dropText) dropText.innerHTML = `<strong>Drag and drop</strong> images here<br>or <span class="highlight">Click to browse</span>`;
       if (progContainer) progContainer.style.display = 'none';
       openUploadModal();
     });
@@ -290,6 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   replaceBtns.forEach(btn => {
     btn.addEventListener('click', function() {
+      clearUploadSelection();
       const mediaType = this.getAttribute('data-type');
       const targetSlot = this.getAttribute('data-slot');
 
@@ -321,12 +418,14 @@ document.addEventListener('DOMContentLoaded', () => {
       });
   }
 
+  uploadForm?.addEventListener('reset', clearUploadSelection);
+
 
   // =========================================================
   // 4. Drag & Drop Visuals
   // =========================================================
   if (dragDropArea && fileInputEl) {
-    dragDropArea.addEventListener('click', () => fileInputEl.click());
+    dragDropArea.addEventListener('click', event => { if (event.target !== fileInputEl) fileInputEl.click(); });
     dragDropArea.addEventListener('dragover', (e) => { e.preventDefault(); dragDropArea.classList.add('dragover'); });
     dragDropArea.addEventListener('dragleave', (e) => { e.preventDefault(); dragDropArea.classList.remove('dragover'); });
     dragDropArea.addEventListener('drop', (e) => {
@@ -334,16 +433,10 @@ document.addEventListener('DOMContentLoaded', () => {
       dragDropArea.classList.remove('dragover');
       if (e.dataTransfer.files.length > 0) {
         fileInputEl.files = e.dataTransfer.files;
-        updateDropText(e.dataTransfer.files);
+        renderUploadPreviews(e.dataTransfer.files);
       }
     });
-    fileInputEl.addEventListener('change', function() { if (this.files.length > 0) updateDropText(this.files); });
-
-    function updateDropText(files) {
-      const dropText = dragDropArea.querySelector('.drop-text');
-      if (files.length === 1) dropText.innerHTML = `<strong>Selected File:</strong><br><span class="highlight">${files[0].name}</span>`;
-      else dropText.innerHTML = `<strong>Selected Files:</strong><br><span class="highlight">${files.length} files selected</span>`;
-    }
+    fileInputEl.addEventListener('change', function() { renderUploadPreviews(this.files); });
   }
 
 

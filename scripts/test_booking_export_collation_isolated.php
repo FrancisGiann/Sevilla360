@@ -20,7 +20,7 @@ try {
   "INSERT INTO customers VALUES(1,'Doña','=Synthetic')",
   "INSERT INTO venues VALUES(1,'Synthetic Hotel','Hotel Room'),(2,'Synthetic Hall','Event Hall')",
   "INSERT INTO bookings VALUES(1,'QA-EXPORT',1,1,'2000-01-01','2000-01-02',2,5000,5000,'Completed','Paid','Online')",
-  "INSERT INTO seminars VALUES(700,'Doña Seminar',2,'2099-01-01','2099-01-01',10000,'draft')",
+  "INSERT INTO seminars VALUES(700,'Doña Seminar',2,'2099-01-01','2099-01-01',10000,'draft'),(701,'Finalized seminar',2,'2099-01-02','2099-01-02',5000,'finalized')",
  ] as $sql) $conn->query($sql);
  $source=(string)file_get_contents(dirname(__DIR__).'/actions/admin/export_bookings.php');
  $helperStart=strpos($source,'$historyText =');
@@ -28,13 +28,23 @@ try {
  $start=strpos($source,'$searchTerm ='); $end=strpos($source,'$allParams =');
  if ($start === false || $end === false || $end <= $start) throw new RuntimeException('Export query generator unavailable.');
  $generator=substr($source,$start,$end-$start); $booking_completion_sql=booking_completion_sql('b');
- foreach ([['', 'All', 'all', ['Booking','Seminar']],['SEM-700','All','all',['Seminar']],['','Hotel Room','all',['Booking']],['','All','completed',['Booking']]] as [$searchInput,$venueInput,$statusInput,$expected]) {
-  $_GET=['search'=>$searchInput,'venue'=>$venueInput,'status'=>$statusInput]; eval($generator);
+ foreach ([
+  ['', 'All', 'all', 'booking', ['Booking']],
+  ['', 'All', 'all', 'seminar', ['Seminar']],
+  ['SEM-700', 'All', 'all', 'seminar', ['Seminar']],
+  ['', 'Hotel Room', 'all', 'booking', ['Booking']],
+  ['', 'All', 'completed', 'booking', ['Booking']],
+  ['', 'All', 'draft', 'seminar', ['Seminar']],
+  ['', 'All', 'finalized', 'seminar', ['Seminar']],
+ ] as [$searchInput,$venueInput,$statusInput,$recordTypeInput,$expected]) {
+  $_GET=['search'=>$searchInput,'venue'=>$venueInput,'status'=>$statusInput,'record_type'=>$recordTypeInput];
+  $recordType=$recordTypeInput; $statusFilter=$statusInput;
+  eval($generator);
   $allParams=array_merge($params,$seminarParams); $allTypes=$types.$seminarTypes;
   $stmt=$conn->prepare($sql); $stmt->bind_param($allTypes,...$allParams); $stmt->execute(); $rows=$stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
   $typesFound=array_values(array_unique(array_column($rows,'record_type'))); sort($typesFound); sort($expected);
   if ($typesFound!==$expected) throw new RuntimeException('Export filters changed while normalizing collations.');
   $checks++;
  }
- echo "$checks mixed-collation export queries: PASS\n";
+ echo "$checks type-scoped mixed-collation export queries (booking default, seminar all/search/status, booking venue/completed): PASS\n";
 } finally { $conn->query("DROP DATABASE IF EXISTS `$name`"); $conn->close(); }

@@ -15,7 +15,16 @@ if (!session_account_require_active($conn, ['staff', 'admin'], static function (
 
 $searchTerm = trim((string)($_GET['search'] ?? ''));
 $venueFilter = (string)($_GET['venue'] ?? 'All');
+$recordType = $_GET['record_type'] ?? 'booking';
+if (!is_string($recordType) || !in_array($recordType, ['booking', 'seminar'], true)) {
+    http_response_code(422);
+    exit('Record type must be booking or seminar.');
+}
 $statusFilter = (string)($_GET['status'] ?? 'all');
+$allowedStatuses = $recordType === 'seminar'
+    ? ['all', 'action_req', 'partial', 'draft', 'finalized', 'cancelled']
+    : ['all', 'action_req', 'awaiting_verification', 'partial', 'confirmed', 'completed', 'cancelled', 'pending'];
+if (!in_array($statusFilter, $allowedStatuses, true)) $statusFilter = 'all';
 $search = '%' . $searchTerm . '%';
 $where = [
     "(b.reference_no LIKE ? OR CAST(b.id AS CHAR) LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR v.name LIKE ?)",
@@ -29,6 +38,9 @@ $seminarSearchReference = $historyText("CONCAT('SEM-',s.id)");
 $seminarWhere = ["({$seminarSearchReference} LIKE ? OR CAST(s.id AS CHAR) LIKE ? OR s.name LIKE ? OR v.name LIKE ?)"];
 $seminarParams = [$search, $search, $search, $search];
 $seminarTypes = 'ssss';
+
+if ($recordType === 'booking') $seminarWhere[] = '1=0';
+else $where[] = '1=0';
 
 if (in_array($venueFilter, ['Event Hall', 'Hotel Room', 'Resort Villa'], true)) {
     $where[] = 'v.category = ?';
@@ -66,6 +78,12 @@ switch ($statusFilter) {
     case 'cancelled':
         $where[] = "b.booking_status = 'Cancelled' AND NOT $booking_completion_sql";
         $seminarWhere[] = "s.status='cancelled'";
+        break;
+    case 'draft':
+        $seminarWhere[] = "s.status='draft'";
+        break;
+    case 'finalized':
+        $seminarWhere[] = "s.status='finalized'";
         break;
 }
 
@@ -133,7 +151,7 @@ function csv_safe_value($value): string
 }
 
 header('Content-Type: text/csv; charset=UTF-8');
-header('Content-Disposition: attachment; filename="sevilla360-bookings-' . date('Y-m-d') . '.csv"');
+header('Content-Disposition: attachment; filename="sevilla360-' . ($recordType === 'seminar' ? 'seminars' : 'bookings') . '-' . date('Y-m-d') . '.csv"');
 $output = fopen('php://output', 'wb');
 fputcsv($output, ['Record type', 'Reference', 'Customer / seminar', 'Venue', 'Category', 'Start date', 'End date', 'Guests', 'Agreed / total amount', 'Amount paid', 'Booking status', 'Payment status']);
 $result = $stmt->get_result();

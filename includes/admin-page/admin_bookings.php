@@ -5,10 +5,10 @@
     <div class="bookings-page-header">
         <div class="top-controls">
             <div class="filter-control-group">
-                <label for="table-search">Search bookings and seminars</label>
+                    <label for="table-search" id="table-search-label">Search bookings</label>
                 <div class="search-bar">
                     <i class="fa-solid fa-magnifying-glass search-icon" aria-hidden="true"></i>
-                    <input type="search" id="table-search" placeholder="Search by name, ID, seminar, or venue..." autocomplete="off">
+                        <input type="search" id="table-search" placeholder="Search by booking ID, customer, or venue…" autocomplete="off">
                 </div>
             </div>
             <div class="filter-control-group">
@@ -26,8 +26,12 @@
 
     <!-- Table Card & History -->
     <div class="table-card">
+        <div class="booking-record-tabs" id="bookingRecordTabs" role="tablist" aria-label="History type">
+            <button type="button" class="booking-record-tab active" id="booking-record-tab-booking" role="tab" aria-selected="true" aria-controls="booking-history-results" tabindex="0" data-record-type="booking">Bookings</button>
+            <button type="button" class="booking-record-tab" id="booking-record-tab-seminar" role="tab" aria-selected="false" aria-controls="booking-history-results" tabindex="-1" data-record-type="seminar">Seminars</button>
+        </div>
         <div class="booking-history-heading">
-            <h3 class="card-title">Booking &amp; Seminar History</h3>
+            <h3 class="card-title" id="booking-history-title">Booking History</h3>
             <div class="booking-history-actions">
                 <button type="button" id="btn-refresh-bookings" class="btn btn-outline">
                     <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Refresh History
@@ -38,34 +42,45 @@
             </div>
         </div>
 
-        <!-- Priority statuses stay one click away; the select keeps the full status list easy to scan. -->
-        <div class="booking-filter-toolbar">
-            <div class="booking-tabs" id="bookingFilters" role="group" aria-label="Priority booking status filters">
-                <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
-                <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
-                <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
+        <div id="booking-history-results" role="tabpanel" aria-labelledby="booking-record-tab-booking" tabindex="0">
+            <!-- Priority statuses stay one click away; the select keeps the full booking list easy to scan. -->
+            <div class="booking-filter-toolbar">
+                <div class="booking-status-filters" data-record-filters="booking">
+                    <div class="booking-tabs" id="bookingFilters" role="group" aria-label="Booking status filters">
+                        <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
+                        <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
+                        <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
+                    </div>
+                    <div class="booking-filter-menu">
+                        <label class="booking-filter-select-label" for="bookingFilterSelect">More booking statuses</label>
+                        <select class="booking-filter-select" id="bookingFilterSelect">
+                            <option value="" disabled selected>Select a status</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="booking-tabs seminar-status-filters" id="seminarFilters" role="group" aria-label="Seminar status filters" data-record-filters="seminar" hidden>
+                    <button type="button" class="tab-btn active" aria-pressed="true" data-filter="all">All</button>
+                    <button type="button" class="tab-btn tab-action-req" aria-pressed="false" data-filter="action_req">Action Required</button>
+                    <button type="button" class="tab-btn" aria-pressed="false" data-filter="partial">Balances Due</button>
+                    <button type="button" class="tab-btn" aria-pressed="false" data-filter="draft">Draft</button>
+                    <button type="button" class="tab-btn" aria-pressed="false" data-filter="finalized">Finalized</button>
+                    <button type="button" class="tab-btn" aria-pressed="false" data-filter="cancelled">Cancelled</button>
+                </div>
             </div>
-            <div class="booking-filter-menu">
-                <label class="booking-filter-select-label" for="bookingFilterSelect">More statuses</label>
-                <select class="booking-filter-select" id="bookingFilterSelect">
-                    <option value="" disabled selected>Select a status</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="pending">Pending</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                </select>
-            </div>
-        </div>
-        <p class="booking-results-status" id="booking-results-status" role="status" aria-live="polite" aria-atomic="true">Loading booking and seminar history…</p>
+        <p class="booking-results-status" id="booking-results-status" role="status" aria-live="polite" aria-atomic="true">Loading bookings…</p>
 
         <div class="table-responsive">
             <table class="bookings-table" aria-describedby="booking-results-status">
-                <caption class="sr-only">Customer booking and seminar history</caption>
+                <caption class="sr-only" id="booking-table-caption">Customer booking history</caption>
                 <thead>
                     <tr>
-                        <th>BOOKING / SEMINAR ID</th>
+                        <th id="booking-history-id-heading">BOOKING ID</th>
                         <th>VENUE</th>
-                        <th>CUSTOMER / SEMINAR</th>
+                        <th id="booking-history-name-heading">CUSTOMER</th>
                         <th>DATE</th>
                         <th>AMOUNT</th>
                         <th>STATUS</th>
@@ -77,7 +92,7 @@
                     <tr>
                         <td colspan="7" class="table-loading-td-padded">
                             <i class="fa-solid fa-circle-notch fa-spin spinner-icon-gold"></i><br>
-                            Loading Bookings...
+                            Loading bookings…
                         </td>
                     </tr>
                 </tbody>
@@ -87,13 +102,14 @@
         <!-- Server-Side Pagination Controls -->
         <div class="pagination-controls pagination-wrapper">
             <div class="pagination-info">
-                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> records
+                Showing <span id="pag-total-rows" class="pagination-bold-dark">0</span> <span id="history-record-count">bookings</span>
             </div>
             <div class="pagination-controls-right">
                 <span class="pagination-page-label">Page <span id="pag-current-page" class="text-gold-bold">1</span> of <span id="pag-total-pages">1</span></span>
                 <button id="btn-prev-page" class="btn-outline btn-pag" disabled>&laquo; Prev</button>
                 <button id="btn-next-page" class="btn-outline btn-pag" disabled>Next &raquo;</button>
             </div>
+        </div>
         </div>
     </div>
 
@@ -200,6 +216,7 @@
                 <button type="button" class="booking-detail-close close-modal" aria-label="Close booking details">&times;</button>
             </div>
 
+            <div class="vd-content-scroll" id="vd-content-scroll">
             <!-- Customer Information -->
             <h4 class="modal-subtitle vd-section-title">Customer Information</h4>
             <div class="summary-grid vd-summary-grid">
@@ -276,6 +293,7 @@
                 <button class="btn-modal btn-modal-cancel close-modal">Close</button>
                 <button class="btn-modal btn-gold" id="btn-admin-print" aria-label="Open PDF receipt"><i class="fa-solid fa-file-pdf"></i> <span>Open PDF Receipt</span></button>
                 <button class="btn-modal btn-dark" id="btn-admin-resend"><i class="fa-solid fa-envelope"></i> <span>Resend Email</span></button>
+            </div>
             </div>
         </div>
 

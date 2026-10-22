@@ -59,10 +59,19 @@ $limit = $limitValue === false ? 10 : min(100, (int)$limitValue);
 $offset = ($page - 1) * $limit;
 $searchTerm = is_string($data['search'] ?? null) ? trim($data['search']) : '';
 $search = '%' . $searchTerm . '%';
+$recordType = $data['record_type'] ?? 'booking';
+if (!is_string($recordType) || !in_array($recordType, ['booking', 'seminar'], true)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Record type must be booking or seminar.']);
+    exit;
+}
 $venueFilter = $data['venue'] ?? 'All';
 if (!is_string($venueFilter) || !in_array($venueFilter, ['All', 'Event Hall', 'Hotel Room', 'Resort Villa'], true)) $venueFilter = 'All';
 $statusFilter = $data['status'] ?? 'all';
-if (!is_string($statusFilter) || !in_array($statusFilter, ['all', 'action_req', 'awaiting_verification', 'partial', 'confirmed', 'completed', 'cancelled', 'pending'], true)) $statusFilter = 'all';
+$allowedStatuses = $recordType === 'seminar'
+    ? ['all', 'action_req', 'partial', 'draft', 'finalized', 'cancelled']
+    : ['all', 'action_req', 'awaiting_verification', 'partial', 'confirmed', 'completed', 'cancelled', 'pending'];
+if (!is_string($statusFilter) || !in_array($statusFilter, $allowedStatuses, true)) $statusFilter = 'all';
 $bookingCompletionSql = booking_completion_sql('b');
 $bookingWhere = [
     "(b.reference_no LIKE ? OR CAST(b.id AS CHAR) LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR v.name LIKE ?)",
@@ -80,6 +89,10 @@ $seminarWhere = [
 ];
 $seminarParams = [$search, $search, $search, $search];
 $seminarTypes = 'ssss';
+
+// Keep each history tab isolated before the count and page query are built.
+if ($recordType === 'booking') $seminarWhere[] = '1=0';
+else $bookingWhere[] = '1=0';
 
 if (array_key_exists('booking_id', $data)) {
     $bookingId = filter_var($data['booking_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -131,6 +144,12 @@ switch ($statusFilter) {
     case 'pending':
         $bookingWhere[] = "b.booking_status='Pending' AND NOT $bookingCompletionSql";
         $seminarWhere[] = "s.status='draft'";
+        break;
+    case 'draft':
+        $seminarWhere[] = "s.status='draft'";
+        break;
+    case 'finalized':
+        $seminarWhere[] = "s.status='finalized'";
         break;
 }
 $bookingWhereSql = implode(' AND ', $bookingWhere);

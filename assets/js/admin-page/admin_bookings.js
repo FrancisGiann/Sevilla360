@@ -134,7 +134,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // 2. SERVER-SIDE PAGINATION & FILTERING
     // =========================================================
     const searchInput = document.getElementById("table-search");
+    const searchLabel = document.getElementById('table-search-label');
     const venueFilter = document.getElementById("table-venue-filter");
+    const recordTabs = document.querySelectorAll('#bookingRecordTabs [data-record-type]');
+    const recordFilters = document.querySelectorAll('[data-record-filters]');
+    const seminarStatusFilters = document.querySelectorAll('#seminarFilters .tab-btn');
     const tabFilters = document.querySelectorAll("#bookingFilters .tab-btn");
     const bookingFilterSelect = document.getElementById("bookingFilterSelect");
     const resetFiltersButton = document.getElementById('btn-reset-booking-filters');
@@ -146,6 +150,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const pagCurrent = document.getElementById("pag-current-page");
     const pagTotalPages = document.getElementById("pag-total-pages");
     const pagTotalRows = document.getElementById("pag-total-rows");
+    const historyTitle = document.getElementById('booking-history-title');
+    const historyCaption = document.getElementById('booking-table-caption');
+    const historyIdHeading = document.getElementById('booking-history-id-heading');
+    const historyNameHeading = document.getElementById('booking-history-name-heading');
+    const historyRecordCount = document.getElementById('history-record-count');
     const manualProofModal = document.getElementById('manualPaymentReviewModal');
     const manualProofStatus = document.getElementById('manual-proof-status');
     let proofReviewInvoker = null;
@@ -430,6 +439,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   
     let currentPage = 1;
+    let activeRecordType = 'booking';
     const rowsPerPage = 15;
     let searchTimeout = null;
     let bookingsLoadInFlight = false;
@@ -445,6 +455,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let deferredBookingsRefresh = false;
     let lastBookingsSnapshot = null;
     const modalOverlay = document.getElementById('modalOverlay');
+    const viewDetailsModal = document.getElementById('viewDetailsModal');
+    let bookingDetailInvoker = null;
+    let bookingDetailPreviousOverflow = '';
+    let bookingDetailBodyLockActive = false;
+    let bookingDetailRequestSequence = 0;
 
     function terminateAdminBookingsSession() {
         if (bookingPollingStopped) return;
@@ -476,7 +491,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function getBookingViewState() {
         return {
             page: currentPage,
-            activeTab: document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all",
+            recordType: activeRecordType,
+            activeTab: document.querySelector(`${activeRecordType === 'seminar' ? '#seminarFilters' : '#bookingFilters'} .tab-btn.active`)?.getAttribute("data-filter") || bookingFilterSelect?.value || "all",
             search: searchInput?.value.trim() || '',
             venue: venueFilter?.value || 'All'
         };
@@ -485,9 +501,41 @@ document.addEventListener("DOMContentLoaded", () => {
     function bookingViewStateChanged(state) {
         const currentState = getBookingViewState();
         return state.page !== currentState.page
+            || state.recordType !== currentState.recordType
             || state.activeTab !== currentState.activeTab
             || state.search !== currentState.search
             || state.venue !== currentState.venue;
+    }
+
+    function recordTypeSingular(recordType = activeRecordType) {
+        return recordType === 'seminar' ? 'seminar' : 'booking';
+    }
+
+    function recordTypePlural(recordType = activeRecordType) {
+        return recordType === 'seminar' ? 'seminars' : 'bookings';
+    }
+
+    function updateRecordTypeContext() {
+        const isSeminar = activeRecordType === 'seminar';
+        if (historyTitle) historyTitle.textContent = `${isSeminar ? 'Seminar' : 'Booking'} History`;
+        if (historyCaption) historyCaption.textContent = `Staff ${isSeminar ? 'seminar' : 'booking'} history`;
+        if (historyIdHeading) historyIdHeading.textContent = isSeminar ? 'SEMINAR ID' : 'BOOKING ID';
+        if (historyNameHeading) historyNameHeading.textContent = isSeminar ? 'SEMINAR' : 'CUSTOMER';
+        if (historyRecordCount) historyRecordCount.textContent = recordTypePlural();
+        if (searchLabel) searchLabel.textContent = `Search ${recordTypePlural()}`;
+        if (searchInput) searchInput.placeholder = isSeminar
+            ? 'Search by seminar ID, name, or venue…'
+            : 'Search by booking ID, customer, or venue…';
+        recordTabs.forEach(tab => {
+            const selected = tab.dataset.recordType === activeRecordType;
+            tab.classList.toggle('active', selected);
+            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+            tab.tabIndex = selected ? 0 : -1;
+        });
+        recordFilters.forEach(group => { group.hidden = group.dataset.recordFilters !== activeRecordType; });
+        const results = document.getElementById('booking-history-results');
+        const activeTab = document.getElementById(`booking-record-tab-${activeRecordType}`);
+        if (results && activeTab) results.setAttribute('aria-labelledby', activeTab.id);
     }
 
     function setBookingsResultsStatus(message) {
@@ -495,7 +543,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function syncBookingFilterControls(selected = getBookingViewState().activeTab) {
-        tabFilters.forEach(tab => {
+        const activeStatusButtons = activeRecordType === 'seminar' ? seminarStatusFilters : tabFilters;
+        activeStatusButtons.forEach(tab => {
             const isSelected = tab.dataset.filter === selected;
             tab.classList.toggle('active', isSelected);
             tab.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
@@ -513,6 +562,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function setActiveRecordType(recordType) {
+        if (!['booking', 'seminar'].includes(recordType) || recordType === activeRecordType) return;
+        activeRecordType = recordType;
+        currentPage = 1;
+        updateRecordTypeContext();
+        syncBookingFilterControls('all');
+        updateExportLink();
+        setBookingsResultsStatus(`Loading ${recordTypePlural()}…`);
+        renderTableMessage(`Loading ${recordTypePlural()}…`);
+        lastBookingsSnapshot = null;
+        loadBookings();
+    }
+
     function renderTableMessage(message, actionLabel = '', actionName = '') {
         if (!tbody) return;
         closeBookingActionMenu(false);
@@ -522,7 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
         cell.className = 'table-state-cell';
         const copy = document.createElement('p');
         copy.className = 'table-state-message';
-        copy.textContent = String(message || 'Booking and seminar history are unavailable.');
+        copy.textContent = String(message || `The ${recordTypeSingular()} history is unavailable.`);
         cell.appendChild(copy);
         if (actionLabel && actionName) {
             const button = document.createElement('button');
@@ -557,8 +619,8 @@ document.addEventListener("DOMContentLoaded", () => {
             // Loading replaces the current rows, so a later unchanged snapshot
             // must still be allowed to restore them after a failed foreground read.
             lastBookingsSnapshot = null;
-            setBookingsResultsStatus('Loading booking and seminar history…');
-            renderTableMessage('Loading booking and seminar history…');
+            setBookingsResultsStatus(`Loading ${recordTypePlural(requestState.recordType)}…`);
+            renderTableMessage(`Loading ${recordTypePlural(requestState.recordType)}…`);
         }
         const controller = new AbortController();
         const timeoutId = window.setTimeout(() => controller.abort(), 12000);
@@ -575,10 +637,11 @@ document.addEventListener("DOMContentLoaded", () => {
             body: JSON.stringify({
                 page: requestState.page,
                 limit: rowsPerPage,
+                record_type: requestState.recordType,
                 search: requestState.search,
                 venue: requestState.venue,
                 status: requestState.activeTab,
-                ...(urlBookingId !== null ? { booking_id: urlBookingId } : {})
+                ...(requestState.recordType === 'booking' && urlBookingId !== null ? { booking_id: urlBookingId } : {})
             })
         })
         .then(async response => {
@@ -602,7 +665,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     return;
                 }
                 const detail = typeof res.message === 'string' && res.message.trim() ? ` ${res.message.trim().slice(0, 300)}` : '';
-                const message = `We couldn’t load booking and seminar history.${detail}`;
+                const message = `We couldn’t load ${recordTypePlural(requestState.recordType)}.${detail}`;
                 setBookingsResultsStatus(`${message} Try again.`);
                 renderTableMessage(message, 'Try again', 'retry');
                 return;
@@ -610,7 +673,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!Array.isArray(res.data) || res.data.some(row => {
                 if (!row || typeof row !== 'object' || Array.isArray(row)) return true;
                 const id = Number(row.id);
-                return !Number.isSafeInteger(id) || id < 1 || !['booking', 'seminar'].includes(row.record_type);
+                return !Number.isSafeInteger(id) || id < 1 || row.record_type !== requestState.recordType;
             })) throw new Error('Invalid history rows');
             const rows = res.data;
             const rawPagination = res.pagination;
@@ -640,18 +703,18 @@ document.addEventListener("DOMContentLoaded", () => {
             lastBookingsSnapshot = snapshot;
             bookingPollFailures = 0;
             if (rows.length === 0) {
-                setBookingsResultsStatus('No bookings or seminars found. Try changing or clearing the search and filters.');
+                setBookingsResultsStatus(`No ${recordTypePlural(requestState.recordType)} found. Try changing or clearing the search and filters.`);
             } else {
                 const total = pagination.total_rows;
                 const announcedPage = Math.min(pagination.current_page, pagination.total_pages);
                 const start = total > 0 ? ((announcedPage - 1) * rowsPerPage) + 1 : 0;
                 const end = Math.min(announcedPage * rowsPerPage, total);
-                setBookingsResultsStatus(`Showing ${start}–${end} of ${total} records.`);
+                setBookingsResultsStatus(`Showing ${start}–${end} of ${total} ${recordTypePlural(requestState.recordType)}.`);
             }
             bindDynamicButtons(); // Re-attach modal listeners to the new buttons!
   
             // Auto-scroll, highlight, and pop open View Details modal if redirected from Master Calendar / Command Center
-            if (!suppressUrlSearchAction && urlBookingId !== null) {
+            if (!suppressUrlSearchAction && requestState.recordType === 'booking' && urlBookingId !== null) {
                 const exactBookingId = urlBookingId;
                 const exactMatch = Array.isArray(res.data)
                     ? res.data.find(booking => String(booking.id) === exactBookingId)
@@ -669,7 +732,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 urlBookingId = null;
                 openPaymentProofId = null;
-            } else if (!suppressUrlSearchAction && urlSearch && res.data && res.data.length > 0) {
+            } else if (!suppressUrlSearchAction && requestState.recordType === 'booking' && urlSearch && res.data && res.data.length > 0) {
                 const match = res.data.find(b => String(b.reference_no || '').toLowerCase() === urlSearch.toLowerCase() || String(b.reference_no || '').toLowerCase().includes(urlSearch.toLowerCase()) || String(b.id) === urlSearch);
                 const targetRef = match ? match.reference_no : urlSearch;
 
@@ -689,8 +752,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 bookingPollFailures = Math.min(4, bookingPollFailures + 1);
                 return;
             }
-            setBookingsResultsStatus('We couldn’t load booking and seminar history. Check your connection and try again.');
-            renderTableMessage('We couldn’t load booking and seminar history. Check your connection, then try again.', 'Try again', 'retry');
+            setBookingsResultsStatus(`We couldn’t load ${recordTypePlural(requestState.recordType)}. Check your connection and try again.`);
+            renderTableMessage(`We couldn’t load ${recordTypePlural(requestState.recordType)}. Check your connection, then try again.`, 'Try again', 'retry');
         })
         .finally(() => {
             clearTimeout(timeoutId);
@@ -785,7 +848,7 @@ document.addEventListener("DOMContentLoaded", () => {
   
     function renderTableRows(bookings) {
         if (bookings.length === 0) {
-            renderTableMessage('No bookings or seminars found for these filters. Try changing or clearing the search and filters.');
+            renderTableMessage(`No ${recordTypePlural()} found for these filters. Try changing or clearing the search and filters.`);
             return;
         }
 
@@ -828,9 +891,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     : `${displayStatus} · Unpaid`;
                 const seminarUrl = `admin_dashboard.php?page=seminars&seminar_id=${safeSeminarId}`;
                 html += `<tr class="seminar-history-row${displayStatus === 'Cancelled' ? ' faded-row' : ''}" data-ref="${attr(referenceNo.toLowerCase())}" data-record-type="seminar">
-                    <td data-label="Booking / seminar ID" class="seminar-history-id"><div class="seminar-history-id__content"><span class="seminar-history-type">Seminar</span><strong>${attr(referenceNo)}</strong></div></td>
+                    <td data-label="Seminar ID" class="seminar-history-id"><div class="seminar-history-id__content"><span class="seminar-history-type">Seminar</span><strong>${attr(referenceNo)}</strong></div></td>
                     <td data-label="Venue"><span>Event Hall · ${attr(venue)}</span></td>
-                    <td data-label="Customer / seminar" class="seminar-history-customer"><span class="seminar-history-name">${attr(seminarName)}</span><small>Staff managed · ${attendeeCount} attendee${attendeeCount === 1 ? '' : 's'}</small></td>
+                    <td data-label="Seminar" class="seminar-history-customer"><span class="seminar-history-name">${attr(seminarName)}</span><small>Staff managed · ${attendeeCount} attendee${attendeeCount === 1 ? '' : 's'}</small></td>
                     <td data-label="Date">${attr(dateLabel)}</td>
                     <td data-label="Amount" class="seminar-history-money"><div class="seminar-history-money__content"><strong>${attr(agreedText)}</strong><small>${attr(paidText)} · ${attr(dueText)}</small></div></td>
                     <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${attr(statusText)}</span></div></td>
@@ -1026,6 +1089,28 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    seminarStatusFilters.forEach(tab => {
+        tab.addEventListener('click', () => {
+            syncBookingFilterControls(tab.dataset.filter);
+            currentPage = 1;
+            updateExportLink();
+            loadBookings();
+        });
+    });
+
+    recordTabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => setActiveRecordType(tab.dataset.recordType));
+        tab.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const nextIndex = event.key === 'Home' ? 0
+                : event.key === 'End' ? recordTabs.length - 1
+                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + recordTabs.length) % recordTabs.length;
+            recordTabs[nextIndex]?.focus();
+            recordTabs[nextIndex]?.click();
+        });
+    });
+
     bookingFilterSelect?.addEventListener("change", () => {
         const selected = bookingFilterSelect.value;
         syncBookingFilterControls(selected);
@@ -1038,10 +1123,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnExport = document.getElementById('btn-export-bookings');
     function updateExportLink() {
         if (!btnExport) return;
-        const activeTab = document.querySelector("#bookingFilters .tab-btn.active")?.getAttribute("data-filter") || bookingFilterSelect?.value || "all";
-        const params = new URLSearchParams({ search: searchInput?.value.trim() || '', venue: venueFilter?.value || 'All', status: activeTab });
+        const activeTab = getBookingViewState().activeTab;
+        const params = new URLSearchParams({ record_type: activeRecordType, search: searchInput?.value.trim() || '', venue: venueFilter?.value || 'All', status: activeTab });
         btnExport.href = 'actions/admin/export_bookings.php?' + params.toString();
     }
+    updateRecordTypeContext();
     syncBookingFilterControls();
     updateExportLink();
     if (btnRefresh) {
@@ -1154,9 +1240,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     const closeModal = () => {
       const guestRequestModal = document.getElementById('guestRefundRequestModal');
+      const detailWasActive = bookingDetailBodyLockActive || viewDetailsModal?.classList.contains('active');
+      const restoreDetailFocus = detailWasActive ? bookingDetailInvoker : null;
       const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : guestRequestModal?.classList.contains('active') ? guestRequestModal._invoker : null;
       modalOverlay.classList.remove("active");
+      modalOverlay.classList.remove('booking-detail-open');
       document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
+      if (detailWasActive) {
+        document.body.style.overflow = bookingDetailPreviousOverflow;
+        bookingDetailBodyLockActive = false;
+        bookingDetailInvoker = null;
+      }
       const refundTx = document.getElementById('refund-transaction-id');
       const refundReason = document.getElementById('refund-rejection-reason');
       if (refundTx) { refundTx.value = ''; refundTx.required = false; }
@@ -1175,11 +1269,34 @@ document.addEventListener("DOMContentLoaded", () => {
         delete manualProofModal.dataset.eventEnded;
       }
       proofReviewInvoker = null;
+      if (restoreDetailFocus?.isConnected) window.requestAnimationFrame(() => restoreDetailFocus.focus({ preventScroll: true }));
       if (restoreProofFocus?.isConnected) window.requestAnimationFrame(() => restoreProofFocus.focus());
     };
   
     document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
     modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+
+    viewDetailsModal?.addEventListener('keydown', event => {
+      if (!viewDetailsModal.classList.contains('active')) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const controls = Array.from(viewDetailsModal.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'))
+        .filter(control => !control.hidden && control.getClientRects().length > 0);
+      if (!controls.length) {
+        event.preventDefault();
+        viewDetailsModal.focus({ preventScroll: true });
+      } else if (event.shiftKey && document.activeElement === controls[0]) {
+        event.preventDefault();
+        controls.at(-1).focus({ preventScroll: true });
+      } else if (!event.shiftKey && document.activeElement === controls.at(-1)) {
+        event.preventDefault();
+        controls[0].focus({ preventScroll: true });
+      }
+    });
 
     const reviewManualProof = async decision => {
       const submissionId = manualProofModal?.dataset.submissionId;
@@ -1712,10 +1829,9 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       
         // VIEW DETAILS MODAL
-        const viewDetailsModal = document.getElementById("viewDetailsModal");
-      
         document.querySelectorAll('.btn-view').forEach(btn => {
           btn.addEventListener('click', function() {
+              const detailRequestSequence = ++bookingDetailRequestSequence;
               const originalText = this.innerText;
               this.innerText = "Loading...";
               this.disabled = true;
@@ -1725,6 +1841,7 @@ document.addEventListener("DOMContentLoaded", () => {
               .then(res => {
                   this.innerText = originalText;
                   this.disabled = false;
+                  if (detailRequestSequence !== bookingDetailRequestSequence) return;
       
                   if (!res.success) return showAlert("Error", "Error loading details: " + res.message, "error", false);
       
@@ -1740,8 +1857,18 @@ document.addEventListener("DOMContentLoaded", () => {
                   const displayStatus = data.display_booking_status || data.booking_status;
                   const isCompleted = displayStatus === 'Completed';
                   const badge = document.getElementById('vd-status-badge');
-                  badge.innerText = displayStatus + (Number(data.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' — Rescheduled' : '');
+                  badge.replaceChildren();
                   badge.className = 'status-badge ' + (displayStatus === 'Completed' ? 'status-completed' : (displayStatus === 'Confirmed' ? 'status-paid' : (displayStatus === 'Cancelled' ? 'status-refunded' : 'status-pending')));
+                  const primaryStatus = document.createElement('span');
+                  primaryStatus.className = 'vd-status-primary';
+                  primaryStatus.textContent = displayStatus;
+                  badge.appendChild(primaryStatus);
+                  if (Number(data.has_rescheduled) === 1 && displayStatus === 'Confirmed') {
+                      const rescheduledStatus = document.createElement('span');
+                      rescheduledStatus.className = 'vd-status-note';
+                      rescheduledStatus.textContent = '— Rescheduled';
+                      badge.appendChild(rescheduledStatus);
+                  }
       
                   document.getElementById('vd-customer-name').innerText = `${data.first_name} ${data.last_name}`;
                   document.getElementById('vd-customer-email').innerText = data.email;
@@ -1828,13 +1955,24 @@ document.addEventListener("DOMContentLoaded", () => {
                       btnAdminResend.style.display = canResendReceipt ? 'inline-flex' : 'none';
                   }
       
+                  bookingDetailInvoker = this;
+                  if (!bookingDetailBodyLockActive) {
+                      bookingDetailPreviousOverflow = document.body.style.overflow;
+                      document.body.style.overflow = 'hidden';
+                      bookingDetailBodyLockActive = true;
+                  }
+                  const detailsScrollBody = document.getElementById('vd-content-scroll');
+                  if (detailsScrollBody) detailsScrollBody.scrollTop = 0;
                   modalOverlay.classList.add('active');
+                  modalOverlay.classList.add('booking-detail-open');
                   viewDetailsModal.classList.add('active');
+                  window.requestAnimationFrame(() => viewDetailsModal.querySelector('.booking-detail-close')?.focus({ preventScroll: true }));
               })
               .catch(err => {
                   console.error(err);
                   this.innerText = originalText;
                   this.disabled = false;
+                  if (detailRequestSequence !== bookingDetailRequestSequence) return;
                   showAlert("Network Error", "Network error fetching details.", "error", false);
               });
           });

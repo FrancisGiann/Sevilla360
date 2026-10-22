@@ -912,6 +912,58 @@
   margin-bottom: 24px;
 }
 
+.booking-record-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid rgba(42, 37, 34, .14);
+}
+
+.booking-record-tab {
+  min-width: 44px;
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  border-bottom-color: rgba(42, 37, 34, .14);
+  background: transparent;
+  color: #62584f;
+  font: 600 .9rem var(--font-body, sans-serif);
+  cursor: pointer;
+}
+
+.booking-record-tab:hover,
+.booking-record-tab.active {
+  border-color: rgba(42, 37, 34, .14);
+  border-bottom-color: var(--color-white);
+  background: var(--color-white);
+  color: var(--color-dark);
+}
+
+.booking-record-tab:focus-visible {
+  outline: 3px solid #80531f;
+  outline-offset: 2px;
+}
+
+.booking-status-filters {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 24px;
+  min-width: 0;
+}
+
+.booking-status-filters[hidden],
+.seminar-status-filters[hidden] { display: none !important; }
+
+.booking-status-filters .booking-tabs { flex: 1 1 auto; min-width: 0; }
+
+.seminar-status-filters {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1.5rem;
+}
+
 .booking-filter-menu {
   display: flex;
   flex: 0 1 240px;
@@ -998,6 +1050,16 @@
     max-height: calc(100dvh - 76px);
     margin: 0 auto;
   }
+
+  .modal-overlay.booking-detail-open {
+    align-items: center;
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+  }
+
+  .modal-overlay.booking-detail-open #viewDetailsModal.active {
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)) - max(12px, env(safe-area-inset-bottom, 0px)));
+  }
 }
 
 @media (max-width: 1024px) {
@@ -1040,6 +1102,15 @@
     align-items: stretch;
     gap: 16px;
   }
+
+  .booking-status-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .seminar-status-filters { width: 100%; }
 
   #bookingFilters {
     display: flex;
@@ -1390,24 +1461,10 @@
     overflow-x: hidden;
   }
 
-  #viewDetailsModal .vd-header {
-    align-items: flex-start;
-    gap: 12px;
-  }
-
   #viewDetailsModal .vd-title {
     flex: 1 1 auto;
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-
-  #viewDetailsModal #vd-status-badge {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 45%;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-align: right;
   }
 
   #viewDetailsModal .summary-grid > * {
@@ -1659,6 +1716,19 @@
 #viewDetailsModal,
 #overviewBookingModal { width: min(94vw, 640px); max-width: 640px; max-height: 92dvh; overflow-y: auto; padding: 28px 30px; }
 .booking-detail-header-content { display: grid; justify-items: start; gap: 8px; min-width: 0; }
+.booking-detail-header-content #vd-status-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.booking-detail-header-content #vd-status-badge.status-paid { padding: 4px 9px; background: #e4eee5; color: #38583e; font-size: .74rem; line-height: 1.25; }
+#viewDetailsModal .vd-status-primary { white-space: nowrap; }
+#viewDetailsModal .vd-status-note { max-width: 100%; color: #62584f; font-size: .7rem; font-weight: 500; line-height: 1.25; white-space: normal; overflow-wrap: normal; word-break: normal; }
 .booking-detail-header-content .vd-title,
 .overview-booking-main-title { margin: 0; text-align: left; font-size: 1.55rem; line-height: 1.2; }
 #viewDetailsModal .vd-header,
@@ -2071,6 +2141,23 @@
     text-align: center;
     white-space: normal;
   }
+
+  .admin-bookings-container .booking-tabs#seminarFilters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .admin-bookings-container .booking-tabs#seminarFilters .tab-btn {
+    min-width: 0;
+    min-height: 46px;
+    padding: 9px 6px 12px;
+    font-size: .9rem;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2122,4 +2209,34 @@
   .booking-detail-header-content .vd-title,
   .overview-booking-main-title,
   #refundModal .modal-main-title { font-size: 1.35rem; }
+}
+
+@media (max-width: 768px) {
+  .modal-overlay.booking-detail-open #viewDetailsModal.active {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)) - max(12px, env(safe-area-inset-bottom, 0px)));
+    padding: 0;
+    overflow: hidden;
+  }
+
+  #viewDetailsModal .vd-header {
+    flex: 0 0 auto;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 0;
+    padding: 16px;
+    border-bottom: 1px solid rgba(42, 37, 34, .13);
+    background: var(--color-white);
+  }
+
+  #viewDetailsModal .vd-content-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 16px 20px;
+  }
 }

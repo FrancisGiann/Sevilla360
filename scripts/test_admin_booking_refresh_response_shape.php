@@ -42,7 +42,7 @@ $html = <<<HTML
 <script>
 const urlBookingId = null;
 const urlSearch = null;
-const qaRow = {record_type:'seminar',id:902,reference_no:'SEM-QA-902',venue_name:'Event Hall',seminar_name:'Synthetic seminar',start_date:'2026-11-20',end_date:'2026-11-20',display_booking_status:'Draft',payment_status:'Unpaid',total_amount:0,amount_paid:0,attendee_count:1};
+const qaRow = {record_type:'booking',id:902,reference_no:'QA-902',venue_name:'Event Hall',first_name:'Synthetic',last_name:'booking',start_date:'2026-11-20',end_date:'2026-11-20',display_booking_status:'Pending',booking_status:'Pending',payment_status:'Unpaid',total_amount:0,amount_paid:0,guests_count:1};
 window.qaResponses = [
   {success:true,data:[qaRow],pagination:{current_page:1,total_pages:2,total_rows:16}},
   {success:true,data:null,pagination:{current_page:1,total_pages:2,total_rows:16}},
@@ -77,7 +77,7 @@ window.fetch = async () => {
         && window.qaConsumedResponseCount === expectedCount ? 'pass' : 'fail';
       return;
     }
-    const row = document.querySelector('.seminar-history-row');
+    const row = document.querySelector('tr[data-ref]');
     if (!row) { window.setTimeout(runNext, 10); return; }
     const pagination = ['pag-current-page', 'pag-total-pages', 'pag-total-rows']
       .map(id => document.getElementById(id).textContent).join('|');
@@ -86,7 +86,7 @@ window.fetch = async () => {
       const currentPagination = ['pag-current-page', 'pag-total-pages', 'pag-total-rows']
         .map(id => document.getElementById(id).textContent).join('|');
       if (window.qaFetchCount !== index + 2 || window.qaConsumedResponseCount !== index + 2
-        || row !== document.querySelector('.seminar-history-row')
+        || row !== document.querySelector('tr[data-ref]')
         || pagination !== currentPagination) {
         fail();
         return;
