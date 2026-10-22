@@ -311,7 +311,7 @@ document.addEventListener("DOMContentLoaded", function () {
     book.className = 'idx-btn idx-btn-gold';
     if (venue.category === 'Resort Villa') {
       book.type = 'button';
-      book.textContent = 'Choose stay & dates';
+      book.textContent = 'Book Now';
       book.addEventListener('click', () => openVenueModal(venue, book));
     } else {
       book.href = bookingUrl(venue);
@@ -573,7 +573,7 @@ document.addEventListener("DOMContentLoaded", function () {
     link.href = needsHotelChoice ? '#' : bookingUrl(activeVenue, modalDates(), selectedVillaStayType(), activeHotelVariant);
     link.setAttribute('aria-disabled', needsHotelChoice ? 'true' : 'false');
     link.classList.toggle('is-disabled', needsHotelChoice);
-    link.textContent = needsHotelChoice ? 'Choose a room option' : 'Continue booking';
+    link.textContent = needsHotelChoice ? 'Choose a room option' : (activeVenue.category === 'Resort Villa' ? 'Book Now' : 'Continue booking');
   };
   const renderModalFacts = (facts, venue, variant = null) => {
     if (!facts) return;

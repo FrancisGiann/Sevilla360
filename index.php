@@ -522,7 +522,7 @@ include 'includes/header.php';
                                 <?php if ($catalog_fact_text !== ''): ?><p class="idx-catalog-card-facts"><?php echo htmlspecialchars($catalog_fact_text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
                                 <?php if ($catalog_description !== ''): ?><p class="idx-catalog-card-description"><?php echo htmlspecialchars($catalog_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
                                 <div class="idx-catalog-card-actions">
-                                    <a class="idx-btn idx-btn-gold" href="<?php echo htmlspecialchars($catalog_booking_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo $category === 'Event Hall' ? 'Start inquiry' : ($category === 'Hotel Room' ? 'Book Now' : 'Choose stay'); ?></a>
+                                    <a class="idx-btn idx-btn-gold" href="<?php echo htmlspecialchars($catalog_booking_url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>"><?php echo $category === 'Event Hall' ? 'Start inquiry' : 'Book Now'; ?></a>
                                 </div>
                             </div>
                         </article>
