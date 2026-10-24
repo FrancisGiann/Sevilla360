@@ -1,6 +1,6 @@
 <?php
-$page_title = 'SEVILLA360 | M.I. Sevilla Resort & Events Place';
-$page_description = 'Discover M.I. Sevilla Resort & Events Place in Lucena City, browse available event halls, hotel rooms and villas, and explore the resort virtually.';
+$page_title = 'Resort & Events Venue in Lucena City | M.I. Sevilla';
+$page_description = 'Explore M.I. Sevilla Resort & Events Place in Lucena City. Browse event halls, hotel rooms and villas, view the virtual showroom, and check booking options.';
 $extra_css = 'assets/css/index.css';
 $active_page = 'home';
 
@@ -358,6 +358,28 @@ $build_catalog_booking_url = static function (array $venue): string {
 
 include 'includes/header.php';
 ?>
+<?php
+$seo_home_url = site_metadata_absolute_url('/');
+if ($seo_home_url !== null):
+    // Location and venue types are published on this page. Leave rates, ratings,
+    // availability and contact details out of markup because those can change.
+    $seo_business = [
+        '@context' => 'https://schema.org',
+        '@type' => 'Resort',
+        '@id' => $seo_home_url . '#resort',
+        'name' => 'M.I. Sevilla Resort & Events Place',
+        'url' => $seo_home_url,
+        'description' => $page_description,
+        'address' => [
+            '@type' => 'PostalAddress',
+            'streetAddress' => 'Purok Jasmin, Barangay Domoit',
+            'addressLocality' => 'Lucena City',
+            'addressCountry' => 'PH',
+        ],
+    ];
+?>
+<script type="application/ld+json"><?php echo json_encode($seo_business, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE); ?></script>
+<?php endif; ?>
 
 <main class="idx-page">
 
@@ -368,12 +390,11 @@ include 'includes/header.php';
             <span class="idx-hero-script">M.I. Sevilla</span>
             <span class="idx-hero-rule"></span>
             <h1 class="idx-hero-title">
-                Where Every Event
-                <span class="idx-italic">Becomes A Memory</span>
+                Resort &amp; Events Place
+                <span class="idx-italic">in Lucena City</span>
             </h1>
             <p class="idx-hero-sub">
-                A private sanctuary of gardens, water and light — crafted for celebrations that
-                deserve to be remembered.
+                Explore M.I. Sevilla's event halls, hotel rooms and villas for celebrations and stays in Lucena City.
             </p>
             <div class="idx-hero-buttons">
                 <a href="booking.php" class="idx-btn idx-btn-gold">Book Your Stay</a>
@@ -401,7 +422,7 @@ include 'includes/header.php';
                 <h2>M.I. Sevilla Resort</h2>
                 <span class="idx-rule-gold"></span>
                 <p>
-                    Tucked between quiet gardens and open sky, M.I. Sevilla Resort &amp; Events Place
+                    In Lucena City, M.I. Sevilla Resort &amp; Events Place
                     was built around a single belief — that a place can shape the way a moment is
                     remembered. Our halls, villas and rooms are tended with the same care given to
                     the people who fill them.
