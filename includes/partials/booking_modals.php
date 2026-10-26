@@ -6,7 +6,7 @@
             <p>You have selected:<br>
                 <strong id="selected-date-text" class="modal-date-highlight"></strong>
             </p>
-            <p class="modal-subtext">Proceeding will lock these dates for 15 minutes while you complete your booking.
+            <p class="modal-subtext">Dates are checked now. They are held only after payment proof is submitted and the inventory claim succeeds.
             </p>
         </div>
         <div class="modal-actions-center">

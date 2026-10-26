@@ -966,7 +966,7 @@ class BookingController {
                         this.updateVillaStaySelection(previousRadio.value);
                         const help = this.getEl('villa-calendar-help');
                         if (help) help.textContent = previousRadio.value === 'Overnight'
-                            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, is reserved.'
+                            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, counts toward availability.'
                             : 'Day Time Stay: one calendar date.';
                         this.updateVillaBreakfastSchedule();
                     } else {
@@ -1796,7 +1796,7 @@ class BookingController {
         }
         const help = this.getEl('villa-calendar-help');
         if (help) help.textContent = stayType === 'Overnight'
-            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, is reserved.'
+            ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, counts toward availability.'
             : 'Day Time Stay: one calendar date.';
         this.updateVillaBreakfastSchedule();
         return true;
@@ -2070,8 +2070,8 @@ class BookingController {
         }
         const labels = {
             'event-hall': this.auth.isCustomer ? 'SUBMIT EVENT INQUIRY' : 'SIGN IN TO SUBMIT EVENT INQUIRY',
-            'hotel-rooms': this.auth.isCustomer ? 'RESERVE HOTEL ROOM' : 'SIGN IN TO RESERVE A HOTEL ROOM',
-            'resort-villa': this.auth.isCustomer ? 'RESERVE RESORT VILLA' : 'SIGN IN TO RESERVE A RESORT VILLA'
+            'hotel-rooms': this.auth.isCustomer ? 'CONTINUE TO PAYMENT' : 'SIGN IN TO CONTINUE',
+            'resort-villa': this.auth.isCustomer ? 'CONTINUE TO PAYMENT' : 'SIGN IN TO CONTINUE'
         };
         button.textContent = labels[this.state.activeTabId] || 'SUBMIT BOOKING';
         button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
@@ -2081,8 +2081,8 @@ class BookingController {
         const bookingId = String(rawId ?? '');
         if (!/^[1-9]\d*$/.test(bookingId)) return false;
         this.state.savedPaymentBookingId = bookingId;
-        // The reservation endpoint consumes the temporary date hold.
-        // Stop its client timer so it cannot disable payment recovery.
+        // The request is saved; the proof has not yet claimed inventory.
+        // Stop any legacy client timer so it cannot disable payment recovery.
         this.stopTimerAndReset();
         this.updateBookingSubmitLabel();
         return true;
@@ -2090,7 +2090,7 @@ class BookingController {
 
     updateHoldTimerVisibility() {
         const timerBox = this.getEl('timer-box');
-        if (timerBox) timerBox.hidden = !this.state.isDatesLocked || this.state.activeTabId === 'event-hall';
+        if (timerBox) timerBox.hidden = !this.state.isDatesLocked || !this.state.lockExpiresAt || this.state.activeTabId === 'event-hall';
     }
 
     startTimer(expiresAt) {
@@ -2224,7 +2224,7 @@ class BookingController {
         const startValue = toCanonicalDate(startDate);
         const endValue = toCanonicalDate(endDate) || startValue;
         if (!startValue || !endValue || endValue < startValue) {
-            showAlert('Notice', 'Please select valid dates before placing a hold.');
+            showAlert('Notice', 'Please select valid dates before continuing.');
             return false;
         }
         const formData = new FormData();
@@ -2254,24 +2254,25 @@ class BookingController {
             }
             const response = (await res.text()).split('|');
             if (!res.ok || response[0] !== 'Success') {
-                throw new Error(response[1] || 'The selected dates could not be held.');
+                throw new Error(response[1] || 'The selected dates could not be confirmed.');
             }
-            serverLockCreated = true;
+            serverLockCreated = response[1] === 'Dates locked';
             const expiresAt = Number(response[2] || 0);
-            if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+            if (serverLockCreated && (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000))) {
                 throw new Error('The server did not return a valid hold expiry.');
             }
 
             this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
             this.state.isDatesLocked = true;
             window.isDatesLocked = true;
-            this.state.lockExpiresAt = expiresAt;
+            this.state.lockExpiresAt = serverLockCreated ? expiresAt : null;
             const proceed = this.getEl('btn-proceed');
             if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
             calendarInstance.updateDateDisplay();
             this.calculateSummary();
             this.saveDraft();
-            this.startTimer(expiresAt);
+            if (serverLockCreated) this.startTimer(expiresAt);
+            else this.updateHoldTimerVisibility();
             serverLockCreated = false;
             return true;
         } catch (err) {
@@ -2334,12 +2335,12 @@ class BookingController {
         const title = dateModal?.querySelector('.modal-title');
         const subtext = dateModal?.querySelector('.modal-subtext');
         const canHold = this.auth.isCustomer && !isEventInquiry;
-        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : (canHold ? 'Confirm dates for a 15-minute hold' : 'Confirm your dates');
+        if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : 'Confirm your dates';
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : (canHold ? 'Your selection is available now. Confirm to place the server-authoritative 15-minute hold.' : 'Available now — not held. Keep this selection and sign in when you are ready to reserve.');
+            : 'Available now, but the date is not held until payment proof is submitted and accepted for review.';
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
-            ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date reserved)` : ''}`
+            ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date included)` : ''}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
         if (this.getEl("selected-date-text")) this.getEl("selected-date-text").innerText = dateLabel;
         if (dateModal) dateModal.classList.add("active");
@@ -2381,7 +2382,7 @@ class BookingController {
                 if (locked) dateModal.classList.remove("active");
             } catch (err) {
                 dateModal.classList.remove("active");
-                showAlert("Hold unavailable", err.message || "The selected dates could not be held.", "error");
+                showAlert("Dates unavailable", err.message || "The selected dates could not be confirmed.", "error");
             } finally {
                 confirmBtn.innerText = "Confirm";
                 confirmBtn.disabled = false;
@@ -2972,7 +2973,7 @@ class BookingController {
             if (this.manualPayment) {
                 this.manualPayment.openBooking(this.state.savedPaymentBookingId, btn);
             } else {
-                showAlert("Booking reserved", "Your booking is saved. Go to My Bookings and choose Submit payment to continue.", 'error');
+                showAlert("Request saved", "Your request is saved but its dates are not held. Go to My Bookings and submit payment proof to continue.", 'error');
             }
             return;
         }
@@ -3141,18 +3142,18 @@ class BookingController {
             if (response[0] === 'Success') {
                 bookingSaved = true;
                 this.clearDraft();
-                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "BOOKING RESERVED";
+                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "REQUEST SAVED";
                 if (context.roomType === 'Event Hall') {
                     showAlert("Inquiry submitted", "Your Event Hall inquiry is on its way. We will send the finalized quotation to your dashboard.", 'success');
                 } else {
                     const bookingId = String(response[2] || '');
                     if (!this.rememberSavedPaymentBooking(bookingId)) {
-                        showAlert("Booking reserved", "Your booking was saved, but payment details could not be opened. Go to My Bookings and choose Submit payment to continue.", 'error');
+                        showAlert("Request saved", "Your request was saved, but its dates are not held yet. Go to My Bookings and submit payment proof to continue.", 'error');
                     } else {
                         if (this.manualPayment) {
                             this.manualPayment.openBooking(bookingId, btn);
                         } else {
-                            showAlert("Booking reserved", "Your booking is saved. Go to My Bookings and choose Submit payment to continue.", 'error');
+                            showAlert("Request saved", "Your request is saved but its dates are not held. Go to My Bookings and submit payment proof to continue.", 'error');
                         }
                     }
                 }
@@ -3167,7 +3168,7 @@ class BookingController {
             } else if (this.state.savedPaymentBookingId) {
                 this.updateBookingSubmitLabel();
             } else {
-                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "BOOKING RESERVED";
+                btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "REQUEST SAVED";
             }
         }
     }

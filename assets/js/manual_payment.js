@@ -134,7 +134,7 @@
       this.submitButtonLabel = 'Submit for verification';
       this.form.reset();
       if (this.title) this.title.textContent = 'Submit payment proof';
-      if (this.intro) this.intro.textContent = 'Your booking is saved and reserved while awaiting payment proof. Review the amount and deadline, pay using a listed option, then submit the transfer reference and receipt image.';
+      if (this.intro) this.intro.textContent = 'Review the amount and deadline, pay using a listed option, then submit the transfer reference and receipt image. Your dates are held only after your first proof claims available inventory.';
       this.bookingIdInput.value = this.currentBookingId || '';
       this.methodSelect.replaceChildren();
       this.methodSelect.disabled = true;
@@ -207,6 +207,9 @@
           throw new Error('The payment service returned incomplete payment methods.');
         }
         this.methods = data.methods;
+        if (this.intro && data.booking_status === 'Awaiting Proof') {
+          this.intro.textContent = 'Your request is saved, but its dates are not held. Submit payment proof before the deadline; if another customer has already claimed the date, staff will help resolve your transferred payment.';
+        }
         this.booking.textContent = data.reference_no.trim();
         this.amount.textContent = new Intl.NumberFormat('en-PH', {
           style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2
@@ -230,7 +233,14 @@
           : 'submit';
         if (this.submissionMode === 'replace_pending') {
           if (this.title) this.title.textContent = 'Replace payment proof';
-          if (this.intro) this.intro.textContent = 'Your current proof is awaiting review. Submit a new receipt and reference to replace it; the updated proof will return to the review queue.';
+          if (this.intro) this.intro.textContent = data.booking_status === 'Awaiting Proof'
+            ? 'Your proof is awaiting staff review, but another reservation holds the date. Staff must resolve your transferred payment or offer another date. Replacing the receipt will not claim this date.'
+            : data.review_overdue === true
+              ? 'Your proof has passed the staff review target, but the date remains held while staff reviews it. Contact the resort for an update; replace the receipt only if its details need correction.'
+              : 'Your current proof is awaiting review and the date remains held, even if the original deadline passes. Replace the receipt only if its details need correction.';
+          this.deadline.textContent = data.booking_status === 'Awaiting Proof'
+            ? 'Staff resolution needed; date not held'
+            : 'Awaiting staff review; date held';
           this.submitButtonLabel = 'Replace proof';
         } else if (this.submissionMode === 'resubmit_rejected') {
           if (this.title) this.title.textContent = 'Submit corrected payment proof';
@@ -249,7 +259,7 @@
         }
 
         if (!this.methods.length) {
-          this.showStatus('The resort has not configured payment methods yet. Your booking is reserved; contact the resort for payment instructions or return later.', { contact: true });
+          this.showStatus('The resort has not configured payment methods yet. Your dates are not held until payment proof is submitted; contact the resort for instructions.', { contact: true });
           return;
         }
 
