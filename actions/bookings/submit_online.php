@@ -92,7 +92,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt_event_venue->execute();
             if ($stmt_event_venue->get_result()->num_rows !== 1) throw new Exception('The selected Event Hall is no longer available.');
         } elseif (!isset($_SESSION['locked_venue_id'])) {
-            throw new Exception("Session expired or dates were not confirmed. Please select the dates again.");
+            throw new Exception("Session expired or dates were not locked properly.");
         } else {
             $venue_id = (int)$_SESSION['locked_venue_id'];
         }
@@ -132,9 +132,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
-        // Selecting dates does not claim inventory. Payment proof is the
-        // first opportunity to take an exclusive, transaction-locked claim.
+        // The final request must match an active lock created by this session
+        // for overnight inventory. Event Hall inquiries are non-exclusive and
+        // intentionally neither require nor honor booking_locks; use the
+        // server-derived venue category rather than the posted room_type.
         $sid = session_id();
+        if ($venue_category !== 'Event Hall') {
+            $stmt_own_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id = ? AND start_date = ? AND end_date = ? AND expires_at > NOW()");
+            $stmt_own_lock->bind_param("isss", $venue_id, $sid, $sDate, $eDate);
+            $stmt_own_lock->execute();
+            if ($stmt_own_lock->get_result()->num_rows === 0) {
+                throw new Exception("Your date reservation has expired or changed. Please select the dates again.");
+            }
+        }
 
         if ($venue_category === 'Hotel Room' && $posted_room_group_id !== null) {
             $available_group_units = hotel_available_group_units($conn, $sDate, $eDate, $sid, [(int)$posted_room_group_id], true);
@@ -232,12 +242,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $dueExpression = $venue_category === 'Event Hall' ? 'NULL' : "DATE_ADD(NOW(), INTERVAL {$dueHours} HOUR)";
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, payment_due_at, source, policy_accepted_at, policy_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid', {$dueExpression}, 'Online', NOW(), ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'Unpaid', {$dueExpression}, 'Online', NOW(), ?)
         ");
-        $initialStatus = $venue_category === 'Event Hall' ? 'Pending' : 'Awaiting Proof';
-        $stmt_book->bind_param("siissisddsss",
+        $stmt_book->bind_param("siissisddss",
             $ref_no, $customer_id, $venue_id, $sDate, $eDate,
-            $guests, $contact_phone, $base_amount, $true_total, $scheme, $initialStatus, $policy_version
+            $guests, $contact_phone, $base_amount, $true_total, $scheme, $policy_version
         );
         $stmt_book->execute();
         $booking_id = $conn->insert_id;

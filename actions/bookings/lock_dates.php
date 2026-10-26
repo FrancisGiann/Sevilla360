@@ -315,24 +315,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $venue_id = $assigned_venue_id;
         }
 
-        // Staff walk-ins retain their operational hold. Online selection only
-        // records the selected venue in the session and creates no date lock.
-        $expires_at = null;
-        if ($is_staff_booking) {
-            $expires_at = date('Y-m-d H:i:s', strtotime("+$lock_mins minutes"));
-            $stmt_lock = $conn->prepare("
-                INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-            $stmt_lock->bind_param("isssss", $venue_id, $session_id, $source, $start_date, $end_date, $expires_at);
-            $stmt_lock->execute();
-        }
+        // Insert the temporary primary lock for this user's session.
+        $expires_at = date('Y-m-d H:i:s', strtotime("+$lock_mins minutes"));
+        $stmt_lock = $conn->prepare("
+            INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt_lock->bind_param("isssss", $venue_id, $session_id, $source, $start_date, $end_date, $expires_at);
+        $stmt_lock->execute();
 
         if (!$conn->commit()) throw new RuntimeException('Dates could not be held.');
         $_SESSION['locked_venue_id'] = $venue_id;
         // Keep the legacy pipe-delimited response fields intact and append the
         // authoritative expiry as a Unix timestamp for countdown consumers.
-        echo $is_staff_booking ? "Success|Dates locked|" . strtotime($expires_at) : 'Success|Dates selected|0';
+        echo "Success|Dates locked|" . strtotime($expires_at);
 
     } catch (Exception $e) {
         if ($transaction_started) $conn->rollback();

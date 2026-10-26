@@ -210,7 +210,7 @@ $format_dashboard_date = static function ($start, $end = null): string {
 $dashboard_status = 'customer_dashboard_status';
 $can_submit_manual_payment = static function (array $booking): bool {
     $hasPendingProof = !empty($booking['manual_payment_pending']);
-    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
+    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
     if (!empty($booking['cancel_pending']) || ($booking['cancel_status'] ?? '') === 'Pending' || !empty($booking['resched_pending']) || ($booking['resched_status'] ?? '') === 'Pending') return false;
     if (($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') return false;
     if (!$hasPendingProof && $booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return false;

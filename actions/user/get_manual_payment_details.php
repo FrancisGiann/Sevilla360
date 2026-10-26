@@ -41,7 +41,7 @@ try {
         throw new RuntimeException('This booking cannot accept a customer payment.');
     }
     if ($booking['venue_category'] === 'Event Hall' && $booking['booking_status'] === 'Pending') throw new RuntimeException('Your Event Hall inquiry must be quoted before payment.');
-    if (!in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true)) throw new RuntimeException('This booking cannot accept a customer payment.');
+    if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new RuntimeException('This booking cannot accept a customer payment.');
     if (!$isPendingReplacement && (float)$booking['amount_paid'] === 0.0 && $booking['payment_status'] === 'Unpaid' && (int)$booking['deadline_open'] !== 1) throw new RuntimeException('The payment window has expired. Contact the resort for help.');
 
     $instructions = manual_payment_load_instructions($conn);
@@ -54,12 +54,10 @@ try {
     echo json_encode(['success' => true, 'data' => [
         'booking_id' => (int)$booking['id'],
         'reference_no' => (string)$booking['reference_no'],
-        'booking_status' => (string)$booking['booking_status'],
         'expected_amount' => manual_payment_expected_amount($booking),
         'payment_due_at' => $booking['payment_due_at'],
         'methods' => $methods,
         'latest_submission' => $latest,
-        'review_overdue' => $isPendingReplacement && manual_payment_proof_review_overdue((string)$latest['submitted_at'], manual_payment_review_hours($conn)),
         'submission_mode' => $isPendingReplacement ? 'replace_pending' : (($latest['status'] ?? '') === 'rejected' ? 'resubmit_rejected' : 'submit'),
     ]], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 } catch (Throwable $e) {

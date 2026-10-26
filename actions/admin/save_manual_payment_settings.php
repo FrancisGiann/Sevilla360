@@ -45,8 +45,6 @@ try {
 
     $hoursRaw = trim((string)($_POST['deadline_hours'] ?? ''));
     if (!ctype_digit($hoursRaw) || (int)$hoursRaw < 1 || (int)$hoursRaw > 168) throw new RuntimeException('Deadline must be between 1 and 168 hours.');
-    $reviewHoursRaw = trim((string)($_POST['review_hours'] ?? manual_payment_review_hours($conn)));
-    if (!ctype_digit($reviewHoursRaw) || (int)$reviewHoursRaw < 1 || (int)$reviewHoursRaw > 168) throw new RuntimeException('Review threshold must be between 1 and 168 hours.');
 
     $postedMethods = $_POST['methods'] ?? [];
     if (!is_array($postedMethods) || count($postedMethods) > MANUAL_PAYMENT_MAX_METHODS) {
@@ -124,11 +122,6 @@ try {
     $description = 'Hours to submit or resubmit manual payment proof';
     $stmt->bind_param('sss', $key, $hours, $description);
     if (!$stmt->execute()) throw new RuntimeException('Unable to save the payment deadline.');
-    $key = 'manual_payment_review_hours';
-    $hours = (string)(int)$reviewHoursRaw;
-    $description = 'Hours until pending manual payment proof needs staff escalation; never expires the booking';
-    $stmt->bind_param('sss', $key, $hours, $description);
-    if (!$stmt->execute()) throw new RuntimeException('Unable to save the proof review threshold.');
     if (!$conn->commit()) throw new RuntimeException('Unable to commit payment settings.');
     $transactionStarted = false;
 

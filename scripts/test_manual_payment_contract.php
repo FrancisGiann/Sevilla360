@@ -85,15 +85,14 @@ $checks['receipt conversion prefers efficient formats while leaving QR conversio
     && str_contains($manualPayment, 'manual_payment_apply_jpeg_orientation($image, manual_payment_jpeg_orientation($temporaryPath))')
     && str_contains($manualPayment, 'imagecopyresampled($resized, $image')
     && str_contains($manualPayment, 'return manual_payment_store_verified_image($temporaryPath, $directory, 0644);');
-$checks['pending replacement locks and updates one row while retaining its prior proof snapshot'] = str_contains($proofSubmissionEndpoint, "WHERE booking_id = ? AND status = 'pending' ORDER BY id FOR UPDATE")
+$checks['pending replacement locks and updates one row, then removes its old file only after commit'] = str_contains($proofSubmissionEndpoint, "WHERE booking_id = ? AND status = 'pending' ORDER BY id FOR UPDATE")
     && str_contains($proofSubmissionEndpoint, 'count($pendingRows) > 1')
     && str_contains($proofSubmissionEndpoint, 'manual_payment_submission_decision($pendingSubmission, $existing, (int)$bookingId)')
     && str_contains($proofSubmissionEndpoint, "WHERE id = ? AND booking_id = ? AND status = 'pending'")
     && str_contains($proofSubmissionEndpoint, 'reference_fingerprint = ?')
     && str_contains($proofSubmissionEndpoint, 'submitted_at = NOW()')
     && str_contains($proofSubmissionEndpoint, '\'replacement\' => $decision === \'replace_pending\'')
-    && str_contains($proofSubmissionEndpoint, 'manual_payment_archive_submission_locked($conn, $submissionId)')
-    && !str_contains($proofSubmissionEndpoint, '@unlink(manual_payment_proof_file_path($previousProofFilename))')
+    && strpos($proofSubmissionEndpoint, '$conn->commit()') < strpos($proofSubmissionEndpoint, '@unlink(manual_payment_proof_file_path($previousProofFilename))')
     && str_contains($proofSubmissionEndpoint, 'if ($stored !== null) @unlink($stored[\'path\']);')
     && str_contains($proofSubmissionEndpoint, 'Customer replaced pending ')
     && str_contains($proofSubmissionEndpoint, 'Payment Proof Replaced');
@@ -132,7 +131,7 @@ $checks['dashboard exposes replacement actions for pending proofs in overview an
 $checks['payment client renders server values before handling the empty methods state'] = strpos($paymentClient, "this.booking.textContent = data.reference_no.trim()") < strpos($paymentClient, 'if (!this.methods.length)')
     && strpos($paymentClient, 'this.amount.textContent = new Intl.NumberFormat') < strpos($paymentClient, 'if (!this.methods.length)')
     && strpos($paymentClient, 'this.deadline.textContent = this.formatDeadline') < strpos($paymentClient, 'if (!this.methods.length)')
-    && str_contains($paymentClient, 'The resort has not configured payment methods yet. Your dates are not held until payment proof is submitted; contact the resort')
+    && str_contains($paymentClient, 'The resort has not configured payment methods yet. Your booking is reserved; contact the resort')
     && str_contains($paymentClient, "{ contact: true }");
 $checks['details failures replace loading placeholders and provide retry recovery'] = str_contains($paymentClient, "this.booking.textContent = 'Unavailable'")
     && str_contains($paymentClient, "this.amount.textContent = 'Unavailable'")

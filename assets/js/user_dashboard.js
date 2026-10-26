@@ -1291,7 +1291,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const manualSubmissionStatus = String(data.manual_submission_status || '').toLowerCase();
             if (manualSubmissionContainer && ['pending', 'rejected'].includes(manualSubmissionStatus)) {
                 const proofStatusLabels = {
-                    pending: 'Proof awaiting staff review',
+                    pending: 'Awaiting payment verification',
                     rejected: 'Proof rejected'
                 };
                 const referenceEl = document.getElementById('ud-submitted-payment-reference');

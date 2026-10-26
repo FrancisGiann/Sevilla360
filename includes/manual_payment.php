@@ -16,26 +16,6 @@ function manual_payment_deadline_hours(mysqli $conn): int
     return is_string($value) && ctype_digit($value) && (int)$value >= 1 && (int)$value <= 168 ? (int)$value : 24;
 }
 
-/** Staff escalation threshold only. An overdue review never releases inventory. */
-function manual_payment_review_hours(mysqli $conn): int
-{
-    $result = $conn->query("SELECT setting_value FROM system_settings WHERE setting_key = 'manual_payment_review_hours' LIMIT 1");
-    $value = $result instanceof mysqli_result ? $result->fetch_assoc()['setting_value'] ?? null : null;
-    return is_string($value) && ctype_digit($value) && (int)$value >= 1 && (int)$value <= 168 ? (int)$value : 24;
-}
-
-function manual_payment_proof_review_overdue(string $submittedAt, int $reviewHours, ?DateTimeImmutable $now = null): bool
-{
-    if ($reviewHours < 1 || $reviewHours > 168) return false;
-    try {
-        $submitted = new DateTimeImmutable($submittedAt, new DateTimeZone('Asia/Manila'));
-    } catch (Throwable $error) {
-        return false;
-    }
-    $now = ($now ?? new DateTimeImmutable('now', new DateTimeZone('Asia/Manila')))->setTimezone(new DateTimeZone('Asia/Manila'));
-    return $submitted->modify("+{$reviewHours} hours") <= $now;
-}
-
 function manual_payment_load_instructions(mysqli $conn): array
 {
     $stmt = $conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'manual_payment_instructions' LIMIT 1");
@@ -266,7 +246,7 @@ function manual_payment_expiry_candidate(array $booking, bool $hasPendingProof, 
 {
     if ($hasPendingProof
         || ($booking['source'] ?? '') !== 'Online'
-        || !in_array((string)($booking['booking_status'] ?? ''), ['Awaiting Proof', 'Pending', 'Confirmed'], true)
+        || !in_array((string)($booking['booking_status'] ?? ''), ['Pending', 'Confirmed'], true)
         || (int)($booking['is_completed'] ?? 0) === 1
         || (($booking['venue_category'] ?? '') === 'Event Hall' && ($booking['booking_status'] ?? '') === 'Pending')
         || ($booking['payment_status'] ?? '') !== 'Unpaid'
@@ -451,75 +431,6 @@ function manual_payment_submission_decision(?array $pending, ?array $matchingRef
         throw new RuntimeException('That transaction reference has already been submitted. Choose a new reference for replacement.');
     }
     return 'replace_pending';
-}
-
-/** Snapshot the old operational row before any replacement or staff decision. */
-function manual_payment_archive_submission_locked(mysqli $conn, int $submissionId): void
-{
-    $stmt = $conn->prepare('INSERT INTO manual_payment_submission_history (submission_id, booking_id, status, customer_user_id, reviewer_user_id, payment_id, payment_method, expected_amount, transaction_reference, reference_fingerprint, proof_filename, proof_mime, proof_size_bytes, proof_sha256, rejection_reason, submitted_at, reviewed_at) SELECT id, booking_id, status, customer_user_id, reviewer_user_id, payment_id, payment_method, expected_amount, transaction_reference, reference_fingerprint, proof_filename, proof_mime, proof_size_bytes, proof_sha256, rejection_reason, submitted_at, reviewed_at FROM manual_payment_submissions WHERE id = ?');
-    if (!$stmt) throw new RuntimeException('Unable to prepare payment proof history.');
-    $stmt->bind_param('i', $submissionId);
-    if (!$stmt->execute() || $stmt->affected_rows !== 1) throw new RuntimeException('Unable to preserve payment proof history.');
-}
-
-/**
- * The booking row must already be locked. Every writer must lock the resource
- * venue rows before changing inventory ownership; the same unit can be claimed
- * by only one first proof. False means a real proof still needs staff review,
- * but the booking must not be represented as a reservation.
- */
-function manual_payment_claim_inventory_locked(mysqli $conn, array $booking): bool
-{
-    require_once __DIR__ . '/booking_rules.php';
-    require_once __DIR__ . '/seminars.php';
-    $bookingId = (int)$booking['id'];
-    $resources = [[
-        'venue_id' => (int)$booking['venue_id'],
-        'start_date' => (string)$booking['start_date'],
-        'end_date' => (string)$booking['end_date'],
-    ]];
-    $roomStmt = $conn->prepare('SELECT venue_id, start_date, end_date FROM booking_rooms WHERE booking_id = ? ORDER BY venue_id');
-    if (!$roomStmt) throw new RuntimeException('Unable to load booking resources.');
-    $roomStmt->bind_param('i', $bookingId);
-    if (!$roomStmt->execute()) throw new RuntimeException('Unable to load booking resources.');
-    foreach ($roomStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $room) $resources[] = $room;
-    booking_lock_venues_in_order($conn, array_column($resources, 'venue_id'));
-
-    foreach ($resources as $resource) {
-        $venueId = (int)$resource['venue_id'];
-        $start = (string)$resource['start_date'];
-        $end = (string)$resource['end_date'];
-        $categoryStmt = $conn->prepare('SELECT category, status FROM venues WHERE id = ?');
-        if (!$categoryStmt) throw new RuntimeException('Unable to inspect booking resource.');
-        $categoryStmt->bind_param('i', $venueId);
-        if (!$categoryStmt->execute()) throw new RuntimeException('Unable to inspect booking resource.');
-        $venue = $categoryStmt->get_result()->fetch_assoc();
-        if (!$venue || $venue['status'] !== 'Available') return false;
-        $category = (string)$venue['category'];
-        $overlap = booking_overlap_sql($category);
-        $direct = $conn->prepare("SELECT id FROM bookings WHERE venue_id = ? AND id <> ? AND booking_status IN ('Pending','Confirmed','Completed') AND COALESCE(source,'') <> 'Maintenance' AND {$overlap} LIMIT 1 FOR UPDATE");
-        if (!$direct) throw new RuntimeException('Unable to check booking conflict.');
-        $direct->bind_param('iiss', $venueId, $bookingId, $end, $start);
-        if (!$direct->execute()) throw new RuntimeException('Unable to check booking conflict.');
-        if ($direct->get_result()->num_rows > 0) return false;
-        $addonOverlap = booking_overlap_sql($category, 'br.start_date', 'br.end_date');
-        $addon = $conn->prepare("SELECT br.id FROM booking_rooms br JOIN bookings b ON b.id = br.booking_id JOIN venues parent_v ON parent_v.id = b.venue_id WHERE br.venue_id = ? AND b.id <> ? AND b.booking_status IN ('Pending','Confirmed','Completed') AND NOT (b.booking_status = 'Pending' AND parent_v.category = 'Event Hall') AND COALESCE(b.source,'') <> 'Maintenance' AND {$addonOverlap} LIMIT 1 FOR UPDATE");
-        if (!$addon) throw new RuntimeException('Unable to check room allocation.');
-        $addon->bind_param('iiss', $venueId, $bookingId, $end, $start);
-        if (!$addon->execute()) throw new RuntimeException('Unable to check room allocation.');
-        if ($addon->get_result()->num_rows > 0) return false;
-        $lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() AND {$overlap} LIMIT 1");
-        if (!$lock) throw new RuntimeException('Unable to check staff hold.');
-        $lock->bind_param('iss', $venueId, $end, $start);
-        if (!$lock->execute()) throw new RuntimeException('Unable to check staff hold.');
-        if ($lock->get_result()->num_rows > 0) return false;
-        $maintenance = $conn->prepare('SELECT id FROM maintenance WHERE venue_id = ? AND is_blocking = 1 AND (status = \'Scheduled\' OR status IS NULL) AND start_date <= ? AND end_date >= ? LIMIT 1');
-        if (!$maintenance) throw new RuntimeException('Unable to check maintenance.');
-        $maintenance->bind_param('iss', $venueId, $end, $start);
-        if (!$maintenance->execute()) throw new RuntimeException('Unable to check maintenance.');
-        if ($maintenance->get_result()->num_rows > 0 || seminar_has_resource_conflict($conn, $venueId, $start, $end)) return false;
-    }
-    return true;
 }
 
 function manual_payment_expected_amount(array $booking): float
@@ -887,7 +798,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
     require_once __DIR__ . '/request_context.php';
     $limit = max(1, min(500, $limit));
     $completionSql = booking_completion_sql('b');
-    $stmt = $conn->prepare("SELECT b.id FROM bookings b WHERE b.source = 'Online' AND b.booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND b.payment_status = 'Unpaid' AND b.amount_paid = 0 AND b.payment_due_at <= NOW() AND NOT {$completionSql} AND NOT EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AND NOT (b.booking_status = 'Pending' AND EXISTS (SELECT 1 FROM venues v WHERE v.id = b.venue_id AND v.category = 'Event Hall')) ORDER BY b.payment_due_at, b.id LIMIT ?");
+    $stmt = $conn->prepare("SELECT b.id FROM bookings b WHERE b.source = 'Online' AND b.booking_status IN ('Pending', 'Confirmed') AND b.payment_status = 'Unpaid' AND b.amount_paid = 0 AND b.payment_due_at <= NOW() AND NOT {$completionSql} AND NOT EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AND NOT (b.booking_status = 'Pending' AND EXISTS (SELECT 1 FROM venues v WHERE v.id = b.venue_id AND v.category = 'Event Hall')) ORDER BY b.payment_due_at, b.id LIMIT ?");
     if (!$stmt) throw new RuntimeException('Unable to find expired bookings.');
     $stmt->bind_param('i', $limit);
     if (!$stmt->execute()) throw new RuntimeException('Unable to find expired bookings.');
@@ -914,7 +825,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
                 $conn->commit();
                 continue;
             }
-            $stmtUpdate = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ? AND source = 'Online' AND booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND payment_status = 'Unpaid' AND amount_paid = 0 AND payment_due_at <= NOW()");
+            $stmtUpdate = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ? AND source = 'Online' AND booking_status IN ('Pending', 'Confirmed') AND payment_status = 'Unpaid' AND amount_paid = 0 AND payment_due_at <= NOW()");
             if (!$stmtUpdate) throw new RuntimeException('Unable to expire an unpaid booking.');
             $stmtUpdate->bind_param('i', $bookingId);
             if (!$stmtUpdate->execute()) throw new RuntimeException('Unable to expire an unpaid booking.');

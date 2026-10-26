@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/booking_lifecycle.php';
-require_once __DIR__ . '/manual_payment.php';
 
 /** Fetch unresolved admin actions as normalized, account-aware items. */
 function get_admin_action_notifications(mysqli $conn, ?int $limit = null, ?int $current_user_id = null): array
@@ -8,8 +7,6 @@ function get_admin_action_notifications(mysqli $conn, ?int $limit = null, ?int $
     $limit = $limit === null ? null : max(1, min(100, $limit));
     $current_user_id = $current_user_id ?? (int)($_SESSION['user_id'] ?? 0);
     $completion = booking_completion_sql('b');
-    $reviewHours = manual_payment_review_hours($conn);
-    $overdue = "m.submitted_at <= DATE_SUB(NOW(), INTERVAL {$reviewHours} HOUR)";
     $sql = "
         SELECT * FROM (
             SELECT CONCAT('booking:', b.id, ':new') AS notification_key, 'new_booking' AS kind,
@@ -35,14 +32,13 @@ function get_admin_action_notifications(mysqli $conn, ?int $limit = null, ?int $
             WHERE rr.status = 'Pending' AND b.booking_status <> 'Cancelled' AND NOT {$completion}
               AND b.source <> 'Maintenance' AND b.reference_no NOT LIKE 'MAINT-%' AND c.last_name <> 'MAINTENANCE'
             UNION ALL
-            SELECT CONCAT('payment-proof:', m.booking_id, ':', m.id, ':', m.proof_sha256, ':', UNIX_TIMESTAMP(m.submitted_at), IF({$overdue}, ':overdue', '')), 'payment_proof',
-                IF({$overdue}, 'Payment Proof Overdue', 'Payment Proof Pending'),
-                CONCAT(IF({$overdue}, 'Escalate overdue payment proof for ', 'Payment proof awaiting review for '), v.name, ' (#', b.reference_no, '). Review the proof before changing inventory.'), b.id, b.reference_no, m.id, m.submitted_at,
+            SELECT CONCAT('payment-proof:', m.booking_id, ':', m.id, ':', m.proof_sha256, ':', UNIX_TIMESTAMP(m.submitted_at)), 'payment_proof', 'Payment Proof Pending',
+                CONCAT('Payment proof awaiting review for ', v.name, ' (#', b.reference_no, ')'), b.id, b.reference_no, m.id, m.submitted_at,
                 CONCAT('admin_dashboard.php?page=bookings&booking_id=', b.id, '&open_payment_proof=', m.id)
             FROM manual_payment_submissions m JOIN bookings b ON b.id = m.booking_id JOIN venues v ON v.id = b.venue_id JOIN customers c ON c.id = b.customer_id
-            WHERE m.status = 'pending' AND b.booking_status <> 'Cancelled'
+            WHERE m.status = 'pending' AND b.booking_status <> 'Cancelled' AND NOT {$completion}
               AND b.source <> 'Maintenance' AND b.reference_no NOT LIKE 'MAINT-%' AND c.last_name <> 'MAINTENANCE'
-        ) actions ORDER BY (title = 'Payment Proof Overdue') DESC, action_timestamp DESC, booking_id DESC";
+        ) actions ORDER BY action_timestamp DESC, booking_id DESC";
     if ($limit !== null) $sql .= " LIMIT {$limit}";
     $result = $conn->query($sql);
     if (!$result) throw new RuntimeException('Unable to fetch admin action notifications: ' . $conn->error);
@@ -82,7 +78,7 @@ function admin_notification_normalize_item(array $row, bool $is_read): array
 /** Only currently unresolved server-generated keys may be persisted. */
 function admin_notification_key_is_active(mysqli $conn, string $key): bool
 {
-    if (!preg_match('/\A(?:booking:[1-9][0-9]*:new|cancellation:[1-9][0-9]*|reschedule:[1-9][0-9]*|payment-proof:[1-9][0-9]*:[1-9][0-9]*:[a-f0-9]{64}:[1-9][0-9]*(?::overdue)?)\z/', $key)) return false;
+    if (!preg_match('/\A(?:booking:[1-9][0-9]*:new|cancellation:[1-9][0-9]*|reschedule:[1-9][0-9]*|payment-proof:[1-9][0-9]*:[1-9][0-9]*:[a-f0-9]{64}:[1-9][0-9]*)\z/', $key)) return false;
     foreach (get_admin_action_notifications($conn, null, 0) as $item) {
         if (hash_equals((string)$item['key'], $key)) return true;
     }

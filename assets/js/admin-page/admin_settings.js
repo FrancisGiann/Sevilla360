@@ -354,16 +354,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   manualPaymentSave?.addEventListener('click', async () => {
     const hours = document.getElementById('manual-payment-deadline');
-    const reviewHours = document.getElementById('manual-payment-review-hours');
     if (manualPaymentForm && !manualPaymentForm.reportValidity()) return;
     if (!hours || !/^[0-9]+$/.test(hours.value) || Number(hours.value) < 1 || Number(hours.value) > 168) {
       hours?.focus();
       setManualPaymentStatus('Set a deadline between 1 and 168 hours.', true);
-      return;
-    }
-    if (!reviewHours || !/^[0-9]+$/.test(reviewHours.value) || Number(reviewHours.value) < 1 || Number(reviewHours.value) > 168) {
-      reviewHours?.focus();
-      setManualPaymentStatus('Set a review threshold between 1 and 168 hours.', true);
       return;
     }
     const originalText = manualPaymentSave.textContent;

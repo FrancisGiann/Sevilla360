@@ -20,7 +20,6 @@ $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true
 $social_links = is_array($social_links) ? $social_links : [];
 $manual_payment_instructions = manual_payment_load_instructions($conn);
 $manual_payment_deadline_hours = manual_payment_deadline_hours($conn);
-$manual_payment_review_hours = manual_payment_review_hours($conn);
 $support_defaults = [
     'support_intro' => 'Everything you need to plan your event or stay with confidence.',
     'support_contact_heading' => 'We are here to help',
@@ -459,16 +458,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <div class="form-group">
                             <label for="manual-payment-deadline">Deadline (hours)</label>
                             <input type="number" class="form-control" id="manual-payment-deadline" name="deadline_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_deadline_hours; ?>" required>
-                        </div>
-                    </div>
-                    <div class="manual-payment-deadline settings-section-card">
-                        <div>
-                            <h3>Proof review escalation</h3>
-                            <p>Flag an unreviewed receipt for urgent staff attention after this many hours. The booking stays reserved until staff approves, rejects, or resolves it.</p>
-                        </div>
-                        <div class="form-group">
-                            <label for="manual-payment-review-hours">Review threshold (hours)</label>
-                            <input type="number" class="form-control" id="manual-payment-review-hours" name="review_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_review_hours; ?>" required>
                         </div>
                     </div>
                     <div class="manual-payment-list-heading">

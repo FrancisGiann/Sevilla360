@@ -58,10 +58,10 @@ try {
     if (!$lookup->execute()) throw new RuntimeException('Unable to load payment submission.');
     $bookingId = (int)($lookup->get_result()->fetch_assoc()['booking_id'] ?? 0);
     if ($bookingId < 1) throw new RuntimeException('Payment submission not found.');
-    if (!$conn->query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED') || !$conn->begin_transaction()) throw new RuntimeException('Unable to start payment review.');
+    if (!$conn->begin_transaction()) throw new RuntimeException('Unable to start payment review.');
 
     $completionSql = booking_completion_sql('b');
-    $lockBooking = $conn->prepare("SELECT b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, b.payment_due_at, b.proof_first_submitted_at, b.proof_rejections_count, b.proof_retry_submitted_at, b.proof_inventory_conflict, CASE WHEN b.end_date < CURDATE() THEN 1 ELSE 0 END AS event_ended, b.source, c.user_id, c.email, c.first_name, c.last_name, v.name AS venue_name, v.category AS venue_category, CASE WHEN {$completionSql} THEN 1 ELSE 0 END AS is_completed FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
+    $lockBooking = $conn->prepare("SELECT b.id, b.reference_no, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, b.payment_due_at, b.end_date, CASE WHEN b.end_date < CURDATE() THEN 1 ELSE 0 END AS event_ended, b.source, c.user_id, c.email, c.first_name, c.last_name, v.name AS venue_name, v.category AS venue_category, CASE WHEN {$completionSql} THEN 1 ELSE 0 END AS is_completed FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
     if (!$lockBooking) throw new RuntimeException('Unable to lock booking for payment review.');
     $lockBooking->bind_param('i', $bookingId);
     if (!$lockBooking->execute()) throw new RuntimeException('Unable to lock booking for payment review.');
@@ -91,15 +91,6 @@ try {
     $customerName = trim((string)$booking['first_name'] . ' ' . (string)$booking['last_name']);
 
     if ($decision === 'approve') {
-        if ($booking['booking_status'] === 'Awaiting Proof' || (int)$booking['proof_inventory_conflict'] === 1) {
-            if (!manual_payment_claim_inventory_locked($conn, $booking)) throw new RuntimeException('This date is occupied. Resolve the transferred payment with the customer; do not approve a conflicting reservation.');
-            $claimOnApproval = $conn->prepare("UPDATE bookings SET booking_status = 'Pending', proof_inventory_conflict = 0 WHERE id = ? AND booking_status = 'Awaiting Proof'");
-            if (!$claimOnApproval) throw new RuntimeException('Unable to claim inventory during payment review.');
-            $claimOnApproval->bind_param('i', $bookingId);
-            if (!$claimOnApproval->execute() || $claimOnApproval->affected_rows !== 1) throw new RuntimeException('Inventory claim changed during review.');
-            $booking['booking_status'] = 'Pending';
-            $booking['proof_inventory_conflict'] = 0;
-        }
         $acknowledgedLateVerification = ($request['acknowledge_late_verification'] ?? false) === true;
         manual_payment_assert_approval_eligible($booking, $eventEnded, $acknowledgedLateVerification);
         $currentExpectedCents = manual_payment_expected_amount_cents($booking);
@@ -110,15 +101,9 @@ try {
         $fingerprintCheck->bind_param('si', $submission['reference_fingerprint'], $submissionId);
         if (!$fingerprintCheck->execute()) throw new RuntimeException('Unable to verify transaction-reference uniqueness.');
         if ($fingerprintCheck->get_result()->num_rows > 0) throw new RuntimeException('This transaction reference has already been submitted.');
-        $historyCheck = $conn->prepare('SELECT booking_id FROM manual_payment_submission_history WHERE reference_fingerprint = ? AND booking_id <> ? LIMIT 1');
-        if (!$historyCheck) throw new RuntimeException('Unable to verify historical payment references.');
-        $historyCheck->bind_param('si', $submission['reference_fingerprint'], $bookingId);
-        if (!$historyCheck->execute()) throw new RuntimeException('Unable to verify historical payment references.');
-        if ($historyCheck->get_result()->num_rows > 0) throw new RuntimeException('This transaction reference was previously used for another booking.');
         $methodCode = manual_payment_transaction_method_code((string)$submission['payment_method']);
         $transactionId = 'MANUAL-' . $methodCode . ':' . strtoupper(trim((string)$submission['transaction_reference']));
         $credit = manual_payment_credit_locked($conn, $booking, $currentExpectedCents / 100, (string)$submission['payment_method'], $transactionId, (int)$submissionId, $eventEnded);
-        manual_payment_archive_submission_locked($conn, $submissionId);
         $update = $conn->prepare("UPDATE manual_payment_submissions SET status = 'approved', reviewer_user_id = ?, reviewed_at = NOW(), rejection_reason = NULL, payment_id = ? WHERE id = ? AND status = 'pending'");
         if (!$update) throw new RuntimeException('Unable to approve payment proof.');
         $update->bind_param('iii', $reviewerId, $credit['payment_id'], $submissionId);
@@ -141,31 +126,13 @@ try {
             'booking_status' => (string)$booking['booking_status'],
         ];
     } else {
-        manual_payment_archive_submission_locked($conn, $submissionId);
         $update = $conn->prepare("UPDATE manual_payment_submissions SET status = 'rejected', reviewer_user_id = ?, reviewed_at = NOW(), rejection_reason = ? WHERE id = ? AND status = 'pending'");
         if (!$update) throw new RuntimeException('Unable to reject payment proof.');
         $update->bind_param('isi', $reviewerId, $reason, $submissionId);
         if (!$update->execute() || $update->affected_rows !== 1) throw new RuntimeException('Payment proof was already reviewed.');
         $cancelOverduePending = manual_payment_rejection_cancels_overdue_pending($booking, $eventEnded);
         $unpaid = (float)$booking['amount_paid'] === 0.0 && $booking['payment_status'] === 'Unpaid';
-        $proofClaim = $unpaid && $booking['proof_first_submitted_at'] !== null && $booking['venue_category'] !== 'Event Hall';
-        if ($proofClaim && (int)$booking['proof_rejections_count'] >= 1) {
-            $cancelOverduePending = true;
-            $close = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', proof_rejections_count = 2, payment_due_at = NULL WHERE id = ? AND proof_rejections_count = 1 AND payment_status = 'Unpaid'");
-            if (!$close) throw new RuntimeException('Unable to release rejected booking claim.');
-            $close->bind_param('i', $bookingId);
-            if (!$close->execute() || $close->affected_rows !== 1) throw new RuntimeException('Booking rejection state changed.');
-            $notice = 'Your second payment proof for booking ' . $referenceNo . ' was rejected: ' . $reason . ' The date has been released. Contact the resort about any transferred funds.';
-        } elseif ($proofClaim && !$eventEnded) {
-            $reset = $conn->prepare("UPDATE bookings SET proof_rejections_count = 1, payment_due_at = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE id = ? AND proof_rejections_count = 0");
-            if (!$reset) throw new RuntimeException('Unable to reset the one-time correction window.');
-            $reset->bind_param('i', $bookingId);
-            if (!$reset->execute() || $reset->affected_rows !== 1) throw new RuntimeException('Booking rejection state changed.');
-            $notice = 'Your payment proof for booking ' . $referenceNo . ' was rejected: ' . $reason . ' You may submit one corrected proof within a fresh 24-hour window.';
-            $notice .= $booking['booking_status'] === 'Awaiting Proof'
-                ? ' Your original proof conflicted with another reservation; this date is not held. Staff must resolve any transferred funds.'
-                : ' The date remains held during this window.';
-        } elseif ($eventEnded) {
+        if ($eventEnded) {
             $cancelOverduePending = manual_payment_apply_overdue_rejection_locked($conn, $booking, true);
             $notice = $cancelOverduePending
                 ? 'Your payment proof for booking ' . $referenceNo . ' was not accepted: ' . $reason . ' The event has ended, so the unpaid Pending booking was cancelled and no payment window was reopened.'
@@ -178,7 +145,7 @@ try {
             $dueSql = 'NULL';
             $notice = 'Your payment proof for booking ' . $referenceNo . ' was not accepted: ' . $reason . ' Submit a corrected proof for the remaining balance.';
         }
-        if (!$eventEnded && !$proofClaim) {
+        if (!$eventEnded) {
             $setDue = $conn->prepare("UPDATE bookings SET payment_due_at = {$dueSql} WHERE id = ?");
             if (!$setDue) throw new RuntimeException('Unable to reopen the payment window.');
             $setDue->bind_param('i', $bookingId);

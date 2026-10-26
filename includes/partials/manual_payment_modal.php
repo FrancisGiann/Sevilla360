@@ -2,7 +2,7 @@
     <div class="modal-box manual-payment-modal">
         <button type="button" class="manual-payment-close close-modal" aria-label="Close payment form"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         <h2 class="modal-title" id="manual-payment-title">Submit payment proof</h2>
-        <p id="manual-payment-intro">Review the amount and deadline, then submit your transfer reference and receipt image. Your dates are held only after proof submission claims available inventory.</p>
+        <p id="manual-payment-intro">Your booking is saved and reserved while awaiting payment proof. Review the amount and deadline, pay using a listed option, then submit the transfer reference and receipt image.</p>
         <div class="manual-payment-summary" aria-live="polite" aria-busy="false">
             <p><span>Booking</span><strong id="manual-payment-booking">—</strong></p>
             <p><span>Amount due now</span><strong id="manual-payment-amount">—</strong></p>
