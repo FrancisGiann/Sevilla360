@@ -2545,3 +2545,92 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   .history-table th:last-child,
   .history-table td[data-label="Actions"] { min-width: 190px; }
 }
+
+/* Overview cards need the full mobile column, especially when attention items
+   and long payment labels are present. Keep the desktop layout unchanged. */
+@media (max-width: 700px) {
+  .dashboard-overview .overview-main-grid,
+  .dashboard-overview .overview-main-grid-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-overview .overview-card {
+    min-width: 0;
+    padding: clamp(16px, 4vw, 22px);
+  }
+  .dashboard-overview .overview-card-heading {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 12px;
+  }
+  .dashboard-overview .overview-card-heading > div,
+  .dashboard-overview .next-booking-details,
+  .dashboard-overview .attention-list li > div,
+  .dashboard-overview .recent-booking-row > div {
+    min-width: 0;
+  }
+  .dashboard-overview .overview-card-heading h2,
+  .dashboard-overview .next-booking-details :is(strong, span),
+  .dashboard-overview .overview-empty-state p {
+    overflow-wrap: anywhere;
+  }
+  .dashboard-overview .overview-empty-state {
+    min-height: 116px;
+    padding: 14px;
+    line-height: 1.5;
+  }
+  .dashboard-overview .attention-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+  .dashboard-overview .attention-list :is(.badge, strong, small) {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
+  .dashboard-overview .attention-list a {
+    display: inline-flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+  .dashboard-overview .recent-booking-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "details details" "status action";
+    align-items: center;
+    gap: 10px 12px;
+    padding: 14px 0;
+  }
+  .dashboard-overview .recent-booking-row > div { grid-area: details; }
+  .dashboard-overview .recent-booking-row strong,
+  .dashboard-overview .recent-booking-row small {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.4;
+  }
+  .dashboard-overview .recent-booking-row .badge {
+    grid-area: status;
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+  .dashboard-overview .recent-booking-row .btn-icon-link {
+    grid-area: action;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-overview .overview-card-actions > :is(a, button) {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
