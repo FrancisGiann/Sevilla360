@@ -9,8 +9,9 @@ const php = await readFile(join(root, 'booking.php'), 'utf8');
 const modal = php.match(/<div class="booking-help-overlay"[\s\S]*?<\/section>\s*<\/div>/)?.[0];
 const entry = php.match(/<div class="booking-help-entry">[\s\S]*?<\/div>/)?.[0];
 assert(modal && entry);
+assert.match(entry, /aria-label="How to book"/);
 const page = join(dir, 'guide.html');
-await writeFile(page, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="file://${root}/assets/css/booking_walkthrough.css"></head><body style="font-family:Arial"><div class="booking-section"><div data-booking-tablist><button type="button" role="tab" data-tab="event-hall" aria-selected="true">Event</button><button type="button" role="tab" data-tab="hotel-rooms" aria-selected="false">Hotel</button><button type="button" role="tab" data-tab="resort-villa" aria-selected="false">Villa</button></div>${entry}<input id="notes" value="draft details"><input type="radio" name="villa-stay" value="Day Time Stay" checked><input type="radio" name="villa-stay" value="Overnight"></div>${modal}<script src="file://${root}/assets/js/booking_walkthrough.js"></script></body></html>`);
+await writeFile(page, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="file://${root}/assets/css/booking_walkthrough.css"></head><body style="font-family:Arial"><section class="booking-section">${entry}<div class="booking-main" style="min-height:900px"><div data-booking-tablist><button type="button" role="tab" data-tab="event-hall" aria-selected="true">Event</button><button type="button" role="tab" data-tab="hotel-rooms" aria-selected="false">Hotel</button><button type="button" role="tab" data-tab="resort-villa" aria-selected="false">Villa</button></div><input id="notes" value="draft details"><input type="radio" name="villa-stay" value="Day Time Stay" checked><input type="radio" name="villa-stay" value="Overnight"></div></section>${modal}<script src="file://${root}/assets/js/booking_walkthrough.js"></script></body></html>`);
 const chrome = spawn('google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, `file://${page}`], { stdio: 'ignore' });
 try {
   let port;
@@ -24,6 +25,9 @@ try {
   const call=(method,params={})=>new Promise((resolve,reject)=>{const key=++id; pending.set(key,m=>m.error?reject(new Error(JSON.stringify(m.error))):resolve(m.result)); ws.send(JSON.stringify({id:key,method,params}));});
   const evalJs=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true}); if(r.exceptionDetails) throw Error(r.exceptionDetails.text); return r.result.value;};
   for(let i=0;i<30;i++){if(await evalJs('Boolean(document.getElementById("booking-help-open"))'))break; await new Promise(r=>setTimeout(r,100));}
+  for(let i=0;i<30;i++){if(await evalJs(`document.querySelector('.booking-help-entry').classList.contains('is-visible')`))break; await new Promise(r=>setTimeout(r,100));}
+  assert.equal(await evalJs(`document.querySelector('.booking-help-entry').classList.contains('is-visible')`),true);
+  assert.equal(await evalJs(`document.querySelector('.booking-main').contains(document.getElementById('booking-help-open'))`),false);
   await evalJs(`document.getElementById('booking-help-open').focus(); document.getElementById('booking-help-open').click()`);
   assert.equal(await evalJs(`document.getElementById('booking-help-progress').textContent`),'Step 1 of 4');
   assert.equal(await evalJs(`document.activeElement.id`),'booking-help-step-title');

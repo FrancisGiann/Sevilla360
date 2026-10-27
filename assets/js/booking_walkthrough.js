@@ -14,6 +14,8 @@
     const title = document.getElementById('booking-help-step-title');
     const copy = document.getElementById('booking-help-step-copy');
     const focusable = [closeButton, skipButton, backButton, nextButton];
+    const floatingEntry = openButton.closest('.booking-help-entry');
+    const bookingMain = document.querySelector('.booking-main');
     let step = 0;
     let returnFocus = null;
     let previousOverflow = '';
@@ -103,4 +105,39 @@
     document.addEventListener('focusin', event => {
         if (!overlay.hidden && !dialog.contains(event.target)) closeButton.focus();
     });
+
+    if (floatingEntry && bookingMain) {
+        let queued = false;
+        const updateFloatingHelp = () => {
+            queued = false;
+            const area = bookingMain.getBoundingClientRect();
+            const help = openButton.getBoundingClientRect();
+            const viewportHeight = window.visualViewport?.height || window.innerHeight;
+            const keyboardOpen = window.visualViewport && window.innerHeight - viewportHeight > 120;
+            let visible = area.top < help.bottom && area.bottom > help.bottom + 8 && !keyboardOpen;
+            if (visible && document.activeElement !== openButton && overlay.hidden) {
+                const overlaps = element => {
+                    const rect = element.getBoundingClientRect();
+                    return rect.width > 0 && rect.height > 0
+                        && rect.left < help.right + 6 && rect.right > help.left - 6
+                        && rect.top < help.bottom + 6 && rect.bottom > help.top - 6;
+                };
+                visible = !Array.from(bookingMain.querySelectorAll('button, input, select, textarea, a, .calendar-ui'))
+                    .some(overlaps)
+                    && !Array.from(document.querySelectorAll('[data-receptionist-chat-toggle]')).some(overlaps);
+            }
+            floatingEntry.classList.toggle('is-visible', visible);
+        };
+        const scheduleFloatingHelp = () => {
+            if (queued) return;
+            queued = true;
+            window.requestAnimationFrame(updateFloatingHelp);
+        };
+        window.addEventListener('scroll', scheduleFloatingHelp, { passive: true });
+        window.addEventListener('resize', scheduleFloatingHelp);
+        window.visualViewport?.addEventListener('resize', scheduleFloatingHelp);
+        bookingMain.addEventListener('click', scheduleFloatingHelp);
+        bookingMain.addEventListener('change', scheduleFloatingHelp);
+        scheduleFloatingHelp();
+    }
 })();

@@ -158,6 +158,9 @@ unset($villa);
 
 <!-- Main Booking Section -->
 <section class="booking-section">
+    <div class="booking-help-entry">
+        <button type="button" class="booking-help-open" id="booking-help-open" aria-label="How to book" aria-haspopup="dialog" aria-controls="booking-help-dialog" data-help-label="How to book"><span aria-hidden="true">?</span></button>
+    </div>
     <div class="container booking-grid">
 
         <!-- Centered booking flow; the full summary appears inside Review. -->
@@ -170,11 +173,6 @@ unset($villa);
                 <button type="button" class="tab-btn" id="booking-tab-resort-villa" role="tab" aria-selected="false" aria-controls="tab-resort-villa" tabindex="-1" data-tab="resort-villa">Resort Villa</button>
             </div>
             <span class="booking-compact-estimate" id="booking-compact-estimate" aria-live="polite" hidden></span>
-
-            <div class="booking-help-entry">
-                <button type="button" class="booking-help-open" id="booking-help-open" aria-haspopup="dialog" aria-controls="booking-help-dialog">How to book</button>
-                <span>A quick guide you can skip or reopen anytime.</span>
-            </div>
 
             <nav class="booking-stepper" aria-label="Booking steps" data-booking-stepper>
                 <ol>
