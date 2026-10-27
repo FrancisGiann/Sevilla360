@@ -4,6 +4,32 @@ require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 require_once '../../includes/password_policy.php';
 require_once __DIR__ . '/../../includes/contact_verification.php';
+
+function registration_fail(string $message, string $title = 'Error', string $type = 'error'): never
+{
+    if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, private');
+        http_response_code(400);
+        echo json_encode(['state' => 'error', 'message' => $message]);
+        exit;
+    }
+    $_SESSION['auth_alert'] = ['title' => $title, 'message' => $message, 'type' => $type];
+    header('Location: ../../auth.php');
+    exit;
+}
+
+function registration_success(string $url): never
+{
+    if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store, private');
+        echo json_encode(['state' => 'redirect', 'url' => $url]);
+        exit;
+    }
+    header('Location: ' . $url);
+    exit;
+}
 if (phone_signup_enabled()) require __DIR__ . '/phone_register_process.php';
 
 // =========================================================================
@@ -23,23 +49,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 // CSRF PROTECTION FOR FORMS
     if (empty($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Security token expired. Please refresh the page and try again.', 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('Security token expired. Please refresh the page and try again.');
     }
     
     // HONEYPOT CHECK
     if (!empty($_POST['website_url_honeypot'])) {
         // Bot detected
-        echo "<script>window.location.href = '../../auth.php';</script>";
-        exit();
+        registration_fail('Please try again later.');
     }
     
     // RATE LIMITING CHECK
     if (!check_rate_limit($conn, 'register_attempt', 3, 60)) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many registration attempts. Please try again later.', 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('Too many registration attempts. Please try again later.');
     }
     
     //  Sanitize and retrieve POST data
@@ -52,26 +73,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     //  Basic Validation
     if ($password !== $confirm_password) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Passwords do not match!', 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('Passwords do not match!');
     }
 
     if (empty($first_name) || empty($last_name) || empty($email) || empty($password) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Please fill in all required fields.', 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('Please fill in all required fields.');
     }
     $password_policy = password_policy_validate($password);
     if (!$password_policy['valid']) {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => $password_policy['message'], 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail($password_policy['message']);
     }
     if (!isset($_POST['consent']) || $_POST['consent'] !== '1') {
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'You must accept the Terms of Service and Privacy Policy.', 'type' => 'error'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('You must accept the Terms of Service and Privacy Policy.');
     }
 
     // Check if the user ALREADY exists in the 'users' table (True duplicates)
@@ -88,9 +101,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             echo json_encode(['state' => 'unavailable']);
             exit();
         }
-        $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'This email cannot be used to create an account. Try another email or sign in.', 'type' => 'warning'];
-        header("Location: ../../auth.php");
-        exit();
+        registration_fail('This email cannot be used to create an account. Try another email or sign in.', 'Notice', 'warning');
     }
     $stmt_check_user->close();
 
@@ -172,8 +183,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             send_custom_email($email, "$first_name $last_name", $subject, $html_content);
             
             // Redirect to Verification Page silently
-            header("Location: ../../auth.php?verify_email=" . urlencode($email));
-            exit();
+            registration_success('../../auth.php?verify_email=' . urlencode($email));
 
         } catch (Exception $mail_e) {
             // Keep the existing cleanup behavior if verification delivery fails.
@@ -182,9 +192,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ? $mail_e->getMessage()
                 : 'Unexpected mail exception.';
             error_log('Registration verification email delivery failed: ' . $mailDiagnostic);
-            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'We could not send your verification email. Please try again later or contact the resort for help.', 'type' => 'error'];
-            header("Location: ../../auth.php");
-            exit();
+            registration_fail('We could not send your verification email. Please try again later or contact the resort for help.');
         }
         // =========================================================================
 
@@ -197,9 +205,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             echo json_encode(['state' => 'unavailable']);
             exit();
         }
-        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'We could not create your account right now. Please try again.', 'type' => 'error'];
-        header('Location: ../../auth.php');
-        exit();
+        registration_fail('We could not create your account right now. Please try again.');
     }
 
     if (isset($stmt1)) $stmt1->close();

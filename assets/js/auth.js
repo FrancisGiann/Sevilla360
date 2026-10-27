@@ -267,8 +267,17 @@ document.addEventListener("DOMContentLoaded", () => {
                   }
                   return;
               }
-              if (response.redirected && new URL(response.url).origin === window.location.origin) {
-                  window.location.assign(response.url);
+              const result = await response.json();
+              if (result.state === 'error' && typeof result.message === 'string' && !response.ok) {
+                  showAlert('Notice', result.message, 'warning');
+                  return;
+              }
+              if (result.state === 'redirect' && typeof result.url === 'string' && response.ok) {
+                  const target = new URL(result.url, registrationForm.action);
+                  if (target.origin !== window.location.origin || !target.pathname.endsWith('/auth.php')) {
+                      throw new Error('Unexpected registration destination');
+                  }
+                  window.location.assign(target.href);
                   return;
               }
               throw new Error('Registration unavailable');
