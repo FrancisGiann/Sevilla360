@@ -159,7 +159,7 @@ unset($villa);
 <!-- Main Booking Section -->
 <section class="booking-section">
     <div class="booking-help-entry">
-        <button type="button" class="booking-help-open" id="booking-help-open" aria-label="How to book" aria-haspopup="dialog" aria-controls="booking-help-dialog" data-help-label="How to book"><span aria-hidden="true">?</span></button>
+        <button type="button" class="booking-help-open" id="booking-help-open" aria-label="Booking guide: How to book" aria-haspopup="dialog" aria-controls="booking-help-dialog" data-help-label="How to book"><span class="booking-help-icon" aria-hidden="true">?</span><span class="booking-help-label">Booking guide</span></button>
     </div>
     <div class="container booking-grid">
 

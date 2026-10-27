@@ -9,7 +9,7 @@ const php = await readFile(join(root, 'booking.php'), 'utf8');
 const modal = php.match(/<div class="booking-help-overlay"[\s\S]*?<\/section>\s*<\/div>/)?.[0];
 const entry = php.match(/<div class="booking-help-entry">[\s\S]*?<\/div>/)?.[0];
 assert(modal && entry);
-assert.match(entry, /aria-label="How to book"/);
+assert.match(entry, /aria-label="Booking guide: How to book"/);
 const page = join(dir, 'guide.html');
 await writeFile(page, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="file://${root}/assets/css/booking_walkthrough.css"></head><body style="font-family:Arial"><section class="booking-section">${entry}<div class="booking-main" style="min-height:900px"><div data-booking-tablist><button type="button" role="tab" data-tab="event-hall" aria-selected="true">Event</button><button type="button" role="tab" data-tab="hotel-rooms" aria-selected="false">Hotel</button><button type="button" role="tab" data-tab="resort-villa" aria-selected="false">Villa</button></div><input id="notes" value="draft details"><input type="radio" name="villa-stay" value="Day Time Stay" checked><input type="radio" name="villa-stay" value="Overnight"></div></section>${modal}<script src="file://${root}/assets/js/booking_walkthrough.js"></script></body></html>`);
 const chrome = spawn('google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, `file://${page}`], { stdio: 'ignore' });

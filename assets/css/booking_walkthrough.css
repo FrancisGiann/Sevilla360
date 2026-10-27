@@ -23,7 +23,7 @@
   font: 700 1rem/1 var(--font-body);
 }
 
-.booking-help-open > span {
+.booking-help-icon {
   display: grid;
   place-items: center;
   width: 34px;
@@ -33,7 +33,8 @@
   background: #fffdf8;
   box-shadow: 0 4px 14px rgba(42, 37, 34, 0.16);
 }
-.booking-help-open:hover > span { background: #f4e9da; }
+.booking-help-open:hover .booking-help-icon { background: #f4e9da; }
+.booking-help-label { display: none; }
 .booking-help-open::after {
   position: absolute;
   top: 50%;
@@ -51,6 +52,34 @@
 }
 .booking-help-open:hover::after,
 .booking-help-open:focus-visible::after { opacity: 1; }
+
+@media (min-width: 1280px) {
+  .booking-help-entry { right: max(12px, calc((100vw - 960px) / 2 - 160px)); }
+  .booking-help-open {
+    display: inline-flex;
+    justify-content: center;
+    gap: 7px;
+    width: 150px;
+    padding: 0 10px;
+    border: 1px solid #67471f;
+    border-radius: 999px;
+    background: #fffdf8;
+    box-shadow: 0 4px 14px rgba(42, 37, 34, 0.16);
+    font: 700 0.875rem/1 var(--font-body);
+  }
+  .booking-help-icon {
+    display: inline;
+    width: auto;
+    height: auto;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 1.1rem;
+  }
+  .booking-help-label { display: inline; white-space: nowrap; }
+  .booking-help-open:hover { background: #f4e9da; }
+  .booking-help-open::after { display: none; }
+}
 
 .booking-help-overlay[hidden] { display: none; }
 .booking-help-overlay {
