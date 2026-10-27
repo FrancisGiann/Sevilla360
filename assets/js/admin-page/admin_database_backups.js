@@ -29,8 +29,9 @@
         message.classList.toggle('database-backup-alert-info', !isError);
         message.hidden = !text;
     };
-    const makeCell = (row, value) => {
+    const makeCell = (row, value, label) => {
         const cell = document.createElement('td');
+        cell.dataset.label = label;
         cell.textContent = value == null || value === '' ? '—' : String(value);
         row.appendChild(cell);
         return cell;
@@ -78,10 +79,11 @@
         }
         for (const archive of archives) {
             const row = document.createElement('tr');
-            makeCell(row, formatDate(archive.created_at));
-            makeCell(row, archive.kind);
-            makeCell(row, formatSize(archive.bytes));
+            makeCell(row, formatDate(archive.created_at), 'Created');
+            makeCell(row, archive.kind, 'Type');
+            makeCell(row, formatSize(archive.bytes), 'Size');
             const integrityCell = document.createElement('td');
+            integrityCell.dataset.label = 'Header check';
             const badge = document.createElement('span');
             const headerValid = archive.header_valid === true;
             badge.className = `database-backup-status database-backup-status-${headerValid ? 'valid' : 'invalid'}`;
@@ -89,6 +91,7 @@
             integrityCell.appendChild(badge);
             row.appendChild(integrityCell);
             const actions = document.createElement('td');
+            actions.dataset.label = 'Actions';
             if (headerValid) actions.appendChild(downloadButton(archive.id));
             else actions.textContent = '—';
             if (headerValid) {
@@ -113,17 +116,19 @@
         }
         for (const job of jobs) {
             const row = document.createElement('tr');
-            makeCell(row, `${job.action || 'job'} · ${formatDate(job.created_at)}`);
+            makeCell(row, `${job.action || 'job'} · ${formatDate(job.created_at)}`, 'Request');
             const stateCell = document.createElement('td');
+            stateCell.dataset.label = 'State';
             const badge = document.createElement('span');
             const status = String(job.status || 'unknown').replace(/[^a-z_]/gi, '').toLowerCase();
             badge.className = `database-backup-status database-backup-status-${status}`;
             badge.textContent = String(job.status || 'unknown').replaceAll('_', ' ');
             stateCell.appendChild(badge);
             row.appendChild(stateCell);
-            makeCell(row, job.phase);
-            makeCell(row, job.message);
+            makeCell(row, job.phase, 'Progress');
+            makeCell(row, job.message, 'Details');
             const safetyCell = document.createElement('td');
+            safetyCell.dataset.label = 'Safety archive';
             if (job.safety_archive_id) {
                 safetyCell.appendChild(downloadButton(job.safety_archive_id));
             } else {

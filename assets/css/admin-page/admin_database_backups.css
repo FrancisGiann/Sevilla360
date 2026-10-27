@@ -46,6 +46,19 @@
 .database-backup-page :focus-visible{outline:3px solid #9b7023;outline-offset:2px}
 .database-backup-page ::selection{background:#e7cf9e;color:#2a2522}
 @media(max-width:850px){.database-backup-page{padding:20px 18px 34px}.database-backup-tools{grid-template-columns:1fr}.database-backup-tool+.database-backup-tool{border-top:1px solid rgba(42,37,34,.12);border-left:0}.database-backup-restore-fields{grid-template-columns:1fr}}
-@media(max-width:560px){.database-backup-page{padding:18px 12px 28px}.database-backup-intro{align-items:flex-start;flex-direction:column}.database-backup-upload-row{align-items:stretch;flex-direction:column}.database-backup-tool{padding:16px}.database-backup-restore{padding:15px}.database-backup-table{min-width:660px}}
+@media(max-width:560px){.database-backup-page{padding:18px 12px 28px}.database-backup-intro{align-items:flex-start;flex-direction:column}.database-backup-upload-row{align-items:stretch;flex-direction:column}.database-backup-tool{padding:16px}.database-backup-restore{padding:15px}}
+@media(max-width:900px){
+    .database-backup-table-wrap{overflow:visible;border:0;background:transparent}
+    .database-backup-table,.database-backup-table tbody,.database-backup-table tr,.database-backup-table td{display:block;width:100%;box-sizing:border-box}
+    .database-backup-table thead{display:none}
+    .database-backup-table tr{margin-bottom:12px;border:1px solid rgba(42,37,34,.12);border-radius:8px;background:var(--color-white);overflow:clip}
+    .database-backup-table td,.database-backup-table tr:first-child td{display:grid;grid-template-columns:minmax(0,6.5rem) minmax(0,1fr);gap:10px;align-items:start;min-width:0;padding:10px 12px;border-top:1px solid rgba(42,37,34,.09);overflow-wrap:anywhere}
+    .database-backup-table td:first-child{border-top:0}
+    .database-backup-table td::before{content:attr(data-label);color:#514b47;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+    .database-backup-table td:nth-child(4),.database-backup-table td:nth-child(5){min-width:0}
+    .database-backup-table .database-backup-empty{display:block;text-align:center}
+    .database-backup-table .database-backup-empty::before{content:none}
+    .database-backup-status{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+}
 @media(max-width:850px){.database-backup-page input[type=password],.database-backup-page input[type=text],.database-backup-page input[type=file],.database-backup-page select{min-height:44px;font-size:16px}}
 @media(prefers-reduced-motion:reduce){.database-backup-refresh,.database-backup-button,.database-backup-action{transition:none}}
