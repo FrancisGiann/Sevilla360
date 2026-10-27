@@ -1,0 +1,83 @@
+.booking-help-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin: -0.6rem 0 1.2rem;
+  color: #574c41;
+  font-size: 0.875rem;
+}
+
+.booking-help-open {
+  min-height: 44px;
+  padding: 0.55rem 1rem;
+  border: 1px solid #67471f;
+  border-radius: 6px;
+  background: #fffdf8;
+  color: #67471f;
+  cursor: pointer;
+  font: 700 0.9rem/1.3 var(--font-body);
+}
+
+.booking-help-open:hover { background: #f4e9da; }
+
+.booking-help-overlay[hidden] { display: none; }
+.booking-help-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 1rem;
+  background: rgba(25, 22, 19, 0.76);
+}
+
+.booking-help-dialog {
+  box-sizing: border-box;
+  width: min(100%, 35rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border-radius: 12px;
+  background: #fffdf8;
+  color: #302b26;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-body);
+}
+
+.booking-help-header, .booking-help-actions, .booking-help-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.booking-help-header, .booking-help-actions { justify-content: space-between; }
+.booking-help-header h2 { margin: 0; font: 600 1.8rem/1.2 var(--font-heading); }
+.booking-help-dialog p { line-height: 1.55; }
+.booking-help-progress { margin: 1.6rem 0 0.35rem; color: #67471f; font-weight: 700; }
+.booking-help-dialog h3 { margin: 0; font: 600 1.4rem/1.3 var(--font-heading); }
+#booking-help-step-copy { min-height: 5em; max-width: 65ch; }
+.booking-help-actions { margin-top: 1.5rem; }
+.booking-help-dialog button {
+  min-height: 44px;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid #67471f;
+  border-radius: 6px;
+  background: transparent;
+  color: #67471f;
+  cursor: pointer;
+  font: 700 0.9rem/1.3 var(--font-body);
+}
+.booking-help-dialog button:hover { background: #f4e9da; }
+.booking-help-dialog #booking-help-next { background: #67471f; color: #fff; }
+.booking-help-dialog button:disabled { opacity: 0.45; cursor: default; }
+.booking-help-dialog :focus-visible, .booking-help-open:focus-visible {
+  outline: 3px solid #a86a1f;
+  outline-offset: 3px;
+}
+@media (max-width: 480px) {
+  .booking-help-actions { align-items: stretch; flex-direction: column-reverse; }
+  .booking-help-actions > div { justify-content: space-between; }
+  .booking-help-actions button { flex: 1; }
+  #booking-help-step-copy { min-height: 0; }
+}

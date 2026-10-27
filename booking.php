@@ -3,10 +3,12 @@ $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = [
     'assets/css/booking.css',
     'assets/css/manual_payment.css',
+    'assets/css/booking_walkthrough.css',
 ];
 $extra_js = [
     'assets/js/manual_payment.js',
     'assets/js/booking.js',
+    'assets/js/booking_walkthrough.js',
 ];
 $active_page = 'booking';              
 require_once 'includes/session_init.php';
@@ -169,6 +171,11 @@ unset($villa);
             </div>
             <span class="booking-compact-estimate" id="booking-compact-estimate" aria-live="polite" hidden></span>
 
+            <div class="booking-help-entry">
+                <button type="button" class="booking-help-open" id="booking-help-open" aria-haspopup="dialog" aria-controls="booking-help-dialog">How to book</button>
+                <span>A quick guide you can skip or reopen anytime.</span>
+            </div>
+
             <nav class="booking-stepper" aria-label="Booking steps" data-booking-stepper>
                 <ol>
                     <?php foreach (['Choose', 'Dates', 'Options', 'Review'] as $index => $step_label): $step_number = $index + 1; ?>
@@ -314,6 +321,26 @@ unset($villa);
 
     </div>
 </section>
+
+<div class="booking-help-overlay" id="booking-help-overlay" hidden>
+    <section class="booking-help-dialog" id="booking-help-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-help-title" aria-describedby="booking-help-description" tabindex="-1">
+        <div class="booking-help-header">
+            <h2 id="booking-help-title">How to book</h2>
+            <button type="button" class="booking-help-close" id="booking-help-close" aria-label="Close booking guide">Close</button>
+        </div>
+        <p id="booking-help-description">Explore the process without changing your booking.</p>
+        <p class="booking-help-progress" id="booking-help-progress" aria-live="polite"></p>
+        <h3 id="booking-help-step-title" tabindex="-1"></h3>
+        <p id="booking-help-step-copy"></p>
+        <div class="booking-help-actions">
+            <button type="button" id="booking-help-skip">Skip guide</button>
+            <div>
+                <button type="button" id="booking-help-back">Back</button>
+                <button type="button" id="booking-help-next">Next</button>
+            </div>
+        </div>
+    </section>
+</div>
 
 <!-- INJECT THE MODALS -->
 <?php include 'includes/partials/booking_modals.php'; ?>

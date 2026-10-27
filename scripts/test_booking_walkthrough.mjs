@@ -1,0 +1,58 @@
+import { spawn } from 'node:child_process';
+import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import assert from 'node:assert/strict';
+const root = process.cwd();
+const dir = await mkdtemp(join(tmpdir(), 'sevilla-guide-'));
+const php = await readFile(join(root, 'booking.php'), 'utf8');
+const modal = php.match(/<div class="booking-help-overlay"[\s\S]*?<\/section>\s*<\/div>/)?.[0];
+const entry = php.match(/<div class="booking-help-entry">[\s\S]*?<\/div>/)?.[0];
+assert(modal && entry);
+const page = join(dir, 'guide.html');
+await writeFile(page, `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="file://${root}/assets/css/booking_walkthrough.css"></head><body style="font-family:Arial"><div class="booking-section"><div data-booking-tablist><button type="button" role="tab" data-tab="event-hall" aria-selected="true">Event</button><button type="button" role="tab" data-tab="hotel-rooms" aria-selected="false">Hotel</button><button type="button" role="tab" data-tab="resort-villa" aria-selected="false">Villa</button></div>${entry}<input id="notes" value="draft details"><input type="radio" name="villa-stay" value="Day Time Stay" checked><input type="radio" name="villa-stay" value="Overnight"></div>${modal}<script src="file://${root}/assets/js/booking_walkthrough.js"></script></body></html>`);
+const chrome = spawn('google-chrome', ['--headless=new', '--no-sandbox', '--disable-gpu', '--allow-file-access-from-files', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, `file://${page}`], { stdio: 'ignore' });
+try {
+  let port;
+  for (let i=0; i<100; i++) { try { port = Number((await readFile(join(dir,'profile/DevToolsActivePort'),'utf8')).split('\n')[0]); break; } catch { await new Promise(r=>setTimeout(r,100)); } }
+  assert(port, 'Chrome did not start');
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+  const ws = new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl);
+  await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true});});
+  let id=0; const pending = new Map();
+  ws.addEventListener('message', e=>{const m=JSON.parse(e.data); if(m.id && pending.has(m.id)){pending.get(m.id)(m);pending.delete(m.id);}});
+  const call=(method,params={})=>new Promise((resolve,reject)=>{const key=++id; pending.set(key,m=>m.error?reject(new Error(JSON.stringify(m.error))):resolve(m.result)); ws.send(JSON.stringify({id:key,method,params}));});
+  const evalJs=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true}); if(r.exceptionDetails) throw Error(r.exceptionDetails.text); return r.result.value;};
+  for(let i=0;i<30;i++){if(await evalJs('Boolean(document.getElementById("booking-help-open"))'))break; await new Promise(r=>setTimeout(r,100));}
+  await evalJs(`document.getElementById('booking-help-open').focus(); document.getElementById('booking-help-open').click()`);
+  assert.equal(await evalJs(`document.getElementById('booking-help-progress').textContent`),'Step 1 of 4');
+  assert.equal(await evalJs(`document.activeElement.id`),'booking-help-step-title');
+  assert.match(await evalJs(`document.getElementById('booking-help-step-copy').textContent`),/inquiry checks availability but does not hold/);
+  for (let i=0;i<3;i++) await evalJs(`document.getElementById('booking-help-next').click()`);
+  assert.equal(await evalJs(`document.getElementById('booking-help-progress').textContent`),'Step 4 of 4');
+  await evalJs(`document.getElementById('booking-help-back').click()`);
+  assert.equal(await evalJs(`document.getElementById('booking-help-progress').textContent`),'Step 3 of 4');
+  await evalJs(`document.getElementById('booking-help-skip').click()`);
+  assert.equal(await evalJs(`document.activeElement.id`),'booking-help-open');
+  assert.equal(await evalJs(`document.getElementById('notes').value`),'draft details');
+  await evalJs(`document.querySelector('[data-tab="event-hall"]').setAttribute('aria-selected','false'); document.querySelector('[data-tab="hotel-rooms"]').setAttribute('aria-selected','true'); document.getElementById('booking-help-open').click()`);
+  assert.match(await evalJs(`document.getElementById('booking-help-step-copy').textContent`),/check-in and a later checkout/);
+  await evalJs(`document.getElementById('booking-help-close').click(); document.querySelector('[data-tab="hotel-rooms"]').setAttribute('aria-selected','false'); document.querySelector('[data-tab="resort-villa"]').setAttribute('aria-selected','true'); document.querySelector('[value="Overnight"]').checked=true; document.getElementById('booking-help-open').click()`);
+  assert.match(await evalJs(`document.getElementById('booking-help-step-copy').textContent`),/whole range must be available/);
+  await evalJs(`document.getElementById('booking-help-next').focus(); document.getElementById('booking-help-next').dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true}))`);
+  assert.equal(await evalJs(`document.activeElement.id`),'booking-help-close');
+  await evalJs(`document.getElementById('booking-help-dialog').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await evalJs(`document.getElementById('booking-help-overlay').hidden`),true);
+  await call('Emulation.setDeviceMetricsOverride',{width:375,height:667,deviceScaleFactor:1,mobile:true});
+  await evalJs(`document.getElementById('booking-help-open').click()`);
+  assert.equal(await evalJs(`document.documentElement.scrollWidth <= innerWidth`),true);
+  assert.equal(await evalJs(`(() => { const r=document.getElementById('booking-help-dialog').getBoundingClientRect(); return r.width <= innerWidth && r.height <= innerHeight; })()`),true);
+  const shot=await call('Page.captureScreenshot',{format:'png'});
+  await writeFile(join(dir,'mobile.png'),Buffer.from(shot.data,'base64'));
+  await call('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false});
+  const desktop=await call('Page.captureScreenshot',{format:'png'});
+  await writeFile(join(dir,'desktop.png'),Buffer.from(desktop.data,'base64'));
+  console.log('PASS walkthrough steps, variants, skip/close/reopen, Escape, focus loop/restore, form state, 375px and 1280px layout');
+  console.log(`Screenshots: ${dir}/mobile.png ${dir}/desktop.png`);
+  ws.close();
+} finally { chrome.kill('SIGTERM'); }
