@@ -1366,6 +1366,29 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
+  const contactActions = {
+      'contact-send-phone': ['request_phone', 'contact-new-phone', 'phone'],
+      'contact-verify-phone': ['verify_phone', 'contact-phone-code', 'code'],
+      'contact-send-email': ['request_recovery_email', 'contact-recovery-email', 'email'],
+      'contact-verify-email': ['verify_recovery_email', 'contact-email-code', 'code']
+  };
+  Object.entries(contactActions).forEach(([id, [action, field, key]]) => {
+      document.getElementById(id)?.addEventListener('click', async function() {
+          const button = this;
+          button.disabled = true;
+          try {
+              const response = await fetch('actions/user/contact_verification.php', {
+                  method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+                  body: JSON.stringify({action, [key]: document.getElementById(field).value})
+              });
+              const data = await response.json();
+              showAlert(data.success ? 'Success' : 'Notice', data.message, data.success ? 'success' : 'error');
+              if (data.success && (action === 'verify_phone' || action === 'verify_recovery_email')) window.location.reload();
+          } catch (_) { showAlert('Connection issue', 'Verification request could not be completed. Try again.', 'error'); }
+          finally { button.disabled = false; }
+      });
+  });
+
   document.getElementById('btn-save-profile')?.addEventListener('click', function() {
       updateSettings({
           action: 'update_profile',

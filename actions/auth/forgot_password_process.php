@@ -4,6 +4,7 @@ require_once '../../config/db_connect.php';
 require_once '../../includes/mailer.php';
 require_once '../../includes/rate_limit.php';
 require_once '../../includes/password_reset_security.php';
+require_once __DIR__ . '/../../includes/contact_verification.php';
 
 $origin = password_reset_origin(is_string($_POST['origin'] ?? null) ? $_POST['origin'] : 'customer');
 $genericRedirect = static function (string $origin): never {
@@ -38,7 +39,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
     // Check if user exists
-    $stmt = $conn->prepare("SELECT id, email, role, status FROM users WHERE email = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, email, role, status, phone_signup_required, recovery_email, recovery_email_verified_at FROM users WHERE email = ? LIMIT 1");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -58,6 +59,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             && (($user['role'] === 'customer' && strcasecmp((string)$user['status'], 'active') === 0)
                 || (in_array($user['role'], ['staff', 'admin'], true) && strcasecmp((string)$staffStatus, 'active') === 0));
         $baseUrl = password_reset_base_url();
+        $resetDestination = contact_reset_destination($user);
+        if ($resetDestination === null) $genericRedirect($origin);
         if (!$isActiveRole || $baseUrl === null) {
             if ($isActiveRole && $baseUrl === null) error_log('Password reset skipped: APP_BASE_URL is missing or invalid.');
             $genericRedirect($origin);
@@ -91,7 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $reset_link = password_reset_link($token, $origin);
         
         try {
-            send_password_reset_email($user['email'], $name, $reset_link);
+            send_password_reset_email($resetDestination, $name, $reset_link);
         } catch (Exception $e) {
             // Ignore mail errors for security (don't leak if email exists or not)
         }

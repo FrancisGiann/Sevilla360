@@ -3,6 +3,8 @@ require_once __DIR__ . '/../../includes/session_init.php';
 require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 require_once '../../includes/password_policy.php';
+require_once __DIR__ . '/../../includes/contact_verification.php';
+if (phone_signup_enabled()) require __DIR__ . '/phone_register_process.php';
 
 // =========================================================================
 // DATABASE HYGIENE: The "Piggyback" Auto-Delete

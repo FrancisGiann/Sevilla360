@@ -31,6 +31,11 @@ if ($customer_res->num_rows === 0) {
 }
 $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
+$phone_verification_user = null;
+$phone_verification_stmt = $conn->prepare('SELECT phone_signup_required,recovery_email,recovery_email_verified_at FROM users WHERE id=?');
+$phone_verification_stmt->bind_param('i',$user_id); $phone_verification_stmt->execute();
+$phone_verification_user = $phone_verification_stmt->get_result()->fetch_assoc();
+$phone_verification_stmt->close();
 
 // 2. Calculate dashboard-wide booking totals independently of the visible page.
 $stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status = 'Pending' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ?");
@@ -547,6 +552,37 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                                 <button type="button" id="btn-save-profile" class="btn btn-save">Save Profile</button>
                             </form>
                         </div>
+
+                        <?php if ((int)($phone_verification_user['phone_signup_required'] ?? 0) === 1): ?>
+                        <div class="settings-card">
+                            <h3 class="settings-title">Verified contact details</h3>
+                            <p>Your current phone stays verified until you confirm a new one. You can confirm a recovery email whenever you are ready.</p>
+                            <div class="settings-form">
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="contact-new-phone">New Philippine mobile number</label>
+                                        <input type="tel" id="contact-new-phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567">
+                                        <button type="button" id="contact-send-phone" class="btn btn-save">Send SMS code</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="contact-phone-code">Phone code</label>
+                                        <input type="text" id="contact-phone-code" class="form-control" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+                                        <button type="button" id="contact-verify-phone" class="btn btn-save">Confirm new phone</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="contact-recovery-email">Recovery email <?php echo empty($phone_verification_user['recovery_email_verified_at']) ? '(not confirmed)' : '(confirmed)'; ?></label>
+                                        <input type="email" id="contact-recovery-email" class="form-control" autocomplete="email" value="<?php echo htmlspecialchars((string)($phone_verification_user['recovery_email'] ?? $customer['email']), ENT_QUOTES, 'UTF-8'); ?>">
+                                        <button type="button" id="contact-send-email" class="btn btn-save">Send email code</button>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="contact-email-code">Email code</label>
+                                        <input type="text" id="contact-email-code" class="form-control" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+                                        <button type="button" id="contact-verify-email" class="btn btn-save">Confirm recovery email</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
 
                         <!-- Preferences -->
                         <div class="settings-card">

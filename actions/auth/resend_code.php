@@ -3,6 +3,12 @@ require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
+require_once __DIR__ . '/../../includes/contact_verification.php';
+if (isset($_POST['email'])) {
+    $phone_stmt=$conn->prepare('SELECT phone_signup_required FROM users WHERE email=? LIMIT 1');
+    $phone_email=trim((string)$_POST['email']); $phone_stmt->bind_param('s',$phone_email); $phone_stmt->execute();
+    if ((int)($phone_stmt->get_result()->fetch_assoc()['phone_signup_required'] ?? 0)===1) require __DIR__ . '/phone_resend_process.php';
+}
 
 // ==========================================
 // CSRF PROTECTION GUARD

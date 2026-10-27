@@ -7,8 +7,18 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = bin2hex(random_b
 require_once 'config/db_connect.php';
 require_once __DIR__ . '/includes/customer_login_recovery.php';
 require_once __DIR__ . '/includes/booking_intent.php';
+require_once __DIR__ . '/includes/contact_verification.php';
 booking_auth_capture_request();
 $forgot_origin = in_array($_GET['origin'] ?? '', ['customer', 'admin'], true) ? $_GET['origin'] : 'customer';
+$verify_phone_mode = false;
+$verify_email_query = is_string($_GET['verify_email'] ?? null) ? trim($_GET['verify_email']) : '';
+if (filter_var($verify_email_query, FILTER_VALIDATE_EMAIL)) {
+    $mode_stmt = $conn->prepare('SELECT phone_signup_required FROM users WHERE email=? AND is_verified=0 LIMIT 1');
+    $mode_stmt->bind_param('s', $verify_email_query); $mode_stmt->execute();
+    $verify_phone_mode = (int)($mode_stmt->get_result()->fetch_assoc()['phone_signup_required'] ?? 0) === 1;
+    $mode_stmt->close();
+}
+
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     if (in_array($_SESSION['role'] ?? '', ['admin', 'staff'])) {
@@ -54,7 +64,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
-<body>
+<body data-phone-signup="<?php echo  $verify_phone_mode ? '1' : '0'; ?>">
 
     <div class="auth-page"
         style="background: linear-gradient(rgba(42,37,34,0.6), rgba(42,37,34,0.6)), url('<?php echo get_cms_image('home-hero', 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80', $cms_images); ?>') center/cover no-repeat;">
@@ -178,6 +188,9 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                             <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
                         </div>
 
+                        <?php require_once __DIR__ . '/includes/contact_verification.php'; if (phone_signup_enabled()): ?>
+                        <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567" required></div>
+                        <?php endif; ?>
                         <div class="terms-checkbox-group">
                             <input type="checkbox" id="agree-checkbox" name="consent" value="1" required>
                             <label for="agree-checkbox">
@@ -255,7 +268,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
         </div>
     </div>
 
-    <!-- EMAIL VERIFICATION MODAL -->
+    <!-- ACCOUNT VERIFICATION MODAL -->
     <div id="verification-modal"
         style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center;">
 
@@ -264,12 +277,16 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             style="position: relative; max-width: 450px; width: 100%; text-align: center; background: #fff5e8; border: 1px solid var(--color-gold); padding: 30px; border-radius: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
             <a href="auth.php"
                 style="position: absolute; top: 15px; right: 20px; font-size: 1.5rem; text-decoration: none; color: var(--color-dark-light); font-weight: bold;">&times;</a>
-            <h2 class="auth-title" style="margin-bottom: 10px; font-family: var(--font-heading);">Verify Your Email</h2>
+            <h2 class="auth-title" style="margin-bottom: 10px; font-family: var(--font-heading);" id="verification-title"><?php echo $verify_phone_mode ? 'Verify Your Phone' : 'Verify Your Email'; ?></h2>
 
-            <p class="auth-subtitle" style="font-size: 0.95rem; line-height: 1.5; color: var(--color-dark);">
-                A 6-digit verification code has been sent to <br>
-                <strong id="verify-email-display" style="color: var(--color-gold);">you@email.com</strong>.<br>
-                Please check your inbox and enter the code below.
+            <p class="auth-subtitle" style="font-size: 0.95rem; line-height: 1.5; color: var(--color-dark);" id="verification-description">
+                <?php if ($verify_phone_mode): ?>
+                    Enter the 6-digit code sent to the phone on your account. If it did not arrive, request a new code or contact support.
+                <?php else: ?>
+                    A 6-digit verification code has been sent to <br>
+                    <strong id="verify-email-display" style="color: var(--color-gold);">you@email.com</strong>.<br>
+                    Please check your inbox and enter the code below.
+                <?php endif; ?>
             </p>
 
             <form id="form-verify" action="actions/auth/verify_process.php" method="POST" style="margin-top: 20px;">
@@ -289,9 +306,16 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <button type="submit" class="btn btn-primary btn-full" style="margin-top: 15px;">VERIFY ACCOUNT</button>
             </form>
 
+            <?php if ($verify_phone_mode): ?>
+            <div class="form-group" style="margin-top: 16px;">
+                <label for="pending-new-phone">Can't receive SMS? Sign in with your password, then enter another number.</label>
+                <input type="tel" id="pending-new-phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567">
+                <button type="button" id="pending-change-phone" class="btn btn-primary btn-full" style="margin-top: 8px;">Send code to new number</button>
+            </div>
+            <?php endif; ?>
             <div class="auth-footer" style="margin-top: 15px;">
                 <a href="#" id="resend-code-btn"
-                    style="color: var(--color-dark-light); text-decoration: underline;">Resend verification email</a>
+                    style="color: var(--color-dark-light); text-decoration: underline;"><?php echo $verify_phone_mode ? 'Resend SMS code' : 'Resend verification email'; ?></a>
             </div>
         </div>
     </div>

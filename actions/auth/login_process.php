@@ -8,6 +8,7 @@ require_once '../../includes/rate_limit.php';
 require_once '../../includes/request_context.php';
 require_once '../../includes/customer_login_recovery.php';
 require_once '../../includes/booking_intent.php';
+require_once __DIR__ . '/../../includes/contact_verification.php';
 
 const LOGIN_GENERIC_CREDENTIAL_ERROR = 'Invalid email or password.';
 const LOGIN_DUMMY_PASSWORD_HASH = '$2y$10$9sTJDhVVvlZJODtYDMceGOw3XrXaMOu6lifw216.R.eAwDb6XXZmy';
@@ -56,6 +57,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
+    unset($_SESSION['pending_phone_user_id']);
     // Secure Database Query (Prepared Statements prevent SQL Injection hacking)
     // Account status is intentionally checked here rather than only in the
     // administration screen.  A suspended customer must not be able to start
@@ -63,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // portal. Staff availability lives in `staff.status`; customer suspension
     // lives in `users.status`.
     $stmt = $conn->prepare("
-        SELECT u.id, u.password_hash, u.role, u.is_verified, u.status AS user_status,
+        SELECT u.id, u.password_hash, u.role, u.is_verified, u.phone_signup_required, u.status AS user_status,
                s.status AS staff_status
         FROM users u
         LEFT JOIN staff s ON s.user_id = u.id
@@ -94,6 +96,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Account-specific status messages are reachable only after the submitted
     // password has been verified.
     if ((int)$user['is_verified'] === 0) {
+        if ((int)$user['phone_signup_required'] === 1) {
+            session_regenerate_id(true);
+            $_SESSION['pending_phone_user_id'] = (int)$user['id'];
+            $_SESSION['auth_alert'] = ['title'=>'Notice','message'=>'Verify your phone to activate this account. Request a new code if needed.','type'=>'warning'];
+            header('Location: ../../auth.php?verify_email=' . urlencode($email)); exit();
+        }
         $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'Please verify your email address first!', 'type' => 'warning'];
         // Reopen the verification dialog after an interrupted attempt so the
         // customer can enter or resend a code without registering again.

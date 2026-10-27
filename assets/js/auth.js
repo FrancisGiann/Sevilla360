@@ -234,8 +234,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Verification Modal Logic ---
   const urlParams = new URLSearchParams(window.location.search);
   const verifyEmail = urlParams.get('verify_email');
+  const phoneSignup = document.body.dataset.phoneSignup === '1';
 
   if (verifyEmail) {
+
       // 1. Show the modal by changing display from 'none' to 'flex'
       const modal = document.getElementById('verification-modal');
       if (modal) {
@@ -255,6 +257,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
   }
 
+  document.getElementById('pending-change-phone')?.addEventListener('click', async function() {
+      this.disabled = true;
+      try {
+          const response = await fetch('actions/auth/change_pending_phone.php', {
+              method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+              body: JSON.stringify({email: verifyEmail, phone: document.getElementById('pending-new-phone').value})
+          });
+          const data = await response.json();
+          showAlert(data.success ? 'Notice' : 'Error', data.message, data.success ? 'success' : 'error');
+      } catch (_) { showAlert('Connection issue', 'Could not request a code. Try again.', 'error'); }
+      finally { this.disabled = false; }
+  });
+
   // --- RESEND CODE 60-SECOND TIMER LOGIC ---
       const resendBtn = document.getElementById('resend-code-btn');
       if (resendBtn) {
@@ -264,7 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
               // If the button is disabled (timer is running), do nothing
               if (this.style.pointerEvents === 'none') return;
 
-              // 1. Tell PHP to generate and email a new code in the background
+              // 1. Request a new code using this account's verification method
               fetch('actions/auth/resend_code.php', {
                   method: 'POST',
                   headers: { 
@@ -276,13 +291,13 @@ document.addEventListener("DOMContentLoaded", () => {
               .then(response => response.json())
               .then(data => {
                   if (data.success) {
-                      showAlert("Notice", data.message || "A new verification code has been sent to your email inbox!", "success");
+                      showAlert("Notice", data.message || (phoneSignup ? "A new SMS code was queued." : "A new verification code has been sent to your email inbox!"), "success");
                   } else {
                       showAlert("Notice", data.message || "Could not resend code.", "error");
                   }
               })
               .catch(err => {
-                  showAlert("Notice", "Network error. Failed to resend verification code.", "error");
+                  showAlert("Notice", "Connection issue. Could not request a new code.", "error");
               });
 
               // 2. Disable the button and start the 60-second UI timer
@@ -302,7 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
                       this.style.pointerEvents = 'auto';
                       this.style.color = 'var(--color-dark-light)';
                       this.style.textDecoration = 'underline';
-                      this.innerText = 'Resend verification email';
+                      this.innerText = phoneSignup ? 'Resend SMS code' : 'Resend verification email';
                   }
               }, 1000);
           });

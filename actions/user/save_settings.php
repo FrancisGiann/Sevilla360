@@ -6,6 +6,7 @@ require_once '../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
 require_once __DIR__ . '/../../includes/profile_fields.php';
+require_once __DIR__ . '/../../includes/contact_verification.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
@@ -35,6 +36,9 @@ try {
             throw new Exception("First and Last name are required.");
         }
 
+        $gate = $conn->prepare('SELECT u.phone_signup_required,p.phone_e164 FROM users u LEFT JOIN customer_verified_phones p ON p.user_id=u.id WHERE u.id=?');
+        $gate->bind_param('i',$user_id); $gate->execute(); $verified=$gate->get_result()->fetch_assoc();
+        if (!contact_profile_phone_allowed($verified ?: [], $phone)) throw new Exception('Use the Change Phone form to verify a new number first.');
         $stmt = $conn->prepare("UPDATE customers SET first_name = ?, last_name = ?, phone = ? WHERE user_id = ?");
         $stmt->bind_param("sssi", $fname, $lname, $phone, $user_id);
         
