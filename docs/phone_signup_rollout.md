@@ -8,7 +8,7 @@ This change is staged only. It creates no SMS traffic until `PHONE_SIGNUP_ENABLE
 - Existing customers and staff keep their previous authentication path. `phone_signup_required` defaults to `0` for all existing rows.
 - Recovery email ownership is separate from phone ownership. New customers can sign in after phone confirmation while recovery email remains unconfirmed. Password reset requests for these accounts are suppressed until the recovery inbox is confirmed. Notifications continue using the existing login email. Confirming a new recovery address does not change the login email.
 - A failed SMS request leaves the account pending. The customer can sign in with their password to change an unreachable pending number and request a fresh code. A verified phone change preserves the old number until the new code succeeds.
-- SMS text is ASCII, branded as Sevilla360, purpose specific for signup and phone change, and states the five minute expiry and that the code must not be shared. Password reset remains email based; its token and template are separate from these SMS challenges. The assigned sender controls carrier support; there is no carrier-prefix inference. A rejected or unavailable send is shown as a failed request with another-number and support guidance.
+- SMS text is ASCII, branded as Sevilla360, purpose specific for signup and phone change, and states the five minute expiry and that the code must not be shared. Email reset remains available through an independently verified recovery inbox; optional SMS reset is separately gated and uses distinct challenges. The assigned sender controls carrier support; there is no carrier-prefix inference. A rejected or unavailable send is shown as a failed request with another-number and support guidance.
 
 ## Preparation and rollout
 
@@ -21,7 +21,7 @@ This change is staged only. It creates no SMS traffic until `PHONE_SIGNUP_ENABLE
 
 An SMS submit consumes the global daily allowance before the provider call, plus per IP and number budgets and a one minute number cooldown. These conservative reservations also count failed provider requests, avoiding unbounded spend. The HTTP 201 response means queued, not delivered. The stored provider reference/status support later operations review, while only the customer's code proves phone control. Code verification allows at most five attempts per challenge and five attempts per email per 15 minutes. No secret or code is logged.
 
-The user reports 10 free credits, but this branch did not recheck the dashboard or send a message. Confirm the balance and sender coverage before an approved, bounded live test; the default sender cannot reach every Philippine network.
+Two separately approved local staging signup messages used one credit each. The second arrived at the user's handset, but its code expired unused, so activation remains untested. Confirm the current balance and sender coverage before any new, separately approved bounded live test; the default sender cannot reach every Philippine network.
 
 ## Rollback
 

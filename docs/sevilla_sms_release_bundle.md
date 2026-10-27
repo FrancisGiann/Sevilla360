@@ -1,0 +1,28 @@
+# Sevilla360 SMS release bundle
+
+## Exact code and state
+
+- Base: public GitHub `main` at `db761715` (including the two newer booking-guide and admin mobile UI changes).
+- Isolated release branch: `feat/sevilla-sms-release`. Seven scoped auth commits were replayed without conflicts. The signup email availability change is included as `dd8b3dc` (source `8c096cc`, originally `72f86307`). No push or production deploy has occurred.
+- The protected private local staging key is separate from this checkout. This branch contains no live credential. Production key configuration is a separate step.
+- Both previously approved local signup SMS requests were processed. The corrected Globe message arrived, but its five-minute code expired unused; phone activation has not been verified by a live code entry. No new SMS is authorized by this bundle.
+
+## Verified locally
+
+- PHP lint on all changed PHP files, syntax checks on changed auth/dashboard JavaScript, and `git diff --check` passed.
+- Offline UniSMS contract: 18 checks. Offline recovery contract: 17 checks. Disposable, socket-only MariaDB: 22 signup checks and 29 recovery checks, including migration order, one-time and concurrent verification, duplicate verified phones, existing customers/staff, recovery ownership, reset invalidation, and atomic shared spend budget. The temporary server was shut down.
+- Calendar guidance transitions passed. The public booking contract still has one unrelated pre-existing receptionist text assertion failure; the auth release changes none of its source or test files.
+
+## Production prerequisites and sequence
+
+1. Obtain explicit authorization for a production backup, manual schema migration, and code deployment. Confirm the exact target database, a restorable backup, and the existing production receipt for migration 033. This repository has no migration runner. Apply `migrations/034_customer_contact_verification.sql` then `migrations/035_dual_channel_recovery.sql` exactly once, recording the schema and migration receipt. These SQL files are not idempotent. Confirm the new columns, unique verified-phone index, foreign keys, and existing users' default `phone_signup_required=0` and `auth_version=0` before deploying code.
+2. Deploy the scoped release code with `PHONE_SIGNUP_ENABLED=0`, `PASSWORD_SMS_RECOVERY_ENABLED=0`, `UNISMS_SMS_ENABLED=0`, and `UNISMS_DAILY_SMS_LIMIT=0`. Keep the independently approved UI changes. Confirm existing customer and staff login, existing email reset, new signup with the flag off, profile settings, and admin access. The new schema is required even with the flags off.
+3. Through a protected server-side `.env` editor, the user pastes their UniSMS secret only after `UNISMS_SECRET_KEY=`. Required settings are `UNISMS_SENDER_ID=Unisoft` (the account-assigned sender), a stable server-only `APP_KEY` of at least 32 characters, the existing `APP_BASE_URL`, `RESEND_API_KEY`, and `RESEND_FROM_EMAIL`, plus the four disabled controls above. Never paste the key in chat, Git, frontend code, logs, a command argument, or a screenshot. Verify only that the key is configured and the file permissions/access are appropriate; do not print its contents.
+4. Obtain separate approval for one exact recipient and one bounded test SMS. On a private test environment with a synthetic customer, enable only signup and provider sending with `UNISMS_DAILY_SMS_LIMIT=1`, leave SMS recovery disabled, and enter the received five-minute code into the prepared verification form before expiry. Record provider acceptance separately from handset receipt and verified account state. Return sending flags and daily cap to zero immediately after the one attempt. Do not retry a timeout or expired code without fresh approval.
+5. Review the completed test and obtain separate authorization to activate production phone signup with a specific daily spend cap. SMS password recovery remains off until its distinct recovery flow is tested and approved. The production sender and coverage are constrained by the UniSMS account; no phone-prefix carrier inference is used.
+
+## Rollback and approvals
+
+For an immediate stop, set `PHONE_SIGNUP_ENABLED=0`, `PASSWORD_SMS_RECOVERY_ENABLED=0`, `UNISMS_SMS_ENABLED=0`, and `UNISMS_DAILY_SMS_LIMIT=0`. Preserve migrations 034/035 and the ownership/reset gates while any new phone-signup account exists. Dropping those tables or reverting the gates could erase ownership evidence or permit reset to an unverified inbox. Full schema/code rollback needs an account-by-account recovery plan and a verified database restore.
+
+Needed authorization is specific: permission to back up and migrate the named production database and deploy this scoped code **with every feature flag off**; separately, permission to enter a live key in the protected production `.env`; separately, an exact recipient and one-credit test; and finally a daily cap and approval to activate signup. The first authorization changes production schema and code even while SMS is disabled. The key grants provider access if later flags are changed. A test SMS can spend one credit. Activation will require new customers to complete SMS verification before their account becomes active.
