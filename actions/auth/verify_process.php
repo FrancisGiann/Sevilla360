@@ -26,7 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $otp_rate_key = 'verify_otp_' . substr(hash('sha256', strtolower($email)), 0, 48);
 
     // 1. Find the user by email and check their code and expiration
-    $stmt = $conn->prepare("SELECT id, verification_code, verification_expires_at FROM users WHERE email = ? AND is_verified = FALSE");
+    $stmt = $conn->prepare("SELECT id, auth_version, verification_code, verification_expires_at FROM users WHERE email = ? AND is_verified = FALSE");
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -112,10 +112,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Session authentication occurs only after the database proves a
             // successful transition or an already-verified active account.
             session_regenerate_id(true);
+            unset($_SESSION['recovery_user_id'], $_SESSION['recovery_auth_version'], $_SESSION['recovery_expires_at'], $_SESSION['reset_user_id'], $_SESSION['reset_origin']);
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = 'customer';
             $_SESSION['logged_in'] = true;
+            $_SESSION['auth_version'] = (int)$user['auth_version'];
             $_SESSION['first_name'] = $display_name;
             session_policy_mark_authenticated();
 

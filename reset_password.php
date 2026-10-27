@@ -3,15 +3,26 @@ require_once __DIR__ . '/includes/session_init.php';
 require_once 'config/db_connect.php';
 require_once __DIR__ . '/includes/site_metadata.php';
 require_once __DIR__ . '/includes/password_reset_security.php';
+require_once __DIR__ . '/includes/recovery_security.php';
 header('X-Robots-Tag: noindex, nofollow', true);
+header('Referrer-Policy: no-referrer', true);
 
 $token = $_GET['token'] ?? '';
 $is_valid = false;
 $error_msg = '';
 $user_id = 0;
 $origin = password_reset_origin(is_string($_GET['origin'] ?? null) ? $_GET['origin'] : 'customer');
+$smsMode = ($_GET['channel'] ?? '') === 'sms';
 
-if (empty($token)) {
+if ($smsMode) {
+    $grantId=(int)($_SESSION['recovery_user_id'] ?? 0);
+    if ($grantId > 0) {
+        $grantStmt=$conn->prepare('SELECT id,role,status,auth_version FROM users WHERE id=?');
+        $grantStmt->bind_param('i',$grantId); $grantStmt->execute(); $grantUser=$grantStmt->get_result()->fetch_assoc();
+        if ($grantUser && recovery_grant_valid($_SESSION,$grantUser)) { $is_valid=true; $user_id=$grantId; }
+    }
+    if (!$is_valid) $error_msg='This reset session is invalid or has expired.';
+} elseif (!is_string($token) || preg_match('/\A[a-f0-9]{64}\z/D',$token)!==1) {
     $error_msg = 'Invalid password reset link.';
 } else {
     // Only the SHA-256 digest is stored; raw tokens are never persisted.
@@ -27,6 +38,7 @@ if (empty($token)) {
     if ($res->num_rows === 1) {
         $is_valid = true;
         $user_id = $res->fetch_assoc()['id'];
+        session_policy_reset();
         $_SESSION['reset_user_id'] = $user_id; // Store securely in session for processing
         $_SESSION['reset_origin'] = $origin;
     } else {
@@ -63,7 +75,8 @@ if (empty($token)) {
 
                     <form action="actions/auth/reset_password_process.php" method="POST">
                         <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
-                        <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
+                        <input type="hidden" name="token" value="<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>">
+                        <input type="hidden" name="channel" value="<?php echo $smsMode ? 'sms' : 'email'; ?>">
                         <input type="hidden" name="origin" value="<?php echo htmlspecialchars($origin, ENT_QUOTES, 'UTF-8'); ?>">
 
                         <div class="form-group">

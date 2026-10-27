@@ -22,7 +22,7 @@ function session_account_revalidation_state(mysqli $conn, array $allowedRoles = 
 
     try {
         $statement = $conn->prepare(
-            'SELECT u.role, u.status AS user_status, s.status AS staff_status
+            'SELECT u.role, u.auth_version, u.status AS user_status, s.status AS staff_status
              FROM users u
              LEFT JOIN staff s ON s.user_id = u.id
              WHERE u.id = ?
@@ -43,7 +43,9 @@ function session_account_revalidation_state(mysqli $conn, array $allowedRoles = 
     if (!is_array($account)
         || !is_string($account['role'] ?? null)
         || !hash_equals($sessionRole, $account['role'])
-        || !in_array($account['role'], ['customer', 'staff', 'admin'], true)) {
+        || !in_array($account['role'], ['customer', 'staff', 'admin'], true)
+        || !isset($_SESSION['auth_version'])
+        || (int)$_SESSION['auth_version'] !== (int)$account['auth_version']) {
         return 'invalid';
     }
 

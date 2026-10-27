@@ -4,6 +4,7 @@ require_once '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 require_once '../../includes/password_policy.php';
 require_once '../../includes/password_reset_security.php';
+require_once '../../includes/recovery_security.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
@@ -21,12 +22,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
     $token = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+    $smsMode = ($_POST['channel'] ?? '') === 'sms';
     $origin = password_reset_origin(is_string($_POST['origin'] ?? null) ? $_POST['origin'] : (string)($_SESSION['reset_origin'] ?? 'customer'));
     $new_password = is_string($_POST['new_password'] ?? null) ? $_POST['new_password'] : '';
     $confirm_password = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
     $user_id = $_SESSION['reset_user_id'] ?? 0;
     
-    if (empty($token) || empty($new_password) || $user_id === 0) {
+    if ((!$smsMode && empty($token)) || empty($new_password) || (!$smsMode && $user_id === 0)) {
         $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Invalid request.', 'type' => 'error'];
         header("Location: ../../auth.php?origin=" . rawurlencode($origin));
         exit();
@@ -43,6 +45,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => $password_policy['message'], 'type' => 'error'];
         header("Location: ../../auth.php?origin=" . rawurlencode($origin));
         exit();
+    }
+    if ($smsMode) {
+        $grantId=(int)($_SESSION['recovery_user_id'] ?? 0);
+        $stmt=$conn->prepare('SELECT id,role,status,auth_version FROM users WHERE id=? LIMIT 1');
+        $stmt->bind_param('i',$grantId); $stmt->execute(); $grantUser=$stmt->get_result()->fetch_assoc();
+        if (!$grantUser || !recovery_grant_valid($_SESSION,$grantUser)) {
+            $_SESSION['auth_alert']=['title'=>'Error','message'=>'This reset session has expired. Request a new code.','type'=>'error'];
+            header('Location: ../../auth.php'); exit();
+        }
+        $hash=password_hash($new_password,PASSWORD_BCRYPT);
+        $expected=(int)$grantUser['auth_version'];
+        $stmt=$conn->prepare("UPDATE users SET password_hash=?,auth_version=auth_version+1,reset_token=NULL,reset_token_hash=NULL,reset_expires_at=NULL WHERE id=? AND auth_version=? AND role='customer' AND status='active'");
+        $stmt->bind_param('sii',$hash,$grantId,$expected); $stmt->execute();
+        if ($stmt->affected_rows===1) {
+            $stmt=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL'); $stmt->bind_param('i',$grantId); $stmt->execute();
+            session_policy_reset(['title'=>'Success','message'=>'Password reset. Sign in with your new password.','type'=>'success']);
+            header('Location: ../../auth.php'); exit();
+        }
+        $_SESSION['auth_alert']=['title'=>'Error','message'=>'Reset failed. Request a new code.','type'=>'error'];
+        header('Location: ../../auth.php'); exit();
     }
     
     // Validate the one-time digest again and require the account to remain
@@ -71,10 +93,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password_hash = password_hash($new_password, PASSWORD_BCRYPT);
     
     // Update password and CLEAR token
-    $update = $conn->prepare("UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_hash = NULL, reset_expires_at = NULL WHERE id = ? AND reset_token_hash = ?");
+    $update = $conn->prepare("UPDATE users SET password_hash = ?, auth_version=auth_version+1, reset_token = NULL, reset_token_hash = NULL, reset_expires_at = NULL WHERE id = ? AND reset_token_hash = ? AND reset_expires_at > NOW()");
     $update->bind_param("sis", $password_hash, $user_id, $tokenHash);
     
     if ($update->execute() && $update->affected_rows === 1) {
+        $clear=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL'); $clear->bind_param('i',$user_id); $clear->execute();
         unset($_SESSION['reset_user_id'], $_SESSION['reset_origin']); // clear from session
         if (in_array($resetUser['role'], ['staff', 'admin'], true)) {
             try {

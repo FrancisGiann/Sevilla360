@@ -430,3 +430,27 @@
 .step-segment.active {
   background-color: var(--color-gold);
 }
+.recovery-channel-options {
+  border: 0;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.recovery-channel-options legend {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 9px;
+}
+.recovery-channel-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  border: 1px solid #d8d1c5;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.recovery-channel-options label:focus-within { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+.recovery-channel-options input { accent-color: var(--color-gold); }
+.recovery-code-link { margin-top: 16px; }

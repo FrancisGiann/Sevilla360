@@ -69,12 +69,16 @@ try {
         }
 
         $newHash = password_hash($newPass, PASSWORD_DEFAULT);
-        $stmt_pass = $conn->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        $stmt_pass = $conn->prepare("UPDATE users SET password_hash = ?, auth_version=auth_version+1, reset_token=NULL, reset_token_hash=NULL, reset_expires_at=NULL WHERE id = ?");
         $stmt_pass->bind_param("si", $newHash, $uid);
         $stmt_pass->execute();
+        $stmt_clear=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL');
+        $stmt_clear->bind_param('i',$uid); $stmt_clear->execute();
+        $password_changed = true;
     }
 
     $conn->commit();
+    if (!empty($password_changed)) $_SESSION['auth_version']=(int)($_SESSION['auth_version'] ?? 0)+1;
     echo json_encode(['success' => true, 'message' => 'Profile updated successfully!']);
 } catch (Exception $e) {
     $conn->rollback();

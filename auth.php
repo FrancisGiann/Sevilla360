@@ -239,7 +239,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             <!-- VIEW 5: FORGOT PASSWORD -->
             <div id="view-forgot-password" class="auth-view">
                 <h2 class="auth-title">Reset Password</h2>
-                <p class="auth-subtitle">Enter your email to receive a reset link</p>
+                <p class="auth-subtitle">Choose how to receive password reset instructions.</p>
 
                 <form id="form-forgot" action="actions/auth/forgot_password_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
@@ -254,11 +254,18 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
                     <div class="form-group">
                         <label for="forgot-email">EMAIL ADDRESS</label>
-                        <input type="email" id="forgot-email" name="email" class="form-control" placeholder="Enter your email" autocomplete="email" required>
+                        <input type="email" id="forgot-email" name="email" class="form-control" placeholder="Account email" autocomplete="email" required>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-full">SEND RESET LINK</button>
+                    <fieldset class="recovery-channel-options">
+                        <legend>RESET METHOD</legend>
+                        <label><input type="radio" name="channel" value="email" checked><span>Email link</span></label>
+                        <?php if ($forgot_origin === 'customer'): ?><label><input type="radio" name="channel" value="sms"><span>Text a code to my verified phone</span></label><?php endif; ?>
+                    </fieldset>
+
+                    <button type="submit" class="btn btn-primary btn-full">SEND INSTRUCTIONS</button>
                 </form>
+                <p class="auth-subtitle recovery-code-link"><a href="recovery_code.php">Already have a text code?</a></p>
 
                 <div class="auth-footer">
                     <a id="link-back-login-from-forgot" style="cursor: pointer;">&larr; Back to Login</a>

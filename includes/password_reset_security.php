@@ -1,7 +1,7 @@
 <?php
 /** Shared password-reset token and callback URL validation. */
 
-const PASSWORD_RESET_GENERIC_MESSAGE = 'If your email is in our system, you will receive a password reset link shortly.';
+const PASSWORD_RESET_GENERIC_MESSAGE = 'If this account has an eligible recovery method, check for instructions. Delivery may be unavailable; try another verified method or contact support.';
 
 function password_reset_base_url(): ?string
 {

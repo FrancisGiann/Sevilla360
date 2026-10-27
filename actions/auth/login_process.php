@@ -65,7 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // portal. Staff availability lives in `staff.status`; customer suspension
     // lives in `users.status`.
     $stmt = $conn->prepare("
-        SELECT u.id, u.password_hash, u.role, u.is_verified, u.phone_signup_required, u.status AS user_status,
+        SELECT u.id, u.password_hash, u.role, u.is_verified, u.phone_signup_required, u.auth_version, u.status AS user_status,
                s.status AS staff_status
         FROM users u
         LEFT JOIN staff s ON s.user_id = u.id
@@ -98,6 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ((int)$user['is_verified'] === 0) {
         if ((int)$user['phone_signup_required'] === 1) {
             session_regenerate_id(true);
+            unset($_SESSION['recovery_user_id'], $_SESSION['recovery_auth_version'], $_SESSION['recovery_expires_at'], $_SESSION['reset_user_id'], $_SESSION['reset_origin']);
             $_SESSION['pending_phone_user_id'] = (int)$user['id'];
             $_SESSION['auth_alert'] = ['title'=>'Notice','message'=>'Verify your phone to activate this account. Request a new code if needed.','type'=>'warning'];
             header('Location: ../../auth.php?verify_email=' . urlencode($email)); exit();
@@ -131,6 +132,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Destroy the old, unauthenticated session ID and issue a brand new one
             // =========================================================================
             session_regenerate_id(true);
+            unset($_SESSION['recovery_user_id'], $_SESSION['recovery_auth_version'], $_SESSION['recovery_expires_at'], $_SESSION['reset_user_id'], $_SESSION['reset_origin']);
             
             // Clear rate limits on successful login
             clear_rate_limit($conn, 'login_attempt');
@@ -139,6 +141,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['logged_in'] = true;
+            $_SESSION['auth_version'] = (int)$user['auth_version'];
             session_policy_mark_authenticated();
 
             $display_name = 'Account'; 
