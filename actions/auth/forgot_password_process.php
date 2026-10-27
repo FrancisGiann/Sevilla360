@@ -66,7 +66,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     try {
                         $sent=recovery_submit_sms($phone,$code,'contact_sms_transport');
                         $upd=$conn->prepare('UPDATE recovery_sms_challenges SET provider_reference=?,provider_status=? WHERE id=? AND consumed_at IS NULL'); $upd->bind_param('ssi',$sent['reference_id'],$sent['status'],$challengeId); $upd->execute();
-                    } catch (Throwable $ignored) { error_log('Recovery SMS delivery failed: '.get_class($ignored)); }
+                    } catch (Throwable $error) {
+                        $providerState=$error instanceof UnexpectedValueException ? 'rejected' : 'unknown';
+                        try { $upd=$conn->prepare('UPDATE recovery_sms_challenges SET provider_status=? WHERE id=? AND consumed_at IS NULL'); $upd->bind_param('si',$providerState,$challengeId); $upd->execute(); } catch (Throwable $ignored) {}
+                        error_log('Recovery SMS delivery failed: '.get_class($error));
+                    }
                 } catch (Throwable $error) { $conn->rollback(); error_log('Recovery SMS setup failed: '.get_class($error)); }
             }
         }

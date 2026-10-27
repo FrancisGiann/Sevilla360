@@ -85,11 +85,17 @@ try {
 
         // Hash new password and save
         $new_hash = password_hash($new_pass, PASSWORD_DEFAULT);
-        $stmt_update = $conn->prepare("UPDATE users SET password_hash = ?, auth_version=auth_version+1, reset_token=NULL, reset_token_hash=NULL, reset_expires_at=NULL WHERE id = ?");
-        $stmt_update->bind_param("si", $new_hash, $user_id);
-        $stmt_update->execute();
-        $stmt_clear=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL');
-        $stmt_clear->bind_param('i',$user_id); $stmt_clear->execute();
+        $conn->begin_transaction();
+        try {
+            $stmt_update = $conn->prepare("UPDATE users SET password_hash = ?, auth_version=auth_version+1, reset_token=NULL, reset_token_hash=NULL, reset_expires_at=NULL WHERE id = ?");
+            $stmt_update->bind_param("si", $new_hash, $user_id); $stmt_update->execute();
+            $stmt_clear=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL');
+            $stmt_clear->bind_param('i',$user_id); $stmt_clear->execute();
+            $conn->commit();
+        } catch (Throwable $error) {
+            $conn->rollback();
+            throw new Exception('Password update failed. Please try again.');
+        }
         $_SESSION['auth_version']=(int)($_SESSION['auth_version'] ?? 0)+1;
 
         echo json_encode(['success' => true, 'message' => 'Password updated securely!']);

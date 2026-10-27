@@ -3,7 +3,8 @@
 require_once __DIR__.'/../includes/recovery_security.php';
 $_ENV['APP_KEY']=str_repeat('synthetic-test-key-',3);
 $user=['id'=>9,'role'=>'customer','status'=>'active','is_verified'=>1,'phone_signup_required'=>1,'phone_e164'=>'+639171234567','verified_at'=>'2026-01-01','auth_version'=>2];
-function test_assert(bool $ok,string $label): void { if (!$ok) throw new RuntimeException($label); }
+$GLOBALS['recovery_checks']=0;
+function test_assert(bool $ok,string $label): void { if (!$ok) throw new RuntimeException($label); $GLOBALS['recovery_checks']++; }
 test_assert(recovery_sms_eligible($user),'verified customer eligible');
 foreach (['verified_at'=>null,'is_verified'=>0,'phone_e164'=>'+639171234568','role'=>'staff','status'=>'suspended','phone_signup_required'=>0] as $field=>$value) {
     $altered=$user; $altered[$field]=$value;
@@ -23,8 +24,10 @@ $sent=recovery_submit_sms($user['phone_e164'],'123456',static function(string $u
     return ['http_status'=>201,'body'=>['message'=>['reference_id'=>'msg_mock','status'=>'pending']]];
 });
 test_assert($sent['status']==='pending','queued remains pending');
-$grant=['recovery_user_id'=>9,'recovery_auth_version'=>2,'recovery_expires_at'=>time()+600];
+$grant=['recovery_user_id'=>9,'recovery_auth_version'=>2,'recovery_phone_e164'=>$user['phone_e164'],'recovery_expires_at'=>time()+600];
 test_assert(recovery_grant_valid($grant,$user),'valid limited grant');
+$changedPhone=$user; $changedPhone['phone_e164']='+639179999999';
+test_assert(!recovery_grant_valid($grant,$changedPhone),'phone change revokes reset grant');
 $user['auth_version']=3;
 test_assert(!recovery_grant_valid($grant,$user),'password change revokes grant');
-echo "Recovery security isolated checks passed.\n";
+echo "Recovery security isolated: {$GLOBALS['recovery_checks']} checks passed.\n";

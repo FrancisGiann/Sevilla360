@@ -40,6 +40,10 @@ function session_account_revalidation_state(mysqli $conn, array $allowedRoles = 
         return 'unavailable';
     }
 
+    // Sessions created before migration 035 may continue while no password change has occurred.
+    if (is_array($account) && !isset($_SESSION['auth_version']) && (int)($account['auth_version'] ?? -1) === 0) {
+        $_SESSION['auth_version'] = 0;
+    }
     if (!is_array($account)
         || !is_string($account['role'] ?? null)
         || !hash_equals($sessionRole, $account['role'])

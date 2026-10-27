@@ -26,5 +26,7 @@ try {
     $stmt=$conn->prepare('INSERT INTO customer_verified_phones(user_id,phone_e164) VALUES (?,?)'); $stmt->bind_param('is',$id,$phone); $stmt->execute();
     $conn->commit();
 } catch(Throwable $e) { $conn->rollback(); $back($e instanceof RuntimeException?$e->getMessage():'Could not create the account. Check your details and try again.'); }
+session_regenerate_id(true);
+$_SESSION['pending_phone_user_id']=$id;
 if (!contact_send_sms($conn,$id,$phone,'signup_phone')) $back('Account saved, but the code could not be sent. Check the number, use another eligible number if SMS is unsupported, or contact support. Sign in to request another code.',$email);
 $back('A verification code was queued for your phone. Enter it to activate your account.',$email);

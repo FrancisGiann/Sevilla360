@@ -12,10 +12,13 @@ booking_auth_capture_request();
 $forgot_origin = in_array($_GET['origin'] ?? '', ['customer', 'admin'], true) ? $_GET['origin'] : 'customer';
 $verify_phone_mode = false;
 $verify_email_query = is_string($_GET['verify_email'] ?? null) ? trim($_GET['verify_email']) : '';
-if (filter_var($verify_email_query, FILTER_VALIDATE_EMAIL)) {
-    $mode_stmt = $conn->prepare('SELECT phone_signup_required FROM users WHERE email=? AND is_verified=0 LIMIT 1');
-    $mode_stmt->bind_param('s', $verify_email_query); $mode_stmt->execute();
-    $verify_phone_mode = (int)($mode_stmt->get_result()->fetch_assoc()['phone_signup_required'] ?? 0) === 1;
+if (filter_var($verify_email_query, FILTER_VALIDATE_EMAIL) && (int)($_SESSION['pending_phone_user_id'] ?? 0) > 0) {
+    $pending_id = (int)$_SESSION['pending_phone_user_id'];
+    $mode_stmt = $conn->prepare('SELECT email,phone_signup_required FROM users WHERE id=? AND is_verified=0 LIMIT 1');
+    $mode_stmt->bind_param('i', $pending_id); $mode_stmt->execute();
+    $mode_row = $mode_stmt->get_result()->fetch_assoc();
+    $verify_phone_mode = $mode_row && (int)$mode_row['phone_signup_required'] === 1
+        && strcasecmp((string)$mode_row['email'], $verify_email_query) === 0;
     $mode_stmt->close();
 }
 

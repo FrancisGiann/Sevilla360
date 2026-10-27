@@ -47,7 +47,8 @@ function unisms_submit_signup_otp(string $phone, string $code, callable $transpo
         throw new RuntimeException('SMS delivery response was unavailable.');
     }
     if ($response['http_status'] !== 201) {
-        throw new RuntimeException('SMS delivery was not accepted.');
+        if (in_array($response['http_status'], [400, 401, 403, 422], true)) throw new UnexpectedValueException('SMS request was rejected.');
+        throw new RuntimeException('SMS delivery status is unknown.');
     }
     $message = $response['body']['message'] ?? null;
     if (!is_array($message) || !is_string($message['reference_id'] ?? null)

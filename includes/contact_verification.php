@@ -59,6 +59,10 @@ function contact_verify(mysqli $db, int $userId, string $purpose, string $code):
             $stmt=$db->prepare('UPDATE customer_verified_phones SET phone_e164=?,verified_at=NOW() WHERE user_id=?'); $stmt->bind_param('si',$row['target'],$userId); $stmt->execute();
             if ($purpose === 'signup_phone') { $stmt=$db->prepare('UPDATE users SET is_verified=1 WHERE id=? AND is_verified=0 AND phone_signup_required=1'); $stmt->bind_param('i',$userId); $stmt->execute(); if ($stmt->affected_rows!==1) { $db->rollback(); return false; } }
             $stmt=$db->prepare('UPDATE customers SET phone=? WHERE user_id=?'); $stmt->bind_param('si',$row['target'],$userId); $stmt->execute();
+            if ($purpose === 'change_phone') {
+                $stmt=$db->prepare('UPDATE users SET auth_version=auth_version+1,reset_token=NULL,reset_token_hash=NULL,reset_expires_at=NULL WHERE id=?'); $stmt->bind_param('i',$userId); $stmt->execute();
+                $stmt=$db->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL'); $stmt->bind_param('i',$userId); $stmt->execute();
+            }
         } else {
             $stmt=$db->prepare('UPDATE users SET recovery_email=recovery_email_pending,recovery_email_verified_at=NOW(),recovery_email_pending=NULL,reset_token=NULL,reset_token_hash=NULL,reset_expires_at=NULL WHERE id=? AND recovery_email_pending=? AND phone_signup_required=1'); $stmt->bind_param('is',$userId,$row['target']); $stmt->execute(); if ($stmt->affected_rows!==1) { $db->rollback(); return false; }
         }
@@ -86,5 +90,9 @@ function contact_send_sms(mysqli $db,int $userId,string $phone,string $purpose):
         $result=unisms_submit_signup_otp($phone,$code,'contact_sms_transport',$purpose);
         $stmt=$db->prepare('UPDATE contact_challenges SET provider_reference=?,provider_status=? WHERE id=? AND consumed_at IS NULL');
         $stmt->bind_param('ssi',$result['reference_id'],$result['status'],$id); $stmt->execute(); return $stmt->affected_rows===1;
-    } catch(Throwable $e) { error_log('SMS request failed: '.get_class($e)); return false; }
+    } catch(Throwable $e) {
+        $status=$e instanceof UnexpectedValueException ? 'rejected' : 'unknown';
+        try { $stmt=$db->prepare('UPDATE contact_challenges SET provider_status=? WHERE id=? AND consumed_at IS NULL'); $stmt->bind_param('si',$status,$id); $stmt->execute(); } catch(Throwable $ignored) {}
+        error_log('SMS request failed: '.get_class($e)); return false;
+    }
 }

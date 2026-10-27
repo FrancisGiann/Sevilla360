@@ -35,5 +35,6 @@ $assert($result === ['reference_id' => 'msg_test-1', 'status' => 'pending'] && $
 $changeResult = unisms_submit_signup_otp('09171234567', '654321', $mock, 'change_phone');
 $assert($changeResult['status'] === 'pending' && $calls === 2, 'phone-change send uses the same provider contract with a distinct purpose');
 $assert($throws(static fn() => unisms_submit_signup_otp('09171234567', '123456', static fn() => ['http_status' => 422, 'body' => []])), 'provider rejection fails closed');
+$assert($throws(static fn() => unisms_submit_signup_otp('09171234567', '123456', static fn() => ['http_status' => 0, 'body' => null])), 'provider timeout fails closed');
 $assert($throws(static fn() => unisms_submit_signup_otp('09171234567', '123456', static fn() => ['http_status' => 201, 'body' => ['message' => ['status' => 'pending']]])), 'malformed acceptance fails closed');
 echo "UniSMS offline contract: {$checks} checks passed.\n";

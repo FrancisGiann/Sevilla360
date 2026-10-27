@@ -47,19 +47,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
     if ($smsMode) {
-        $grantId=(int)($_SESSION['recovery_user_id'] ?? 0);
-        $stmt=$conn->prepare('SELECT id,role,status,auth_version FROM users WHERE id=? LIMIT 1');
-        $stmt->bind_param('i',$grantId); $stmt->execute(); $grantUser=$stmt->get_result()->fetch_assoc();
-        if (!$grantUser || !recovery_grant_valid($_SESSION,$grantUser)) {
-            $_SESSION['auth_alert']=['title'=>'Error','message'=>'This reset session has expired. Request a new code.','type'=>'error'];
-            header('Location: ../../auth.php'); exit();
-        }
+        if (!recovery_sms_enabled()) { $_SESSION['auth_alert']=['title'=>'Error','message'=>'Text recovery is unavailable. Request another recovery method.','type'=>'error']; header('Location: ../../auth.php'); exit(); }
         $hash=password_hash($new_password,PASSWORD_BCRYPT);
-        $expected=(int)$grantUser['auth_version'];
-        $stmt=$conn->prepare("UPDATE users SET password_hash=?,auth_version=auth_version+1,reset_token=NULL,reset_token_hash=NULL,reset_expires_at=NULL WHERE id=? AND auth_version=? AND role='customer' AND status='active'");
-        $stmt->bind_param('sii',$hash,$grantId,$expected); $stmt->execute();
-        if ($stmt->affected_rows===1) {
-            $stmt=$conn->prepare('UPDATE recovery_sms_challenges SET consumed_at=NOW() WHERE user_id=? AND consumed_at IS NULL'); $stmt->bind_param('i',$grantId); $stmt->execute();
+        try { $changed=recovery_reset_password($conn,$_SESSION,$hash); }
+        catch (Throwable $error) { error_log('Recovery reset failed: '.get_class($error)); $changed=false; }
+        if ($changed) {
             session_policy_reset(['title'=>'Success','message'=>'Password reset. Sign in with your new password.','type'=>'success']);
             header('Location: ../../auth.php'); exit();
         }

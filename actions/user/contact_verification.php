@@ -25,6 +25,7 @@ if ($action==='verify_phone') {
     if ($target==='' || !contact_allow($conn,'change-phone-target-'.$target,5,900)) $out(false,'Too many attempts. Try later.');
     try { $ok=contact_verify($conn,$userId,'change_phone',(string)($data['code']??'')); }
     catch(Throwable $e) { $out(false,'Could not verify this number. Check if another account already uses it.'); }
+    if ($ok) $_SESSION['auth_version']=(int)($_SESSION['auth_version']??0)+1;
     $out($ok,$ok?'Phone number verified.':'Invalid, expired, or already used code.');
 }
 if ($action==='request_recovery_email') {

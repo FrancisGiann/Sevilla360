@@ -17,7 +17,7 @@ $smsMode = ($_GET['channel'] ?? '') === 'sms';
 if ($smsMode) {
     $grantId=(int)($_SESSION['recovery_user_id'] ?? 0);
     if ($grantId > 0) {
-        $grantStmt=$conn->prepare('SELECT id,role,status,auth_version FROM users WHERE id=?');
+        $grantStmt=$conn->prepare('SELECT u.id,u.role,u.status,u.auth_version,u.is_verified,u.phone_signup_required,p.phone_e164,p.verified_at FROM users u LEFT JOIN customer_verified_phones p ON p.user_id=u.id WHERE u.id=?');
         $grantStmt->bind_param('i',$grantId); $grantStmt->execute(); $grantUser=$grantStmt->get_result()->fetch_assoc();
         if ($grantUser && recovery_grant_valid($_SESSION,$grantUser)) { $is_valid=true; $user_id=$grantId; }
     }
@@ -39,6 +39,7 @@ if ($smsMode) {
         $is_valid = true;
         $user_id = $res->fetch_assoc()['id'];
         session_policy_reset();
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         $_SESSION['reset_user_id'] = $user_id; // Store securely in session for processing
         $_SESSION['reset_origin'] = $origin;
     } else {
