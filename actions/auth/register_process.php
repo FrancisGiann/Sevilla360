@@ -75,22 +75,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     // Check if the user ALREADY exists in the 'users' table (True duplicates)
-    $stmt_check_user = $conn->prepare("SELECT id, is_verified FROM users WHERE email = ?");
+    $stmt_check_user = $conn->prepare("SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1");
     $stmt_check_user->bind_param("s", $email);
     $stmt_check_user->execute();
     $res_check = $stmt_check_user->get_result();
 
     if ($res_check->num_rows > 0) {
-        $existing_user = $res_check->fetch_assoc();
-        if ($existing_user['is_verified']) {
-            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Error: That email address is already registered. Please log in.', 'type' => 'error'];
-            header("Location: ../../auth.php");
-            exit();
-        } else {
-            $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'An unverified account with this email exists. Please verify it or try again later.', 'type' => 'warning'];
-            header("Location: ../../auth.php");
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, private');
+            http_response_code(409);
+            echo json_encode(['state' => 'unavailable']);
             exit();
         }
+        $_SESSION['auth_alert'] = ['title' => 'Notice', 'message' => 'This email cannot be used to create an account. Try another email or sign in.', 'type' => 'warning'];
+        header("Location: ../../auth.php");
+        exit();
     }
     $stmt_check_user->close();
 
@@ -188,8 +188,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         // =========================================================================
 
-    } catch (Exception $e) {
-        // ROLLBACK IF DATABASE ERROR
+    } catch (Throwable $e) {
+        $conn->rollback();
+        if ((int)$e->getCode() === 1062 && ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, private');
+            http_response_code(409);
+            echo json_encode(['state' => 'unavailable']);
+            exit();
+        }
+        $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'We could not create your account right now. Please try again.', 'type' => 'error'];
+        header('Location: ../../auth.php');
+        exit();
     }
 
     if (isset($stmt1)) $stmt1->close();

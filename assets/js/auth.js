@@ -45,6 +45,37 @@ document.addEventListener("DOMContentLoaded", () => {
   const email = document.getElementById('reg-email');
   const errEmail = document.getElementById('err-email');
   let emailInteracted = false;
+  let emailCheckVersion = 0;
+  let emailCheckPending = false;
+  const registrationForm = document.getElementById('form-register');
+  const registrationSubmit = registrationForm?.querySelector('button[type="submit"]');
+  const unavailableEmailMessage = 'This email cannot be used to create an account. Try another email or sign in.';
+
+  function showEmailCheckMessage(message) {
+      if (!email || !errEmail) return;
+      emailInteracted = true;
+      email.classList.add('email-invalid');
+      email.classList.remove('email-valid');
+      email.setAttribute('aria-invalid', 'true');
+      errEmail.textContent = message;
+      errEmail.classList.add('email-feedback-invalid');
+      errEmail.classList.remove('email-feedback-valid');
+      errEmail.hidden = false;
+  }
+
+  async function checkRegistrationEmail(value) {
+      const response = await fetch('actions/auth/check_registration_email.php', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+          body: new URLSearchParams({ email: value }).toString()
+      });
+      if (!response.ok) throw new Error('Email check unavailable');
+      const result = await response.json();
+      if (result.state !== 'available' && result.state !== 'unavailable') throw new Error('Invalid email check');
+      return result.state;
+  }
 
   function isRegistrationEmailFormatValid(value, nativeTypeMismatch = false) {
       if (nativeTypeMismatch || typeof value !== 'string' || !value) return false;
@@ -109,6 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
           updateRegistrationEmailState();
       });
       email.addEventListener('input', () => {
+          emailCheckVersion++;
           emailInteracted = true;
           updateRegistrationEmailState();
       });
@@ -152,7 +184,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (btnNext) {
-      btnNext.addEventListener('click', () => {
+      btnNext.addEventListener('click', async () => {
+          if (emailCheckPending) return;
           let isValid = true;
           const pass = document.getElementById('reg-password');
           const confPass = document.getElementById('reg-confirm-password');
@@ -183,8 +216,68 @@ document.addEventListener("DOMContentLoaded", () => {
           }
 
           if (!emailIsValid) email.focus();
-          if (isValid) {
+          if (!isValid) return;
+
+          const checkedEmail = email.value.trim();
+          const version = ++emailCheckVersion;
+          emailCheckPending = true;
+          btnNext.disabled = true;
+          try {
+              const state = await checkRegistrationEmail(checkedEmail);
+              if (version !== emailCheckVersion || email.value.trim() !== checkedEmail) return;
+              if (state === 'unavailable') {
+                  showEmailCheckMessage(unavailableEmailMessage);
+                  email.focus();
+                  return;
+              }
               showRegisterStep(2);
+          } catch (error) {
+              if (version === emailCheckVersion) {
+                  showEmailCheckMessage('We could not check this email right now. Please try again.');
+                  email.focus();
+              }
+          } finally {
+              emailCheckPending = false;
+              btnNext.disabled = false;
+          }
+      });
+  }
+
+  if (registrationForm) {
+      registrationForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          if (registrationSubmit.disabled || emailCheckPending) return;
+          const submittedEmail = email.value.trim();
+          registrationSubmit.disabled = true;
+          try {
+              const response = await fetch(registrationForm.action, {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  cache: 'no-store',
+                  headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                  body: new FormData(registrationForm)
+              });
+              if (response.status === 409) {
+                  const result = await response.json();
+                  if (result.state !== 'unavailable') throw new Error('Invalid registration response');
+                  showRegisterStep(1);
+                  if (email.value.trim() === submittedEmail) {
+                      showEmailCheckMessage(unavailableEmailMessage);
+                      email.focus();
+                  }
+                  return;
+              }
+              if (response.redirected && new URL(response.url).origin === window.location.origin) {
+                  window.location.assign(response.url);
+                  return;
+              }
+              throw new Error('Registration unavailable');
+          } catch (error) {
+              showRegisterStep(1);
+              showEmailCheckMessage('We could not create your account right now. Please try again.');
+              email.focus();
+          } finally {
+              registrationSubmit.disabled = false;
           }
       });
   }
@@ -348,7 +441,6 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   handleFormLoading("form-login", "SIGNING IN...");
-  handleFormLoading("form-register", "CREATING ACCOUNT...");
   handleFormLoading("form-verify", "VERIFYING ACCOUNT...");
   handleFormLoading("form-admin", "LOGGING IN...");
   handleFormLoading("form-forgot", "REQUESTING...");
