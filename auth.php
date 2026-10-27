@@ -279,7 +279,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
     </div>
 
     <!-- ACCOUNT VERIFICATION MODAL -->
-    <div id="verification-modal"
+    <div id="verification-modal" role="dialog" aria-modal="true" aria-labelledby="verification-title" aria-describedby="verification-description"
         style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; justify-content: center; align-items: center;">
 
         <!-- CHANGED border-radius from 8px to 0 here -->

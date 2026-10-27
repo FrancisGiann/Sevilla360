@@ -242,6 +242,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const modal = document.getElementById('verification-modal');
       if (modal) {
           modal.style.display = 'flex';
+          document.getElementById('verification-code')?.focus();
       }
       
       // 2. Update the text to show their email
@@ -277,7 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
               e.preventDefault();
               
               // If the button is disabled (timer is running), do nothing
-              if (this.style.pointerEvents === 'none') return;
+              if (this.getAttribute('aria-disabled') === 'true') return;
 
               // 1. Request a new code using this account's verification method
               fetch('actions/auth/resend_code.php', {
@@ -302,6 +303,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
               // 2. Disable the button and start the 60-second UI timer
               this.style.pointerEvents = 'none';
+              this.setAttribute('aria-disabled', 'true');
               this.style.color = 'gray';
               this.style.textDecoration = 'none';
               
@@ -315,6 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   if (timeLeft <= 0) {
                       clearInterval(timer);
                       this.style.pointerEvents = 'auto';
+                      this.removeAttribute('aria-disabled');
                       this.style.color = 'var(--color-dark-light)';
                       this.style.textDecoration = 'underline';
                       this.innerText = phoneSignup ? 'Resend SMS code' : 'Resend verification email';
@@ -348,6 +351,6 @@ document.addEventListener("DOMContentLoaded", () => {
   handleFormLoading("form-register", "CREATING ACCOUNT...");
   handleFormLoading("form-verify", "VERIFYING ACCOUNT...");
   handleFormLoading("form-admin", "LOGGING IN...");
-  handleFormLoading("form-forgot", "SENDING LINK...");
+  handleFormLoading("form-forgot", "REQUESTING...");
 
 });

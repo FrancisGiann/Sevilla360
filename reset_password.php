@@ -81,13 +81,13 @@ if ($smsMode) {
                         <input type="hidden" name="origin" value="<?php echo htmlspecialchars($origin, ENT_QUOTES, 'UTF-8'); ?>">
 
                         <div class="form-group">
-                            <label>NEW PASSWORD</label>
-                    <input type="password" name="new_password" class="form-control" required autocomplete="new-password" aria-describedby="reset-password-help" data-password-policy-input>
+                            <label for="reset-new-password">NEW PASSWORD</label>
+                    <input id="reset-new-password" type="password" name="new_password" autofocus class="form-control" required autocomplete="new-password" aria-describedby="reset-password-help" data-password-policy-input>
                         </div>
                         
                         <div class="form-group">
-                            <label>CONFIRM PASSWORD</label>
-                    <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+                            <label for="reset-confirm-password">CONFIRM PASSWORD</label>
+                    <input id="reset-confirm-password" type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
                         </div>
 
                         <small id="reset-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
