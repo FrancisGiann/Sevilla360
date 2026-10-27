@@ -1236,6 +1236,17 @@ textarea:focus {
 
 .booking-date-control { margin: 1.5rem 0; }
 .booking-date-control > .small-label { margin-bottom: 0.65rem; }
+.booking-date-control .calendar-selection-guide {
+  margin: 0 0 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--color-gold);
+  border-radius: 0 6px 6px 0;
+  background: #f8f2e8;
+  color: #3d342b;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
 .booking-inline-note {
   margin: 0.75rem 0 0;
   color: #50473f;

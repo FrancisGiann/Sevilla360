@@ -596,6 +596,7 @@ if ($seo_home_url !== null):
                     </fieldset>
                     <div class="idx-modal-availability">
                         <h3>Check availability</h3>
+                        <p class="calendar-selection-guide idx-modal-calendar-guide" id="idx-calendar-guide" data-calendar-selection-guide role="status" aria-live="polite">Select a start date, then an end date. For one day, select the same date again.</p>
                         <div class="calendar-ui idx-modal-calendar" id="idx-modal-calendar">
                             <div class="cal-header"><button type="button" class="cal-nav prev-month" aria-label="Previous month"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button><h4 class="cal-month-year">Month Year</h4><button type="button" class="cal-nav next-month" aria-label="Next month"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button></div>
                             <div class="cal-weekdays"><span>SUN</span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span></div>

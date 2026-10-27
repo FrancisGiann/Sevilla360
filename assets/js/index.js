@@ -722,6 +722,7 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.inclusiveRangeGuard = false;
       modalCalendar.minimumRangeNights = 0;
       modalCalendar.requireHotelRules = venue.category === 'Hotel Room';
+      modalCalendar.container.dataset.calendarGuideMode = venue.category === 'Hotel Room' ? 'hotel' : venue.category === 'Resort Villa' ? 'villa' : 'event';
       modalCalendar.selectionLocked = venue.category === 'Hotel Room' && !activeHotelVariant;
       modalCalendar.render();
       const calendarNote = modal?.querySelector('.idx-modal-calendar-note');
@@ -804,6 +805,7 @@ document.addEventListener("DOMContentLoaded", function () {
       modalCalendar.fixedDurationGuard = true;
       modalCalendar.inclusiveRangeGuard = overnight;
       modalCalendar.minimumRangeNights = overnight ? 1 : 0;
+      modalCalendar.updateSelectionGuide();
       const note = modal?.querySelector('.idx-modal-calendar-note');
       if (note) note.textContent = overnight
         ? 'Select check-in and checkout dates. Every date in the range, including checkout, is reserved.'

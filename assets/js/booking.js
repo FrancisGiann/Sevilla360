@@ -1798,6 +1798,7 @@ class BookingController {
         if (help) help.textContent = stayType === 'Overnight'
             ? 'Overnight: choose check-in and checkout dates (at least one night). Every date in the range, including checkout, counts toward availability.'
             : 'Day Time Stay: one calendar date.';
+        calendar.updateSelectionGuide();
         this.updateVillaBreakfastSchedule();
         return true;
     }

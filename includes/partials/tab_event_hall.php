@@ -70,6 +70,7 @@ $type_bday = $sys_settings['event_type_birthday'] ?? 5000;
         <h3 class="booking-step-heading" id="event-step-dates" tabindex="-1">Choose inquiry dates</h3>
         <div class="booking-date-control">
             <p class="small-label">SELECT INQUIRY DATES</p>
+            <p class="calendar-selection-guide" id="event-calendar-guide" data-calendar-selection-guide role="status" aria-live="polite">Select a start date, then an end date. For one day, select the same date again.</p>
             <?php $calendarId = 'cal-ui-event'; include 'includes/partials/booking_calendar.php'; ?>
             <p class="booking-inline-note">Dates are checked for availability, but an inquiry does not hold the date. It goes to the first finalized contract.</p>
         </div>

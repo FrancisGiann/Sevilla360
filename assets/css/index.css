@@ -781,6 +781,7 @@
 .idx-review-dot[aria-current="page"]::before { background: currentColor; transform: scale(1.2); }
 .idx-review-dot:hover:not(:disabled)::before, .idx-review-dot:focus-visible::before { background: currentColor; }
 .idx-modal-availability { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--idx-hairline); }.idx-modal-availability h3 { margin: 0; color: var(--idx-ink); font: 400 1.08rem var(--font-heading); }
+.idx-modal-calendar-guide { margin: .65rem 0 .3rem; padding: .6rem .7rem; border-left: 3px solid var(--color-gold); border-radius: 0 5px 5px 0; background: #f8f2e8; color: #3d342b; font-size: .78rem; font-weight: 600; line-height: 1.45; }
 .idx-modal-calendar { margin-top: .55rem; padding: 0; box-shadow: none; }.idx-modal-calendar .cal-header { padding: .3rem 0; }.idx-modal-calendar .cal-nav { min-width: 2.75rem; min-height: 2.75rem; }.idx-modal-calendar .cal-days-grid { gap: .2rem; margin-bottom: .4rem; }.idx-modal-calendar .cal-day-cell { height: 2.15rem; min-height: 2.15rem; margin: 0 2px; font-size: .79rem; }
 .idx-modal-calendar .idx-modal-calendar-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .35rem .8rem; margin: .55rem 0 0; padding: .55rem 0 0; border-top: 1px solid var(--idx-hairline); list-style: none; color: #726a60; font-size: .68rem; line-height: 1.25; }
 .idx-modal-calendar .idx-modal-calendar-legend[hidden] { display: none; }

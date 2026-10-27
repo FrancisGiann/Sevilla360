@@ -57,6 +57,7 @@
         <h3 class="booking-step-heading" id="hotel-step-dates" tabindex="-1">Choose check-in and check-out</h3>
         <div class="booking-date-control">
             <p class="small-label">SELECT YOUR DATES</p>
+            <p class="calendar-selection-guide" id="hotel-calendar-guide" data-calendar-selection-guide role="status" aria-live="polite">Select a check-in date, then a later check-out date.</p>
             <?php $calendarId = 'cal-ui-hotel'; include 'includes/partials/booking_calendar.php'; ?>
             <p class="booking-inline-note hotel-calendar-help">Hotel rooms are booked per night. A booked arrival date can still be selected as your checkout boundary after choosing an available check-in date.</p>
         </div>

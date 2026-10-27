@@ -34,6 +34,8 @@ class SevillaCalendar {
     this.monthYearDisplay = this.container.querySelector(".cal-month-year");
     this.prevBtn = this.container.querySelector(".prev-month");
     this.nextBtn = this.container.querySelector(".next-month");
+    this.selectionGuide = this.container.parentElement?.querySelector('[data-calendar-selection-guide]') || null;
+    if (this.selectionGuide?.id) this.container.setAttribute('aria-describedby', this.selectionGuide.id);
 
     this.currentDate = new Date();
     this.currentDate.setDate(1);
@@ -354,6 +356,37 @@ class SevillaCalendar {
       }
       this.grid.appendChild(cell);
     }
+    this.updateSelectionGuide();
+  }
+
+  updateSelectionGuide() {
+    if (!this.selectionGuide) return;
+    const mode = this.container.id === 'cal-ui-hotel' ? 'hotel'
+      : this.container.id === 'cal-ui-villa' ? 'villa'
+        : this.container.dataset?.calendarGuideMode || 'event';
+    const singleDay = mode === 'villa' && this.fixedDurationNights === 0;
+    const startLabel = mode === 'hotel' || mode === 'villa' ? 'check-in date' : 'start date';
+    const endLabel = mode === 'hotel' ? 'check-out date' : mode === 'villa' ? 'checkout date' : 'end date';
+    const format = date => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    let message;
+    if (!this.startDate) {
+      message = singleDay
+        ? 'Select one available date for your Day Time Stay.'
+        : mode === 'hotel'
+          ? 'Select a check-in date, then a later check-out date.'
+          : mode === 'villa'
+            ? 'Select a check-in date, then a later checkout date.'
+            : 'Select a start date, then an end date. For one day, select the same date again.';
+    } else if (!this.endDate) {
+      message = `${startLabel[0].toUpperCase()}${startLabel.slice(1)} selected: ${format(this.startDate)}. Now select ${mode === 'event' ? 'an end date, or select the same date again for one day.' : `a later ${endLabel}.`}`;
+    } else {
+      const dates = this.startDate.getTime() === this.endDate.getTime()
+        ? format(this.startDate)
+        : `${format(this.startDate)} to ${format(this.endDate)}`;
+      message = `Selected: ${dates}. ${this.container.id === 'idx-modal-calendar' ? 'Continue booking when ready.' : 'Confirm these dates in the dialog.'}`;
+    }
+    if (this.selectionGuide.textContent !== message) this.selectionGuide.textContent = message;
   }
 
   updateDateDisplay() {

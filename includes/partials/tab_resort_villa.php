@@ -83,6 +83,7 @@
             <p class="small-label">SELECT YOUR DATES</p>
             <p class="booking-inline-note villa-calendar-help" id="villa-calendar-help">Day Time Stay: one calendar date. Overnight: choose check-in and checkout dates; the entire range is reserved.</p>
             <p class="booking-inline-note villa-breakfast-schedule" id="villa-breakfast-schedule" hidden></p>
+            <p class="calendar-selection-guide" id="villa-calendar-guide" data-calendar-selection-guide role="status" aria-live="polite">Select one available date for your Day Time Stay.</p>
             <?php $calendarId = 'cal-ui-villa'; include 'includes/partials/booking_calendar.php'; ?>
         </div>
         <div class="form-group">
