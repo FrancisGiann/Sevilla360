@@ -1367,24 +1367,66 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const contactActions = {
-      'contact-send-phone': ['request_phone', 'contact-new-phone', 'phone'],
-      'contact-verify-phone': ['verify_phone', 'contact-phone-code', 'code'],
-      'contact-send-email': ['request_recovery_email', 'contact-recovery-email', 'email'],
-      'contact-verify-email': ['verify_recovery_email', 'contact-email-code', 'code']
+      'contact-send-phone': ['request_phone', 'contact-new-phone', 'phone', 'phone'],
+      'contact-verify-phone': ['verify_phone', 'contact-phone-code', 'code', 'phone'],
+      'contact-send-email': ['request_recovery_email', 'contact-recovery-email', 'email', 'email'],
+      'contact-verify-email': ['verify_recovery_email', 'contact-email-code', 'code', 'email']
   };
-  Object.entries(contactActions).forEach(([id, [action, field, key]]) => {
+  function contactStatus(kind, message, success = false) {
+      const status = document.getElementById(`contact-${kind}-status`);
+      if (!status) return;
+      status.textContent = message;
+      status.hidden = !message;
+      status.classList.toggle('is-success', success);
+  }
+  function showContactCode(kind) {
+      const edit = document.getElementById(`contact-${kind}-edit-group`);
+      const code = document.getElementById(`contact-${kind}-code-group`);
+      if (!edit || !code) return;
+      edit.hidden = true;
+      code.hidden = false;
+      const haveCode = document.querySelector(`[data-code-target="contact-${kind}-code-group"]`);
+      if (haveCode) haveCode.hidden = true;
+      code.querySelector('input')?.focus();
+  }
+  function showContactEdit(kind) {
+      const edit = document.getElementById(`contact-${kind}-edit-group`);
+      const code = document.getElementById(`contact-${kind}-code-group`);
+      if (!edit || !code) return;
+      edit.hidden = false;
+      code.hidden = true;
+      const haveCode = document.querySelector(`[data-code-target="contact-${kind}-code-group"]`);
+      if (haveCode) haveCode.hidden = false;
+      contactStatus(kind, '');
+      edit.querySelector('input')?.focus();
+  }
+  document.querySelectorAll('.contact-setting').forEach(section => {
+      section.addEventListener('toggle', () => {
+          if (section.open) document.querySelectorAll('.contact-setting').forEach(other => {
+              if (other !== section) other.open = false;
+          });
+      });
+  });
+  document.querySelectorAll('.contact-have-code').forEach(button =>
+      button.addEventListener('click', () => showContactCode(button.dataset.codeTarget.includes('phone') ? 'phone' : 'email')));
+  document.querySelectorAll('.contact-back-edit').forEach(button =>
+      button.addEventListener('click', () => showContactEdit(button.dataset.editTarget.includes('phone') ? 'phone' : 'email')));
+  Object.entries(contactActions).forEach(([id, [action, field, key, kind]]) => {
       document.getElementById(id)?.addEventListener('click', async function() {
           const button = this;
+          if (button.disabled) return;
           button.disabled = true;
+          contactStatus(kind, '');
           try {
               const response = await fetch('actions/user/contact_verification.php', {
                   method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
                   body: JSON.stringify({action, [key]: document.getElementById(field).value})
               });
               const data = await response.json();
-              showAlert(data.success ? 'Success' : 'Notice', data.message, data.success ? 'success' : 'error');
+              contactStatus(kind, data.message || (data.success ? 'Code sent.' : 'Please try again.'), !!data.success);
+              if (data.success && (action === 'request_phone' || action === 'request_recovery_email')) showContactCode(kind);
               if (data.success && (action === 'verify_phone' || action === 'verify_recovery_email')) window.location.reload();
-          } catch (_) { showAlert('Connection issue', 'Verification request could not be completed. Try again.', 'error'); }
+          } catch (_) { contactStatus(kind, 'Verification request could not be completed. Try again.'); }
           finally { button.disabled = false; }
       });
   });

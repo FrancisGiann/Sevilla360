@@ -35,13 +35,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- Progressive Registration Logic ---
-  const step1 = document.getElementById('register-step-1');
-  const step2 = document.getElementById('register-step-2');
-  const stepSeg1 = document.getElementById('step-seg-1');
-  const stepSeg2 = document.getElementById('step-seg-2');
-  const btnNext = document.getElementById('btn-next-step');
-  const btnPrev = document.getElementById('btn-prev-step');
+  const registrationSteps = [...document.querySelectorAll('#form-register .register-step')];
+  const stepSegments = [...document.querySelectorAll('#register-step-indicator .step-segment')];
+  const stepIndicator = document.getElementById('register-step-indicator');
   const registerSubtitle = document.getElementById('register-subtitle');
+  let currentRegisterStep = 1;
   const email = document.getElementById('reg-email');
   const errEmail = document.getElementById('err-email');
   let emailInteracted = false;
@@ -146,107 +144,78 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
   
-  // Initialization: Hide Step 2 via JS so it degrades gracefully if JS fails
-  if (step2) step2.style.display = 'none';
-
-  function showRegisterStep(step) {
-      if(!step1 || !step2) return;
-      if (step === 1) {
-          step1.classList.add('active');
-          step1.style.display = 'block';
-          step2.classList.remove('active');
-          step2.style.display = 'none';
-          
-          // Restore required attributes for Step 1
-          const prevReqFields = step1.querySelectorAll('[data-was-required="true"]');
-          prevReqFields.forEach(f => f.setAttribute('required', 'required'));
-          
-          if(stepSeg1) stepSeg1.classList.add('active');
-          if(stepSeg2) stepSeg2.classList.remove('active');
-          if(registerSubtitle) registerSubtitle.innerText = 'Create your account';
-      } else {
-          step2.classList.add('active');
-          step2.style.display = 'block';
-          step1.classList.remove('active');
-          step1.style.display = 'none';
-          
-          // Remove required attributes from Step 1 so the form can submit while hidden
-          const reqFields = step1.querySelectorAll('[required]');
-          reqFields.forEach(f => {
-              f.removeAttribute('required');
-              f.dataset.wasRequired = 'true';
-          });
-          
-          if(stepSeg1) stepSeg1.classList.add('active');
-          if(stepSeg2) stepSeg2.classList.add('active');
-          if(registerSubtitle) registerSubtitle.innerText = 'Tell us about yourself';
-      }
+  const stepLabels = ['Email', 'Password', 'Your name', 'Contact details'];
+  function showRegisterStep(step, { focus = false } = {}) {
+      if (!registrationSteps.length) return;
+      currentRegisterStep = step;
+      registrationSteps.forEach((panel, index) => {
+          const visible = index + 1 === step;
+          panel.classList.toggle('active', visible);
+          panel.hidden = !visible;
+          panel.querySelectorAll('[data-required-field]').forEach(field => { field.required = visible; });
+      });
+      stepSegments.forEach((segment, index) => segment.classList.toggle('active', index < step));
+      stepIndicator?.setAttribute('aria-valuenow', String(step));
+      stepIndicator?.setAttribute('aria-valuetext', `${stepLabels[step - 1]}, step ${step} of 4`);
+      if (registerSubtitle) registerSubtitle.textContent = stepLabels[step - 1];
+      if (focus) registrationSteps[step - 1]?.querySelector('input:not([type="hidden"])')?.focus();
   }
+  registrationSteps.forEach(panel => panel.querySelectorAll('[required]').forEach(field => field.dataset.requiredField = 'true'));
+  showRegisterStep(1);
 
-  if (btnNext) {
-      btnNext.addEventListener('click', async () => {
-          if (emailCheckPending) return;
-          let isValid = true;
-          const pass = document.getElementById('reg-password');
-          const confPass = document.getElementById('reg-confirm-password');
-          const errPass = document.getElementById('err-password');
-          const errConf = document.getElementById('err-confirm-password');
-
+  async function advanceRegisterStep() {
+      if (emailCheckPending || currentRegisterStep >= 4) return;
+      const step = currentRegisterStep;
+      const panel = registrationSteps[step - 1];
+      if (step === 1) {
           emailInteracted = true;
-          const emailIsValid = updateRegistrationEmailState({ normalize: true });
-          if (!emailIsValid) isValid = false;
-
-          errPass.style.display = 'none';
-          errConf.style.display = 'none';
-          
-          if (!pass.value) {
-              errPass.innerText = 'Password is required.';
-              errPass.style.display = 'block';
-              isValid = false;
-          } else if (!window.SevillaPasswordPolicy || !window.SevillaPasswordPolicy.validate(pass.value).valid) {
-              errPass.innerText = window.SevillaPasswordPolicy?.validate(pass.value).message || 'Password does not meet the required policy.';
-              errPass.style.display = 'block';
-              isValid = false;
-          }
-          
-          if (pass.value !== confPass.value) {
-              errConf.innerText = 'Passwords do not match.';
-              errConf.style.display = 'block';
-              isValid = false;
-          }
-
-          if (!emailIsValid) email.focus();
-          if (!isValid) return;
-
+          if (!updateRegistrationEmailState({ normalize: true })) { email.focus(); return; }
           const checkedEmail = email.value.trim();
           const version = ++emailCheckVersion;
           emailCheckPending = true;
-          btnNext.disabled = true;
+          const next = panel.querySelector('.register-next');
+          next.disabled = true;
           try {
               const state = await checkRegistrationEmail(checkedEmail);
-              if (version !== emailCheckVersion || email.value.trim() !== checkedEmail) return;
-              if (state === 'unavailable') {
-                  showEmailCheckMessage(unavailableEmailMessage);
-                  email.focus();
-                  return;
-              }
-              showRegisterStep(2);
-          } catch (error) {
-              if (version === emailCheckVersion) {
-                  showEmailCheckMessage('We could not check this email right now. Please try again.');
-                  email.focus();
-              }
-          } finally {
-              emailCheckPending = false;
-              btnNext.disabled = false;
-          }
-      });
+              if (version !== emailCheckVersion || email.value.trim() !== checkedEmail || currentRegisterStep !== step || !viewRegister?.classList.contains('active')) return;
+              if (state === 'unavailable') { showEmailCheckMessage(unavailableEmailMessage); email.focus(); return; }
+              showRegisterStep(2, { focus: true });
+          } catch (_) {
+              if (version === emailCheckVersion) { showEmailCheckMessage('We could not check this email right now. Please try again.'); email.focus(); }
+          } finally { emailCheckPending = false; next.disabled = false; }
+          return;
+      }
+      if (step === 2) {
+          const pass = document.getElementById('reg-password');
+          const confirm = document.getElementById('reg-confirm-password');
+          const errPass = document.getElementById('err-password');
+          const errConfirm = document.getElementById('err-confirm-password');
+          const result = window.SevillaPasswordPolicy?.validate(pass.value);
+          errPass.style.display = result?.valid ? 'none' : 'block';
+          if (!result?.valid) errPass.textContent = result?.message || 'Password does not meet the required policy.';
+          errConfirm.style.display = pass.value === confirm.value && confirm.value ? 'none' : 'block';
+          if (errConfirm.style.display === 'block') errConfirm.textContent = 'Passwords do not match.';
+          if (!result?.valid) { pass.focus(); return; }
+          if (errConfirm.style.display === 'block') { confirm.focus(); return; }
+      } else {
+          const invalid = panel.querySelector('input:invalid');
+          if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
+      }
+      showRegisterStep(step + 1, { focus: true });
   }
+
+  document.querySelectorAll('#form-register .register-next').forEach(button =>
+      button.addEventListener('click', advanceRegisterStep));
+  document.querySelectorAll('#form-register .register-back').forEach(button =>
+      button.addEventListener('click', () => showRegisterStep(Number(button.dataset.prevStep), { focus: true })));
 
   if (registrationForm) {
       registrationForm.addEventListener('submit', async (event) => {
           event.preventDefault();
+          if (currentRegisterStep < 4) { await advanceRegisterStep(); return; }
           if (registrationSubmit.disabled || emailCheckPending) return;
+          const invalid = registrationSteps[3].querySelector('input:invalid');
+          if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
           const submittedEmail = email.value.trim();
           registrationSubmit.disabled = true;
           try {
@@ -291,12 +260,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  if (btnPrev) {
-      btnPrev.addEventListener('click', () => {
-          showRegisterStep(1);
-      });
-  }
-
   // --- Event Listeners for Navigation ---
   if(linkGotoRegister) linkGotoRegister.addEventListener("click", () => switchView(viewRegister));
   if(linkGotoLogin) linkGotoLogin.addEventListener("click", () => switchView(viewLogin));
@@ -313,7 +276,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {
         switchView(viewRegister);
-        showRegisterStep(2); // Return to Step 2, where the Terms link lives
+        showRegisterStep(4); // Return to the consent step
         if(agreeCheckbox) agreeCheckbox.checked = true;
       });
   }
@@ -360,73 +323,97 @@ document.addEventListener("DOMContentLoaded", () => {
       }
   }
 
+  const codePanel = document.getElementById('verification-code-panel');
+  const changePanel = document.getElementById('verification-change-panel');
+  const codeStatus = document.getElementById('verification-status');
+  const changeStatus = document.getElementById('verification-change-status');
+  function verificationStatus(node, message, success = false) {
+      if (!node) return;
+      node.textContent = message;
+      node.hidden = !message;
+      node.classList.toggle('is-success', success);
+  }
+  function showVerificationPanel(panel) {
+      if (!codePanel || !changePanel) return;
+      const changing = panel === 'change';
+      codePanel.hidden = changing;
+      changePanel.hidden = !changing;
+      document.getElementById('verification-modal')?.setAttribute('aria-describedby', changing ? 'verification-change-description' : 'verification-description');
+      (changing ? document.getElementById('pending-new-phone') : document.getElementById('verification-code'))?.focus();
+  }
+  document.getElementById('verification-change-open')?.addEventListener('click', () => showVerificationPanel('change'));
+  document.getElementById('verification-change-back')?.addEventListener('click', () => showVerificationPanel('code'));
+
   document.getElementById('pending-change-phone')?.addEventListener('click', async function() {
+      if (this.disabled) return;
+      const newPhone = document.getElementById('pending-new-phone');
+      if (!newPhone?.value.trim()) {
+          verificationStatus(changeStatus, 'Enter a Philippine mobile number.');
+          newPhone?.focus();
+          return;
+      }
       this.disabled = true;
+      verificationStatus(changeStatus, '');
       try {
           const response = await fetch('actions/auth/change_pending_phone.php', {
               method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
-              body: JSON.stringify({email: verifyEmail, phone: document.getElementById('pending-new-phone').value})
+              body: JSON.stringify({email: verifyEmail, phone: newPhone.value})
           });
           const data = await response.json();
-          showAlert(data.success ? 'Notice' : 'Error', data.message, data.success ? 'success' : 'error');
-      } catch (_) { showAlert('Connection issue', 'Could not request a code. Try again.', 'error'); }
+          if (data.success) {
+              showVerificationPanel('code');
+              verificationStatus(codeStatus, data.message || 'Enter the code sent to the new number.', true);
+              if (!resendTimer) startResendCooldown();
+          } else {
+              verificationStatus(changeStatus, data.message || 'No code was sent. Try again later.');
+          }
+      } catch (_) { verificationStatus(changeStatus, 'Could not request a code. Try again.'); }
       finally { this.disabled = false; }
   });
 
-  // --- RESEND CODE 60-SECOND TIMER LOGIC ---
-      const resendBtn = document.getElementById('resend-code-btn');
-      if (resendBtn) {
-          resendBtn.addEventListener('click', function (e) {
-              e.preventDefault();
-              
-              // If the button is disabled (timer is running), do nothing
-              if (this.getAttribute('aria-disabled') === 'true') return;
-
-              // 1. Request a new code using this account's verification method
-              fetch('actions/auth/resend_code.php', {
-                  method: 'POST',
-                  headers: { 
-                      'Content-Type': 'application/x-www-form-urlencoded',
-                      'X-CSRF-Token': csrfToken
-                  },
-                  body: 'email=' + encodeURIComponent(verifyEmail)
-              })
-              .then(response => response.json())
-              .then(data => {
-                  if (data.success) {
-                      showAlert("Notice", data.message || (phoneSignup ? "A new SMS code was queued." : "A new verification code has been sent to your email inbox!"), "success");
-                  } else {
-                      showAlert("Notice", data.message || "Could not resend code.", "error");
-                  }
-              })
-              .catch(err => {
-                  showAlert("Notice", "Connection issue. Could not request a new code.", "error");
-              });
-
-              // 2. Disable the button and start the 60-second UI timer
-              this.style.pointerEvents = 'none';
-              this.setAttribute('aria-disabled', 'true');
-              this.style.color = 'gray';
-              this.style.textDecoration = 'none';
-              
-              let timeLeft = 60;
-              this.innerText = `Resend code in ${timeLeft}s`;
-
-              const timer = setInterval(() => {
-                  timeLeft--;
-                  this.innerText = `Resend code in ${timeLeft}s`;
-                  
-                  if (timeLeft <= 0) {
-                      clearInterval(timer);
-                      this.style.pointerEvents = 'auto';
-                      this.removeAttribute('aria-disabled');
-                      this.style.color = 'var(--color-dark-light)';
-                      this.style.textDecoration = 'underline';
-                      this.innerText = phoneSignup ? 'Resend SMS code' : 'Resend verification email';
-                  }
-              }, 1000);
+  const resendBtn = document.getElementById('resend-code-btn');
+  let resendPending = false;
+  let resendTimer = null;
+  function startResendCooldown() {
+      if (!resendBtn) return;
+      let remaining = 60;
+      resendBtn.setAttribute('aria-disabled', 'true');
+      resendBtn.textContent = `Resend code in ${remaining}s`;
+      resendTimer = setInterval(() => {
+          remaining--;
+          if (remaining <= 0) {
+              clearInterval(resendTimer);
+              resendTimer = null;
+              resendBtn.removeAttribute('aria-disabled');
+              resendBtn.textContent = phoneSignup ? 'Resend SMS code' : 'Resend verification email';
+          } else resendBtn.textContent = `Resend code in ${remaining}s`;
+      }, 1000);
+  }
+  resendBtn?.addEventListener('click', async event => {
+      event.preventDefault();
+      if (resendPending || resendTimer) return;
+      resendPending = true;
+      resendBtn.setAttribute('aria-disabled', 'true');
+      if (phoneSignup) verificationStatus(codeStatus, '');
+      try {
+          const response = await fetch('actions/auth/resend_code.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfToken },
+              body: 'email=' + encodeURIComponent(verifyEmail)
           });
+          const data = await response.json();
+          const message = data.message || (data.success ? (phoneSignup ? 'A new SMS code was queued.' : 'A new verification code was sent.') : 'Could not resend code.');
+          if (phoneSignup) verificationStatus(codeStatus, message, !!data.success);
+          else showAlert('Notice', message, data.success ? 'success' : 'error');
+          if (data.success) startResendCooldown();
+      } catch (_) {
+          if (phoneSignup) verificationStatus(codeStatus, 'Connection issue. Could not request a new code.');
+          else showAlert('Notice', 'Connection issue. Could not request a new code.', 'error');
+      } finally {
+          resendPending = false;
+          if (!resendTimer) resendBtn.removeAttribute('aria-disabled');
       }
+  });
 
   // --- Form Submission Loading Spinners ---
   const handleFormLoading = (formId, loadingText) => {

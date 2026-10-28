@@ -556,32 +556,42 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                         </div>
 
                         <?php if ((int)($phone_verification_user['phone_signup_required'] ?? 0) === 1): ?>
-                        <div class="settings-card">
+                        <div class="settings-card contact-settings-card">
                             <h3 class="settings-title">Verified contact details</h3>
-                            <p>Your current phone stays verified until you confirm a new one. You can confirm a recovery email whenever you are ready.</p>
+                            <p>Choose what you want to update. Your current phone stays verified until you confirm a new one.</p>
                             <div class="settings-form">
-                                <div class="form-grid">
-                                    <div class="form-group">
+                                <details class="contact-setting" id="contact-phone-section">
+                                    <summary>Change mobile number</summary>
+                                    <p class="contact-inline-status" id="contact-phone-status" role="status" aria-live="polite" hidden></p>
+                                    <div class="form-group" id="contact-phone-edit-group">
                                         <label for="contact-new-phone">New Philippine mobile number</label>
                                         <input type="tel" id="contact-new-phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567">
                                         <button type="button" id="contact-send-phone" class="btn btn-save">Send SMS code</button>
                                     </div>
-                                    <div class="form-group">
+                                    <div class="form-group contact-code-group" id="contact-phone-code-group" hidden>
                                         <label for="contact-phone-code">Phone code</label>
                                         <input type="text" id="contact-phone-code" class="form-control" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
                                         <button type="button" id="contact-verify-phone" class="btn btn-save">Confirm new phone</button>
+                                        <button type="button" class="contact-back-edit" data-edit-target="contact-phone-edit-group">&larr; Change number</button>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="contact-recovery-email">Recovery email <?php echo empty($phone_verification_user['recovery_email_verified_at']) ? '(not confirmed)' : '(confirmed)'; ?></label>
+                                    <button type="button" class="contact-have-code" data-code-target="contact-phone-code-group">I already have a code</button>
+                                </details>
+                                <details class="contact-setting" id="contact-email-section">
+                                    <summary>Recovery email <?php echo empty($phone_verification_user['recovery_email_verified_at']) ? '(not confirmed)' : '(confirmed)'; ?></summary>
+                                    <p class="contact-inline-status" id="contact-email-status" role="status" aria-live="polite" hidden></p>
+                                    <div class="form-group" id="contact-email-edit-group">
+                                        <label for="contact-recovery-email">Recovery email</label>
                                         <input type="email" id="contact-recovery-email" class="form-control" autocomplete="email" value="<?php echo htmlspecialchars((string)($phone_verification_user['recovery_email'] ?? $customer['email']), ENT_QUOTES, 'UTF-8'); ?>">
                                         <button type="button" id="contact-send-email" class="btn btn-save">Send email code</button>
                                     </div>
-                                    <div class="form-group">
+                                    <div class="form-group contact-code-group" id="contact-email-code-group" hidden>
                                         <label for="contact-email-code">Email code</label>
                                         <input type="text" id="contact-email-code" class="form-control" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
                                         <button type="button" id="contact-verify-email" class="btn btn-save">Confirm recovery email</button>
+                                        <button type="button" class="contact-back-edit" data-edit-target="contact-email-edit-group">&larr; Change email</button>
                                     </div>
-                                </div>
+                                    <button type="button" class="contact-have-code" data-code-target="contact-email-code-group">I already have a code</button>
+                                </details>
                             </div>
                         </div>
                         <?php endif; ?>
