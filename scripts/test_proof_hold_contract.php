@@ -12,7 +12,7 @@ $migration = $read('migrations/033_proof_submission_claims.sql');
 $checks = [
     'online request remains nonexclusive before proof' => str_contains($booking, "'Awaiting Proof'") && str_contains($select, 'if ($is_staff_booking)') && str_contains($select, 'Dates selected|0'),
     'first proof uses venue mutex and committed inventory' => str_contains($submit, 'SET TRANSACTION ISOLATION LEVEL READ COMMITTED') && str_contains($submit, 'manual_payment_claim_inventory_locked($conn, $booking)') && str_contains($payment, 'booking_lock_venues_in_order($conn'),
-    'first accepted claim starts exactly 24 hours' => str_contains($submit, "payment_due_at = DATE_ADD(NOW(), INTERVAL 24 HOUR)"),
+    'first accepted claim starts exactly 24 hours' => str_contains($submit, "DATE_ADD(NOW(), INTERVAL 24 HOUR)"),
     'first rejection restarts one correction window' => str_contains($review, "proof_rejections_count = 1, payment_due_at = DATE_ADD(NOW(), INTERVAL 24 HOUR)"),
     'retry does not extend the deadline' => str_contains($submit, 'proof_retry_submitted_at = NOW()') && !str_contains($submit, 'proof_retry_submitted_at = NOW(), payment_due_at'),
     'second rejection cancels immediately' => str_contains($review, "booking_status = 'Cancelled', proof_rejections_count = 2, payment_due_at = NULL"),

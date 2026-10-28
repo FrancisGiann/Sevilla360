@@ -264,7 +264,10 @@ function manual_payment_deadline_has_expired(?string $deadline, ?DateTimeImmutab
 /** Recheck expiry eligibility after locking the booking; pending proof always wins the race. */
 function manual_payment_expiry_candidate(array $booking, bool $hasPendingProof, ?DateTimeImmutable $now = null): bool
 {
+    $activePaymentStep = !empty($booking['payment_step_expires_at'])
+        && !manual_payment_deadline_has_expired((string)$booking['payment_step_expires_at'], $now);
     if ($hasPendingProof
+        || $activePaymentStep
         || ($booking['source'] ?? '') !== 'Online'
         || !in_array((string)($booking['booking_status'] ?? ''), ['Awaiting Proof', 'Pending', 'Confirmed'], true)
         || (int)($booking['is_completed'] ?? 0) === 1
@@ -468,10 +471,8 @@ function manual_payment_archive_submission_locked(mysqli $conn, int $submissionI
  * by only one first proof. False means a real proof still needs staff review,
  * but the booking must not be represented as a reservation.
  */
-function manual_payment_claim_inventory_locked(mysqli $conn, array $booking): bool
+function manual_payment_booking_resources(mysqli $conn, array $booking): array
 {
-    require_once __DIR__ . '/booking_rules.php';
-    require_once __DIR__ . '/seminars.php';
     $bookingId = (int)$booking['id'];
     $resources = [[
         'venue_id' => (int)$booking['venue_id'],
@@ -483,6 +484,16 @@ function manual_payment_claim_inventory_locked(mysqli $conn, array $booking): bo
     $roomStmt->bind_param('i', $bookingId);
     if (!$roomStmt->execute()) throw new RuntimeException('Unable to load booking resources.');
     foreach ($roomStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $room) $resources[] = $room;
+    return $resources;
+}
+
+/** Caller holds the booking row; the venue mutexes serialize overlapping claims. */
+function manual_payment_claim_inventory_locked(mysqli $conn, array $booking): bool
+{
+    require_once __DIR__ . '/booking_rules.php';
+    require_once __DIR__ . '/seminars.php';
+    $bookingId = (int)$booking['id'];
+    $resources = manual_payment_booking_resources($conn, $booking);
     booking_lock_venues_in_order($conn, array_column($resources, 'venue_id'));
 
     foreach ($resources as $resource) {
@@ -520,6 +531,132 @@ function manual_payment_claim_inventory_locked(mysqli $conn, array $booking): bo
         if ($maintenance->get_result()->num_rows > 0 || seminar_has_resource_conflict($conn, $venueId, $start, $end)) return false;
     }
     return true;
+}
+
+/** This value is internal to the server and is never a PHP session identifier. */
+function manual_payment_step_lock_id(string $token): string
+{
+    if (!preg_match('/\A[a-f0-9]{32}\z/D', $token)) throw new RuntimeException('Invalid payment step token.');
+    return 'pay:' . $token;
+}
+
+function manual_payment_db_now(mysqli $conn): string
+{
+    $result = $conn->query('SELECT NOW() AS db_now');
+    if (!$result) throw new RuntimeException('Unable to check payment hold time.');
+    return (string)$result->fetch_assoc()['db_now'];
+}
+
+/** Acquire once per token. Reopening with a new token never extends an existing hold. */
+function manual_payment_acquire_step_hold_locked(mysqli $conn, array $booking, string $token): ?string
+{
+    require_once __DIR__ . '/booking_rules.php';
+    $bookingId = (int)$booking['id'];
+    $exit = $conn->prepare('SELECT token FROM payment_step_exits WHERE token = ? AND booking_id = ? LIMIT 1');
+    $exit->bind_param('si', $token, $bookingId);
+    if (!$exit->execute()) throw new RuntimeException('Unable to check payment step state.');
+    if ($exit->get_result()->num_rows > 0) return null;
+    $current = (string)($booking['payment_step_token'] ?? '');
+    $expiry = (string)($booking['payment_step_expires_at'] ?? '');
+    if ($current !== '' && $expiry !== '' && $expiry > manual_payment_db_now($conn)) {
+        if (!hash_equals($current, $token)) return null;
+        $existingResources = manual_payment_booking_resources($conn, $booking);
+        booking_lock_venues_in_order($conn, array_column($existingResources, 'venue_id'));
+        $lockId = manual_payment_step_lock_id($token);
+        $check = $conn->prepare("SELECT venue_id, start_date, end_date FROM booking_locks WHERE session_id = ? AND source = 'online' AND expires_at > NOW() FOR UPDATE");
+        $check->bind_param('s', $lockId);
+        if (!$check->execute()) throw new RuntimeException('Unable to verify payment hold.');
+        $expected = array_map(static fn(array $r): string => (int)$r['venue_id'] . ':' . $r['start_date'] . ':' . $r['end_date'], $existingResources);
+        $actual = array_map(static fn(array $r): string => (int)$r['venue_id'] . ':' . $r['start_date'] . ':' . $r['end_date'], $check->get_result()->fetch_all(MYSQLI_ASSOC));
+        sort($expected); sort($actual);
+        return $expected === $actual ? $expiry : null;
+    }
+    $resources = manual_payment_booking_resources($conn, $booking);
+    booking_lock_venues_in_order($conn, array_column($resources, 'venue_id'));
+    // The old token is dead. Clear only its rows; another booking's hold is untouched.
+    if ($current !== '') {
+        $old = manual_payment_step_lock_id($current);
+        $delete = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ? AND source = 'online'");
+        $delete->bind_param('s', $old);
+        if (!$delete->execute()) throw new RuntimeException('Unable to clear an expired payment hold.');
+    }
+    if (!manual_payment_claim_inventory_locked($conn, $booking)) return null;
+    $lockId = manual_payment_step_lock_id($token);
+    $insert = $conn->prepare("INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) VALUES (?, ?, 'online', ?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+    if (!$insert) throw new RuntimeException('Unable to create a payment hold.');
+    foreach ($resources as $resource) {
+        $venueId = (int)$resource['venue_id'];
+        $start = (string)$resource['start_date'];
+        $end = (string)$resource['end_date'];
+        $insert->bind_param('isss', $venueId, $lockId, $start, $end);
+        if (!$insert->execute()) throw new RuntimeException('Unable to hold every selected room.');
+    }
+    $update = $conn->prepare('UPDATE bookings SET payment_step_token = ?, payment_step_expires_at = DATE_ADD(NOW(), INTERVAL 15 MINUTE), payment_step_seen_at = COALESCE(payment_step_seen_at, NOW()) WHERE id = ?');
+    $update->bind_param('si', $token, $bookingId);
+    if (!$update->execute()) throw new RuntimeException('Unable to save payment hold.');
+    $read = $conn->prepare('SELECT payment_step_expires_at FROM bookings WHERE id = ?');
+    $read->bind_param('i', $bookingId);
+    if (!$read->execute()) throw new RuntimeException('Unable to read payment hold expiry.');
+    return (string)$read->get_result()->fetch_assoc()['payment_step_expires_at'];
+}
+
+/** Consume only the current, complete, unexpired hold before claiming inventory. */
+function manual_payment_consume_step_hold_locked(mysqli $conn, array $booking, string $token): bool
+{
+    require_once __DIR__ . '/booking_rules.php';
+    if ($token === '' || !hash_equals((string)($booking['payment_step_token'] ?? ''), $token)
+        || (string)($booking['payment_step_expires_at'] ?? '') <= manual_payment_db_now($conn)) return false;
+    $resources = manual_payment_booking_resources($conn, $booking);
+    booking_lock_venues_in_order($conn, array_column($resources, 'venue_id'));
+    $lockId = manual_payment_step_lock_id($token);
+    $select = $conn->prepare("SELECT venue_id, start_date, end_date FROM booking_locks WHERE session_id = ? AND source = 'online' AND expires_at > NOW() FOR UPDATE");
+    $select->bind_param('s', $lockId);
+    if (!$select->execute()) throw new RuntimeException('Unable to inspect payment hold.');
+    $rows = $select->get_result()->fetch_all(MYSQLI_ASSOC);
+    $expected = array_map(static fn(array $r): string => (int)$r['venue_id'] . ':' . $r['start_date'] . ':' . $r['end_date'], $resources);
+    $actual = array_map(static fn(array $r): string => (int)$r['venue_id'] . ':' . $r['start_date'] . ':' . $r['end_date'], $rows);
+    sort($expected); sort($actual);
+    if ($expected !== $actual) return false;
+    $delete = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ? AND source = 'online'");
+    $delete->bind_param('s', $lockId);
+    if (!$delete->execute()) throw new RuntimeException('Unable to consume payment hold.');
+    $clear = $conn->prepare('UPDATE bookings SET payment_step_token = NULL, payment_step_expires_at = NULL WHERE id = ? AND payment_step_token = ?');
+    $bookingId = (int)$booking['id'];
+    $clear->bind_param('is', $bookingId, $token);
+    if (!$clear->execute() || $clear->affected_rows !== 1) throw new RuntimeException('Payment hold changed during proof submission.');
+    return true;
+}
+
+/** A stale proof may be retained, but must not leave a newer tab's hold active. */
+function manual_payment_clear_step_hold_locked(mysqli $conn, array $booking): void
+{
+    require_once __DIR__ . '/booking_rules.php';
+    $token = (string)($booking['payment_step_token'] ?? '');
+    if ($token === '') return;
+    $resources = manual_payment_booking_resources($conn, $booking);
+    booking_lock_venues_in_order($conn, array_column($resources, 'venue_id'));
+    $lockId = manual_payment_step_lock_id($token);
+    $delete = $conn->prepare("DELETE FROM booking_locks WHERE session_id = ? AND source = 'online'");
+    $delete->bind_param('s', $lockId);
+    if (!$delete->execute()) throw new RuntimeException('Unable to clear payment hold.');
+    $clear = $conn->prepare('UPDATE bookings SET payment_step_token = NULL, payment_step_expires_at = NULL WHERE id = ? AND payment_step_token = ?');
+    $bookingId = (int)$booking['id'];
+    $clear->bind_param('is', $bookingId, $token);
+    if (!$clear->execute()) throw new RuntimeException('Unable to clear payment hold.');
+}
+
+/** The caller has already locked and authenticated the booking row. */
+function manual_payment_exit_step_locked(mysqli $conn, array $booking, string $token): void
+{
+    $bookingId = (int)$booking['id'];
+    manual_payment_step_lock_id($token);
+    $exit = $conn->prepare('INSERT INTO payment_step_exits (token, booking_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE token = VALUES(token)');
+    $exit->bind_param('si', $token, $bookingId);
+    if (!$exit->execute()) throw new RuntimeException('Unable to record payment step exit.');
+    if ($booking['booking_status'] === 'Awaiting Proof' && $booking['proof_first_submitted_at'] === null
+        && hash_equals((string)($booking['payment_step_token'] ?? ''), $token)) {
+        manual_payment_clear_step_hold_locked($conn, $booking);
+    }
 }
 
 function manual_payment_expected_amount(array $booking): float
@@ -887,7 +1024,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
     require_once __DIR__ . '/request_context.php';
     $limit = max(1, min(500, $limit));
     $completionSql = booking_completion_sql('b');
-    $stmt = $conn->prepare("SELECT b.id FROM bookings b WHERE b.source = 'Online' AND b.booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND b.payment_status = 'Unpaid' AND b.amount_paid = 0 AND b.payment_due_at <= NOW() AND NOT {$completionSql} AND NOT EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AND NOT (b.booking_status = 'Pending' AND EXISTS (SELECT 1 FROM venues v WHERE v.id = b.venue_id AND v.category = 'Event Hall')) ORDER BY b.payment_due_at, b.id LIMIT ?");
+    $stmt = $conn->prepare("SELECT b.id FROM bookings b WHERE b.source = 'Online' AND b.booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND b.payment_status = 'Unpaid' AND b.amount_paid = 0 AND b.payment_due_at <= NOW() AND (b.payment_step_expires_at IS NULL OR b.payment_step_expires_at <= NOW()) AND NOT {$completionSql} AND NOT EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AND NOT (b.booking_status = 'Pending' AND EXISTS (SELECT 1 FROM venues v WHERE v.id = b.venue_id AND v.category = 'Event Hall')) ORDER BY b.payment_due_at, b.id LIMIT ?");
     if (!$stmt) throw new RuntimeException('Unable to find expired bookings.');
     $stmt->bind_param('i', $limit);
     if (!$stmt->execute()) throw new RuntimeException('Unable to find expired bookings.');
@@ -897,7 +1034,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
         if (!$conn->begin_transaction()) throw new RuntimeException('Unable to start an expiry transaction.');
         try {
             $lockedCompletionSql = booking_completion_sql('b');
-            $stmtBooking = $conn->prepare("SELECT b.id, b.reference_no, b.booking_status, b.payment_status, b.amount_paid, b.payment_due_at, b.source, c.user_id, v.name AS venue_name, v.category AS venue_category, CASE WHEN {$lockedCompletionSql} THEN 1 ELSE 0 END AS is_completed FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
+            $stmtBooking = $conn->prepare("SELECT b.id, b.reference_no, b.booking_status, b.payment_status, b.amount_paid, b.payment_due_at, b.payment_step_expires_at, b.source, c.user_id, v.name AS venue_name, v.category AS venue_category, CASE WHEN {$lockedCompletionSql} THEN 1 ELSE 0 END AS is_completed FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
             if (!$stmtBooking) throw new RuntimeException('Unable to lock an expired booking.');
             $stmtBooking->bind_param('i', $bookingId);
             if (!$stmtBooking->execute()) throw new RuntimeException('Unable to lock an expired booking.');
@@ -914,7 +1051,7 @@ function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
                 $conn->commit();
                 continue;
             }
-            $stmtUpdate = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ? AND source = 'Online' AND booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND payment_status = 'Unpaid' AND amount_paid = 0 AND payment_due_at <= NOW()");
+            $stmtUpdate = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ? AND source = 'Online' AND booking_status IN ('Awaiting Proof', 'Pending', 'Confirmed') AND payment_status = 'Unpaid' AND amount_paid = 0 AND payment_due_at <= NOW() AND (payment_step_expires_at IS NULL OR payment_step_expires_at <= NOW())");
             if (!$stmtUpdate) throw new RuntimeException('Unable to expire an unpaid booking.');
             $stmtUpdate->bind_param('i', $bookingId);
             if (!$stmtUpdate->execute()) throw new RuntimeException('Unable to expire an unpaid booking.');

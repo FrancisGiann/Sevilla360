@@ -6,7 +6,7 @@
             <p>You have selected:<br>
                 <strong id="selected-date-text" class="modal-date-highlight"></strong>
             </p>
-            <p class="modal-subtext">Dates are checked now. They are held only after payment proof is submitted and the inventory claim succeeds.
+            <p class="modal-subtext">Dates are checked now. A short hold starts when you open payment, if the room is still available.
             </p>
         </div>
         <div class="modal-actions-center">

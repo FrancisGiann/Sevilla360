@@ -132,8 +132,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
-        // Selecting dates does not claim inventory. Payment proof is the
-        // first opportunity to take an exclusive, transaction-locked claim.
+        // Selecting dates does not claim inventory. Payment entry takes a
+        // short hold; a timely proof promotes it to a pending-review claim.
         $sid = session_id();
 
         if ($venue_category === 'Hotel Room' && $posted_room_group_id !== null) {
@@ -469,7 +469,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if ($amount_due > 0) {
-            $event_message = 'Your booking request has been saved. Open your dashboard to review payment instructions and submit your transfer reference and receipt image within ' . $dueHours . ' hours.';
+            $event_message = 'Your booking request has been saved. Open payment from your dashboard to check availability and start a 15-minute hold before transfer instructions appear. Submit your transfer reference and receipt image while the hold is active.';
         } else {
             $event_message = "Your event inquiry for " . trim((string)($_POST['room_name'] ?? 'Event Hall')) . " has been sent successfully. An admin will review it shortly.";
         }

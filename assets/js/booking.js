@@ -36,6 +36,9 @@ class BookingController {
             addonAvailabilityReady: false,
             addonAvailabilityRangeKey: '',
             confirmedSelectionKey: '',
+            inventoryBlocked: false,
+            inventoryWatchKey: '',
+            inventoryWatchState: 'available',
             savedPaymentBookingId: null
         };
         this.state.lockExpiresAt = null;
@@ -57,6 +60,7 @@ class BookingController {
         this.bindCalculatorTriggers();
         this.bindModalsAndSubmission();
         this.bindUnloadHook();
+        this.bindInventoryWatch();
         this.determineActiveTab();
         this.syncHotelRoomSelection();
         this.syncVenueSelectionDisplays();
@@ -76,6 +80,72 @@ class BookingController {
         this.syncHotelRoomSelection();
         this.syncVenueSelectionDisplays();
         this.calculateSummary();
+        this.checkSelectedInventory();
+    }
+
+    bindInventoryWatch() {
+        this.getEl('booking-inventory-recheck')?.addEventListener('click', () => this.checkSelectedInventory());
+        this.getEl('booking-inventory-change')?.addEventListener('click', () => {
+            this.state.currentStep = 1;
+            this.updateBookingStepUI();
+            this.getEl(this.state.activeTabId === 'resort-villa' ? 'villa-type' : 'hotel-room-name')?.focus({ preventScroll: true });
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) this.checkSelectedInventory();
+        });
+        window.addEventListener('focus', () => this.checkSelectedInventory());
+        window.setInterval(() => {
+            if (!document.hidden) this.checkSelectedInventory();
+        }, 10000);
+    }
+
+    async checkSelectedInventory() {
+        if (this.inventoryWatchPending || !this.auth?.isCustomer || document.hidden
+            || !this.state.isDatesLocked || this.state.savedPaymentBookingId
+            || !['hotel-rooms', 'resort-villa'].includes(this.state.activeTabId)) return;
+        const calendar = this.state.activeCalendar;
+        if (!calendar?.startDate || !calendar?.endDate || this.state.confirmedSelectionKey !== this.buildSelectionKey(calendar)) return;
+        const context = this.getTabContextData();
+        const category = this.state.activeTabId === 'hotel-rooms' ? 'Hotel Room' : 'Resort Villa';
+        const start = this.formatSafeDate(calendar.startDate);
+        const end = this.formatSafeDate(calendar.endDate);
+        const key = [category, context.venueId || context.roomName, start, end].join('|');
+        if (!context.venueId && !context.roomName) return;
+        this.inventoryWatchPending = true;
+        try {
+            const params = new URLSearchParams({ category, start_date: start, end_date: end });
+            if (context.venueId) params.set('venue_id', context.venueId);
+            if (context.roomName) params.set('room_name', context.roomName);
+            const response = await fetch(`actions/bookings/check_selection_availability.php?${params}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+            const data = await response.json();
+            if (!response.ok || data?.success !== true || !['available', 'held', 'unavailable'].includes(data.state)) return;
+            const current = this.getTabContextData();
+            const currentKey = [this.state.activeTabId === 'hotel-rooms' ? 'Hotel Room' : 'Resort Villa', current.venueId || current.roomName,
+                this.state.activeCalendar?.startDate ? this.formatSafeDate(this.state.activeCalendar.startDate) : '',
+                this.state.activeCalendar?.endDate ? this.formatSafeDate(this.state.activeCalendar.endDate) : ''].join('|');
+            if (key !== currentKey || !this.state.isDatesLocked || this.state.savedPaymentBookingId) return;
+            const previous = this.state.inventoryWatchKey === key ? this.state.inventoryWatchState : 'available';
+            this.state.inventoryWatchKey = key;
+            this.state.inventoryWatchState = data.state;
+            this.state.inventoryBlocked = data.state !== 'available';
+            const notice = this.getEl('booking-inventory-notice');
+            const message = this.getEl('booking-inventory-message');
+            if (notice) notice.hidden = !this.state.inventoryBlocked;
+            const noun = category === 'Resort Villa' ? 'villa' : 'room';
+            const wording = data.state === 'held'
+                ? `This ${noun} is temporarily held for the selected dates. It may become available again when that hold ends. Choose another ${noun} or dates, or recheck.`
+                : `This ${noun} is unavailable for the selected dates. Choose another ${noun} or dates.`;
+            if (message && this.state.inventoryBlocked) message.textContent = wording;
+            const proceed = this.getEl('btn-proceed');
+            if (proceed) proceed.disabled = this.state.inventoryBlocked;
+            if (this.state.inventoryBlocked && previous !== data.state && typeof showAlert === 'function') {
+                showAlert(data.state === 'held' ? 'Temporarily held' : 'No longer available', wording, 'info');
+            }
+        } catch (error) {
+            // Poll failures do not assert availability; submission and payment entry recheck on the server.
+        } finally {
+            this.inventoryWatchPending = false;
+        }
     }
 
     isValidDraftDate(value) {
@@ -2054,6 +2124,13 @@ class BookingController {
         });
 
         this.state.activeTabId = target;
+        this.state.inventoryBlocked = false;
+        this.state.inventoryWatchKey = '';
+        this.state.inventoryWatchState = 'available';
+        const inventoryNotice = this.getEl('booking-inventory-notice');
+        if (inventoryNotice) inventoryNotice.hidden = true;
+        const proceedAfterSwitch = this.getEl('btn-proceed');
+        if (proceedAfterSwitch) proceedAfterSwitch.disabled = false;
         this.state.currentStep = 1;
         this.clearBookingStepError();
         this.updateBookingStepUI();
@@ -2075,6 +2152,7 @@ class BookingController {
             'resort-villa': this.auth.isCustomer ? 'CONTINUE TO PAYMENT' : 'SIGN IN TO CONTINUE'
         };
         button.textContent = labels[this.state.activeTabId] || 'SUBMIT BOOKING';
+        if (this.state.inventoryBlocked) button.disabled = true;
         button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
     }
 
@@ -2269,6 +2347,7 @@ class BookingController {
             this.state.lockExpiresAt = serverLockCreated ? expiresAt : null;
             const proceed = this.getEl('btn-proceed');
             if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
+            this.checkSelectedInventory();
             calendarInstance.updateDateDisplay();
             this.calculateSummary();
             this.saveDraft();
@@ -2339,7 +2418,7 @@ class BookingController {
         if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : 'Confirm your dates';
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : 'Available now, but the date is not held until payment proof is submitted and accepted for review.';
+            : 'Available now. A 15-minute hold starts when you open payment, if the room is still available.';
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
             ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date included)` : ''}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
@@ -2970,11 +3049,15 @@ class BookingController {
     // =========================================================================
     async submitOnlineBooking() {
         const btn = this.getEl('btn-proceed');
+        if (this.state.inventoryBlocked && !this.state.savedPaymentBookingId) {
+            showAlert('Selection unavailable', 'This selection is temporarily held or has been booked. Choose another room or date, then recheck availability.', 'info');
+            return;
+        }
         if (this.state.savedPaymentBookingId) {
             if (this.manualPayment) {
                 this.manualPayment.openBooking(this.state.savedPaymentBookingId, btn);
             } else {
-                showAlert("Request saved", "Your request is saved but its dates are not held. Go to My Bookings and submit payment proof to continue.", 'error');
+                showAlert("Request saved", "Your request is saved but its dates are not held. Open payment from My Bookings to check availability and start a 15-minute hold.", 'error');
             }
             return;
         }
@@ -3149,12 +3232,12 @@ class BookingController {
                 } else {
                     const bookingId = String(response[2] || '');
                     if (!this.rememberSavedPaymentBooking(bookingId)) {
-                        showAlert("Request saved", "Your request was saved, but its dates are not held yet. Go to My Bookings and submit payment proof to continue.", 'error');
+                        showAlert("Request saved", "Your request was saved, but its dates are not held yet. Open payment from My Bookings to start a 15-minute hold.", 'error');
                     } else {
                         if (this.manualPayment) {
                             this.manualPayment.openBooking(bookingId, btn);
                         } else {
-                            showAlert("Request saved", "Your request is saved but its dates are not held. Go to My Bookings and submit payment proof to continue.", 'error');
+                            showAlert("Request saved", "Your request is saved but its dates are not held. Open payment from My Bookings to start a 15-minute hold.", 'error');
                         }
                     }
                 }

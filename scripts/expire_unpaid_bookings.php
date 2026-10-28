@@ -24,6 +24,8 @@ try {
     require_once __DIR__ . '/../config/db_connect.php';
     require_once __DIR__ . '/../includes/manual_payment.php';
     $expired = manual_payment_expire_due_bookings($conn, 500);
+    // Exit tombstones only need to outlive delayed browser requests.
+    $conn->query('DELETE FROM payment_step_exits WHERE exited_at < DATE_SUB(NOW(), INTERVAL 30 DAY)');
     fwrite(STDOUT, 'Expired ' . $expired . " unpaid booking(s).\n");
 } catch (Throwable $e) {
     error_log('Unpaid booking expiry failed: ' . get_class($e));

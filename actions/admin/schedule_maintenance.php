@@ -74,6 +74,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // availability. Do not create a fake customer booking here: it would
         // be counted twice and could remain blocking after completion.
         if ($is_blocking) {
+            // The venue row is already locked. A customer payment step or staff
+            // walk-in hold must finish before blocking maintenance takes inventory.
+            $hold_overlap = booking_overlap_sql($v_row['category']);
+            $hold_check = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() AND {$hold_overlap} LIMIT 1");
+            if (!$hold_check) throw new Exception('Unable to check active date holds.');
+            $hold_check->bind_param('iss', $venue_id, $eDate, $sDate);
+            if (!$hold_check->execute()) throw new Exception('Unable to check active date holds.');
+            if ($hold_check->get_result()->num_rows > 0) throw new Exception('Cannot block these dates while a booking holds this unit.');
             // Check if dates are already booked by customers
             // If hotel room, use exclusive checkout interval (start_date < eDate AND end_date > sDate)
             // If event hall, use inclusive checkout interval (start_date <= eDate AND end_date >= sDate)

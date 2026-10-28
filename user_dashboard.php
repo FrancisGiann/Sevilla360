@@ -55,7 +55,7 @@ $stmt_upcoming = $conn->prepare("
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
         (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at
+        b.payment_due_at, b.payment_step_seen_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
@@ -163,7 +163,7 @@ $stmt_overview_recent = $conn->prepare("
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
         (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at
+        b.payment_due_at, b.payment_step_seen_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ?
@@ -183,7 +183,7 @@ $stmt_attention = $conn->prepare("
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
         EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
         (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at
+        b.payment_due_at, b.payment_step_seen_at
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
@@ -215,14 +215,16 @@ $format_dashboard_date = static function ($start, $end = null): string {
 $dashboard_status = 'customer_dashboard_status';
 $can_submit_manual_payment = static function (array $booking): bool {
     $hasPendingProof = !empty($booking['manual_payment_pending']);
-    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || $booking['booking_status'] === 'Cancelled' || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
+    $reportAfterCancellation = $booking['booking_status'] === 'Cancelled' && !empty($booking['payment_step_seen_at']) && empty($booking['proof_first_submitted_at']);
+    if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || ($booking['booking_status'] === 'Cancelled' && !$reportAfterCancellation) || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed', 'Cancelled'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
     if (!empty($booking['cancel_pending']) || ($booking['cancel_status'] ?? '') === 'Pending' || !empty($booking['resched_pending']) || ($booking['resched_status'] ?? '') === 'Pending') return false;
     if (($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') return false;
-    if (!$hasPendingProof && $booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time()) return false;
+    if (!$hasPendingProof && $booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time() && empty($booking['payment_step_seen_at'])) return false;
     return true;
 };
 $manual_payment_action_label = static function (array $booking): string {
     if (!empty($booking['manual_payment_pending'])) return 'Replace proof';
+    if ($booking['booking_status'] === 'Cancelled' || (!empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time())) return 'Report transfer';
     return ($booking['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment';
 };
 

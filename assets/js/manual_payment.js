@@ -22,6 +22,7 @@
       this.amount = document.getElementById('manual-payment-amount');
       this.deadline = document.getElementById('manual-payment-deadline');
       this.bookingIdInput = document.getElementById('manual-payment-booking-id');
+      this.holdTokenInput = document.getElementById('manual-payment-hold-token');
       this.methodSelect = document.getElementById('manual-payment-method');
       this.referenceInput = document.getElementById('manual-payment-reference');
       this.account = document.getElementById('manual-payment-account');
@@ -50,6 +51,9 @@
       this.qrZoomInvoker = null;
       this.submissionMode = 'submit';
       this.submitButtonLabel = 'Submit for verification';
+      this.pendingHoldToken = null;
+      this.holdTimer = null;
+      this.holdExpiryMs = 0;
 
       if (!this.modal || !this.form || !this.methodSelect || !this.submitButton) return;
       this.bind();
@@ -72,6 +76,16 @@
         if (clickedOutsideQr) this.closeQrZoom();
       });
       this.form.addEventListener('submit', (event) => this.submitProof(event));
+      window.addEventListener('pagehide', () => { if (!this.isSubmitting) this.releaseHold(true); });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) this.expireHoldLocally(); });
+      window.addEventListener('focus', () => this.expireHoldLocally());
+      window.addEventListener('pageshow', (event) => {
+        if (!event.persisted) return;
+        const wasOpen = this.modal.classList.contains('active');
+        this.releaseHold();
+        this.resetView();
+        if (wasOpen && this.currentBookingId) this.loadDetails(this.currentBookingId);
+      });
 
       this.modal.addEventListener('click', (event) => {
         if (event.target !== this.modal) return;
@@ -81,7 +95,10 @@
       });
       if (typeof MutationObserver === 'function') {
         this.modalObserver = new MutationObserver(() => {
-          if (!this.modal.classList.contains('active')) this.clearQr();
+          if (!this.modal.classList.contains('active')) {
+            this.clearQr();
+            if (!this.isSubmitting) this.releaseHold();
+          }
         });
         this.modalObserver.observe(this.modal, { attributes: true, attributeFilter: ['class'] });
       }
@@ -97,6 +114,7 @@
 
     openBooking(rawId, invoker = document.activeElement) {
       if (this.isSubmitting) return;
+      const previousRelease = this.releaseHold();
       this.activeInvoker = invoker instanceof HTMLElement ? invoker : document.activeElement;
       const idText = String(rawId ?? '');
       if (!/^[1-9]\d*$/.test(idText) || !Number.isSafeInteger(Number(idText))) {
@@ -118,7 +136,10 @@
       this.setSummaryBusy(true);
       this.showStatus('Loading secure payment details…', { error: false });
       this.openModal(this.activeInvoker);
-      this.loadDetails(idText);
+      const openGeneration = this.requestGeneration;
+      Promise.resolve(previousRelease).finally(() => {
+        if (openGeneration === this.requestGeneration) this.loadDetails(idText);
+      });
     }
 
     resetView() {
@@ -126,6 +147,7 @@
       this.requestController = null;
       this.requestGeneration++;
       this.detailsReady = false;
+      if (this.holdTimer) clearTimeout(this.holdTimer);
       this.isSubmitting = false;
       this.closeButtons.forEach((button) => { button.disabled = false; });
       this.setSummaryBusy(false);
@@ -134,7 +156,8 @@
       this.submitButtonLabel = 'Submit for verification';
       this.form.reset();
       if (this.title) this.title.textContent = 'Submit payment proof';
-      if (this.intro) this.intro.textContent = 'Review the amount and deadline, pay using a listed option, then submit the transfer reference and receipt image. Your dates are held only after your first proof claims available inventory.';
+      if (this.intro) this.intro.textContent = 'Opening a short payment hold before showing transfer instructions…';
+      if (this.holdTokenInput) this.holdTokenInput.value = '';
       this.bookingIdInput.value = this.currentBookingId || '';
       this.methodSelect.replaceChildren();
       this.methodSelect.disabled = true;
@@ -159,6 +182,7 @@
     }
 
     async loadDetails(bookingId) {
+      await this.releaseHold();
       this.requestController?.abort();
       const controller = new AbortController();
       this.requestController = controller;
@@ -172,10 +196,18 @@
       this.deadline.textContent = 'Loading…';
       this.setSummaryBusy(true);
       this.showStatus('Loading secure payment details…', { error: false });
+      const tokenBytes = new Uint8Array(16);
+      window.crypto.getRandomValues(tokenBytes);
+      const holdToken = Array.from(tokenBytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      this.pendingHoldToken = holdToken;
 
       try {
-        const response = await fetch(`actions/user/get_manual_payment_details.php?id=${encodeURIComponent(bookingId)}`, {
-          headers: { Accept: 'application/json' },
+        const body = new FormData();
+        body.set('id', bookingId);
+        body.set('hold_token', holdToken);
+        const response = await fetch('actions/user/get_manual_payment_details.php', {
+          method: 'POST', body,
+          headers: { Accept: 'application/json', 'X-CSRF-Token': this.options.csrfToken || '' },
           signal: controller.signal
         });
         let result;
@@ -207,14 +239,21 @@
           throw new Error('The payment service returned incomplete payment methods.');
         }
         this.methods = data.methods;
-        if (this.intro && data.booking_status === 'Awaiting Proof') {
-          this.intro.textContent = 'Your request is saved, but its dates are not held. Submit payment proof before the deadline; if another customer has already claimed the date, staff will help resolve your transferred payment.';
+        if (this.holdTokenInput) this.holdTokenInput.value = data.hold_token || '';
+        if (data.hold_token && data.hold_expires_at) {
+          this.deadline.textContent = `Payment hold ends ${this.formatDeadline(data.hold_expires_at)}`;
+          const expiresAt = new Date(`${data.hold_expires_at.replace(' ', 'T')}+08:00`).getTime();
+          this.holdExpiryMs = expiresAt;
+          this.holdTimer = setTimeout(() => this.expireHoldLocally(), Math.max(0, expiresAt - Date.now()));
+          if (this.intro) this.intro.textContent = 'This room is held for 15 minutes while you transfer and submit proof. Leaving this step releases the hold.';
+        } else if (data.reconciliation_only) {
+          if (this.intro) this.intro.textContent = 'This date is not held. Do not make a new transfer. If you already paid, submit the receipt for staff resolution; this is not a reservation.';
         }
         this.booking.textContent = data.reference_no.trim();
         this.amount.textContent = new Intl.NumberFormat('en-PH', {
           style: 'currency', currency: 'PHP', minimumFractionDigits: 2, maximumFractionDigits: 2
         }).format(expectedAmount);
-        this.deadline.textContent = this.formatDeadline(data.payment_due_at);
+        if (!data.hold_expires_at) this.deadline.textContent = data.reconciliation_only ? 'Staff resolution only; date not held' : this.formatDeadline(data.payment_due_at);
         this.bookingIdInput.value = String(dataId);
         this.setSummaryBusy(false);
 
@@ -259,14 +298,15 @@
         }
 
         if (!this.methods.length) {
-          this.showStatus('The resort has not configured payment methods yet. Your dates are not held until payment proof is submitted; contact the resort for instructions.', { contact: true });
+          this.showStatus('The resort has not configured payment methods yet. No payment hold was started; contact the resort for instructions.', { contact: true });
           return;
         }
 
         this.methodSelect.disabled = false;
         this.renderInstructions();
         this.detailsReady = true;
-        this.showStatus('', { error: false });
+        if (data.reconciliation_only) this.showStatus('Do not make a new transfer. Submit proof only for a transfer already sent; staff will resolve it. Retry to check whether the room has become available.', { contact: true, retry: true });
+        else this.showStatus('', { error: false });
         this.submitButton.disabled = false;
       } catch (error) {
         if (error?.name === 'AbortError' || requestId !== this.requestGeneration) return;
@@ -433,6 +473,7 @@
 
     closeModal() {
       this.clearQr();
+      this.releaseHold();
       if (typeof this.options.closeModal === 'function') {
         this.options.closeModal();
         return;
@@ -451,6 +492,39 @@
     closeStandalone() {
       if (this.isSubmitting || !this.modal.classList.contains('active')) return;
       this.closeModal();
+    }
+
+    expireHoldLocally() {
+      if (!this.holdExpiryMs || Date.now() < this.holdExpiryMs) return;
+      this.holdExpiryMs = 0;
+      this.methods = this.methods.map(({ key, label }) => ({ key, label }));
+      this.renderInstructions();
+      if (this.holdTokenInput) this.holdTokenInput.value = '';
+      this.deadline.textContent = 'Payment hold expired';
+      this.showStatus('The 15-minute hold ended. Do not make a new transfer. If you already paid, submit the receipt for staff resolution; reopening this step checks availability again.', { contact: true, retry: true });
+    }
+
+    releaseHold(beacon = false) {
+      const token = this.pendingHoldToken;
+      const bookingId = this.currentBookingId;
+      this.pendingHoldToken = null;
+      if (this.holdTimer) clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+      this.holdExpiryMs = 0;
+      if (this.holdTokenInput) this.holdTokenInput.value = '';
+      this.methods = this.methods.map(({ key, label }) => ({ key, label }));
+      this.renderInstructions();
+      if (!token || !bookingId) return Promise.resolve();
+      const body = new FormData();
+      body.set('booking_id', bookingId);
+      body.set('hold_token', token);
+      body.set('csrf_token', this.options.csrfToken || '');
+      if (beacon && navigator.sendBeacon) {
+        navigator.sendBeacon('actions/user/release_manual_payment_hold.php', body);
+        return Promise.resolve();
+      } else {
+        return fetch('actions/user/release_manual_payment_hold.php', { method: 'POST', body, keepalive: true }).catch(() => {});
+      }
     }
 
     handleKeydown(event) {

@@ -203,12 +203,18 @@ try {
             $message = 'New venue added successfully!';
         }
     } else {
-        $lock = $conn->prepare('SELECT category FROM venues WHERE id = ? FOR UPDATE');
+        $lock = $conn->prepare('SELECT category, status FROM venues WHERE id = ? FOR UPDATE');
         $lock->bind_param('i', $venue_id);
         $lock->execute();
         $existing = $lock->get_result()->fetch_assoc();
         $lock->close();
         if (!$existing || $existing['category'] !== $category) throw new InvalidArgumentException('Venue was not found or its category changed.');
+        if ($existing['status'] === 'Available' && $status !== 'Available') {
+            $held = $conn->prepare('SELECT id FROM booking_locks WHERE venue_id = ? AND expires_at > NOW() LIMIT 1');
+            $held->bind_param('i', $venue_id);
+            if (!$held->execute()) throw new RuntimeException('Unable to check active venue holds.');
+            if ($held->get_result()->num_rows > 0) throw new RuntimeException('Wait for the active booking hold to end before changing this venue status.');
+        }
         $stmt = $conn->prepare('UPDATE venues SET name = ?, status = ?, description = ?, amenities = ? WHERE id = ?');
         $stmt->bind_param('ssssi', $name, $status, $description, $amenities, $venue_id);
         venue_exec($stmt);

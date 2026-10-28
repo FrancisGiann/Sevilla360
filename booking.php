@@ -311,6 +311,13 @@ unset($villa);
                     </div>
 
                     <!-- Action Buttons -->
+                    <div id="booking-inventory-notice" class="booking-inventory-notice" role="status" aria-live="polite" hidden>
+                        <p id="booking-inventory-message"></p>
+                        <div class="booking-inventory-actions">
+                            <button type="button" class="btn btn-outline" id="booking-inventory-change">Change room or dates</button>
+                            <button type="button" class="btn btn-outline" id="booking-inventory-recheck">Recheck availability</button>
+                        </div>
+                    </div>
                     <button type="button" class="btn btn-book-submit" id="btn-proceed">SUBMIT EVENT INQUIRY</button>
                     <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
                 </div>

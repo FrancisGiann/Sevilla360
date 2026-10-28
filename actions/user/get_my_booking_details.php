@@ -61,6 +61,8 @@ try {
 
     if ($result->num_rows === 0) throw new Exception("Booking not found or access denied.");
     $booking = $result->fetch_assoc();
+    // The payment-step token is a server-side entitlement, not a booking detail.
+    unset($booking['payment_step_token']);
 
     [$booking['customer_status_label'], $booking['customer_status_class']] = customer_dashboard_status($booking);
 

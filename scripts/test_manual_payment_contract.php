@@ -131,8 +131,8 @@ $checks['dashboard exposes replacement actions for pending proofs in overview an
     && str_contains($customerDashboard, 'if (!$hasPendingProof &&');
 $checks['payment client renders server values before handling the empty methods state'] = strpos($paymentClient, "this.booking.textContent = data.reference_no.trim()") < strpos($paymentClient, 'if (!this.methods.length)')
     && strpos($paymentClient, 'this.amount.textContent = new Intl.NumberFormat') < strpos($paymentClient, 'if (!this.methods.length)')
-    && strpos($paymentClient, 'this.deadline.textContent = this.formatDeadline') < strpos($paymentClient, 'if (!this.methods.length)')
-    && str_contains($paymentClient, 'The resort has not configured payment methods yet. Your dates are not held until payment proof is submitted; contact the resort')
+    && strpos($paymentClient, 'this.deadline.textContent = data.reconciliation_only') < strpos($paymentClient, 'if (!this.methods.length)')
+    && str_contains($paymentClient, 'The resort has not configured payment methods yet. No payment hold was started; contact the resort')
     && str_contains($paymentClient, "{ contact: true }");
 $checks['details failures replace loading placeholders and provide retry recovery'] = str_contains($paymentClient, "this.booking.textContent = 'Unavailable'")
     && str_contains($paymentClient, "this.amount.textContent = 'Unavailable'")
@@ -184,7 +184,8 @@ $checks['payment QR is centered below instructions with same-page zoom and save 
     && str_contains($paymentClient, "document.addEventListener('keydown', (event) => this.handleKeydown(event), true)")
     && str_contains($paymentClient, 'this.qrZoomInvoker = this.qrView')
     && str_contains($paymentClient, "this.qr.classList.remove('is-zoomed')")
-    && str_contains($paymentClient, "if (!this.modal.classList.contains('active')) this.clearQr()")
+    && str_contains($paymentClient, "if (!this.modal.classList.contains('active')) {")
+    && str_contains($paymentClient, 'this.releaseHold()')
     && str_contains($paymentCss, '.manual-payment-qr-panel {')
     && str_contains($paymentCss, 'object-fit: contain;')
     && str_contains($paymentCss, 'height: min(52dvh, 440px);')

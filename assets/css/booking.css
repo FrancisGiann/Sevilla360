@@ -1550,3 +1550,14 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 .amenities-panel-list li { display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid #e6ded2;line-height:1.5;overflow-wrap:anywhere; }
 .amenities-panel-list li span { min-width:0; }
 .booking-amenities-panel :focus-visible,.amenities-disclosure button:focus-visible { outline:2px solid #8a6335;outline-offset:2px; }
+#booking-inventory-notice.booking-inventory-notice {
+    margin: 0 0 14px;
+    padding: 14px;
+    border: 1px solid rgba(166, 124, 69, .55);
+    border-radius: 10px;
+    background: #fff8ed;
+    color: var(--color-dark, #2a2522);
+}
+.booking-inventory-notice p { margin: 0 0 10px; }
+.booking-inventory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.booking-inventory-actions .btn { flex: 1 1 170px; }

@@ -149,7 +149,10 @@ try {
         $cancelOverduePending = manual_payment_rejection_cancels_overdue_pending($booking, $eventEnded);
         $unpaid = (float)$booking['amount_paid'] === 0.0 && $booking['payment_status'] === 'Unpaid';
         $proofClaim = $unpaid && $booking['proof_first_submitted_at'] !== null && $booking['venue_category'] !== 'Event Hall';
-        if ($proofClaim && (int)$booking['proof_rejections_count'] >= 1) {
+        if ($booking['booking_status'] === 'Cancelled') {
+            $cancelOverduePending = true;
+            $notice = 'Your transferred payment report for booking ' . $referenceNo . ' was reviewed but could not be accepted: ' . $reason . ' Contact the resort to resolve the transfer; the date is not reserved.';
+        } elseif ($proofClaim && (int)$booking['proof_rejections_count'] >= 1) {
             $cancelOverduePending = true;
             $close = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', proof_rejections_count = 2, payment_due_at = NULL WHERE id = ? AND proof_rejections_count = 1 AND payment_status = 'Unpaid'");
             if (!$close) throw new RuntimeException('Unable to release rejected booking claim.');
@@ -178,7 +181,7 @@ try {
             $dueSql = 'NULL';
             $notice = 'Your payment proof for booking ' . $referenceNo . ' was not accepted: ' . $reason . ' Submit a corrected proof for the remaining balance.';
         }
-        if (!$eventEnded && !$proofClaim) {
+        if (!$eventEnded && !$proofClaim && $booking['booking_status'] !== 'Cancelled') {
             $setDue = $conn->prepare("UPDATE bookings SET payment_due_at = {$dueSql} WHERE id = ?");
             if (!$setDue) throw new RuntimeException('Unable to reopen the payment window.');
             $setDue->bind_param('i', $bookingId);

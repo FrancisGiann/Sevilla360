@@ -16,6 +16,8 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cs
 $bookingId = filter_var($_POST['booking_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $methodKeyInput = $_POST['method'] ?? null;
 $methodKey = is_string($methodKeyInput) ? trim($methodKeyInput) : '';
+$holdToken = is_string($_POST['hold_token'] ?? null) ? $_POST['hold_token'] : '';
+if ($holdToken !== '' && !preg_match('/\A[a-f0-9]{32}\z/D', $holdToken)) $holdToken = '';
 if (!$bookingId || !manual_payment_method_key_is_valid($methodKey)) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'Choose a valid booking and payment method.']);
@@ -62,7 +64,7 @@ try {
     if ($historicalReference->get_result()->num_rows > 0) throw new RuntimeException('That transaction reference has already been submitted for another booking.');
 
     $completionSql = booking_completion_sql('b');
-    $sql = "SELECT b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, b.payment_due_at, b.proof_first_submitted_at, b.proof_rejections_count, b.proof_retry_submitted_at, b.proof_inventory_conflict, b.source, v.category AS venue_category, CASE WHEN {$completionSql} THEN 1 ELSE 0 END AS is_completed, (b.payment_due_at IS NULL OR b.payment_due_at > NOW()) AS deadline_open, EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS pending_cancel_request, EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS pending_reschedule_request FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? AND c.user_id = ? FOR UPDATE";
+    $sql = "SELECT b.id, b.reference_no, b.venue_id, b.start_date, b.end_date, b.total_amount, b.amount_paid, b.payment_scheme, b.booking_status, b.payment_status, b.payment_due_at, b.payment_step_token, b.payment_step_expires_at, b.payment_step_seen_at, b.proof_first_submitted_at, b.proof_rejections_count, b.proof_retry_submitted_at, b.proof_inventory_conflict, b.source, v.category AS venue_category, CASE WHEN {$completionSql} THEN 1 ELSE 0 END AS is_completed, (b.payment_due_at IS NULL OR b.payment_due_at > NOW()) AS deadline_open, EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS pending_cancel_request, EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS pending_reschedule_request FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN venues v ON v.id = b.venue_id WHERE b.id = ? AND c.user_id = ? FOR UPDATE";
     $stmt = $conn->prepare($sql);
     if (!$stmt) throw new RuntimeException('Unable to validate this booking.');
     $userId = (int)$_SESSION['user_id'];
@@ -87,7 +89,8 @@ try {
     $booking['pending_reschedule_request'] = $rescheduleRequestLock->get_result()->num_rows > 0 ? 1 : 0;
     if ((int)$booking['pending_cancel_request'] === 1) throw new RuntimeException('Wait for the cancellation or refund request to be reviewed before submitting or replacing payment proof.');
     if ((int)$booking['pending_reschedule_request'] === 1) throw new RuntimeException('Wait for the reschedule request to be reviewed before submitting or replacing payment proof.');
-    if (booking_is_completed($booking) || $booking['booking_status'] === 'Cancelled' || $booking['payment_status'] === 'Paid' || $booking['payment_status'] === 'Refunded' || $booking['source'] !== 'Online' || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true)) {
+    $lateCancelled = $booking['booking_status'] === 'Cancelled' && $booking['payment_step_seen_at'] !== null && $booking['proof_first_submitted_at'] === null;
+    if (booking_is_completed($booking) || ($booking['booking_status'] === 'Cancelled' && !$lateCancelled) || $booking['payment_status'] === 'Paid' || $booking['payment_status'] === 'Refunded' || $booking['source'] !== 'Online' || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed', 'Cancelled'], true)) {
         throw new RuntimeException('This booking can no longer accept payment proof.');
     }
     if ($booking['venue_category'] === 'Event Hall' && $booking['booking_status'] === 'Pending') throw new RuntimeException('Your Event Hall inquiry must be quoted before payment.');
@@ -108,7 +111,7 @@ try {
         echo json_encode(['success' => true, 'duplicate' => true, 'message' => 'Your payment proof is already awaiting review.']);
         exit;
     }
-    if (!$pendingSubmission && (float)$booking['amount_paid'] === 0.0 && $booking['payment_status'] === 'Unpaid' && (int)$booking['deadline_open'] !== 1) throw new RuntimeException('The payment window has expired. Contact the resort for help.');
+    if (!$pendingSubmission && (float)$booking['amount_paid'] === 0.0 && $booking['payment_status'] === 'Unpaid' && (int)$booking['deadline_open'] !== 1 && !$lateCancelled && $booking['booking_status'] !== 'Awaiting Proof') throw new RuntimeException('The payment window has expired. Contact the resort for help.');
 
     $existingStmt = $conn->prepare('SELECT id, booking_id, status, proof_filename FROM manual_payment_submissions WHERE reference_fingerprint = ? LIMIT 1 FOR UPDATE');
     if (!$existingStmt) throw new RuntimeException('Unable to check transaction reference history.');
@@ -126,11 +129,13 @@ try {
     if ((int)$booking['proof_rejections_count'] === 1 && !$pendingSubmission && $decision !== 'resubmit') {
         throw new RuntimeException('Only one corrected proof may be submitted after staff rejection. Contact the resort.');
     }
-    $firstProof = $booking['booking_status'] === 'Awaiting Proof' && $booking['proof_first_submitted_at'] === null;
+    $firstProof = in_array($booking['booking_status'], ['Awaiting Proof', 'Cancelled'], true) && $booking['proof_first_submitted_at'] === null;
     $inventoryConflict = false;
     if ($firstProof) {
-        $inventoryConflict = !manual_payment_claim_inventory_locked($conn, $booking);
-        $claim = $conn->prepare("UPDATE bookings SET booking_status = IF(?, 'Awaiting Proof', 'Pending'), proof_first_submitted_at = NOW(), proof_inventory_conflict = ?, payment_due_at = DATE_ADD(NOW(), INTERVAL 24 HOUR) WHERE id = ? AND booking_status = 'Awaiting Proof' AND proof_first_submitted_at IS NULL");
+        $validHold = !$lateCancelled && manual_payment_consume_step_hold_locked($conn, $booking, $holdToken);
+        if (!$validHold) manual_payment_clear_step_hold_locked($conn, $booking);
+        $inventoryConflict = !$validHold || !manual_payment_claim_inventory_locked($conn, $booking);
+        $claim = $conn->prepare("UPDATE bookings SET booking_status = IF(?, booking_status, 'Pending'), proof_first_submitted_at = NOW(), proof_inventory_conflict = ?, payment_due_at = IF(booking_status = 'Cancelled', NULL, DATE_ADD(NOW(), INTERVAL 24 HOUR)) WHERE id = ? AND booking_status IN ('Awaiting Proof', 'Cancelled') AND proof_first_submitted_at IS NULL");
         if (!$claim) throw new RuntimeException('Unable to create payment proof claim.');
         $conflictFlag = $inventoryConflict ? 1 : 0;
         $claim->bind_param('iii', $conflictFlag, $conflictFlag, $bookingId);
