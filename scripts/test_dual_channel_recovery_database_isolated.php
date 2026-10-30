@@ -111,5 +111,31 @@ try {
     $current=$db->query('SELECT u.*,p.phone_e164,p.verified_at FROM users u JOIN customer_verified_phones p ON p.user_id=u.id WHERE u.id=1')->fetch_assoc();
     $check(!recovery_grant_valid($newGrant,$current),'old grant stays revoked after phone changes back');
 
+    $stmt=$db->prepare("INSERT INTO recovery_sms_challenges(user_id,phone_e164,code_hash,expires_at,provider_status) VALUES (1,'+639171111111',?,DATE_ADD(NOW(),INTERVAL 5 MINUTE),'pending')");
+    $stmt->bind_param('s',$hash); $stmt->execute(); $limitedId=(int)$db->insert_id;
+    for ($i=0; $i<5; $i++) $check(recovery_consume_code($db,'new@example.test','000000')===null,'invalid attempt '.($i+1).' cannot grant recovery');
+    $check(recovery_consume_code($db,'new@example.test','123456')===null,'correct code fails after five invalid attempts');
+    $check((int)$db->query("SELECT failed_attempts FROM recovery_sms_challenges WHERE id=$limitedId")->fetch_assoc()['failed_attempts']===5,'blocked attempts never exceed persistent attempt cap');
+    $expiredGrant=$newGrant; $expiredGrant['recovery_auth_version']=(int)$current['auth_version']; $expiredGrant['recovery_expires_at']=time()-1;
+    $check(!recovery_reset_password($db,$expiredGrant,'expired-grant-hash'),'expired reset grant cannot change password');
+    $check(!recovery_sms_reserve($db,1,'+639171111111'),'disabled recovery reserves no SMS');
+    $check((int)$db->query('SELECT COUNT(*) AS n FROM contact_throttles')->fetch_assoc()['n']===2,'disabled recovery does not consume a throttle');
+    $_ENV['PHONE_SIGNUP_ENABLED']='1'; $_ENV['UNISMS_SMS_ENABLED']='1'; $_ENV['PASSWORD_SMS_RECOVERY_ENABLED']='1';
+    $_ENV['UNISMS_DAILY_SMS_LIMIT']='10'; $_ENV['UNISMS_SECRET_KEY']='synthetic-not-a-provider-key';
+    $_SERVER['REMOTE_ADDR']='192.0.2.10'; $_ENV['TRUSTED_PROXIES']='';
+    $check(recovery_sms_reserve($db,1,'+639171111111'),'first recovery send reserves allowance without transport');
+    $check(!recovery_sms_reserve($db,1,'09171111111'),'normalized duplicate recovery blocked by cooldown');
+    $budget=hash('sha256','sms-global-'.date('Y-m-d'));
+    $check((int)$db->query("SELECT attempts FROM contact_throttles WHERE scope_key='$budget'")->fetch_assoc()['attempts']===1,'cooldown rejection does not spend another daily allowance');
+    $check(!contact_allow($db,'sms-cooldown-+639171111111',1,60),'signup shares recovery cooldown');
+    $signupCooldown=hash('sha256','sms-cooldown-+639172222222');
+    $check(contact_allow($db,'sms-cooldown-+639172222222',1,60),'synthetic signup reserves its cooldown');
+    $check(!recovery_sms_reserve($db,2,'+639172222222'),'recovery respects a recent signup cooldown');
+    $db->query("UPDATE contact_throttles SET window_start=DATE_SUB(NOW(),INTERVAL 61 SECOND) WHERE scope_key='$signupCooldown'");
+    $check(recovery_sms_reserve($db,2,'+639172222222'),'recovery resumes after cooldown expires');
+    $check(!recovery_sms_reserve($db,2,'+639172222222'),'later duplicate remains blocked');
+    $db->query("UPDATE contact_throttles SET window_start=DATE_SUB(NOW(),INTERVAL 61 SECOND) WHERE scope_key='$signupCooldown'");
+    $check(!recovery_sms_reserve($db,2,'+639172222222'),'hourly account limit remains effective after cooldown expiry');
+
     echo "Combined disposable recovery database: $count checks passed.\n";
 } finally { $db->query("DROP DATABASE `$name`"); }
