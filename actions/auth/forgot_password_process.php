@@ -52,10 +52,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bind_param('s',$email); $stmt->execute(); $user=$stmt->get_result()->fetch_assoc();
         if ($user && recovery_sms_eligible($user)) {
             $phone=$user['phone_e164']; $id=(int)$user['id'];
-            if (contact_allow($conn,'recovery-sms-user-'.$id,3,3600)
-                && contact_allow($conn,'recovery-sms-phone-'.$phone,5,86400)
-                && contact_allow($conn,'recovery-sms-ip-'.request_client_ip(),8,86400)
-                && contact_allow($conn,'sms-global-'.date('Y-m-d'),(int)$_ENV['UNISMS_DAILY_SMS_LIMIT'],86400)) {
+            if (recovery_sms_reserve($conn, $id, $phone)) {
                 $code=contact_code(); $hash=recovery_code_hash($id,$phone,$code);
                 $conn->begin_transaction();
                 try {
