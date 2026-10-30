@@ -3,6 +3,18 @@ declare(strict_types=1);
 require_once __DIR__ . '/contact_verification.php';
 
 function recovery_sms_enabled(): bool { return ($_ENV['PASSWORD_SMS_RECOVERY_ENABLED'] ?? '0') === '1' && sms_ready(); }
+/** Reserve limits before issuing a code or making a provider request. */
+function recovery_sms_reserve(mysqli $db, int $userId, string $phone): bool {
+    if (!recovery_sms_enabled() || $userId <= 0) return false;
+    $phone = unisms_normalize_mobile($phone);
+    return contact_allow($db, 'recovery-sms-user-' . $userId, 3, 3600)
+        && contact_allow($db, 'recovery-sms-phone-' . $phone, 5, 86400)
+        && contact_allow($db, 'recovery-sms-ip-' . request_client_ip(), 8, 86400)
+        // Share signup's cooldown so switching flows cannot replace a fresh
+        // code immediately or spend another credit on a duplicate request.
+        && contact_allow($db, 'sms-cooldown-' . $phone, 1, 60)
+        && contact_allow($db, 'sms-global-' . date('Y-m-d'), (int)$_ENV['UNISMS_DAILY_SMS_LIMIT'], 86400);
+}
 function recovery_sms_eligible(array $user): bool {
     return ($user['role'] ?? '') === 'customer' && ($user['status'] ?? '') === 'active'
         && (int)($user['phone_signup_required'] ?? 0) === 1 && (int)($user['is_verified'] ?? 0) === 1
