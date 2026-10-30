@@ -51,3 +51,15 @@ test('cancelled venue cannot reveal stale success or error',()=>{
     const f=fixture(),p=f.pano('Old');f.loader.enter(p,'Old',()=>{});const late=[...p.listeners.load][0];
     f.loader.cancel();late();p.emit('error');assert.ok(!f.events.includes('Old'));assert.equal(f.timers.size,0);
 });
+
+test('failed destinations preserve the displayed tour, including cached venue re-entry',()=>{
+    const start=source.indexOf('  function handlePanoLoadFailure(');
+    const end=source.indexOf('  // Retry is only offered',start);
+    const stable={loaded:true,material:{map:{}}},failed={};
+    const panoramas=[stable,failed],room={};let disposed=0,fallbacks=0;
+    const handler=new Function('dataMap','currentRoomId','roomLoadToken','activePanoramas','viewer','panoCache','disposePanorama','showStandardFallback',
+        `${source.slice(start,end)}; return handlePanoLoadFailure;`)(
+        {hall:room},'hall',2,panoramas,{panorama:stable},{hall:panoramas},()=>disposed++,()=>fallbacks++);
+    handler('hall',1,failed,panoramas,'hall');
+    assert.equal(disposed,0);assert.equal(fallbacks,0);assert.equal(room.panoFailed,undefined);
+});

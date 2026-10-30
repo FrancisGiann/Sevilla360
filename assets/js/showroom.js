@@ -552,7 +552,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const index = Number(destinationButton.dataset.destinationIndex);
       if (!Number.isInteger(index) || index < 0 || index >= activePanoramas.length || !activePanoramas[index]) return;
       closeDestinations();
-      currentPanoIndex = index;
       viewerActivity();
       enterPanorama(activePanoramas[index], viewer, destinationButton.textContent.trim());
   });
@@ -722,7 +721,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const room = dataMap[roomId];
       if (!room) return;
 
-      const isCurrentLoad = currentRoomId === roomId && roomLoadToken === loadToken;
+      const isCurrentLoad = currentRoomId === roomId &&
+          (roomLoadToken === loadToken || activePanoramas === panoramasRef);
+      // A destination failure belongs to the pending scene request. Keep the
+      // displayed tour and its navigation intact; sceneLoader offers retry.
+      if (isCurrentLoad && viewer?.panorama !== failedPano &&
+          activePanoramas.includes(viewer?.panorama) &&
+          viewer.panorama.loaded === true && viewer.panorama.material?.map) return;
       const cachedPanoramas = panoCache[cacheKey];
       const ownsCache = cachedPanoramas === panoramasRef;
       if (ownsCache) delete panoCache[cacheKey];
@@ -739,7 +744,6 @@ document.addEventListener("DOMContentLoaded", () => {
       roomLoadToken++;
       activePanoramas = [];
       currentPanoIndex = 0;
-      if (viewer?.panorama?.loaded === true && viewer.panorama?.material?.map && viewer.panorama !== failedPano) return;
       showStandardFallback(room);
   }
 
@@ -823,7 +827,6 @@ document.addEventListener("DOMContentLoaded", () => {
               spot.addEventListener('click', () => {
                   if (typeof isCurrentView === 'function' && !isCurrentView()) return;
                   if (targetIndex >= 0 && targetIndex < panoramasRef.length && panoramasRef[targetIndex]) {
-                      currentPanoIndex = targetIndex;
                       viewerActivity();
                       enterPanorama(panoramasRef[targetIndex], viewerRef, destinationLabel);
                   }

@@ -3,6 +3,7 @@ $page_title = '360° Virtual Tour of M.I. Sevilla Resort | Sevilla360';
 $page_description = 'Explore the M.I. Sevilla Resort virtual showroom, browse available event halls, hotel rooms and villas, and view resort spaces in 360°.';
 $extra_css = 'assets/css/showroom.css';
 $extra_js = [
+    'assets/js/panorama-image-loader.js',
     'assets/js/panorama-view-compat.js',
     'assets/js/hotspot-material.js',
     'assets/js/guide_tours.js',

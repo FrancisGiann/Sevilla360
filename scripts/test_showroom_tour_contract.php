@@ -370,7 +370,7 @@ $checks['public framing waits until Panolens resets controls at entry and avoids
     && str_contains($public_js, 'panoramaControlReady.add(pano);')
     && str_contains($public_js, "function enterPanorama(pano, viewerRef = viewer, destinationName = '')")
     && str_contains($public_js, 'sceneLoader.enter(pano, label, () => {')
-    && str_contains($public_js, 'commit(pano) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); }')
+    && str_contains($public_js, 'commit(pano) { if (viewer) { panoramaControlReady.delete(pano); viewer.setPanorama(pano); } }')
     && str_contains($public_js, 'panoramaControlReady.delete(pano);')
     && str_contains($public_js, 'const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);')
     && substr_count($public_js, 'const canApplyImmediately = alreadyCurrent && panoramaControlReady.has(initialPanorama) && initialPanorama.loaded === true && Boolean(initialPanorama.material?.map);') === 2

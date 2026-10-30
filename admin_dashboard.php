@@ -364,6 +364,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="https://cdn.jsdelivr.net/npm/panolens@0.12.1/build/panolens.min.js"></script>
 
     <!-- CMS Scripts -->
+    <script src="<?= $admin_asset_url('assets/js/panorama-image-loader.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/panorama-view-compat.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/hotspot-material.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/guide_tours.js') ?>"></script>
