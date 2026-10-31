@@ -148,13 +148,13 @@ try {
             v.name AS venue_name,0 AS room_count
         FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id
         JOIN venues v ON v.id=sr.venue_id
-        WHERE s.status IN ('draft','finalized') AND sr.resource_kind='hall'
+        WHERE s.status = 'finalized' AND sr.resource_kind='hall'
         UNION ALL
         SELECT s.id AS seminar_id,s.name AS seminar_name,s.status,
             NULL AS reservation_id,'room' AS resource_kind,sr.start_date,sr.end_date,
             NULL AS venue_name,COUNT(*) AS room_count
         FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id
-        WHERE s.status IN ('draft','finalized') AND sr.resource_kind='room'
+        WHERE s.status = 'finalized' AND sr.resource_kind='room'
         GROUP BY s.id,s.name,s.status,sr.start_date,sr.end_date";
     $res_seminars = $conn->query($query_seminars);
     while ($row = $res_seminars->fetch_assoc()) {

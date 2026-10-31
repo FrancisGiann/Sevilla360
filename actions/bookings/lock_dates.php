@@ -139,7 +139,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $transaction_started = false;
     try {
-        $conn->begin_transaction();
+        booking_begin_mutation_transaction($conn);
         $transaction_started = true;
         // HYGIENE: clean up expired locks
         $conn->query("DELETE FROM booking_locks WHERE expires_at < NOW()");
@@ -175,7 +175,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($result->num_rows === 0) throw new Exception("Venue not found.");
             $venue_id = $result->fetch_assoc()['id'];
 
-            if (seminar_has_resource_conflict($conn, (int)$venue_id, $start_date, $end_date)) {
+            if (seminar_has_resource_conflict($conn, (int)$venue_id, $start_date, $end_date, null, false)) {
                 throw new Exception('These dates are reserved for a seminar.');
             }
 
@@ -299,7 +299,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $lk->execute();
                 if ($lk->get_result()->num_rows > 0) continue;
 
-                if (seminar_has_resource_conflict($conn, (int)$vid, $start_date, $end_date)) continue;
+                if (seminar_has_resource_conflict($conn, (int)$vid, $start_date, $end_date, null, false)) continue;
 
                 $assigned_venue_id = $vid;
                 break; // Found an available room!

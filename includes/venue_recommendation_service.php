@@ -19,7 +19,7 @@ function venue_recommendation_is_available(mysqli $conn, int $venueId, string $c
           AND NOT EXISTS (SELECT 1 FROM maintenance m WHERE m.venue_id = v.id AND m.is_blocking = 1
             AND (m.status = 'Scheduled' OR m.status IS NULL) AND m.start_date <= ? AND m.end_date >= ?)
           AND NOT EXISTS (SELECT 1 FROM seminar_reservations sr JOIN seminars s ON s.id = sr.seminar_id
-            WHERE sr.venue_id = v.id AND s.status IN ('draft','finalized') AND sr.resource_kind = ?
+            WHERE sr.venue_id = v.id AND s.status = 'finalized' AND sr.resource_kind = ?
               AND sr.start_date <= ? AND sr.end_date >= ?){$lockClause} LIMIT 1";
     $stmt = $conn->prepare($sql);
     if (!$stmt) throw new RuntimeException('Unable to prepare venue availability lookup.');

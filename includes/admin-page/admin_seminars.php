@@ -1,7 +1,7 @@
 <section class="seminars-page" id="seminars-app" data-endpoint="actions/admin/seminars.php" data-payments-endpoint="actions/admin/seminar_payments.php">
     <header class="seminars-heading">
         <div>
-            <p>Build an attendee roster, hold the Event Hall and hotel rooms, then prepare room sheets.</p>
+            <p>Build a draft roster and room plan. Finalize to reserve the Event Hall and hotel rooms, then print room sheets.</p>
         </div>
     </header>
     <div class="seminar-feedback" id="seminar-feedback" role="status" aria-live="polite" aria-atomic="true" hidden>

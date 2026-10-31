@@ -1,5 +1,15 @@
 <?php
 
+/** Recoverable inventory conflict: no reservation changes have been committed. */
+class SeminarInventoryConflict extends InvalidArgumentException
+{
+    public function __construct(public readonly array $conflicts)
+    {
+        $details = array_map(static fn(array $item): string => $item['label'] . ' (' . $item['start_date'] . ' to ' . $item['end_date'] . '): ' . $item['reason'], $conflicts);
+        parent::__construct('These selections are no longer available: ' . implode('; ', $details) . ' Choose replacement rooms or dates in Edit reservations and try again. No reservation changes were made.');
+    }
+}
+
 function seminar_strict_date(mixed $value, string $label): string
 {
     if (!is_string($value) || !preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $value)) {
@@ -32,7 +42,7 @@ function seminar_validate_dates(mixed $hallStart, mixed $hallEnd, mixed $checkIn
 function seminar_has_resource_conflict(mysqli $conn, int $venueId, string $startDate, string $endDate, ?int $excludeSeminarId = null, bool $lockRows = true): bool
 {
     $sql = "SELECT sr.id FROM seminar_reservations sr JOIN seminars s ON s.id = sr.seminar_id
-        WHERE sr.venue_id = ? AND s.status IN ('draft','finalized')
+        WHERE sr.venue_id = ? AND s.status = 'finalized'
           AND ((sr.resource_kind = 'hall' AND sr.start_date <= ? AND sr.end_date >= ?)
             OR (sr.resource_kind = 'room' AND sr.start_date < ? AND sr.end_date > ?))";
     $types = 'issss';
@@ -57,7 +67,7 @@ function seminar_has_resource_conflict(mysqli $conn, int $venueId, string $start
 function seminar_has_maintenance_conflict(mysqli $conn, int $venueId, string $startDate, string $endDate): bool
 {
     $stmt = $conn->prepare("SELECT sr.id FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id
-        WHERE sr.venue_id=? AND s.status IN ('draft','finalized')
+        WHERE sr.venue_id=? AND s.status = 'finalized'
           AND ((sr.resource_kind='hall' AND sr.start_date <= ? AND sr.end_date >= ?)
             OR (sr.resource_kind='room' AND sr.start_date < ? AND sr.end_date > ?))
         LIMIT 1 FOR UPDATE");
@@ -97,7 +107,7 @@ function seminar_available_room_units(mysqli $conn, string $checkIn, string $che
         $stmt->close();
     }
     $seminarSql = "SELECT sr.venue_id,'Another seminar' AS reason FROM seminar_reservations sr JOIN seminars sem ON sem.id=sr.seminar_id
-        WHERE sr.resource_kind='room' AND sem.status IN ('draft','finalized') AND sr.start_date < ? AND sr.end_date > ?";
+        WHERE sr.resource_kind='room' AND sem.status = 'finalized' AND sr.start_date < ? AND sr.end_date > ?";
     $seminarTypes = 'ss';
     $seminarValues = [$checkOut, $checkIn];
     if ($excludeSeminarId !== null) { $seminarSql .= ' AND sem.id<>?'; $seminarTypes .= 'i'; $seminarValues[] = $excludeSeminarId; }
@@ -145,7 +155,7 @@ function seminar_available_halls(mysqli $conn, string $startDate, string $endDat
         $stmt->close();
     }
     $sql = "SELECT sr.venue_id,'Another seminar' AS reason FROM seminar_reservations sr JOIN seminars sem ON sem.id=sr.seminar_id
-        WHERE sr.resource_kind='hall' AND sem.status IN ('draft','finalized') AND sr.start_date <= ? AND sr.end_date >= ?";
+        WHERE sr.resource_kind='hall' AND sem.status = 'finalized' AND sr.start_date <= ? AND sr.end_date >= ?";
     $types = 'ss'; $values = [$endDate, $startDate];
     if ($excludeSeminarId !== null) { $sql .= ' AND sem.id<>?'; $types .= 'i'; $values[] = $excludeSeminarId; }
     $stmt = $conn->prepare($sql);

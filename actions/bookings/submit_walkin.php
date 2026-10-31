@@ -39,7 +39,7 @@ if (!session_account_require_active($conn, ['staff', 'admin'], static function (
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     try {
-        $conn->begin_transaction();
+        booking_begin_mutation_transaction($conn);
         $sid = session_id();
 
         $sDate = trim(is_string($_POST['start_date'] ?? null) ? $_POST['start_date'] : '');
@@ -111,7 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception('Hotel Room stays require checkout after check-in.');
         }
         validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
-        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate)) {
+        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate, null, false)) {
             throw new Exception('These dates are reserved for a seminar. Please choose different dates.');
         }
 
@@ -374,7 +374,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       AND v.id NOT IN (
                           SELECT sr.venue_id FROM seminar_reservations sr
                           JOIN seminars sem ON sem.id=sr.seminar_id
-                          WHERE sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+                          WHERE sr.resource_kind='room' AND sem.status = 'finalized'
                             AND sr.start_date < ? AND sr.end_date > ?
                       )
                     ORDER BY v.id
@@ -390,6 +390,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 while ($room = $alloc_res->fetch_assoc()) {
                     $r_venue_id = (int)$room['id'];
+                    if (seminar_has_resource_conflict($conn, $r_venue_id, $room_start, $room_end, null, false)) throw new Exception('A held hotel add-on room was just reserved for a seminar.');
                     $r_rate = (float)$room['nightly_rate'];
                     $r_line_total = $r_rate * $nights;
                     $room_addon_subtotal += $r_line_total;

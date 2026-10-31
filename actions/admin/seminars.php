@@ -60,12 +60,13 @@ function seminar_load(int $seminarId): array
     return $seminar;
 }
 
-function seminar_assert_inventory(mysqli $conn, int $venueId, string $kind, string $start, string $end, ?int $excludeSeminarId = null): void
+function seminar_assert_inventory(mysqli $conn, int $venueId, string $kind, string $start, string $end, ?int $excludeSeminarId = null, bool $checkConflicts = true): void
 {
     $stmt = $conn->prepare('SELECT v.category,v.status,h.max_capacity,e.capacity_theater,e.capacity_classroom,e.capacity_banquet FROM venues v LEFT JOIN hotel_rooms h ON h.venue_id=v.id LEFT JOIN event_halls e ON e.venue_id=v.id WHERE v.id=?');
     $stmt->bind_param('i', $venueId); $stmt->execute(); $venue = $stmt->get_result()->fetch_assoc(); $stmt->close();
     $hallCapacity = $venue ? max((int)$venue['capacity_theater'], (int)$venue['capacity_classroom'], (int)$venue['capacity_banquet']) : 0;
     if (!$venue || $venue['status'] !== 'Available' || ($kind === 'hall' && ($venue['category'] !== 'Event Hall' || $hallCapacity < 1)) || ($kind === 'room' && ($venue['category'] !== 'Hotel Room' || (int)$venue['max_capacity'] < 1))) throw new InvalidArgumentException('The selected venue is not a valid available seminar resource.');
+    if (!$checkConflicts) return; // Draft selections are preferences, never reservations.
     $hotel = $kind === 'room';
     $overlap = $hotel ? '(start_date < ? AND end_date > ?)' : '(start_date <= ? AND end_date >= ?)';
     $statuses = $hotel ? "('Pending','Confirmed','Completed')" : "('Confirmed','Completed')";
@@ -92,7 +93,7 @@ function seminar_assert_inventory(mysqli $conn, int $venueId, string $kind, stri
     $stmt->bind_param('iss', $venueId, $end, $start); $stmt->execute();
     if ($stmt->get_result()->num_rows) { $stmt->close(); throw new InvalidArgumentException('The selected resource is currently held by another booking.'); }
     $stmt->close();
-    if (seminar_has_resource_conflict($conn, $venueId, $start, $end, $excludeSeminarId)) throw new InvalidArgumentException('The selected resource is held by another seminar.');
+    if (seminar_has_resource_conflict($conn, $venueId, $start, $end, $excludeSeminarId, false)) throw new InvalidArgumentException('The selected resource is held by another seminar.');
 }
 
 function seminar_lock_resources(mysqli $conn, array $resourceIds): void
@@ -121,6 +122,55 @@ function seminar_suggest_mapping(array $headers): array
     return $suggested;
 }
 
+/** Use fresh reads after resource-lock waits, including under a REPEATABLE READ server default. */
+function seminar_begin_transaction(mysqli $conn): void
+{
+    if (!$conn->query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED') || !$conn->begin_transaction()) {
+        throw new RuntimeException('Unable to begin the seminar update.');
+    }
+}
+
+/** Caller holds every affected venue row; collect actionable conflicts without reserving a subset. */
+function seminar_assert_resources(mysqli $conn, array $resources, int $seminarId): void
+{
+    $conflicts = [];
+    foreach ($resources as $resource) {
+        $venueId = (int)$resource['venue_id'];
+        try {
+            seminar_assert_inventory($conn, $venueId, $resource['resource_kind'], $resource['start_date'], $resource['end_date'], $seminarId);
+        } catch (InvalidArgumentException $error) {
+            $labelStmt = $conn->prepare('SELECT v.name,h.room_number FROM venues v LEFT JOIN hotel_rooms h ON h.venue_id=v.id WHERE v.id=?');
+            $labelStmt->bind_param('i', $venueId); $labelStmt->execute(); $label = $labelStmt->get_result()->fetch_assoc(); $labelStmt->close();
+            $name = ($label['name'] ?? 'Venue #' . $venueId) . (!empty($label['room_number']) ? ' · Room ' . $label['room_number'] : '');
+            $conflicts[] = ['venue_id' => $venueId, 'resource_kind' => $resource['resource_kind'], 'label' => $name,
+                'start_date' => $resource['start_date'], 'end_date' => $resource['end_date'], 'reason' => $error->getMessage()];
+        }
+    }
+    if ($conflicts) throw new SeminarInventoryConflict($conflicts);
+}
+
+function seminar_validate_saved_assignments(mysqli $conn, int $seminarId): array
+{
+    $stmt = $conn->prepare('SELECT id,gender,assigned_venue_id FROM seminar_attendees WHERE seminar_id=? ORDER BY id FOR UPDATE');
+    $stmt->bind_param('i', $seminarId); $stmt->execute(); $attendees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
+    $stmt = $conn->prepare("SELECT sr.venue_id,h.max_capacity,sr.allow_mixed_gender FROM seminar_reservations sr JOIN hotel_rooms h ON h.venue_id=sr.venue_id WHERE sr.seminar_id=? AND sr.resource_kind='room'");
+    $stmt->bind_param('i', $seminarId); $stmt->execute(); $rooms = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
+    $capacities = []; $mixed = [];
+    foreach ($rooms as $room) { $capacities[(int)$room['venue_id']] = (int)$room['max_capacity']; if ((int)$room['allow_mixed_gender']) $mixed[] = (int)$room['venue_id']; }
+    seminar_check_final_assignments($attendees, $capacities, $mixed);
+    return $attendees;
+}
+
+function seminar_persist_allocation(mysqli $conn, int $seminarId, array $allocation): void
+{
+    $stmt = $conn->prepare('UPDATE seminar_attendees SET assigned_venue_id=?,solo_flag=? WHERE id=? AND seminar_id=?');
+    foreach ($allocation['assignments'] as $attendeeId => $roomId) {
+        $solo = isset($allocation['solo'][$attendeeId]) ? 1 : 0;
+        $stmt->bind_param('iiii', $roomId, $solo, $attendeeId, $seminarId); $stmt->execute();
+    }
+    $stmt->close();
+}
+
 function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId, ?array $initialRoster = null, ?array &$initialAllocation = null): int
 {
     $name = seminar_text($input['name'] ?? '', 180);
@@ -128,106 +178,109 @@ function seminar_mutate_reservation(mysqli $conn, array $input, ?int $seminarId,
     [$hallStart, $hallEnd, $checkIn, $checkOut] = seminar_validate_dates($input['hall_start'] ?? null, $input['hall_end'] ?? null, $input['hotel_check_in'] ?? null, $input['hotel_check_out'] ?? null);
     $hallId = seminar_id($input['hall_venue_id'] ?? null, 'Event Hall');
     $roomIds = seminar_selected_room_ids($input['room_ids'] ?? null);
-    $ids = array_merge([$hallId], $roomIds);
-    $retainedFloors = [];
-    $conn->begin_transaction();
+    $resources = [['venue_id' => $hallId, 'resource_kind' => 'hall', 'start_date' => $hallStart, 'end_date' => $hallEnd]];
+    foreach ($roomIds as $roomId) $resources[] = ['venue_id' => $roomId, 'resource_kind' => 'room', 'start_date' => $checkIn, 'end_date' => $checkOut];
+    $ids = array_column($resources, 'venue_id'); $retained = []; $priorRooms = []; $finalized = false;
+    seminar_begin_transaction($conn);
     try {
         if ($seminarId !== null) {
-            $stmt = $conn->prepare("SELECT id,agreed_price FROM seminars WHERE id=? AND status='draft' FOR UPDATE");
-            $stmt->bind_param('i', $seminarId); $stmt->execute();
-            $lockedSeminar = $stmt->get_result()->fetch_assoc();
-            if (!$lockedSeminar) throw new InvalidArgumentException('Reopen the finalized seminar before changing its reservation.');
-            $stmt->close();
+            $stmt = $conn->prepare("SELECT id,status,agreed_price FROM seminars WHERE id=? AND status IN ('draft','finalized') FOR UPDATE");
+            $stmt->bind_param('i', $seminarId); $stmt->execute(); $locked = $stmt->get_result()->fetch_assoc(); $stmt->close();
+            if (!$locked) throw new InvalidArgumentException('Only an active seminar can be edited.');
+            $finalized = $locked['status'] === 'finalized';
             seminar_payment_assert_price_floor($conn, $seminarId, $agreedPrice);
+            $stmt = $conn->prepare('SELECT venue_id,resource_kind,floor_label,allow_mixed_gender FROM seminar_reservations WHERE seminar_id=?');
+            $stmt->bind_param('i', $seminarId); $stmt->execute();
+            foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
+                $ids[] = (int)$row['venue_id'];
+                if ($row['resource_kind'] === 'room') { $priorRooms[] = (int)$row['venue_id']; $retained[(int)$row['venue_id']] = $row; }
+            }
+            $stmt->close(); sort($priorRooms, SORT_NUMERIC);
         }
+        // Lock the union of old and proposed resources before checking or releasing anything.
         seminar_lock_resources($conn, $ids);
-        foreach ($ids as $venueId) {
-            $isHall = $venueId === $hallId;
-            seminar_assert_inventory($conn, $venueId, $isHall ? 'hall' : 'room', $isHall ? $hallStart : $checkIn, $isHall ? $hallEnd : $checkOut, $seminarId);
+        if ($finalized) seminar_assert_resources($conn, $resources, $seminarId);
+        else foreach ($resources as $resource) seminar_assert_inventory($conn, (int)$resource['venue_id'], $resource['resource_kind'], $resource['start_date'], $resource['end_date'], $seminarId, false);
+        $replaceRooms = $finalized && $priorRooms !== $roomIds;
+        if ($replaceRooms && ($input['reassign_attendees'] ?? false) !== true) {
+            throw new InvalidArgumentException('Confirm room replacement and regenerated attendee assignments before saving. Your existing reservation is unchanged.');
         }
         if ($seminarId === null) {
             $userId = (int)$_SESSION['user_id'];
-            $stmt = $conn->prepare("INSERT INTO seminars (name,agreed_price,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (?,?, 'draft',?,?,?,?,?,?)");
+            $stmt = $conn->prepare("INSERT INTO seminars (name,agreed_price,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (?,?,'draft',?,?,?,?,?,?)");
             $stmt->bind_param('ssissssi', $name, $agreedPrice, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $userId); $stmt->execute(); $seminarId = (int)$conn->insert_id; $stmt->close();
         } else {
-            $floorStmt = $conn->prepare("SELECT venue_id,floor_label FROM seminar_reservations WHERE seminar_id=? AND resource_kind='room' FOR UPDATE");
-            $floorStmt->bind_param('i', $seminarId); $floorStmt->execute();
-            foreach ($floorStmt->get_result()->fetch_all(MYSQLI_ASSOC) as $floorRow) {
-                $retainedFloors[(int)$floorRow['venue_id']] = (string)($floorRow['floor_label'] ?? '');
-            }
-            $floorStmt->close();
             $stmt = $conn->prepare('UPDATE seminars SET name=?,agreed_price=?,hall_venue_id=?,hall_start_date=?,hall_end_date=?,hotel_check_in=?,hotel_check_out=? WHERE id=?');
             $stmt->bind_param('ssissssi', $name, $agreedPrice, $hallId, $hallStart, $hallEnd, $checkIn, $checkOut, $seminarId); $stmt->execute(); $stmt->close();
             $stmt = $conn->prepare('UPDATE seminar_attendees SET assigned_venue_id=NULL,solo_flag=0 WHERE seminar_id=? AND assigned_venue_id NOT IN (' . implode(',', $roomIds) . ')');
             $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
             $stmt = $conn->prepare('DELETE FROM seminar_reservations WHERE seminar_id=?'); $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
         }
-        $stmt = $conn->prepare("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date,floor_label) VALUES (?,?,'hall',?,?,NULL)");
+        $stmt = $conn->prepare("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date,floor_label,allow_mixed_gender) VALUES (?,?,'hall',?,?,NULL,0)");
         $stmt->bind_param('iiss', $seminarId, $hallId, $hallStart, $hallEnd); $stmt->execute(); $stmt->close();
-        $stmt = $conn->prepare("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date,floor_label) VALUES (?,?,'room',?,?,?)");
+        $stmt = $conn->prepare("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date,floor_label,allow_mixed_gender) VALUES (?,?,'room',?,?,?,?)");
         foreach ($roomIds as $roomId) {
-            $floor = $retainedFloors[$roomId] ?? '';
-            $stmt->bind_param('iisss', $seminarId, $roomId, $checkIn, $checkOut, $floor); $stmt->execute();
+            $floor = $retained[$roomId]['floor_label'] ?? ''; $mixed = (int)($retained[$roomId]['allow_mixed_gender'] ?? 0);
+            $stmt->bind_param('iisssi', $seminarId, $roomId, $checkIn, $checkOut, $floor, $mixed); $stmt->execute();
         }
         $stmt->close();
         if ($initialRoster !== null) {
             if (count($initialRoster) < 1 || count($initialRoster) > 1000) throw new InvalidArgumentException('The imported roster must contain between 1 and 1,000 attendees.');
-            $attendeeStmt = $conn->prepare('INSERT INTO seminar_attendees (seminar_id,full_name,gender,location,contact) VALUES (?,?,?,?,?)');
-            if (!$attendeeStmt) throw new RuntimeException('Unable to save imported attendees.');
-            $persistedRoster = [];
+            $stmt = $conn->prepare('INSERT INTO seminar_attendees (seminar_id,full_name,gender,location,contact) VALUES (?,?,?,?,?)');
             foreach ($initialRoster as $person) {
-                $fullName = seminar_text($person['full_name'] ?? '', 180);
-                $gender = seminar_normalize_gender($person['gender'] ?? '');
-                $location = seminar_text($person['location'] ?? '', 180);
-                $contact = seminar_text($person['contact'] ?? '', 100, false);
-                $attendeeStmt->bind_param('issss', $seminarId, $fullName, $gender, $location, $contact);
-                if (!$attendeeStmt->execute()) throw new RuntimeException('Unable to save imported attendees.');
-                $persistedRoster[] = ['id' => (int)$conn->insert_id, 'gender' => $gender, 'location' => $location];
+                $fullName = seminar_text($person['full_name'] ?? '', 180); $gender = seminar_normalize_gender($person['gender'] ?? '');
+                $location = seminar_text($person['location'] ?? '', 180); $contact = seminar_text($person['contact'] ?? '', 100, false);
+                $stmt->bind_param('issss', $seminarId, $fullName, $gender, $location, $contact); $stmt->execute();
             }
-            $attendeeStmt->close();
-            $roomStmt = $conn->prepare("SELECT venue_id,max_capacity FROM hotel_rooms WHERE venue_id IN (" . implode(',', $roomIds) . ") ORDER BY venue_id");
-            if (!$roomStmt) throw new RuntimeException('Unable to load reserved room capacities.');
-            if (!$roomStmt->execute()) throw new RuntimeException('Unable to load reserved room capacities.');
-            $allocationRooms = array_map(static fn($room) => ['venue_id' => (int)$room['venue_id'], 'max_capacity' => (int)$room['max_capacity']], $roomStmt->get_result()->fetch_all(MYSQLI_ASSOC));
-            $roomStmt->close();
-            $initialAllocation = seminar_allocate_attendees($persistedRoster, $allocationRooms);
-            $assignmentStmt = $conn->prepare('UPDATE seminar_attendees SET assigned_venue_id=?,solo_flag=? WHERE id=? AND seminar_id=?');
-            if (!$assignmentStmt) throw new RuntimeException('Unable to create initial room assignments.');
-            foreach ($initialAllocation['assignments'] as $attendeeId => $roomId) {
-                $solo = isset($initialAllocation['solo'][$attendeeId]) ? 1 : 0;
-                $assignmentStmt->bind_param('iiii', $roomId, $solo, $attendeeId, $seminarId);
-                if (!$assignmentStmt->execute()) throw new RuntimeException('Unable to create initial room assignments.');
-            }
-            $assignmentStmt->close();
+            $stmt->close();
         }
-        seminar_write_audit($conn, (int)$_SESSION['user_id'], ($seminarId ? 'Reserved resources for seminar #' . $seminarId : 'Created seminar reservation'));
-        $conn->commit();
-        return $seminarId;
+        if ($initialRoster !== null || $replaceRooms) {
+            $stmt = $conn->prepare('SELECT id,gender,location FROM seminar_attendees WHERE seminar_id=? ORDER BY id');
+            $stmt->bind_param('i', $seminarId); $stmt->execute(); $roster = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
+            $rooms = $conn->query('SELECT venue_id,max_capacity FROM hotel_rooms WHERE venue_id IN (' . implode(',', $roomIds) . ') ORDER BY venue_id')->fetch_all(MYSQLI_ASSOC);
+            $initialAllocation = seminar_allocate_attendees($roster, $rooms);
+            seminar_persist_allocation($conn, $seminarId, $initialAllocation);
+        }
+        if ($finalized) seminar_validate_saved_assignments($conn, $seminarId);
+        seminar_write_audit($conn, (int)$_SESSION['user_id'], ($finalized ? 'Updated finalized reservation for seminar #' : 'Saved unreserved draft seminar #') . $seminarId);
+        $conn->commit(); return $seminarId;
     } catch (Throwable $error) { $conn->rollback(); throw $error; }
 }
 
 function seminar_finalize(mysqli $conn, int $seminarId): array
 {
-    $conn->begin_transaction();
+    seminar_begin_transaction($conn);
     try {
-        $stmt = $conn->prepare("SELECT * FROM seminars WHERE id=? AND status='draft' FOR UPDATE"); $stmt->bind_param('i', $seminarId); $stmt->execute(); $seminar = $stmt->get_result()->fetch_assoc(); $stmt->close();
+        $stmt = $conn->prepare("SELECT * FROM seminars WHERE id=? AND status='draft' FOR UPDATE");
+        $stmt->bind_param('i', $seminarId); $stmt->execute(); $seminar = $stmt->get_result()->fetch_assoc(); $stmt->close();
         if (!$seminar) throw new InvalidArgumentException('Only a draft seminar can be finalized.');
+        seminar_validate_dates($seminar['hall_start_date'], $seminar['hall_end_date'], $seminar['hotel_check_in'], $seminar['hotel_check_out']);
         $stmt = $conn->prepare('SELECT venue_id,resource_kind,start_date,end_date FROM seminar_reservations WHERE seminar_id=? ORDER BY venue_id');
         $stmt->bind_param('i', $seminarId); $stmt->execute(); $resources = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
+        if (count($resources) < 2) throw new InvalidArgumentException('Choose an Event Hall and hotel rooms before finalizing.');
         seminar_lock_resources($conn, array_column($resources, 'venue_id'));
-        foreach ($resources as $resource) seminar_assert_inventory($conn, (int)$resource['venue_id'], $resource['resource_kind'], $resource['start_date'], $resource['end_date'], $seminarId);
-        $stmt = $conn->prepare('SELECT a.id,a.gender,a.assigned_venue_id FROM seminar_attendees a WHERE a.seminar_id=? ORDER BY a.id FOR UPDATE');
-        $stmt->bind_param('i', $seminarId); $stmt->execute(); $attendees = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
-        $stmt = $conn->prepare("SELECT sr.venue_id,h.max_capacity,sr.allow_mixed_gender FROM seminar_reservations sr JOIN hotel_rooms h ON h.venue_id=sr.venue_id WHERE sr.seminar_id=? AND sr.resource_kind='room'");
-        $stmt->bind_param('i', $seminarId); $stmt->execute(); $roomRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
-        $roomCapacities = []; $allowMixedRoomIds = [];
-        foreach ($roomRows as $room) { $roomId = (int)$room['venue_id']; $roomCapacities[$roomId] = (int)$room['max_capacity']; if ((int)$room['allow_mixed_gender'] === 1) $allowMixedRoomIds[] = $roomId; }
-        seminar_check_final_assignments($attendees, $roomCapacities, $allowMixedRoomIds);
+        seminar_assert_resources($conn, $resources, $seminarId);
+        $attendees = seminar_validate_saved_assignments($conn, $seminarId);
         $stmt = $conn->prepare('SELECT GREATEST(COALESCE(capacity_theater,0),COALESCE(capacity_classroom,0),COALESCE(capacity_banquet,0)) AS capacity FROM event_halls WHERE venue_id=?');
         $stmt->bind_param('i', $seminar['hall_venue_id']); $stmt->execute(); $hallCapacity = (int)($stmt->get_result()->fetch_assoc()['capacity'] ?? 0); $stmt->close();
         $stmt = $conn->prepare("UPDATE seminars SET status='finalized',finalized_at=NOW() WHERE id=?"); $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
-        seminar_write_audit($conn, (int)$_SESSION['user_id'], 'Finalized seminar #' . $seminarId); $conn->commit();
+        seminar_write_audit($conn, (int)$_SESSION['user_id'], 'Finalized and reserved seminar #' . $seminarId); $conn->commit();
         return ['warning' => $hallCapacity > 0 && count($attendees) > $hallCapacity, 'hall_capacity' => $hallCapacity, 'attendee_count' => count($attendees)];
+    } catch (Throwable $error) { $conn->rollback(); throw $error; }
+}
+
+function seminar_cancel(mysqli $conn, int $seminarId): void
+{
+    seminar_begin_transaction($conn);
+    try {
+        $stmt = $conn->prepare("SELECT id FROM seminars WHERE id=? AND status IN ('draft','finalized') FOR UPDATE");
+        $stmt->bind_param('i', $seminarId); $stmt->execute(); $found = $stmt->get_result()->num_rows; $stmt->close();
+        if (!$found) throw new InvalidArgumentException('Seminar is already cancelled or unavailable.');
+        $stmt = $conn->prepare('SELECT venue_id FROM seminar_reservations WHERE seminar_id=?');
+        $stmt->bind_param('i', $seminarId); $stmt->execute(); $ids = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'venue_id'); $stmt->close();
+        seminar_lock_resources($conn, $ids);
+        $stmt = $conn->prepare("UPDATE seminars SET status='cancelled' WHERE id=?"); $stmt->bind_param('i', $seminarId); $stmt->execute(); $stmt->close();
+        seminar_write_audit($conn, (int)$_SESSION['user_id'], 'Cancelled seminar #' . $seminarId); $conn->commit();
     } catch (Throwable $error) { $conn->rollback(); throw $error; }
 }
 
@@ -420,14 +473,14 @@ try {
         echo json_encode(['success' => true, 'seminar' => seminar_load($seminarId)]); exit;
     }
     if ($op === 'finalize') { $result = seminar_finalize($conn, $seminarId); echo json_encode(['success' => true, 'warning' => $result['warning'], 'warning_message' => $result['warning'] ? 'Attendee count exceeds Event Hall capacity.' : '', 'hall_capacity' => $result['hall_capacity'], 'attendee_count' => $result['attendee_count'], 'seminar' => seminar_load($seminarId)]); exit; }
-    if ($op === 'reopen' || $op === 'cancel') {
-        $target = $op === 'reopen' ? 'draft' : 'cancelled';
-        $from = $op === 'reopen' ? "status='finalized'" : "status IN ('draft','finalized')";
-        $stmt = $conn->prepare("UPDATE seminars SET status=?, finalized_at=IF(?='draft',NULL,finalized_at) WHERE id=? AND $from"); $stmt->bind_param('ssi', $target, $target, $seminarId); $stmt->execute(); if (!$stmt->affected_rows) throw new InvalidArgumentException($op === 'reopen' ? 'Only finalized seminars can be reopened.' : 'Seminar is already cancelled.'); $stmt->close();
-        seminar_write_audit($conn, (int)$_SESSION['user_id'], ($op === 'cancel' ? 'Cancelled' : 'Reopened') . ' seminar #' . $seminarId);
+    if ($op === 'reopen') throw new InvalidArgumentException('Finalized reservations stay protected. Use Edit reservations to change dates or rooms; use Cancel seminar to release them.');
+    if ($op === 'cancel') {
+        seminar_cancel($conn, $seminarId);
         echo json_encode(['success' => true, 'seminar' => seminar_load($seminarId)]); exit;
     }
     throw new InvalidArgumentException('Unknown seminar action.');
+} catch (SeminarInventoryConflict $error) {
+    http_response_code(409); echo json_encode(['success' => false, 'message' => $error->getMessage(), 'conflicts' => $error->conflicts]);
 } catch (InvalidArgumentException $error) {
     http_response_code(422); echo json_encode(['success' => false, 'message' => $error->getMessage()]);
 } catch (Throwable $error) {

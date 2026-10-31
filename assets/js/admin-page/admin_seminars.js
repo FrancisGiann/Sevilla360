@@ -889,7 +889,7 @@
         <div class="seminar-reservation-panels">
           <section class="seminar-reservation-group" aria-labelledby="seminar-hall-heading" aria-describedby="seminar-hall-help">
             <h3 id="seminar-hall-heading">Event Hall booking</h3>
-            <p class="seminar-reservation-group__help" id="seminar-hall-help">The Hall is reserved on both the start and end dates.</p>
+            <p class="seminar-reservation-group__help" id="seminar-hall-help">A finalized reservation includes both the Hall start and end dates.</p>
             <div class="seminar-reservation-group__fields seminar-reservation-group__fields--hall">
               <label class="seminar-field seminar-field--hall-select" for="seminar-hall"><span>Event Hall *</span><select id="seminar-hall" required><option value="">Choose an available hall</option>${state.halls.map(hall => { const available = Number(hall.available) === 1; return `<option value="${Number(hall.id)}" ${Number(draft.hall_venue_id) === Number(hall.id) ? 'selected' : ''} ${available ? '' : 'disabled'}>${esc(hall.name)} · capacity ${Number(hall.capacity)}${available ? '' : ` · ${esc(hall.unavailable_reason || 'Unavailable')}`}</option>`; }).join('')}</select><small class="seminar-field-hint" id="seminar-hall-status" aria-live="polite">${esc(state.hallAvailabilityStatus || 'Availability updates when dates change.')}</small></label>
               <label class="seminar-field" for="seminar-hall-start"><span>Hall start date *</span><input type="date" id="seminar-hall-start" required value="${esc(draft.hall_start || '')}"></label>
@@ -925,7 +925,7 @@
     const pickerAction = `<div class="seminar-room-picker__suggestion"><button type="button" class="seminar-button seminar-button--quiet" id="seminar-auto-select-rooms" aria-describedby="seminar-auto-select-help">Suggest rooms by building</button><small id="seminar-auto-select-help">Keeps selected rooms; clear selection to start over by building. Assignments happen on continue.</small></div>`;
     const pickerSummary = `<div class="seminar-room-picker__summary"><div class="seminar-room-totals"><span><strong data-total-count>${summary.selected.length}</strong> selected</span><span><strong data-total-capacity>${summary.capacity}</strong> beds</span><span class="${summary.shortfall ? 'has-shortfall' : ''}"><strong data-total-shortfall>${summary.shortfall}</strong> bed shortfall</span><span class="seminar-room-totals__buildings" aria-live="polite" aria-atomic="true"><strong data-total-building-count>${summary.buildingCount}</strong> <span data-total-building-label>hotel building${summary.buildingCount === 1 ? '' : 's'}</span><small data-total-building-names>${summary.buildingNames.length ? esc(summary.buildingNames.join(', ')) : 'No hotel buildings selected'}</small></span></div></div>`;
     const roomFilter = `<div class="seminar-room-filter"><label class="seminar-field"><span>Search rooms/buildings</span><input type="search" id="seminar-room-search" placeholder="Hotel, floor or room number"></label><div class="seminar-room-filter__actions"><button type="button" class="seminar-button seminar-button--quiet" id="seminar-select-visible" disabled>Search to select matches</button><button type="button" class="seminar-button seminar-button--quiet" id="seminar-clear-rooms">Clear selection</button></div><p class="seminar-room-search-status" data-room-search-status role="status" aria-live="polite">${summary.selected.length} room${summary.selected.length === 1 ? '' : 's'} selected in ${summary.buildingCount} hotel building${summary.buildingCount === 1 ? '' : 's'}. Search to target matches; building actions select available matching rooms.</p><p class="seminar-room-suggestion-status" data-room-suggestion-status role="status" aria-live="polite" hidden></p></div>`;
-    workspace.innerHTML = `${wizardProgress(3)}<div class="seminar-flow-head"><h2>Select the hotel rooms to hold</h2><p>${attendees} attendee${attendees === 1 ? '' : 's'} · ${esc(draft.hotel_check_in)} to ${esc(draft.hotel_check_out)}. Holds are created only when you continue.</p></div><section class="seminar-room-picker"><div class="seminar-room-picker__head"><div><h3>Hotel inventory</h3><p>Choose available hotel rooms for these dates.</p></div>${pickerAction}</div>${pickerSummary}${roomFilter}<div id="seminar-room-groups" class="seminar-room-groups">${roomsMarkup || '<p class="seminar-muted">No rooms found for these dates.</p>'}</div></section><div class="seminar-actions-row"><button class="seminar-button seminar-button--quiet" type="button" data-wizard-back="2">Back to seminar details</button><button class="seminar-button seminar-button--primary" type="button" id="seminar-create">${state.current ? 'Save reservation changes' : 'Create seminar and holds'}</button></div>`;
+    workspace.innerHTML = `${wizardProgress(3)}<div class="seminar-flow-head"><h2>Select hotel rooms</h2><p>${attendees} attendee${attendees === 1 ? '' : 's'} · ${esc(draft.hotel_check_in)} to ${esc(draft.hotel_check_out)}. ${state.current?.status === 'finalized' ? 'Your existing reservation stays active until these changes are saved successfully.' : 'Draft selections are not reserved. Rooms and dates are reserved only when you finalize.'}</p></div><section class="seminar-room-picker"><div class="seminar-room-picker__head"><div><h3>Hotel inventory</h3><p>Choose available hotel rooms for these dates.</p></div>${pickerAction}</div>${pickerSummary}${roomFilter}<div id="seminar-room-groups" class="seminar-room-groups">${roomsMarkup || '<p class="seminar-muted">No rooms found for these dates.</p>'}</div></section><div class="seminar-actions-row"><button class="seminar-button seminar-button--quiet" type="button" data-wizard-back="2">Back to seminar details</button><button class="seminar-button seminar-button--primary" type="button" id="seminar-create">${state.current?.status === 'finalized' ? 'Save and reserve changes' : 'Save draft'}</button></div>`;
     bindReservationEvents();
   }
   async function goToRoomSelection() {
@@ -1076,20 +1076,24 @@
   async function saveReservation() {
     const button = document.getElementById('seminar-create');
     const isEditing = !!state.current;
-    const restore = markButtonBusy(button, isEditing ? 'Saving room holds…' : 'Creating seminar and holds…');
+    const restore = markButtonBusy(button, state.current?.status === 'finalized' ? 'Reserving changes…' : 'Saving draft…');
     try {
       if (!state.selectedRooms.size) throw new Error('Select at least one hotel room.');
       if (selectedSummary().shortfall) throw new Error('Selected rooms do not have enough beds for the imported attendees.');
       const draft = state.reservationDraft;
       if (state.current) {
-        const result = await request('update_reservation', { id: state.current.id, name: draft.name, agreed_price: String(draft.agreed_price ?? '').trim(), hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
+        const priorRooms = state.current.rooms.map(room => Number(room.venue_id)).sort((a, b) => a - b);
+        const nextRooms = [...state.selectedRooms].sort((a, b) => a - b);
+        const replacesRooms = state.current.status === 'finalized' && JSON.stringify(priorRooms) !== JSON.stringify(nextRooms);
+        if (replacesRooms && !await requestConfirmation({ title: 'Replace the reserved rooms?', message: 'This regenerates attendee room assignments using the new rooms. Your existing rooms stay reserved until all replacements are available and the updated assignments fit. Review the new assignments after saving.', confirmLabel: 'Replace rooms and reassign' })) return;
+        const result = await request('update_reservation', { id: state.current.id, reassign_attendees: replacesRooms, name: draft.name, agreed_price: String(draft.agreed_price ?? '').trim(), hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
         state.current = result.seminar; renderPlan();
       } else {
         if (!state.import?.token || !state.validated) throw new Error('Import and validate a roster before creating this seminar.');
         const result = await request('create_from_import', { token: state.import.token, sheet: state.validated.sheet, mapping: state.validated.mapping, name: draft.name, agreed_price: String(draft.agreed_price ?? '').trim(), hall_venue_id: draft.hall_venue_id, room_ids: [...state.selectedRooms], hall_start: draft.hall_start, hall_end: draft.hall_end, hotel_check_in: draft.hotel_check_in, hotel_check_out: draft.hotel_check_out });
         state.current = result.seminar; state.import = null; state.validated = null; await listPlans(); renderPlan();
       }
-      flash(isEditing ? 'Reservation updated.' : 'Seminar created and room holds are active.', 'success');
+      flash(state.current.status === 'finalized' ? 'Reservation updated. Review the attendee room assignments.' : 'Draft saved. Rooms and dates are not reserved until you finalize.', 'success');
     } catch (error) { flash(error.message); }
     finally { restore(); }
   }
@@ -1189,7 +1193,7 @@
     const notice = plan.status === 'cancelled'
       ? '<p class="seminar-payment-notice">This seminar is cancelled. Existing payment history is retained, and new payments are closed.</p>'
       : !priceIsSet
-        ? '<p class="seminar-payment-notice">Set the agreed seminar price in the draft reservation before recording a payment.</p>'
+        ? '<p class="seminar-payment-notice">Set the agreed seminar price in Edit reservations before recording a payment.</p>'
         : balanceCents <= 0
           ? '<p class="seminar-payment-notice seminar-payment-notice--paid">The agreed seminar price is fully paid.</p>'
           : '';
@@ -1260,12 +1264,12 @@
       ? `<section class="seminar-unassigned-panel"><div class="seminar-unassigned-panel__head"><div><h3>Unassigned</h3><span>${unassigned.length} attendee${unassigned.length === 1 ? '' : 's'}${showUnassignedRegenerate ? ` · ${freeBeds} free bed${freeBeds === 1 ? '' : 's'}` : ''}</span></div><div class="seminar-unassigned-panel__actions">${showUnassignedRegenerate ? '<button type="button" class="seminar-button seminar-button--quiet" id="seminar-regenerate-unassigned">Regenerate assignments</button>' : ''}${addAttendeeDisclosure}</div></div>${showGenderAssignmentHint ? '<p class="seminar-unassigned-panel__hint">Set gender to Male or Female to assign these attendees.</p>' : ''}<div class="seminar-unassigned-list">${unassigned.map(person => attendeeMarkup(person, 0)).join('')}</div></section>`
       : `<section class="seminar-unassigned-empty"><div><h3>Unassigned</h3><p>Every attendee has a room assignment.</p></div>${addAttendeeDisclosure}</section>`;
     const primaryActions = isDraft
-      ? `<button type="button" class="seminar-button seminar-button--primary" id="seminar-save-plan">Save changes</button><button type="button" class="seminar-button seminar-button--primary" id="seminar-finalize">Finalize plan</button>`
+      ? `<button type="button" class="seminar-button seminar-button--primary" id="seminar-save-plan">Save changes</button><button type="button" class="seminar-button seminar-button--primary" id="seminar-finalize">Finalize and reserve</button>`
       : plan.status === 'finalized'
         ? `<button type="button" class="seminar-button seminar-button--primary" data-pdf-preview data-pdf-id="${Number(plan.id)}" data-pdf-type="rooms" data-pdf-seminar="${esc(plan.name)}" data-pdf-label="All room sheets">Print room sheets</button>`
         : plan.status === 'cancelled'
           ? `<button type="button" class="seminar-button seminar-button--primary" id="seminar-new">New seminar</button>`
-          : `<button type="button" class="seminar-button seminar-button--primary" id="seminar-reopen">Reopen plan</button>`;
+          : '';
     const secondaryActions = [
       ...(plan.status !== 'cancelled' ? [`<button type="button" class="seminar-more-actions__item" id="seminar-new">New seminar</button>`] : []),
       ...(isDraft ? [
@@ -1275,13 +1279,13 @@
       ] : plan.status === 'finalized' ? [
         `<button type="button" class="seminar-more-actions__item" data-pdf-preview data-pdf-id="${Number(plan.id)}" data-pdf-type="list" data-pdf-seminar="${esc(plan.name)}" data-pdf-label="Name-to-room list">Name-to-room list</button>`
       ] : []),
-      ...(!isDraft && plan.status === 'finalized' ? [`<button type="button" class="seminar-more-actions__item" id="seminar-reopen">Reopen plan</button>`] : []),
+      ...(!isDraft && plan.status === 'finalized' ? [`<button type="button" class="seminar-more-actions__item" id="seminar-edit-reservation">Edit reservations</button>`] : []),
       ...(plan.status !== 'cancelled' ? [`<button type="button" class="seminar-more-actions__item seminar-more-actions__item--danger" id="seminar-cancel">Cancel seminar</button>`] : [])
     ];
     const moreActionsMarkup = secondaryActions.length ? `<details class="seminar-more-actions"><summary class="seminar-button seminar-button--quiet"><span>More actions</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg></summary><div class="seminar-more-actions__menu" aria-label="More seminar actions">${secondaryActions.join('')}</div></details>` : '';
     const planActions = `<div class="seminar-plan-actions"><div class="seminar-primary-actions">${primaryActions}</div>${moreActionsMarkup}</div>`;
     const hall = plan.hall || {};
-    workspace.innerHTML = `${wizardProgress(4)}<div class="seminar-plan-head"><div><h2>${esc(plan.name)}</h2><p>${esc(plan.hall_name)} · Hall ${date(plan.hall_start_date)} – ${date(plan.hall_end_date)} · Hotel ${date(plan.hotel_check_in)} to ${date(plan.hotel_check_out)}</p><p class="seminar-plan-meta">${esc(plan.status)} · ${plan.attendees.length} attendees</p></div>${planActions}</div>${seminarPaymentMarkup(plan)}${isDraft ? `<div class="seminar-board-tools"><label class="seminar-field"><span>Find an attendee</span><input type="search" id="seminar-attendee-search" placeholder="Name, gender or location"></label><label class="seminar-field"><span>Move selected to</span><select id="seminar-bulk-room"><option value="0">Unassigned</option>${plan.rooms.map(room => `<option value="${Number(room.venue_id)}">${esc(room.name)} · ${esc(room.room_number || '')}</option>`).join('')}</select></label><button type="button" class="seminar-button seminar-button--quiet" id="seminar-bulk-move">Move selected</button><span class="seminar-muted" id="seminar-selected-count">${state.selectedAttendees.size} selected</span></div>${unassignedMarkup}` : ''}${plan.rooms.length ? `<div class="seminar-room-board-filter"><label class="seminar-field"><span>Find a room</span><input type="search" id="seminar-room-board-search" placeholder="Hotel, floor or room number"></label><p id="seminar-room-board-search-status" role="status" aria-live="polite">Showing ${plan.rooms.length} room${plan.rooms.length === 1 ? '' : 's'}.</p></div><p class="seminar-room-filter-empty" data-room-filter-empty hidden>No rooms match this search.</p>` : ''}<div class="seminar-room-board">${roomCards || '<p class="seminar-muted">No hotel rooms are reserved.</p>'}</div>`;
+    workspace.innerHTML = `${wizardProgress(4)}<div class="seminar-plan-head"><div><h2>${esc(plan.name)}</h2><p>${esc(plan.hall_name)} · Hall ${date(plan.hall_start_date)} – ${date(plan.hall_end_date)} · Hotel ${date(plan.hotel_check_in)} to ${date(plan.hotel_check_out)}</p><p class="seminar-plan-meta">${esc(plan.status)} · ${plan.attendees.length} attendees</p></div>${planActions}</div>${seminarPaymentMarkup(plan)}${isDraft ? `<p class="seminar-payment-notice" role="status">Draft — rooms and dates are not reserved. Availability is checked again when you finalize.</p><div class="seminar-board-tools"><label class="seminar-field"><span>Find an attendee</span><input type="search" id="seminar-attendee-search" placeholder="Name, gender or location"></label><label class="seminar-field"><span>Move selected to</span><select id="seminar-bulk-room"><option value="0">Unassigned</option>${plan.rooms.map(room => `<option value="${Number(room.venue_id)}">${esc(room.name)} · ${esc(room.room_number || '')}</option>`).join('')}</select></label><button type="button" class="seminar-button seminar-button--quiet" id="seminar-bulk-move">Move selected</button><span class="seminar-muted" id="seminar-selected-count">${state.selectedAttendees.size} selected</span></div>${unassignedMarkup}` : ''}${plan.rooms.length ? `<div class="seminar-room-board-filter"><label class="seminar-field"><span>Find a room</span><input type="search" id="seminar-room-board-search" placeholder="Hotel, floor or room number"></label><p id="seminar-room-board-search-status" role="status" aria-live="polite">Showing ${plan.rooms.length} room${plan.rooms.length === 1 ? '' : 's'}.</p></div><p class="seminar-room-filter-empty" data-room-filter-empty hidden>No rooms match this search.</p>` : ''}<div class="seminar-room-board">${roomCards || '<p class="seminar-muted">No hotel rooms are reserved.</p>'}</div>`;
     bindPlanEvents();
     listPlans().catch(showPlanListError);
   }
@@ -1346,10 +1350,9 @@
     workspace.querySelector('#seminar-edit-reservation')?.addEventListener('click', editReservation);
     workspace.querySelector('#seminar-replace-roster')?.addEventListener('click', () => beginRosterReplacement(state.current.id));
     workspace.querySelector('#seminar-finalize')?.addEventListener('click', finalizePlan);
-    workspace.querySelector('#seminar-reopen')?.addEventListener('click', () => mutatePlan('reopen'));
     workspace.querySelector('#seminar-cancel')?.addEventListener('click', async event => {
       const button = event.currentTarget;
-      const accepted = await requestConfirmation({ title: 'Cancel this seminar?', message: 'This releases the Event Hall and all held hotel rooms. You can reopen a cancelled plan later.', confirmLabel: 'Cancel seminar', destructive: true });
+      const accepted = await requestConfirmation({ title: 'Cancel this seminar?', message: 'This releases any reserved Event Hall and hotel rooms. Cancellation cannot be undone; create a new draft if needed.', confirmLabel: 'Cancel seminar', destructive: true });
       if (accepted) await mutatePlan('cancel', button);
     });
     workspace.querySelectorAll('[data-delete-attendee]').forEach(button => button.addEventListener('click', async () => {
@@ -1486,8 +1489,8 @@
       const result = await request('finalize', { id: state.current.id });
       state.current = result.seminar; state.selectedAttendees.clear(); renderPlan();
       if (result.warning) flash(result.warning_message || 'Attendee count exceeds Event Hall capacity.', 'info');
-      else flash('Seminar finalized. Room sheets are ready to print.', 'success');
-    } catch (error) { flash(error.message); }
+      else flash('Seminar finalized. Rooms and dates are now reserved. Room sheets are ready to print.', 'success');
+    } catch (error) { flash(error.message, 'error', { actionLabel: 'Edit reservations', onAction: editReservation }); }
     finally { restore(); }
   }
   async function mutatePlan(op, button = null) {

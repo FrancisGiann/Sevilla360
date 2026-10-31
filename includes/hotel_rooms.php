@@ -394,7 +394,7 @@ function hotel_available_group_units(mysqli $conn, string $checkIn, string $chec
           AND NOT EXISTS (
             SELECT 1 FROM seminar_reservations sr
             INNER JOIN seminars sem ON sem.id = sr.seminar_id
-            WHERE sr.venue_id = v.id AND sr.resource_kind = 'room' AND sem.status IN ('draft','finalized')
+            WHERE sr.venue_id = v.id AND sr.resource_kind = 'room' AND sem.status = 'finalized'
               AND sr.start_date < ? AND sr.end_date > ?
           )
         ORDER BY g.sort_order ASC, g.id ASC, v.id ASC" . ($forUpdate ? ' FOR UPDATE' : '');
@@ -407,6 +407,8 @@ function hotel_available_group_units(mysqli $conn, string $checkIn, string $chec
     $result = $stmt->get_result();
     $units = [];
     while ($row = $result->fetch_assoc()) {
+        // Allocation callers hold the selected venue mutexes in READ COMMITTED. Refresh after any wait.
+        if ($forUpdate && seminar_has_resource_conflict($conn, (int)$row['venue_id'], $checkIn, $checkOut, null, false)) continue;
         $groupId = (int)$row['room_group_id'];
         $units[$groupId][] = [
             'venue_id' => (int)$row['venue_id'],

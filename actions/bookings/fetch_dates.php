@@ -69,7 +69,7 @@ try {
                 }
             }
 
-            $stmt_seminars = $conn->prepare("SELECT sr.start_date,sr.end_date,sr.resource_kind FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id=? AND s.status IN ('draft','finalized')");
+            $stmt_seminars = $conn->prepare("SELECT sr.start_date,sr.end_date,sr.resource_kind FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id=? AND s.status = 'finalized'");
             $stmt_seminars->bind_param('i', $venue_id); $stmt_seminars->execute();
             $seminarRows = $stmt_seminars->get_result();
             while ($row = $seminarRows->fetch_assoc()) {
@@ -225,7 +225,7 @@ try {
             }
             $stmt_locks->close();
 
-            $stmt_seminars = $conn->prepare("SELECT sr.venue_id,sr.start_date,sr.end_date FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id IN ($v_ids_str) AND sr.resource_kind='room' AND s.status IN ('draft','finalized')");
+            $stmt_seminars = $conn->prepare("SELECT sr.venue_id,sr.start_date,sr.end_date FROM seminar_reservations sr JOIN seminars s ON s.id=sr.seminar_id WHERE sr.venue_id IN ($v_ids_str) AND sr.resource_kind='room' AND s.status = 'finalized'");
             $stmt_seminars->execute();
             $res_seminars = $stmt_seminars->get_result();
             while ($row = $res_seminars->fetch_assoc()) {

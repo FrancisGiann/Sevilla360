@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json');
 require '../../config/db_connect.php';
+require_once __DIR__ . '/../../includes/booking_rules.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 
 function addon_bind_params(mysqli_stmt $statement, string $types, array $values): void
@@ -42,7 +43,7 @@ $tracked_ids = array_values(array_filter(array_map('intval', (array)($_SESSION['
 $transaction_started = false;
 
 try {
-    $conn->begin_transaction();
+    booking_begin_mutation_transaction($conn);
     $transaction_started = true;
     if (!$conn->query('DELETE FROM booking_locks WHERE expires_at <= NOW()')) {
         throw new RuntimeException('Temporary room holds could not be refreshed.');
@@ -141,7 +142,7 @@ try {
           AND v.id NOT IN (
               SELECT sr.venue_id FROM seminar_reservations sr
               INNER JOIN seminars s ON s.id=sr.seminar_id
-              WHERE sr.resource_kind='room' AND s.status IN ('draft','finalized')
+              WHERE sr.resource_kind='room' AND s.status = 'finalized'
                 AND sr.start_date < ? AND sr.end_date > ?
           )
         ORDER BY v.id
@@ -164,6 +165,8 @@ try {
         }
         while ($room = $result->fetch_assoc()) {
             $venue_id = (int)$room['id'];
+            // Recheck after the locking SELECT: a seminar may have finalized while this statement waited.
+            if (seminar_has_resource_conflict($conn, $venue_id, $start_date, $end_date, null, false)) throw new RuntimeException('A selected hotel room was just reserved for a seminar.');
             $stmt_insert->bind_param('isssss', $venue_id, $session_id, $source, $start_date, $end_date, $expires_at);
             if (!$stmt_insert->execute()) throw new RuntimeException('Room holds could not be created.');
             $new_lock_ids[] = (int)$conn->insert_id;

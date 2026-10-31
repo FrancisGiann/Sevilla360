@@ -34,7 +34,7 @@ if (!session_account_require_active($conn, ['customer'], static function (string
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $db_committed = false;
     try {
-        $conn->begin_transaction();
+        booking_begin_mutation_transaction($conn);
 
         if (($_POST['policy_consent'] ?? '') !== '1') {
             throw new Exception('Please accept the booking terms before proceeding.');
@@ -111,7 +111,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new Exception('Hotel Room stays require checkout after check-in.');
         }
         validate_villa_stay_dates($venue_category, $stay_type, $start_dt, $end_dt);
-        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate)) {
+        if (seminar_has_resource_conflict($conn, (int)$venue_id, $sDate, $eDate, null, false)) {
             throw new Exception('These dates are reserved for a seminar. Please choose different dates.');
         }
 
@@ -384,7 +384,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                       AND v.id NOT IN (
                           SELECT sr.venue_id FROM seminar_reservations sr
                           JOIN seminars sem ON sem.id=sr.seminar_id
-                          WHERE sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+                          WHERE sr.resource_kind='room' AND sem.status = 'finalized'
                             AND sr.start_date < ? AND sr.end_date > ?
                       )
                     ORDER BY v.id
@@ -422,6 +422,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             $r_venue_id = (int)($room['venue_id'] ?? $room['id'] ?? 0);
                             if (isset($used_room_ids[$r_venue_id])) continue;
                             if ($r_venue_id < 1) continue;
+                            if (seminar_has_resource_conflict($conn, $r_venue_id, $room_start, $room_end, null, false)) continue;
                             $r_rate = floatval($room['nightly_rate']);
                             $r_line_total = $r_rate * $nights;
 

@@ -400,11 +400,13 @@ $check('numbered progress labels all four seminar wizard stages', str_contains($
 $startReservationStart = strpos($adminJs, 'async function startReservation()');
 $startReservationEnd = strpos($adminJs, 'function beginRosterReplacement', $startReservationStart === false ? 0 : $startReservationStart);
 $startReservationBody = $startReservationStart !== false && $startReservationEnd !== false ? substr($adminJs, $startReservationStart, $startReservationEnd - $startReservationStart) : '';
-$check('new seminar flow separates details and room screens and defers holds until room submit', str_contains($adminJs, 'function renderDetailsScreen()')
+$check('new seminar flow separates details and room screens and reserves only at finalization', str_contains($adminJs, 'function renderDetailsScreen()')
     && str_contains($adminJs, 'function renderRoomSelectionScreen()') && str_contains($startReservationBody, 'renderDetailsScreen()')
     && !str_contains($startReservationBody, "request('create_from_import'")
     && str_contains($adminJs, "document.getElementById('seminar-create')?.addEventListener('click', saveReservation)")
-    && str_contains($adminJs, 'data-wizard-back="2"'));
+    && str_contains($adminJs, 'data-wizard-back="2"')
+    && str_contains($adminJs, 'Draft selections are not reserved.')
+    && str_contains($adminJs, 'Finalize and reserve'));
 $check('wizard keeps roster mappings and seminar details while navigating back and forward', str_contains($adminJs, 'state.mappings[sheetIndex] || sheet.mapping')
     && str_contains($adminJs, 'state.reservationDraft = { ...state.reservationDraft, name:')
     && str_contains($adminJs, 'state.wizardMode === \'new\' && state.reservationDraft?.hall_start && state.reservationDraft?.hotel_check_out')
@@ -491,7 +493,7 @@ $check('draft review exposes a confirmed regenerate action when attendees are un
     && str_contains($adminJs, "message: 'This replaces manual room moves and clears mixed-gender approvals.")
     && str_contains($adminJs, "workspace.querySelector('#seminar-regenerate-unassigned')"));
 $check('finalized and cancelled review states expose only valid primary actions', str_contains($primaryActionsBody, "plan.status === 'finalized'")
-    && str_contains($primaryActionsBody, 'id="seminar-reopen">Reopen plan')
+    && !str_contains($primaryActionsBody, 'id="seminar-reopen"') && str_contains($secondaryActionsBody, 'id="seminar-edit-reservation"')
     && str_contains($primaryActionsBody, "plan.status === 'cancelled'")
     && str_contains($primaryActionsBody, 'id="seminar-new">New seminar')
     && str_contains($secondaryActionsBody, "plan.status !== 'cancelled'")
@@ -514,7 +516,7 @@ $check('seminar feedback persists outside rerendered screens and has dismiss/ret
 $check('seminar actions expose in-progress feedback and prevent duplicate submissions', str_contains($adminJs, 'function markButtonBusy(button, label)')
     && str_contains($adminJs, 'button.setAttribute(\'aria-busy\', \'true\')')
     && str_contains($adminJs, 'Checking roster rows and mapping…')
-    && str_contains($adminJs, 'Creating seminar and holds…')
+    && str_contains($adminJs, 'Saving draft…') && str_contains($adminJs, 'Reserving changes…')
     && str_contains($adminJs, 'Checking Event Hall availability…')
     && str_contains($seminarCss, '.seminar-button.is-loading::before')
     && str_contains($seminarCss, '.seminar-confirm-dialog__actions .seminar-button { width: 100%; }'));
@@ -564,8 +566,8 @@ $check('wizard progress is segmented with legible stage labels and reflows to tw
     && str_contains($seminarCss, 'grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px;'));
 $check('room picker and review hide floor editing and omit empty floor placeholders in PDFs while updates preserve legacy labels', !str_contains($adminJs, 'data-floor=')
     && !str_contains($adminJs, 'data-plan-floor=') && !str_contains($seminarCss, '.seminar-floor-mini')
-    && str_contains($adminEndpoint, "SELECT venue_id,floor_label FROM seminar_reservations WHERE seminar_id=? AND resource_kind='room' FOR UPDATE")
-    && str_contains($adminEndpoint, '$retainedFloors[(int)$floorRow[\'venue_id\']]')
+    && str_contains($adminEndpoint, "SELECT venue_id,resource_kind,floor_label,allow_mixed_gender FROM seminar_reservations WHERE seminar_id=?")
+    && str_contains($adminEndpoint, '$retained[(int)$row[\'venue_id\']]')
     && !str_contains($adminJs, 'room_ids: [...state.selectedRooms], floors:')
     && str_contains((string)file_get_contents(__DIR__ . '/../includes/seminars.php'), 'seminar_floor_display_label($room[\'floor_label\'] ?? \'\')')
     && str_contains($adminJs, 'Floor not recorded') && str_contains($adminJs, 'data-room-search="${esc(roomSearch)}"')
@@ -588,7 +590,7 @@ $check('seminar attendee copy uses correct singular and plural grammar and solo 
     && !str_contains($adminJs, '100 or more rooms')
     && str_contains($adminJs, "warnings.push('Solo occupancy allowed')")
     && !str_contains($source('includes/seminars.php'), 'Resolve every solo room before finalizing.'));
-$check('wizard has a distinct content title and no redundant step kickers', str_contains($seminarPage, '<h1>Seminar rooming</h1>')
+$check('wizard has a distinct content title and no redundant step kickers', str_contains($source('admin_dashboard.php'), '<h1 class="page-title">') && str_contains($source('admin_dashboard.php'), "'seminars'")
     && !str_contains($seminarPage, 'seminar-kicker')
     && !str_contains($adminJs, 'Step 1 of 4 ·') && !str_contains($adminJs, 'Step 2 of 4 ·')
     && !str_contains($adminJs, 'Step 3 of 4 ·') && !str_contains($adminJs, 'Step 4 of 4 ·'));
@@ -761,8 +763,8 @@ if ($createdTestDb) {
     $floorMigration = file_get_contents($root . '/migrations/029_hotel_room_floors.sql');
     foreach (explode(';', (string)$floorMigration) as $statement) if (trim($statement) !== '') $testConn->query($statement);
     $testConn->query("INSERT INTO seminars (id,name,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES
-        (1,'Hall date test','draft',1,'2030-06-01','2030-06-03','2030-05-31','2030-06-04',1),
-        (2,'Room date test','draft',2,'2030-06-01','2030-06-03','2030-06-01','2030-06-03',1)");
+        (1,'Hall date test','finalized',1,'2030-06-01','2030-06-03','2030-05-31','2030-06-04',1),
+        (2,'Room date test','finalized',2,'2030-06-01','2030-06-03','2030-06-01','2030-06-03',1)");
     $testConn->query("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date) VALUES
         (1,1,'hall','2030-06-01','2030-06-03'),(2,2,'room','2030-06-01','2030-06-03')");
     $testConn->query("INSERT INTO hotel_rooms (venue_id,room_number,floor_label) VALUES (2,'12','Floor 8'),(3,'13',NULL)");
@@ -810,7 +812,7 @@ if ($createdTestDb) {
     }
     fclose($childSocket); stream_set_timeout($parentSocket, 15);
     if (trim((string)fgets($parentSocket)) !== 'ready') throw new RuntimeException('Concurrency test worker did not start.');
-    $testConn->query("INSERT INTO seminars (id,name,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (3,'Concurrent hold','draft',3,'2030-06-01','2030-06-03','2030-06-01','2030-06-03',1)");
+    $testConn->query("INSERT INTO seminars (id,name,status,hall_venue_id,hall_start_date,hall_end_date,hotel_check_in,hotel_check_out,created_by) VALUES (3,'Concurrent hold','finalized',3,'2030-06-01','2030-06-03','2030-06-01','2030-06-03',1)");
     $testConn->query("INSERT INTO seminar_reservations (seminar_id,venue_id,resource_kind,start_date,end_date) VALUES (3,3,'hall','2030-06-01','2030-06-03')");
     $testConn->commit();
     $workerResult = trim((string)fgets($parentSocket)); fclose($parentSocket);

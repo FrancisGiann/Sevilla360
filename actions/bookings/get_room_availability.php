@@ -87,7 +87,7 @@ try {
           AND NOT EXISTS (SELECT 1 FROM booking_locks bl WHERE bl.venue_id = v.id
             AND bl.session_id <> ? AND bl.expires_at > NOW() AND {$lockOverlap})
           AND NOT EXISTS (SELECT 1 FROM seminar_reservations sr JOIN seminars sem ON sem.id=sr.seminar_id
-            WHERE sr.venue_id=v.id AND sr.resource_kind='room' AND sem.status IN ('draft','finalized')
+            WHERE sr.venue_id=v.id AND sr.resource_kind='room' AND sem.status = 'finalized'
               AND sr.start_date < ? AND sr.end_date > ?)";
     $stmt = $conn->prepare($sql);
     $checkOut = $end->format('Y-m-d');
