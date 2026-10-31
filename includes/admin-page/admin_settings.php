@@ -535,7 +535,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 </div>
 
 <!-- Toast Notification -->
-<div id="settings-toast" class="toast-notification">
+<div id="settings-toast" class="toast-notification" role="status" aria-live="polite" aria-atomic="true">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
@@ -562,7 +562,14 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
 <!-- ADD/EDIT VENUE MODAL -->
 <div class="modal-overlay" id="venueModal" role="dialog" aria-modal="true" aria-labelledby="vm-title">
     <div class="modal-content venue-modal-content">
-        <h3 class="modal-title" id="vm-title">Add New Venue</h3>
+        <div class="venue-modal-header">
+            <h3 class="modal-title" id="vm-title">Add New Venue</h3>
+            <button type="button" class="venue-modal-close" id="btn-close-vmodal-x" aria-label="Close venue editor">
+                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+                </svg>
+            </button>
+        </div>
 
         <form id="form-venue" onsubmit="return false;">
             <input type="hidden" id="vm-id" name="venue_id">

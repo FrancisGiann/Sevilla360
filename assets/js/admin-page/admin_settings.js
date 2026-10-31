@@ -2,6 +2,61 @@
  * SEVILLA360 - Admin Settings Controller
  */
 document.addEventListener("DOMContentLoaded", () => {
+
+  const venueSaveStateKey = "sevilla360AdminVenueSaveState";
+
+  function takeVenueSaveState() {
+    let savedState = null;
+    try {
+      const storedState = sessionStorage.getItem(venueSaveStateKey);
+      if (storedState) {
+        sessionStorage.removeItem(venueSaveStateKey);
+        savedState = JSON.parse(storedState);
+      }
+    } catch {
+      // Continue with history state when session storage is unavailable.
+    }
+
+    if (!savedState) {
+      const currentHistoryState = window.history.state;
+      if (currentHistoryState && typeof currentHistoryState === "object" && currentHistoryState[venueSaveStateKey]) {
+        savedState = currentHistoryState[venueSaveStateKey];
+        try {
+          const nextHistoryState = { ...currentHistoryState };
+          delete nextHistoryState[venueSaveStateKey];
+          window.history.replaceState(nextHistoryState, "", window.location.href);
+        } catch {
+          // The state has still been consumed in memory for this page load.
+        }
+      }
+    }
+
+    return savedState && savedState.version === 1 ? savedState : null;
+  }
+
+  function storeVenueSaveState(state) {
+    const serializedState = JSON.stringify(state);
+    try {
+      sessionStorage.setItem(venueSaveStateKey, serializedState);
+      return true;
+    } catch {
+      // Fall back to the current history entry so a reload can restore context.
+    }
+
+    try {
+      const currentHistoryState = window.history.state;
+      const baseHistoryState = currentHistoryState && typeof currentHistoryState === "object" && !Array.isArray(currentHistoryState)
+        ? currentHistoryState
+        : {};
+      window.history.replaceState({ ...baseHistoryState, [venueSaveStateKey]: state }, "", window.location.href);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const restoredVenueSaveState = takeVenueSaveState();
+  let captureVenueListState = () => ({ version: 1 });
     
   // =========================================================
   // 1. TAB SWITCHING LOGIC
@@ -18,6 +73,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (settingsTabSelect) settingsTabSelect.value = targetId;
   }
 
+  if (restoredVenueSaveState?.panelId && [...settingsPanels].some((panel) => panel.id === restoredVenueSaveState.panelId)) {
+    activateSettingsPanel(restoredVenueSaveState.panelId);
+  }
+
   tabLinks.forEach((link) => {
     link.addEventListener("click", () => {
       activateSettingsPanel(link.getAttribute("data-target"));
@@ -30,12 +89,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // 2. TOAST NOTIFICATION UTILITY
   // =========================================================
   const toast = document.getElementById("settings-toast");
+  const toastMessage = toast?.querySelector("span");
+  const defaultToastMessage = toastMessage?.textContent || "Settings Saved Successfully";
   let toastTimeout;
 
-  function showToast() {
+  function showToast(message) {
+    if (!toast) return;
     clearTimeout(toastTimeout);
+    if (toastMessage) {
+      toastMessage.textContent = typeof message === "string" && message.trim() ? message : defaultToastMessage;
+    }
     toast.classList.add("show");
-    toastTimeout = setTimeout(() => toast.classList.remove("show"), 3000);
+    toastTimeout = setTimeout(() => toast.classList.remove("show"), message ? 4500 : 3000);
   }
 
   document.getElementById("btn-save-profile")?.addEventListener("click", function() {
@@ -490,6 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 5. MANAGE VENUES MODAL & AJAX
   // =========================================================
   const venueModal = document.getElementById("venueModal");
+  const venueModalContent = venueModal?.querySelector(".venue-modal-content");
   const formVenue = document.getElementById("form-venue");
   const catSelect = document.getElementById("vm-category");
   const venueNameInput = document.getElementById("vm-name");
@@ -503,6 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const floorHelp = document.getElementById("vm-hr-floor-help");
   const floorBulkHelp = document.getElementById("vm-hr-floor-bulk-help");
   let venueModalTrigger = null;
+  let isSavingVenue = false;
 
   function updateFloorHelp(bulkEnabled) {
     if (floorHelp) floorHelp.hidden = bulkEnabled;
@@ -512,8 +579,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function openVenueModal(trigger) {
     venueModalTrigger = trigger || document.activeElement;
+    if (venueModalContent) venueModalContent.scrollTop = 0;
     venueModal.classList.add("active");
-    venueNameInput?.focus();
+    venueNameInput?.focus({ preventScroll: true });
   }
 
   function closeVenueModal() {
@@ -759,6 +827,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-close-vmodal")?.addEventListener("click", closeVenueModal);
+  document.getElementById("btn-close-vmodal-x")?.addEventListener("click", closeVenueModal);
   window.addEventListener("click", (e) => { if (e.target === venueModal) closeVenueModal(); });
   venueModal?.addEventListener("keydown", (e) => {
     if (!venueModal.classList.contains("active")) return;
@@ -769,6 +838,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (formVenue) {
     formVenue.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (isSavingVenue) return;
 
       // Validate the full generated range before submitting the bulk request.
       if (bulkToggle && bulkToggle.checked) {
@@ -783,6 +853,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const submitBtn = document.getElementById("btn-save-venue");
       const originalText = submitBtn.innerText;
+      isSavingVenue = true;
       submitBtn.innerText = "Saving...";
       submitBtn.disabled = true;
 
@@ -802,10 +873,23 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(res => res.json())
       .then(data => {
           if (data.success) {
-            showAlert("Notice", data.message);
+            const state = captureVenueListState();
+            state.successMessage = typeof data.message === "string" && data.message.trim()
+              ? data.message
+              : "Venue saved successfully.";
+            if (!storeVenueSaveState(state)) {
+              isSavingVenue = false;
+              submitBtn.innerText = originalText;
+              submitBtn.disabled = false;
+              closeVenueModal();
+              if (window.showAlert) window.showAlert("Success", state.successMessage, "success", true);
+              else window.location.reload();
+              return;
+            }
             window.location.reload();
           } else {
             showAlert("Notice", "Error: " + data.message);
+            isSavingVenue = false;
             submitBtn.innerText = originalText;
             submitBtn.disabled = false;
           }
@@ -813,6 +897,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(err => {
           console.error(err);
           showAlert("Notice", "Network error.");
+          isSavingVenue = false;
           submitBtn.innerText = originalText;
           submitBtn.disabled = false;
       });
@@ -929,6 +1014,68 @@ document.addEventListener("DOMContentLoaded", () => {
       if (searchInput) {
           searchInput.addEventListener('input', applyFilters);
       }
+
+      function getVenueGroupId(group) {
+          const controls = group.querySelector('.venue-group-toggle')?.getAttribute('aria-controls') || '';
+          return controls.replace(/^hotel-group-/, '');
+      }
+
+      function restoreVenueListState(state) {
+          if (!state || typeof state !== 'object') return;
+
+          const selectedFilter = [...venueFilters].find(btn => btn.getAttribute('data-filter') === state.categoryFilter);
+          if (selectedFilter) {
+              venueFilters.forEach(btn => btn.classList.toggle('active', btn === selectedFilter));
+              currentFilter = state.categoryFilter;
+          }
+          if (searchInput && typeof state.searchValue === 'string') searchInput.value = state.searchValue;
+
+          const expandedIds = new Set(Array.isArray(state.expandedGroupIds) ? state.expandedGroupIds : []);
+          const autoExpandedIds = new Set(Array.isArray(state.autoExpandedGroupIds) ? state.autoExpandedGroupIds : []);
+          const manuallyCollapsedIds = new Set(Array.isArray(state.manuallyCollapsedGroupIds) ? state.manuallyCollapsedGroupIds : []);
+          autoExpandedGroups.clear();
+          manuallyCollapsedGroups.clear();
+
+          venueGroups.forEach(group => {
+              const groupId = getVenueGroupId(group);
+              const toggle = group.querySelector('.venue-group-toggle');
+              const expanded = expandedIds.has(groupId);
+              const children = [...venueRows].filter(row => row.getAttribute('data-group-id') === groupId);
+              toggle?.setAttribute('aria-expanded', String(expanded));
+              const arrow = toggle?.querySelector('.venue-group-arrow');
+              if (arrow) arrow.textContent = expanded ? '▾' : '▸';
+              const countLabel = toggle?.querySelector('.venue-group-count');
+              if (countLabel) countLabel.textContent = expanded ? `${children.length} room${children.length === 1 ? '' : 's'}` : 'Rooms are collapsed';
+              if (autoExpandedIds.has(groupId) && expanded) autoExpandedGroups.add(groupId);
+              if (manuallyCollapsedIds.has(groupId) && !expanded) manuallyCollapsedGroups.add(groupId);
+          });
+      }
+
+      captureVenueListState = () => ({
+          version: 1,
+          panelId: [...settingsPanels].find(panel => panel.classList.contains('active'))?.id || 'panel-venues',
+          categoryFilter: currentFilter,
+          searchValue: searchInput?.value || '',
+          expandedGroupIds: [...venueGroups].filter(group => group.querySelector('.venue-group-toggle')?.getAttribute('aria-expanded') === 'true').map(getVenueGroupId),
+          autoExpandedGroupIds: [...autoExpandedGroups],
+          manuallyCollapsedGroupIds: [...manuallyCollapsedGroups],
+          scrollX: Number(window.scrollX) || 0,
+          scrollY: Number(window.scrollY) || 0
+      });
+
+      restoreVenueListState(restoredVenueSaveState);
       applyFilters();
+
+      if (restoredVenueSaveState) {
+          const message = typeof restoredVenueSaveState.successMessage === 'string'
+              ? restoredVenueSaveState.successMessage
+              : 'Venue saved successfully.';
+          showToast(message);
+          requestAnimationFrame(() => window.scrollTo({
+              left: Number(restoredVenueSaveState.scrollX) || 0,
+              top: Number(restoredVenueSaveState.scrollY) || 0,
+              behavior: 'instant'
+          }));
+      }
   }
 });
