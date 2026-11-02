@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../catering_packages.php';
 // Fetch system settings safely
 if (!isset($sys_settings)) {
     $sys_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -7,9 +8,7 @@ if (!isset($sys_settings)) {
         while($r = $sys_query->fetch_assoc()) $sys_settings[$r['setting_key']] = $r['setting_value'];
     }
 }
-$cat_silv = $sys_settings['catering_silver'] ?? 750;
-$cat_gold = $sys_settings['catering_gold'] ?? 1200;
-$cat_plat = $sys_settings['catering_platinum'] ?? 1800;
+$cateringPackages = catering_packages_from_settings($sys_settings);
 $av_setup = $sys_settings['av_setup'] ?? 5000;
 
 // $hotel_room_groups must be set by the parent page (booking.php or admin_walkin.php)
@@ -28,45 +27,7 @@ $addon_room_groups = $hotel_room_groups ?? [];
         </label>
         <div class="addon-content hidden" id="catering-options">
             <div class="tier-cards">
-                <label class="tier-card">
-                    <input type="radio" name="catering-tier" value="<?php echo $cat_silv; ?>" checked>
-                    <div class="tier-header">
-                        <h4>Silver Tier</h4>
-                    </div>
-                    <p class="tier-desc">Standard Buffet</p>
-                    <span class="tier-price">₱<?php echo number_format($cat_silv); ?> / head</span>
-                    <ul class="tier-menu">
-                        <li>1 Soup, 1 Salad</li>
-                        <li>3 Main Courses</li>
-                        <li>1 Dessert, Iced Tea</li>
-                    </ul>
-                </label>
-                <label class="tier-card">
-                    <input type="radio" name="catering-tier" value="<?php echo $cat_gold; ?>">
-                    <div class="tier-header">
-                        <h4>Gold Tier</h4>
-                    </div>
-                    <p class="tier-desc">Premium Course</p>
-                    <span class="tier-price">₱<?php echo number_format($cat_gold); ?> / head</span>
-                    <ul class="tier-menu">
-                        <li>Premium Soup & Salad</li>
-                        <li>4 Main Courses</li>
-                        <li>2 Desserts, Drinks</li>
-                    </ul>
-                </label>
-                <label class="tier-card">
-                    <input type="radio" name="catering-tier" value="<?php echo $cat_plat; ?>">
-                    <div class="tier-header">
-                        <h4>Platinum Tier</h4>
-                    </div>
-                    <p class="tier-desc">Luxury Dining</p>
-                    <span class="tier-price">₱<?php echo number_format($cat_plat); ?> / head</span>
-                    <ul class="tier-menu">
-                        <li>Gourmet Appetizers</li>
-                        <li>5 Main Courses</li>
-                        <li>Dessert Buffet & Wine</li>
-                    </ul>
-                </label>
+                <?php include __DIR__ . '/catering_package_cards.php'; ?>
             </div>
             <div class="form-group" style="margin-top: 1.5rem;">
                 <label for="catering-notes">Catering Notes / Special Requests</label>

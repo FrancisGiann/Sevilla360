@@ -2,6 +2,8 @@
 require_once __DIR__ . '/../../includes/session_init.php';
 require_once __DIR__ . '/../../includes/google_maps.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
+require_once __DIR__ . '/../../includes/catering_packages.php';
+require_once __DIR__ . '/../../includes/request_context.php';
 require '../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
 
@@ -16,75 +18,95 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 if (!session_account_require_active($conn, ['admin'], static function (string $state): void { http_response_code($state === 'invalid' ? 401 : 503); echo $state === 'invalid' ? 'Error: Unauthorized access.' : 'Error|Account status could not be verified.'; })) exit;
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    echo 'Error|Use POST to save preferences.';
+    exit;
+}
 
-    $bundle_discount_percent = parse_event_bundle_discount_percent($_POST[EVENT_BUNDLE_DISCOUNT_SETTING_KEY] ?? EVENT_BUNDLE_DISCOUNT_DEFAULT_PERCENT);
-    if ($bundle_discount_percent === null) {
-        echo "Error|Event Hall + Hotel bundle discount must be a finite number from 0 to 100.";
-        exit;
+try {
+    $catering_settings = catering_package_settings_from_post($_POST);
+} catch (InvalidArgumentException $error) {
+    echo 'Error|' . $error->getMessage();
+    exit;
+}
+
+$bundle_discount_percent = parse_event_bundle_discount_percent($_POST[EVENT_BUNDLE_DISCOUNT_SETTING_KEY] ?? EVENT_BUNDLE_DISCOUNT_DEFAULT_PERCENT);
+if ($bundle_discount_percent === null) {
+    echo "Error|Event Hall + Hotel bundle discount must be a finite number from 0 to 100.";
+    exit;
+}
+
+$map_embed_input = $_POST['biz_map_embed'] ?? '';
+$map_embed_url = google_maps_normalize_embed($map_embed_input);
+if ($map_embed_url === null) {
+    echo "Error|Paste a complete Google Maps iframe or a valid HTTPS Google Maps embed URL.";
+    exit;
+}
+
+// Build the preference set from validated package fields and the existing settings.
+$settings = [
+    'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
+    'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),
+    'av_setup' => floatval($_POST['av_setup'] ?? 5000),
+    EVENT_BUNDLE_DISCOUNT_SETTING_KEY => format_event_bundle_discount_percent($bundle_discount_percent),
+
+    // Business Information
+    'biz_name' => trim($_POST['biz_name'] ?? 'Sevilla360'),
+    'biz_tagline' => trim($_POST['biz_tagline'] ?? 'LUXURY RESORT & EVENTS'),
+    'biz_email' => trim($_POST['biz_email'] ?? 'reservations@sevilla360.com'),
+    'biz_phone' => trim($_POST['biz_phone'] ?? '+63 912 345 6789'),
+    'biz_address' => trim($_POST['biz_address'] ?? '123 Resort Drive, Paradise City'),
+    'biz_map_embed' => $map_embed_url,
+    'biz_policies' => trim($_POST['biz_policies'] ?? ''),
+];
+$settings = array_merge($settings, $catering_settings);
+
+$social_links = json_decode($_POST['social_links_json'] ?? '[]', true);
+if (!is_array($social_links)) { echo "Error|Invalid social media configuration."; exit; }
+$clean_social_links = [];
+foreach ($social_links as $social) {
+    if (!is_array($social)) continue;
+    $label = trim((string)($social['label'] ?? ''));
+    $url = trim((string)($social['url'] ?? ''));
+    if ($label === '' && $url === '') continue;
+    if ($label === '' || strlen($label) > 40 || strlen($url) > 500 || !filter_var($url, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $url)) {
+        echo "Error|Each social media link needs a name and a valid http(s) URL."; exit;
+    }
+    $clean_social_links[] = ['label' => $label, 'url' => $url];
+}
+$settings['social_links_json'] = json_encode($clean_social_links, JSON_UNESCAPED_SLASHES);
+
+// Save the complete preference set together, including the audit entry.
+try {
+    $conn->begin_transaction();
+    $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
+    if (!$stmt) throw new RuntimeException('Settings statement unavailable.');
+    foreach ($settings as $key => $val) {
+        $str_val = (string)$val;
+        $stmt->bind_param("sss", $key, $str_val, $str_val);
+        if (!$stmt->execute()) throw new RuntimeException('Settings save failed.');
     }
 
-    $map_embed_input = $_POST['biz_map_embed'] ?? '';
-    $map_embed_url = google_maps_normalize_embed($map_embed_input);
-    if ($map_embed_url === null) {
-        echo "Error|Paste a complete Google Maps iframe or a valid HTTPS Google Maps embed URL.";
-        exit;
-    }
-    
+    $log_user = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($log_user === false) throw new RuntimeException('Authenticated administrator is unavailable for audit logging.');
+    $audit_module = 'System Settings';
+    $audit_action = 'Updated system preferences, including catering packages';
+    $audit_ip = request_client_ip();
+    $audit_stmt = $conn->prepare('INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)');
+    if (!$audit_stmt) throw new RuntimeException('Audit statement unavailable.');
+    $audit_stmt->bind_param('isss', $log_user, $audit_module, $audit_action, $audit_ip);
+    if (!$audit_stmt->execute()) throw new RuntimeException('Audit entry could not be recorded.');
+    $audit_stmt->close();
 
-    // Build our settings array
-    $settings = [
-        'event_type_wedding' => floatval($_POST['event_type_wedding'] ?? 10000),
-        'event_type_birthday' => floatval($_POST['event_type_birthday'] ?? 5000),
-        'catering_silver' => floatval($_POST['catering_silver'] ?? 750),
-        'catering_gold' => floatval($_POST['catering_gold'] ?? 1200),
-        'catering_platinum' => floatval($_POST['catering_platinum'] ?? 1800),
-        'av_setup' => floatval($_POST['av_setup'] ?? 5000),
-        EVENT_BUNDLE_DISCOUNT_SETTING_KEY => format_event_bundle_discount_percent($bundle_discount_percent),
-        
-        // Business Information
-        'biz_name' => trim($_POST['biz_name'] ?? 'Sevilla360'),
-        'biz_tagline' => trim($_POST['biz_tagline'] ?? 'LUXURY RESORT & EVENTS'),
-        'biz_email' => trim($_POST['biz_email'] ?? 'reservations@sevilla360.com'),
-        'biz_phone' => trim($_POST['biz_phone'] ?? '+63 912 345 6789'),
-        'biz_address' => trim($_POST['biz_address'] ?? '123 Resort Drive, Paradise City'),
-        'biz_map_embed' => $map_embed_url,
-        'biz_policies' => trim($_POST['biz_policies'] ?? ''),
-    ];
-
-    $social_links = json_decode($_POST['social_links_json'] ?? '[]', true);
-    if (!is_array($social_links)) { echo "Error|Invalid social media configuration."; exit; }
-    $clean_social_links = [];
-    foreach ($social_links as $social) {
-        if (!is_array($social)) continue;
-        $label = trim((string)($social['label'] ?? ''));
-        $url = trim((string)($social['url'] ?? ''));
-        if ($label === '' && $url === '') continue;
-        if ($label === '' || strlen($label) > 40 || strlen($url) > 500 || !filter_var($url, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $url)) {
-            echo "Error|Each social media link needs a name and a valid http(s) URL."; exit;
-        }
-        $clean_social_links[] = ['label' => $label, 'url' => $url];
-    }
-    $settings['social_links_json'] = json_encode($clean_social_links, JSON_UNESCAPED_SLASHES);
-
-    // Save the complete preference set together, including business details.
-    try {
-        $conn->begin_transaction();
-        $stmt = $conn->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?");
-        if (!$stmt) throw new RuntimeException('Settings statement unavailable.');
-        foreach ($settings as $key => $val) {
-            $str_val = (string)$val;
-            $stmt->bind_param("sss", $key, $str_val, $str_val);
-            if (!$stmt->execute()) throw new RuntimeException('Settings save failed.');
-        }
-        if (!$conn->commit()) throw new RuntimeException('Settings commit failed.');
-        $stmt->close();
-        echo "Success";
-    } catch (Throwable $error) {
-        $conn->rollback();
-        http_response_code(500);
-        echo "Error|Unable to save preferences.";
-    }
+    if (!$conn->commit()) throw new RuntimeException('Settings commit failed.');
+    $stmt->close();
+    echo "Success";
+} catch (Throwable $error) {
+    $conn->rollback();
+    http_response_code(500);
+    echo "Error|Unable to save preferences.";
 }
 $conn->close();
 ?>

@@ -271,6 +271,7 @@ class BookingController {
             ? currentSelectionKey
             : '';
         if (!confirmedSelectionKey) this.state.confirmedSelectionKey = '';
+        const selectedCateringTier = document.querySelector('input[name="catering-tier"]:checked');
         const draft = {
             version: 1,
             createdAt: existing?.createdAt || Date.now(),
@@ -295,7 +296,8 @@ class BookingController {
             eventStyle: this.getEl('event-style')?.value || '',
             addons: {
                 catering: this.getEl('check-catering')?.checked === true,
-                cateringTier: document.querySelector('input[name="catering-tier"]:checked')?.value || '',
+                cateringTier: selectedCateringTier?.value || '',
+                cateringTierId: selectedCateringTier?.dataset.packageId || '',
                 av: this.getEl('check-av')?.checked === true,
                 rooms: this.getEl('check-rooms')?.checked === true,
                 roomGroups: Array.from(document.querySelectorAll('.selected-room-row')).map(row => ({
@@ -439,8 +441,9 @@ class BookingController {
             if (!control) return;
             control.checked = true;
             this.getEl('catering-options')?.classList.remove('hidden');
-            const tier = Array.from(document.querySelectorAll('input[name="catering-tier"]'))
-                .find(item => item.value === String(draft.addons.cateringTier || ''));
+            const availableTiers = Array.from(document.querySelectorAll('input[name="catering-tier"]'));
+            const tier = availableTiers.find(item => item.dataset.packageId === String(draft.addons.cateringTierId || ''))
+                || availableTiers.find(item => item.value === String(draft.addons.cateringTier || ''));
             if (tier) tier.checked = true;
         };
         const restoreAv = () => {

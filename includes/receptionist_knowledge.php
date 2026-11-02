@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/catering_packages.php';
 
 /**
  * Bounded, public-only knowledge used by the virtual receptionist.
@@ -36,7 +37,10 @@ function receptionist_knowledge_positive_int($value): ?int
 
 function receptionist_knowledge_money(float $amount): string
 {
-    return '₱' . number_format($amount, abs($amount - round($amount)) < 0.001 ? 0 : 2);
+    if (abs($amount - round($amount)) < 0.00005) return '₱' . number_format($amount, 0);
+    $formatted = number_format($amount, 4, '.', '');
+    $fraction = str_contains($formatted, '.') ? rtrim(substr($formatted, strpos($formatted, '.') + 1), '0') : '';
+    return '₱' . number_format($amount, max(2, min(4, strlen($fraction))));
 }
 
 function receptionist_knowledge_amenities($value): array
@@ -107,6 +111,9 @@ function receptionist_knowledge_fetch_settings(mysqli $conn): array
         'biz_name', 'biz_email', 'biz_phone', 'biz_address',
         'biz_policies', 'support_terms', 'support_contact_description',
     ];
+    foreach (catering_package_definitions() as $definition) {
+        $keys[] = $definition['name_key'];
+    }
     $quoted = implode(', ', array_map(static fn(string $key): string => "'" . $key . "'", $keys));
     $stmt = $conn->prepare("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({$quoted})");
     if (!$stmt || !$stmt->execute()) {
@@ -300,13 +307,16 @@ function receptionist_knowledge_build_records(array $venueRows, array $settings,
     foreach ([
         'event_type_wedding' => ['label' => 'Wedding event fee', 'unit' => 'per event'],
         'event_type_birthday' => ['label' => 'Birthday event fee', 'unit' => 'per event'],
-        'catering_silver' => ['label' => 'Silver catering', 'unit' => 'per person'],
-        'catering_gold' => ['label' => 'Gold catering', 'unit' => 'per person'],
-        'catering_platinum' => ['label' => 'Platinum catering', 'unit' => 'per person'],
         'av_setup' => ['label' => 'A/V setup', 'unit' => 'per event'],
     ] as $key => $meta) {
         $amount = receptionist_knowledge_positive_number($settings[$key] ?? null);
         if ($amount !== null) $eventModifiers[] = ['label' => $meta['label'], 'amount' => $amount, 'unit' => $meta['unit']];
+    }
+    foreach (catering_packages_from_settings($settings) as $package) {
+        $amount = receptionist_knowledge_positive_number($package['rate']);
+        if ($amount !== null) {
+            $eventModifiers[] = ['label' => 'Catering: ' . $package['name'], 'amount' => $amount, 'unit' => 'per person'];
+        }
     }
     if ($eventModifiers) {
         $records[] = [

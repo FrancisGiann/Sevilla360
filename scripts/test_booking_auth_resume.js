@@ -15,13 +15,17 @@ assert.match(source, /window\.addEventListener\('pageshow', event => this\.handl
 const document = {
     checkedVillaStay: null,
     villaStayOption: null,
+    cateringTiers: [],
     querySelector(selector) {
         if (selector.startsWith('.tab-btn[data-tab=')) return { dataset: { tab: selector.match(/data-tab="([^"]+)/)?.[1] || '' } };
         if (selector === 'input[name="villa-stay"]:checked') return this.checkedVillaStay;
         if (selector.startsWith('input[name="villa-stay"][value=')) return this.villaStayOption;
         return null;
     },
-    querySelectorAll() { return []; }
+    querySelectorAll(selector) {
+        if (selector === 'input[name="catering-tier"]') return this.cateringTiers;
+        return [];
+    }
 };
 const context = {
     document,
@@ -60,7 +64,7 @@ function control(value = '') {
     };
 }
 
-function makeController({ category, lockResult = 'success', complete = true, eventGuestCount = 100 }) {
+function makeController({ category, lockResult = 'success', complete = true, eventGuestCount = 100, cateringTiers = [], draftAddons = {} }) {
     const isHotel = category === 'Hotel Room';
     const isVilla = category === 'Resort Villa';
     const activeTabId = isHotel ? 'hotel-rooms' : (isVilla ? 'resort-villa' : 'event-hall');
@@ -81,8 +85,11 @@ function makeController({ category, lockResult = 'success', complete = true, eve
         'hotel-guests': control('2'),
         'villa-guests': control('2'),
         'timer-box': control(),
-        'btn-proceed': control()
+        'btn-proceed': control(),
+        'check-catering': control(),
+        'catering-options': control()
     };
+    document.cateringTiers = cateringTiers;
     elements['event-venue'].options = [venueOption];
     elements['event-venue'].selectedOptions = [venueOption];
     elements['villa-type'].options = [villaOption];
@@ -124,7 +131,7 @@ function makeController({ category, lockResult = 'success', complete = true, eve
         eventType: 'Plain Hall',
         eventTypeOther: '',
         eventStyle: 'theater',
-        addons: { catering: false, av: false, rooms: false, roomGroups: [] }
+        addons: { catering: false, av: false, rooms: false, roomGroups: [], ...draftAddons }
     };
     const requests = [];
     context.fetch = async url => {
@@ -217,6 +224,35 @@ async function restore({ category, lockResult, complete = true, eventGuestCount 
     const incomplete = await restore({ category: 'Event Hall', complete: false });
     assert.equal(incomplete.state.currentStep, 2, 'incomplete draft cannot skip required dates');
 
+    const equalPriceTiers = [
+        { value: '550', dataset: { packageId: 'package-1' }, checked: false },
+        { value: '550', dataset: { packageId: 'package-2' }, checked: false },
+        { value: '800', dataset: { packageId: 'package-3' }, checked: false }
+    ];
+    const stableCatering = makeController({
+        category: 'Event Hall',
+        cateringTiers: equalPriceTiers,
+        draftAddons: { catering: true, cateringTier: '600', cateringTierId: 'package-2' }
+    });
+    stableCatering.state.calendars.event = null;
+    await BookingController.prototype.restoreDraftIfRequested.call(stableCatering);
+    assert.equal(equalPriceTiers[0].checked, false, 'equal-priced package one must not take a saved package-two draft');
+    assert.equal(equalPriceTiers[1].checked, true, 'stable package ID restores the intended tier after its rate changed');
+    assert.equal(stableCatering.getEl('check-catering').checked, true, 'saved catering selection remains enabled');
+
+    const legacyCateringTiers = [
+        { value: '550', dataset: { packageId: 'package-1' }, checked: false },
+        { value: '700', dataset: { packageId: 'package-2' }, checked: false }
+    ];
+    const legacyCatering = makeController({
+        category: 'Event Hall',
+        cateringTiers: legacyCateringTiers,
+        draftAddons: { catering: true, cateringTier: '700' }
+    });
+    legacyCatering.state.calendars.event = null;
+    await BookingController.prototype.restoreDraftIfRequested.call(legacyCatering);
+    assert.equal(legacyCateringTiers[1].checked, true, 'legacy drafts without a package ID still restore by their saved rate');
+
     let pageShowRefreshes = 0;
     const pageShowController = Object.create(BookingController.prototype);
     pageShowController.isRestoringDraft = false;
@@ -237,6 +273,8 @@ async function restore({ category, lockResult, complete = true, eventGuestCount 
     console.log('PASS|villa resume restores review only after successful hold');
     console.log('PASS|failed hotel hold returns to date selection');
     console.log('PASS|incomplete draft remains behind date validation');
+    console.log('PASS|stable catering package ID restores through duplicate or changed rates');
+    console.log('PASS|legacy catering draft restores by saved rate when no package ID exists');
     console.log('PASS|pageshow only refreshes after BFCache return and outside restoration');
 })().catch(error => {
     console.error(error);

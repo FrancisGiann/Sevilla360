@@ -178,7 +178,123 @@ document.addEventListener("DOMContentLoaded", () => {
   const formPrefs = document.getElementById("form-prefs");
   const socialList = document.getElementById("social-links-list");
   const socialJson = document.getElementById("social-links-json");
+  const preferencesSaveStatus = document.getElementById('preferences-save-status');
   let isFormDirty = false;
+  let preferencesDirty = false;
+  let preferencesRevision = 0;
+  const maxCateringMenuItems = 30;
+
+  function setPreferencesSaveStatus(message, state = 'saved') {
+    if (!preferencesSaveStatus) return;
+    if (preferencesSaveStatus.textContent !== message) preferencesSaveStatus.textContent = message;
+    preferencesSaveStatus.dataset.state = state;
+  }
+
+  function markPreferencesDirty() {
+    preferencesDirty = true;
+    preferencesRevision++;
+    setPreferencesSaveStatus('Unsaved changes. Save to apply these settings.', 'unsaved');
+  }
+
+  function syncCateringMenuEditor(editor, announceCount = false) {
+    const list = editor.querySelector('[data-menu-list]');
+    if (!list) return [];
+    const rows = [...list.querySelectorAll('[data-menu-row]')];
+    const packageName = editor.dataset.packageName || 'Catering package';
+    const totalCharacters = rows.reduce((total, row) => total + Array.from(row.querySelector('[data-menu-item]')?.value.trim() || '').length, 0);
+    rows.forEach((row, index) => {
+      const position = row.querySelector('[data-menu-position]');
+      if (position) position.textContent = String(index + 1);
+      const itemInput = row.querySelector('[data-menu-item]');
+      const itemLabel = `${packageName} menu item ${index + 1}`;
+      if (itemInput) {
+        itemInput.setAttribute('aria-label', itemLabel);
+        const validationMessage = itemInput.value.trim() === ''
+          ? 'Enter a menu item or remove this row.'
+          : (index === 0 && totalCharacters > 3000 ? 'Keep the package menu under 3,000 characters total.' : '');
+        itemInput.setCustomValidity(validationMessage);
+      }
+      row.querySelectorAll('[data-menu-direction]').forEach((button) => {
+        const direction = button.dataset.menuDirection;
+        button.disabled = direction === 'up' ? index === 0 : index === rows.length - 1;
+        button.setAttribute('aria-label', `Move ${itemLabel} ${direction}`);
+      });
+      const removeButton = row.querySelector('[data-menu-remove]');
+      if (removeButton) {
+        removeButton.disabled = rows.length <= 1;
+        removeButton.setAttribute('aria-label', `Remove ${itemLabel}`);
+      }
+    });
+
+    const addButton = editor.querySelector('[data-menu-add]');
+    if (addButton) addButton.disabled = rows.length >= maxCateringMenuItems;
+    const payload = editor.querySelector('[data-menu-payload]');
+    if (payload) payload.value = rows.map(row => row.querySelector('[data-menu-item]')?.value.trim() || '').join('\n');
+    if (announceCount) {
+      const status = editor.querySelector('[data-menu-status]');
+      if (status) status.textContent = `${rows.length} menu item${rows.length === 1 ? '' : 's'}. Maximum ${maxCateringMenuItems}.`;
+    }
+    return rows;
+  }
+
+  function makeCateringMenuRow(editor, itemNumber) {
+    const packageName = editor.dataset.packageName || 'Catering package';
+    const row = document.createElement('li');
+    row.className = 'catering-menu-row';
+    row.dataset.menuRow = '';
+    const position = document.createElement('span');
+    position.className = 'catering-menu-position';
+    position.dataset.menuPosition = '';
+    position.setAttribute('aria-hidden', 'true');
+    position.textContent = String(itemNumber);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control catering-menu-item';
+    input.dataset.menuItem = '';
+    input.value = '';
+    input.maxLength = 120;
+    input.required = true;
+    input.autocomplete = 'off';
+    input.setAttribute('aria-label', `${packageName} menu item ${itemNumber}`);
+
+    const actions = document.createElement('div');
+    actions.className = 'catering-menu-row-actions';
+    [['up', 'Up'], ['down', 'Down']].forEach(([direction, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-outline catering-menu-move';
+      button.dataset.menuDirection = direction;
+      button.textContent = label;
+      actions.appendChild(button);
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn-danger catering-menu-remove';
+    remove.dataset.menuRemove = '';
+    remove.textContent = 'Remove';
+    actions.appendChild(remove);
+
+    row.append(position, input, actions);
+    return row;
+  }
+
+  function updateCateringPackageHeading(packageSection) {
+    const nameInput = packageSection.querySelector('.catering-package-name');
+    const heading = packageSection.querySelector('[data-package-heading]');
+    const menuEditor = packageSection.querySelector('[data-menu-editor]');
+    const packageName = nameInput?.value.trim() || 'Package name';
+    if (heading) heading.textContent = packageName;
+    if (menuEditor) {
+      menuEditor.dataset.packageName = packageName;
+      const list = menuEditor.querySelector('[data-menu-list]');
+      if (list) list.setAttribute('aria-label', `${packageName} menu items`);
+      syncCateringMenuEditor(menuEditor);
+    }
+  }
+
+  function syncCateringMenuPayloads() {
+    formPrefs?.querySelectorAll('[data-menu-editor]').forEach(editor => syncCateringMenuEditor(editor));
+  }
 
   function addSocialRow() {
     if (!socialList) return;
@@ -186,48 +302,121 @@ document.addEventListener("DOMContentLoaded", () => {
     row.className = "social-link-row";
     row.innerHTML = '<input type="text" class="form-control social-label" placeholder="Platform (e.g. Facebook)" maxlength="40"><input type="url" class="form-control social-url" placeholder="https://..." maxlength="500"><button type="button" class="btn btn-danger btn-remove-social">Remove</button>';
     socialList.appendChild(row);
-    isFormDirty = true;
+    markPreferencesDirty();
   }
   function collectSocialLinks() {
     return [...(socialList?.querySelectorAll('.social-link-row') || [])].map(row => ({label: row.querySelector('.social-label')?.value.trim() || '', url: row.querySelector('.social-url')?.value.trim() || ''})).filter(item => item.label || item.url);
   }
   document.getElementById('btn-add-social')?.addEventListener('click', addSocialRow);
-  socialList?.addEventListener('click', event => { const button = event.target.closest('.btn-remove-social'); if (button) { button.closest('.social-link-row')?.remove(); isFormDirty = true; } });
+  socialList?.addEventListener('click', event => { const button = event.target.closest('.btn-remove-social'); if (button) { button.closest('.social-link-row')?.remove(); markPreferencesDirty(); } });
 
   if (btnSavePrefs && formPrefs) {
-    formPrefs.addEventListener("change", () => isFormDirty = true);
+    formPrefs.querySelectorAll('[data-menu-editor]').forEach(editor => syncCateringMenuEditor(editor, true));
+    formPrefs.addEventListener('input', (event) => {
+      const packageSection = event.target.closest('.catering-package-settings-item');
+      if (event.target.matches('.catering-package-name') && packageSection) updateCateringPackageHeading(packageSection);
+      else {
+        const menuEditor = event.target.closest('[data-menu-editor]');
+        if (menuEditor && event.target.matches('[data-menu-item]')) syncCateringMenuEditor(menuEditor);
+      }
+      markPreferencesDirty();
+    });
+    formPrefs.addEventListener('change', markPreferencesDirty);
+    formPrefs.addEventListener('click', (event) => {
+      const editor = event.target.closest('[data-menu-editor]');
+      if (!editor) return;
+      const list = editor.querySelector('[data-menu-list]');
+      const status = editor.querySelector('[data-menu-status]');
+      const addButton = event.target.closest('[data-menu-add]');
+      if (addButton) {
+        const rows = syncCateringMenuEditor(editor);
+        if (rows.length >= maxCateringMenuItems) return;
+        const newRow = makeCateringMenuRow(editor, rows.length + 1);
+        list.appendChild(newRow);
+        syncCateringMenuEditor(editor, true);
+        markPreferencesDirty();
+        newRow.querySelector('[data-menu-item]')?.focus();
+        if (status) status.textContent = `${editor.dataset.packageName || 'Package'}: added menu item. ${rows.length + 1} of ${maxCateringMenuItems}.`;
+        return;
+      }
 
-    btnSavePrefs.addEventListener("click", () => {
+      const removeButton = event.target.closest('[data-menu-remove]');
+      if (removeButton) {
+        const row = removeButton.closest('[data-menu-row]');
+        const rows = [...list.querySelectorAll('[data-menu-row]')];
+        if (!row || rows.length <= 1) return;
+        const removedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
+        const focusRow = row.nextElementSibling || row.previousElementSibling;
+        row.remove();
+        const remaining = syncCateringMenuEditor(editor, true);
+        markPreferencesDirty();
+        focusRow?.querySelector('[data-menu-item]')?.focus();
+        if (status) status.textContent = `Removed ${removedName}. ${remaining.length} menu item${remaining.length === 1 ? '' : 's'} remain.`;
+        return;
+      }
+
+      const moveButton = event.target.closest('[data-menu-direction]');
+      const row = moveButton?.closest('[data-menu-row]');
+      if (!moveButton || !row) return;
+      const movedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
+      const direction = moveButton.dataset.menuDirection;
+      const sibling = direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
+      if (!sibling) return;
+      if (direction === 'up') list.insertBefore(row, sibling);
+      else list.insertBefore(sibling, row);
+      const rows = syncCateringMenuEditor(editor, true);
+      markPreferencesDirty();
+      const position = rows.indexOf(row) + 1;
+      const focusButton = row.querySelector(`[data-menu-direction="${direction}"]`);
+      (focusButton && !focusButton.disabled ? focusButton : row.querySelector('[data-menu-item]'))?.focus();
+      if (status) status.textContent = `Moved ${movedName} to position ${position} of ${rows.length}.`;
+    });
+
+    btnSavePrefs.addEventListener("click", async () => {
+      syncCateringMenuPayloads();
+      if (!formPrefs.reportValidity()) {
+        setPreferencesSaveStatus('Fix the highlighted fields before saving.', 'error');
+        return;
+      }
       const originalText = btnSavePrefs.innerHTML;
-      btnSavePrefs.innerHTML = "Saving...";
-      btnSavePrefs.style.opacity = "0.8";
-      btnSavePrefs.style.pointerEvents = "none";
+      const submittedRevision = preferencesRevision;
+      btnSavePrefs.disabled = true;
+      btnSavePrefs.textContent = 'Saving…';
+      setPreferencesSaveStatus('Saving preference changes…', 'saving');
 
       if (socialJson) socialJson.value = JSON.stringify(collectSocialLinks());
       const formData = new FormData(formPrefs);
-
-      fetch("actions/admin/save_preferences.php", {
-        method: "POST",
-        headers: { "X-CSRF-Token": csrfToken },
-        body: formData,
-      })
-      .then(res => res.text())
-      .then(data => {
-          btnSavePrefs.innerHTML = originalText;
-          btnSavePrefs.style.opacity = "1";
-          btnSavePrefs.style.pointerEvents = "auto";
-
-          if (data.trim() === "Success") {
-            showToast();
-            isFormDirty = false;
-          } else {
-            showAlert("Notice", data);
-          }
-      })
-      .catch(error => {
-          showAlert("Notice", "System error. Could not save settings.");
-          console.error(error);
-      });
+      try {
+        const response = await fetch("actions/admin/save_preferences.php", {
+          method: "POST",
+          headers: { "X-CSRF-Token": csrfToken },
+          body: formData,
+        });
+        const data = (await response.text()).trim();
+        if (!response.ok || data !== 'Success') {
+          const message = data.startsWith('Error|') ? data.slice(6) : data;
+          throw new Error(message || 'Could not save settings. Try again.');
+        }
+        showToast();
+        if (preferencesRevision === submittedRevision) {
+          preferencesDirty = false;
+          setPreferencesSaveStatus('Changes saved.', 'saved');
+        } else {
+          setPreferencesSaveStatus('Submitted changes saved. New edits are still unsaved.', 'unsaved');
+        }
+      } catch (error) {
+        const errorMessage = error.message || '';
+        const isNetworkFailure = error instanceof TypeError || /failed to fetch|networkerror|load failed|fetch failed/i.test(errorMessage);
+        const message = isNetworkFailure
+          ? 'Could not save. Check your connection and try again; your edits are still here.'
+          : `Could not save. ${errorMessage || 'Try again.'} Your edits are still here.`;
+        setPreferencesSaveStatus(message, 'error');
+        if (window.showAlert) window.showAlert('Notice', message);
+        else alert(message);
+      } finally {
+        btnSavePrefs.innerHTML = originalText;
+        btnSavePrefs.disabled = false;
+      }
     });
   }
 
@@ -525,9 +714,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const unsavedModal = document.getElementById("unsaved-modal");
   let pendingUrl = "";
+  const hasUnsavedSettings = () => isFormDirty || preferencesDirty;
 
   window.addEventListener("beforeunload", function (e) {
-    if (isFormDirty) {
+    if (hasUnsavedSettings()) {
       const msg = "You have unsaved changes. Are you sure you want to leave?";
       e.returnValue = msg;
       return msg;
@@ -537,7 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("a").forEach((link) => {
     link.addEventListener("click", function (e) {
       const href = this.getAttribute("href");
-      if (href && href !== "#" && !href.startsWith("javascript") && isFormDirty) {
+      if (href && href !== "#" && !href.startsWith("javascript") && hasUnsavedSettings()) {
           e.preventDefault();
           pendingUrl = href;
           unsavedModal.classList.add("active");
@@ -547,7 +737,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("btn-stay-save")?.addEventListener("click", () => unsavedModal.classList.remove("active"));
   document.getElementById("btn-discard-leave")?.addEventListener("click", () => {
-      isFormDirty = false; 
+      isFormDirty = false;
+      preferencesDirty = false;
       window.location.href = pendingUrl;
   });
 

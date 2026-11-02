@@ -165,6 +165,48 @@
 .pricing-group h5 { margin: 0 0 12px; color: var(--color-dark); font-size: 1rem; }
 .pricing-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
 .pricing-fields-single { grid-template-columns: minmax(0, 1fr); }
+.catering-package-settings > .field-help { display: block; max-width: 72ch; margin: -4px 0 10px; line-height: 1.5; }
+.catering-package-settings-grid { display: grid; gap: 0; }
+.catering-package-settings-item { display: grid; gap: 16px; min-width: 0; padding: 24px 0; border-top: 1px solid rgba(42, 37, 34, .12); }
+.catering-package-settings-item:first-child { padding-top: 14px; border-top: 0; }
+.catering-package-heading { margin: 0; color: var(--color-dark); font-family: var(--font-heading); font-size: 1.2rem; font-weight: 500; }
+.catering-package-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 720px; }
+.catering-package-settings-item .form-group { min-width: 0; margin: 0; gap: 8px; }
+.catering-package-settings-item .form-group label { font-size: .94rem; }
+.catering-package-settings-item .form-control { padding: 11px 12px; font-size: .95rem; }
+.catering-menu-editor { min-width: 0; }
+.catering-menu-heading { margin: 0 0 8px; color: var(--color-dark); font-size: .98rem; font-weight: 600; }
+.catering-menu-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.catering-menu-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; align-items: center; gap: 12px; min-width: 0; padding: 9px 0; border-bottom: 1px solid rgba(42, 37, 34, .08); }
+.catering-menu-position { color: var(--color-dark-light); font-size: .88rem; font-variant-numeric: tabular-nums; text-align: center; }
+.catering-menu-row .form-control { min-width: 0; }
+.catering-menu-row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.catering-menu-row-actions .btn { min-height: 44px; padding: 8px 10px; font-size: .82rem; }
+.catering-menu-row-actions .btn:disabled { cursor: not-allowed; opacity: .5; }
+.catering-menu-row-actions .btn:focus-visible,
+.catering-menu-add:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 3px; }
+.catering-menu-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 14px; }
+.catering-menu-add { min-height: 44px; }
+.catering-menu-status { min-height: 1.4em; margin: 0; color: var(--color-dark-light); font-size: .85rem; }
+.catering-menu-payload { display: none; }
+.panel-footer.settings-save-row { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px -50px -50px; padding: 14px 50px; border-top: 1px solid rgba(42, 37, 34, .12); background: var(--color-white); box-shadow: 0 -8px 18px rgba(42, 37, 34, .06); text-align: left; }
+#panel-prefs { scroll-padding-bottom: 100px; }
+.preferences-save-status { min-height: 1.4em; margin: 0; color: var(--color-dark-light); font-size: .9rem; }
+.preferences-save-status[data-state="unsaved"] { color: #795422; }
+.preferences-save-status[data-state="saving"] { color: var(--color-dark-light); }
+.preferences-save-status[data-state="error"] { color: #8d352c; }
+.settings-save-row .save-btn:disabled { cursor: wait; opacity: .7; }
+@media (max-width: 1024px) {
+  .settings-save-row { margin: 24px -16px -24px; padding: 12px 16px; }
+  .settings-save-row .save-btn { width: auto; display: inline-flex; padding: 12px 24px; }
+}
+@media (max-width: 760px) {
+  .catering-package-details { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .catering-menu-row { grid-template-columns: 2rem minmax(0, 1fr); gap: 8px; }
+  .catering-menu-row-actions { grid-column: 2; justify-content: flex-start; }
+  .settings-save-row { align-items: flex-start; flex-direction: column; }
+  .settings-save-row .save-btn { width: 100%; display: block; align-self: stretch; padding: 14px; }
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
@@ -999,4 +1041,14 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     min-height: 44px;
     width: 100%;
   }
+}
+
+@media (max-width: 1024px) {
+  .panel-footer.settings-save-row { margin: 24px -16px -24px; padding: 12px 16px; text-align: left; }
+  .settings-save-row .save-btn { width: auto; display: inline-flex; padding: 12px 24px; }
+}
+
+@media (max-width: 760px) {
+  .panel-footer.settings-save-row { align-items: stretch; flex-direction: column; }
+  .settings-save-row .save-btn { width: 100%; display: block; padding: 14px; }
 }

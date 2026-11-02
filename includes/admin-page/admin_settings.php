@@ -5,6 +5,7 @@ require_once __DIR__ . '/../google_maps.php';
 require_once __DIR__ . '/../hotel_rooms.php';
 require_once __DIR__ . '/../receptionist_faq.php';
 require_once __DIR__ . '/../event_bundle.php';
+require_once __DIR__ . '/../catering_packages.php';
 
 // 1. Fetch current settings
 $settings_query = $conn->query("SELECT setting_key, setting_value FROM system_settings");
@@ -42,6 +43,7 @@ $support_faq = receptionist_faq_load($conn);
 $paymentTerms = 'Online Hotel Room and Resort Villa bookings have a 24-hour payment window. The window pauses while submitted receipt proof is reviewed; a rejection starts a fresh 24-hour window. Event Hall inquiries receive a deadline only after their quotation is finalized.';
 if (!str_contains((string)$support_content['support_terms'], 'payment window pauses')) $support_content['support_terms'] .= "\n" . $paymentTerms;
 $event_bundle_discount_percent = normalize_event_bundle_discount_percent($current_settings[EVENT_BUNDLE_DISCOUNT_SETTING_KEY] ?? null);
+$catering_packages = catering_packages_from_settings($current_settings);
 
 // 2. Fetch all Venues and their specific child-table data
 $hotel_group_ready = hotel_group_schema_ready($conn);
@@ -394,24 +396,53 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </div>
                                 </div>
                             </div>
-                            <div class="pricing-group">
-                                <h5>Catering Rates</h5>
-                                <div class="pricing-fields">
-                            <div class="form-group">
-                                <label>Silver (₱/head)</label>
-                                <input type="number" name="catering_silver" class="form-control"
-                                    value="<?php echo $current_settings['catering_silver'] ?? 750; ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Gold (₱/head)</label>
-                                <input type="number" name="catering_gold" class="form-control"
-                                    value="<?php echo $current_settings['catering_gold'] ?? 1200; ?>">
-                            </div>
-                            <div class="form-group">
-                                <label>Platinum (₱/head)</label>
-                                <input type="number" name="catering_platinum" class="form-control"
-                                    value="<?php echo $current_settings['catering_platinum'] ?? 1800; ?>">
-                            </div>
+                            <div class="pricing-group catering-package-settings">
+                                <h5>Catering Packages</h5>
+                                <p class="field-help">Change each menu item on its own row. Add, remove, or move items to set the order guests see.</p>
+                                <div class="catering-package-settings-grid">
+                                    <?php foreach ($catering_packages as $package): ?>
+                                    <?php $package_label = htmlspecialchars($package['name'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <?php $package_key = htmlspecialchars($package['key'], ENT_QUOTES, 'UTF-8'); ?>
+                                    <section class="catering-package-settings-item" aria-labelledby="catering-heading-<?php echo $package_key; ?>">
+                                        <h6 class="catering-package-heading" id="catering-heading-<?php echo $package_key; ?>" data-package-heading><?php echo $package_label; ?></h6>
+                                        <div class="catering-package-details">
+                                            <div class="form-group">
+                                                <label for="catering-name-<?php echo $package_key; ?>">Display name</label>
+                                                <input type="text" id="catering-name-<?php echo $package_key; ?>" name="catering_<?php echo $package_key; ?>_name" class="form-control catering-package-name"
+                                                    value="<?php echo $package_label; ?>" maxlength="60" required>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="catering-rate-<?php echo $package_key; ?>">Price per pax (₱)</label>
+                                                <input type="number" id="catering-rate-<?php echo $package_key; ?>" name="catering_<?php echo $package_key; ?>" class="form-control"
+                                                    value="<?php echo htmlspecialchars($package['rate'], ENT_QUOTES, 'UTF-8'); ?>" min="0" max="1000000" step="any" required>
+                                            </div>
+                                        </div>
+                                        <div class="catering-menu-editor" data-menu-editor data-package-name="<?php echo $package_label; ?>">
+                                            <h6 class="catering-menu-heading">Menu items</h6>
+                                            <ol class="catering-menu-list" data-menu-list aria-label="<?php echo $package_label; ?> menu items" aria-describedby="catering-menu-status-<?php echo $package_key; ?>">
+                                                <?php foreach ($package['menu'] as $menu_index => $menu_item): ?>
+                                                <?php $menu_item_label = $package_label . ' menu item ' . ($menu_index + 1); ?>
+                                                <li class="catering-menu-row" data-menu-row>
+                                                    <span class="catering-menu-position" data-menu-position aria-hidden="true"><?php echo $menu_index + 1; ?></span>
+                                                    <input type="text" class="form-control catering-menu-item" data-menu-item
+                                                        aria-label="<?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?>"
+                                                        value="<?php echo htmlspecialchars($menu_item, ENT_QUOTES, 'UTF-8'); ?>" maxlength="120" autocomplete="off" required>
+                                                    <div class="catering-menu-row-actions">
+                                                        <button type="button" class="btn btn-outline catering-menu-move" data-menu-direction="up" aria-label="Move <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?> up">Up</button>
+                                                        <button type="button" class="btn btn-outline catering-menu-move" data-menu-direction="down" aria-label="Move <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?> down">Down</button>
+                                                        <button type="button" class="btn btn-danger catering-menu-remove" data-menu-remove aria-label="Remove <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?>">Remove</button>
+                                                    </div>
+                                                </li>
+                                                <?php endforeach; ?>
+                                            </ol>
+                                            <div class="catering-menu-footer">
+                                                <button type="button" class="btn btn-outline catering-menu-add" data-menu-add>Add menu item</button>
+                                                <p class="catering-menu-status" id="catering-menu-status-<?php echo $package_key; ?>" data-menu-status role="status" aria-live="polite"><?php echo count($package['menu']); ?> menu items. Maximum 30.</p>
+                                            </div>
+                                            <textarea name="catering_<?php echo $package_key; ?>_menu" class="catering-menu-payload" data-menu-payload hidden aria-hidden="true" tabindex="-1"><?php echo htmlspecialchars(implode("\n", $package['menu']), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                        </div>
+                                    </section>
+                                    <?php endforeach; ?>
                                 </div>
                             </div>
                             <div class="pricing-group">
@@ -439,7 +470,8 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         </div>
                     </div>
 
-                    <div class="panel-footer" style="margin-top: 25px;">
+                    <div class="panel-footer settings-save-row" style="margin-top: 25px;">
+                        <p id="preferences-save-status" class="preferences-save-status" role="status" aria-live="polite" aria-atomic="true" data-state="saved">No unsaved changes.</p>
                         <button type="button" id="btn-save-prefs" class="btn btn-primary save-btn">Save Changes</button>
                     </div>
                 </form>
