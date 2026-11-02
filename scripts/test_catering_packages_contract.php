@@ -57,6 +57,10 @@ $normalized = catering_package_settings_from_post($validPost);
 $assert($normalized['catering_silver'] === '600.125'
     && $normalized['catering_silver_name'] === 'Custom SILVER'
     && json_decode($normalized['catering_silver_menu_json'], true) === ['First dish', 'Second dish'], 'valid package edits normalize blank menu lines and store the legacy price key.');
+$singlePackage = catering_package_settings_for_post('gold', $validPost);
+$assert(array_keys($singlePackage) === ['catering_gold', 'catering_gold_name', 'catering_gold_menu_json']
+    && !array_key_exists('catering_silver', $singlePackage)
+    && !array_key_exists('catering_platinum', $singlePackage), 'single-package edits return only the selected package settings.');
 
 $invalidRate = $validPost;
 $invalidRate['catering_gold'] = '1e3';
@@ -105,15 +109,18 @@ $assert(($customCateringModifier['amount'] ?? null) === 555.125
 
 $settingsPage = (string)file_get_contents($root . '/includes/admin-page/admin_settings.php');
 $settingsController = (string)file_get_contents($root . '/assets/js/admin-page/admin_settings.js');
+$settingsStyles = (string)file_get_contents($root . '/assets/css/admin-page/admin_settings.css');
 $preferencesEndpoint = (string)file_get_contents($root . '/actions/admin/save_preferences.php');
 $bookingController = (string)file_get_contents($root . '/assets/js/booking.js');
 $assert(str_contains($settingsPage, 'catering_packages_from_settings($current_settings)')
     && str_contains($settingsPage, 'name="catering_<?php echo $package_key; ?>_name"')
     && str_contains($settingsPage, 'name="catering_<?php echo $package_key; ?>_menu"')
+    && str_contains($settingsPage, 'data-package-summary')
+    && str_contains($settingsPage, 'data-package-number="Package <?php echo $package_number; ?>"')
+    && str_contains($settingsPage, '<dialog id="catering-package-dialog"')
+    && str_contains($settingsPage, 'id="catering-package-dialog-form"')
     && str_contains($settingsPage, 'data-menu-list')
     && str_contains($settingsPage, 'data-menu-add')
-    && str_contains($settingsPage, 'data-menu-direction="up"')
-    && str_contains($settingsPage, 'data-menu-remove')
     && str_contains($settingsPage, 'data-menu-payload'), 'admin Settings renders editable package details and individually managed menu rows with the existing textarea field contract.');
 $assert(str_contains($settingsController, 'maxCateringMenuItems = 30')
     && str_contains($settingsController, 'if (preferencesSaveStatus.textContent !== message)')
@@ -121,14 +128,34 @@ $assert(str_contains($settingsController, 'maxCateringMenuItems = 30')
     && str_contains($settingsController, 'list.insertBefore(sibling, row)')
     && str_contains($settingsController, "payload.value = rows.map(row => row.querySelector('[data-menu-item]')?.value.trim() || '').join('\\n')")
     && str_contains($settingsController, 'itemInput.setCustomValidity(validationMessage)')
+    && str_contains($settingsController, "fetch('actions/admin/save_catering_package.php'")
+    && str_contains($settingsController, 'renderPackageSummary(summary, data.package)')
+    && str_contains($settingsController, 'packageDialog.showModal()')
+    && str_contains($settingsController, "document.body.style.overflow = 'hidden'")
+    && str_contains($settingsController, "event.key !== 'Tab'")
+    && str_contains($settingsController, 'focusable[focusable.length - 1].focus()')
+    && str_contains($settingsController, 'focusable[0].focus()')
+    && str_contains($settingsController, "!element.closest('[hidden]')")
+    && str_contains($settingsController, 'packageDialog?.open && (packageDialogDirty || packageDialogSaving)')
+    && str_contains($settingsController, "packageDialog?.addEventListener('cancel'")
+    && str_contains($settingsController, 'requestPackageDialogClose()')
+    && str_contains($settingsController, 'if (packageDialog?.open || preferencesSaving) return')
+    && str_contains($settingsController, "const isNetworkFailure = error instanceof TypeError")
     && str_contains($settingsController, 'preferencesRevision === submittedRevision')
     && str_contains($settingsController, 'Submitted changes saved. New edits are still unsaved.')
     && str_contains($settingsController, "finally {\n        btnSavePrefs.innerHTML = originalText;\n        btnSavePrefs.disabled = false;")
     && str_contains($settingsController, '/failed to fetch|networkerror|load failed|fetch failed/i')
-    && str_contains($settingsController, 'your edits are still here'), 'menu editing preserves order and limits, reports blank rows, and save feedback keeps concurrent edits dirty while restoring the button after errors.');
+    && str_contains($settingsController, 'your edits are still here')
+    && str_contains($settingsPage, 'Discard your unsaved package edits?')
+    && str_contains($settingsStyles, '.catering-discard-confirm[hidden] { display: none; }'), 'menu editing preserves order and limits, reports blank rows, and the dialog confirms discards while save feedback keeps edits.');
 $assert(str_contains($preferencesEndpoint, 'catering_package_settings_from_post($_POST)')
     && str_contains($preferencesEndpoint, 'hash_equals($_SESSION[\'csrf_token\'], $client_csrf_token)')
     && str_contains($preferencesEndpoint, "INSERT INTO audit_logs (user_id, module, action, ip_address)"), 'the admin endpoint validates packages, keeps the existing CSRF guard, and records the save in audit logs.');
+$packageEndpoint = (string)file_get_contents($root . '/actions/admin/save_catering_package.php');
+$assert(str_contains($packageEndpoint, 'catering_package_settings_for_post($packageKey, $_POST)')
+    && str_contains($packageEndpoint, "INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?)")
+    && str_contains($packageEndpoint, "Updated catering package ")
+    && str_contains($packageEndpoint, 'hash_equals($sessionCsrf, $requestCsrf)'), 'the dedicated admin endpoint validates and audits one selected package save.');
 $assert(str_contains($bookingController, 'cateringTierId')
     && str_contains($bookingController, 'item.dataset.packageId === String(draft.addons.cateringTierId || \'\')')
     && str_contains($bookingController, 'item.value === String(draft.addons.cateringTier || \'\')'), 'new drafts restore by stable package ID while legacy drafts still restore by price.');

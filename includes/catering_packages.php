@@ -158,30 +158,37 @@ function catering_packages_from_settings(array $settings): array
     return $packages;
 }
 
-/** Validate and normalize the three editable packages from the preferences form. */
+/** Validate one package and return only its compatible system_settings keys. */
+function catering_package_settings_for_post(string $key, array $post): array
+{
+    $definitions = catering_package_definitions();
+    if (!isset($definitions[$key])) throw new InvalidArgumentException('Choose a valid catering package.');
+    $definition = $definitions[$key];
+    $name = catering_package_normalize_name($post[$definition['name_key']] ?? null);
+    if ($name === null) {
+        throw new InvalidArgumentException($definition['default_name'] . ' needs a name of 1 to 60 characters.');
+    }
+    $rate = catering_package_normalize_rate($post[$definition['rate_key']] ?? null);
+    if ($rate === null) {
+        throw new InvalidArgumentException($definition['default_name'] . ' price must be from ₱0 to ₱1,000,000 per pax, with up to four decimal places.');
+    }
+    $menu = catering_package_normalize_menu($post['catering_' . $key . '_menu'] ?? null);
+    if ($menu === null) {
+        throw new InvalidArgumentException($definition['default_name'] . ' menu needs 1 to 30 items, each no longer than 120 characters and 3,000 characters total.');
+    }
+    return [
+        $definition['rate_key'] => $rate,
+        $definition['name_key'] => $name,
+        $definition['menu_key'] => json_encode($menu, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR),
+    ];
+}
+
+/** Validate all package fields from the general Preferences form. */
 function catering_package_settings_from_post(array $post): array
 {
     $settings = [];
-    foreach (catering_package_definitions() as $key => $definition) {
-        $nameField = $definition['name_key'];
-        $rateField = $definition['rate_key'];
-        $menuField = 'catering_' . $key . '_menu';
-        $name = catering_package_normalize_name($post[$nameField] ?? null);
-        if ($name === null) {
-            throw new InvalidArgumentException($definition['default_name'] . ' needs a name of 1 to 60 characters.');
-        }
-        $rate = catering_package_normalize_rate($post[$rateField] ?? null);
-        if ($rate === null) {
-            throw new InvalidArgumentException($definition['default_name'] . ' price must be from ₱0 to ₱1,000,000 per pax, with up to four decimal places.');
-        }
-        $menu = catering_package_normalize_menu($post[$menuField] ?? null);
-        if ($menu === null) {
-            throw new InvalidArgumentException($definition['default_name'] . ' menu needs 1 to 30 items, each no longer than 120 characters and 3,000 characters total.');
-        }
-
-        $settings[$rateField] = $rate;
-        $settings[$nameField] = $name;
-        $settings[$definition['menu_key']] = json_encode($menu, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+    foreach (array_keys(catering_package_definitions()) as $key) {
+        $settings = array_merge($settings, catering_package_settings_for_post($key, $post));
     }
     return $settings;
 }

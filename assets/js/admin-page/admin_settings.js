@@ -182,6 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let isFormDirty = false;
   let preferencesDirty = false;
   let preferencesRevision = 0;
+  let preferencesSaving = false;
   const maxCateringMenuItems = 30;
 
   function setPreferencesSaveStatus(message, state = 'saved') {
@@ -278,24 +279,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return row;
   }
 
-  function updateCateringPackageHeading(packageSection) {
-    const nameInput = packageSection.querySelector('.catering-package-name');
-    const heading = packageSection.querySelector('[data-package-heading]');
-    const menuEditor = packageSection.querySelector('[data-menu-editor]');
-    const packageName = nameInput?.value.trim() || 'Package name';
-    if (heading) heading.textContent = packageName;
-    if (menuEditor) {
-      menuEditor.dataset.packageName = packageName;
-      const list = menuEditor.querySelector('[data-menu-list]');
-      if (list) list.setAttribute('aria-label', `${packageName} menu items`);
-      syncCateringMenuEditor(menuEditor);
-    }
-  }
-
-  function syncCateringMenuPayloads() {
-    formPrefs?.querySelectorAll('[data-menu-editor]').forEach(editor => syncCateringMenuEditor(editor));
-  }
-
   function addSocialRow() {
     if (!socialList) return;
     const row = document.createElement("div");
@@ -311,75 +294,21 @@ document.addEventListener("DOMContentLoaded", () => {
   socialList?.addEventListener('click', event => { const button = event.target.closest('.btn-remove-social'); if (button) { button.closest('.social-link-row')?.remove(); markPreferencesDirty(); } });
 
   if (btnSavePrefs && formPrefs) {
-    formPrefs.querySelectorAll('[data-menu-editor]').forEach(editor => syncCateringMenuEditor(editor, true));
     formPrefs.addEventListener('input', (event) => {
-      const packageSection = event.target.closest('.catering-package-settings-item');
-      if (event.target.matches('.catering-package-name') && packageSection) updateCateringPackageHeading(packageSection);
-      else {
-        const menuEditor = event.target.closest('[data-menu-editor]');
-        if (menuEditor && event.target.matches('[data-menu-item]')) syncCateringMenuEditor(menuEditor);
-      }
       markPreferencesDirty();
     });
     formPrefs.addEventListener('change', markPreferencesDirty);
-    formPrefs.addEventListener('click', (event) => {
-      const editor = event.target.closest('[data-menu-editor]');
-      if (!editor) return;
-      const list = editor.querySelector('[data-menu-list]');
-      const status = editor.querySelector('[data-menu-status]');
-      const addButton = event.target.closest('[data-menu-add]');
-      if (addButton) {
-        const rows = syncCateringMenuEditor(editor);
-        if (rows.length >= maxCateringMenuItems) return;
-        const newRow = makeCateringMenuRow(editor, rows.length + 1);
-        list.appendChild(newRow);
-        syncCateringMenuEditor(editor, true);
-        markPreferencesDirty();
-        newRow.querySelector('[data-menu-item]')?.focus();
-        if (status) status.textContent = `${editor.dataset.packageName || 'Package'}: added menu item. ${rows.length + 1} of ${maxCateringMenuItems}.`;
-        return;
-      }
-
-      const removeButton = event.target.closest('[data-menu-remove]');
-      if (removeButton) {
-        const row = removeButton.closest('[data-menu-row]');
-        const rows = [...list.querySelectorAll('[data-menu-row]')];
-        if (!row || rows.length <= 1) return;
-        const removedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
-        const focusRow = row.nextElementSibling || row.previousElementSibling;
-        row.remove();
-        const remaining = syncCateringMenuEditor(editor, true);
-        markPreferencesDirty();
-        focusRow?.querySelector('[data-menu-item]')?.focus();
-        if (status) status.textContent = `Removed ${removedName}. ${remaining.length} menu item${remaining.length === 1 ? '' : 's'} remain.`;
-        return;
-      }
-
-      const moveButton = event.target.closest('[data-menu-direction]');
-      const row = moveButton?.closest('[data-menu-row]');
-      if (!moveButton || !row) return;
-      const movedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
-      const direction = moveButton.dataset.menuDirection;
-      const sibling = direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
-      if (!sibling) return;
-      if (direction === 'up') list.insertBefore(row, sibling);
-      else list.insertBefore(sibling, row);
-      const rows = syncCateringMenuEditor(editor, true);
-      markPreferencesDirty();
-      const position = rows.indexOf(row) + 1;
-      const focusButton = row.querySelector(`[data-menu-direction="${direction}"]`);
-      (focusButton && !focusButton.disabled ? focusButton : row.querySelector('[data-menu-item]'))?.focus();
-      if (status) status.textContent = `Moved ${movedName} to position ${position} of ${rows.length}.`;
-    });
 
     btnSavePrefs.addEventListener("click", async () => {
-      syncCateringMenuPayloads();
+      if (packageDialog?.open || preferencesSaving) return;
       if (!formPrefs.reportValidity()) {
         setPreferencesSaveStatus('Fix the highlighted fields before saving.', 'error');
         return;
       }
       const originalText = btnSavePrefs.innerHTML;
       const submittedRevision = preferencesRevision;
+      preferencesSaving = true;
+      document.querySelectorAll('[data-catering-edit]').forEach((button) => { button.disabled = true; });
       btnSavePrefs.disabled = true;
       btnSavePrefs.textContent = 'Saving…';
       setPreferencesSaveStatus('Saving preference changes…', 'saving');
@@ -416,9 +345,303 @@ document.addEventListener("DOMContentLoaded", () => {
       } finally {
         btnSavePrefs.innerHTML = originalText;
         btnSavePrefs.disabled = false;
+        preferencesSaving = false;
+        document.querySelectorAll('[data-catering-edit]').forEach((button) => { button.disabled = false; });
       }
     });
   }
+
+  // Catering package editor: each dialog save persists just one package.
+  const packageDialog = document.getElementById('catering-package-dialog');
+  const packageDialogForm = document.getElementById('catering-package-dialog-form');
+  const dialogNameInput = packageDialogForm?.querySelector('[data-dialog-name]');
+  const dialogRateInput = packageDialogForm?.querySelector('[data-dialog-rate]');
+  const dialogPackageKey = packageDialogForm?.querySelector('[data-dialog-package-key]');
+  const dialogTitle = packageDialog?.querySelector('[data-dialog-title]');
+  const dialogEditor = packageDialogForm?.querySelector('[data-menu-editor]');
+  const dialogMenuList = dialogEditor?.querySelector('[data-menu-list]');
+  const dialogMenuPayload = dialogEditor?.querySelector('[data-menu-payload]');
+  const dialogStatus = packageDialog?.querySelector('[data-dialog-status]');
+  const discardConfirmation = packageDialog?.querySelector('[data-discard-confirm]');
+  let packageDialogOpener = null;
+  let packageDialogBaseline = '';
+  let packageDialogDirty = false;
+  let packageDialogSaving = false;
+  let previousBodyOverflow = '';
+
+  function getPackageDialogState() {
+    return {
+      key: dialogPackageKey?.value || '',
+      name: dialogNameInput?.value || '',
+      rate: dialogRateInput?.value || '',
+      menu: [...(dialogMenuList?.querySelectorAll('[data-menu-item]') || [])].map((input) => input.value),
+    };
+  }
+
+  function refreshPackageDialogDirty() {
+    if (!packageDialogForm) return false;
+    packageDialogDirty = JSON.stringify(getPackageDialogState()) !== packageDialogBaseline;
+    if (discardConfirmation) discardConfirmation.hidden = true;
+    if (dialogStatus) {
+      const message = packageDialogDirty
+        ? 'Unsaved changes. Save this package to apply them.'
+        : 'Changes are saved when you choose Save package.';
+      if (dialogStatus.textContent !== message) dialogStatus.textContent = message;
+      dialogStatus.dataset.state = packageDialogDirty ? 'unsaved' : 'saved';
+    }
+    return packageDialogDirty;
+  }
+
+  function formatPackageSummaryRate(value) {
+    const numeric = Number(value);
+    const raw = String(value ?? '');
+    const fraction = raw.includes('.') ? raw.split('.')[1].replace(/0+$/, '') : '';
+    const precision = Math.max(2, Math.min(4, fraction.length));
+    return Number.isFinite(numeric)
+      ? numeric.toLocaleString('en-US', { minimumFractionDigits: precision, maximumFractionDigits: precision })
+      : raw;
+  }
+
+  function renderPackageSummary(summary, packageData) {
+    if (!summary) return;
+    const name = String(packageData.name || 'Catering package');
+    const menu = Array.isArray(packageData.menu) ? packageData.menu.map((item) => String(item)) : [];
+    const preview = menu.slice(0, 2).join(' · ') + (menu.length > 2 ? ` · +${menu.length - 2} more` : '');
+    const packageNumber = summary.dataset.packageNumber || 'package';
+    const nameNode = summary.querySelector('[data-summary-name]');
+    const rateNode = summary.querySelector('[data-summary-rate]');
+    const countNode = summary.querySelector('[data-summary-count]');
+    const previewNode = summary.querySelector('[data-summary-preview]');
+    if (nameNode) nameNode.textContent = name;
+    if (rateNode) rateNode.textContent = formatPackageSummaryRate(packageData.rate);
+    if (countNode) countNode.textContent = `${menu.length} menu item${menu.length === 1 ? '' : 's'}`;
+    if (previewNode) previewNode.textContent = preview || 'No menu items';
+    summary.querySelector('[data-catering-edit]')?.setAttribute('aria-label', `Edit ${name}`);
+    const settingName = summary.querySelector('[data-package-setting="name"]');
+    const settingRate = summary.querySelector('[data-package-setting="rate"]');
+    const settingMenu = summary.querySelector('[data-package-setting="menu"]');
+    if (settingName) settingName.value = name;
+    if (settingRate) settingRate.value = String(packageData.rate ?? '');
+    if (settingMenu) settingMenu.value = menu.join('\n');
+  }
+
+  function closePackageDialog() {
+    if (!packageDialog?.open) return;
+    packageDialog.close();
+    packageDialogDirty = false;
+    document.body.style.overflow = previousBodyOverflow;
+    packageDialogOpener?.focus();
+    packageDialogOpener = null;
+  }
+
+  function requestPackageDialogClose() {
+    if (!packageDialog?.open || packageDialogSaving) return;
+    if (packageDialogDirty) {
+      if (discardConfirmation) discardConfirmation.hidden = false;
+      packageDialog.querySelector('[data-keep-editing]')?.focus();
+      return;
+    }
+    closePackageDialog();
+  }
+
+  function openPackageDialog(opener) {
+    if (!packageDialog || !packageDialogForm || preferencesSaving) return;
+    const summary = opener.closest('[data-package-summary]');
+    const key = summary?.dataset.packageKey || '';
+    if (!/^(silver|gold|platinum)$/.test(key)) return;
+    const nameSetting = summary.querySelector('[data-package-setting="name"]');
+    const rateSetting = summary.querySelector('[data-package-setting="rate"]');
+    const menuSetting = summary.querySelector('[data-package-setting="menu"]');
+    const definitionNumber = summary.dataset.packageNumber || 'package';
+    const name = nameSetting?.value || summary.querySelector('[data-summary-name]')?.textContent || '';
+    if (dialogPackageKey) dialogPackageKey.value = key;
+    if (dialogNameInput) {
+      dialogNameInput.name = `catering_${key}_name`;
+      dialogNameInput.value = name;
+    }
+    if (dialogRateInput) {
+      dialogRateInput.name = `catering_${key}`;
+      dialogRateInput.value = rateSetting?.value || '';
+    }
+    if (dialogTitle) dialogTitle.textContent = `Edit ${name || definitionNumber}`;
+    if (dialogEditor) {
+      dialogEditor.dataset.packageName = name || definitionNumber;
+      if (dialogMenuList) dialogMenuList.setAttribute('aria-label', `${name || definitionNumber} menu items`);
+    }
+    if (dialogMenuPayload) dialogMenuPayload.name = `catering_${key}_menu`;
+    if (dialogMenuList && dialogEditor) {
+      dialogMenuList.replaceChildren();
+      const items = (menuSetting?.value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+      (items.length ? items : ['']).forEach((item, index) => {
+        const row = makeCateringMenuRow(dialogEditor, index + 1);
+        row.querySelector('[data-menu-item]').value = item;
+        dialogMenuList.appendChild(row);
+      });
+      syncCateringMenuEditor(dialogEditor, true);
+    }
+    if (discardConfirmation) discardConfirmation.hidden = true;
+    if (dialogStatus) {
+      dialogStatus.textContent = 'Changes are saved when you choose Save package.';
+      dialogStatus.dataset.state = 'saved';
+    }
+    packageDialogOpener = opener;
+    packageDialogBaseline = JSON.stringify(getPackageDialogState());
+    packageDialogDirty = false;
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    packageDialog.showModal();
+    dialogNameInput?.focus();
+  }
+
+  document.querySelectorAll('[data-catering-edit]').forEach((button) => {
+    button.addEventListener('click', () => openPackageDialog(button));
+  });
+  packageDialog?.querySelectorAll('[data-dialog-close], [data-dialog-cancel]').forEach((button) => {
+    button.addEventListener('click', requestPackageDialogClose);
+  });
+  packageDialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    requestPackageDialogClose();
+  });
+  // Keep Tab navigation inside the native modal, including browsers that move focus to BODY at the boundary.
+  document.addEventListener('keydown', (event) => {
+    if (!packageDialog?.open || event.key !== 'Tab') return;
+    const focusable = [...packageDialog.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )].filter((element) => element.tabIndex >= 0
+      && !element.closest('[hidden]')
+      && element.getAttribute('aria-hidden') !== 'true'
+      && element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      packageDialog.focus();
+      return;
+    }
+    const activeIndex = focusable.indexOf(document.activeElement);
+    if (event.shiftKey && (activeIndex <= 0)) {
+      event.preventDefault();
+      focusable[focusable.length - 1].focus();
+    } else if (!event.shiftKey && (activeIndex === focusable.length - 1 || activeIndex === -1)) {
+      event.preventDefault();
+      focusable[0].focus();
+    }
+  }, true);
+  packageDialog?.addEventListener('click', (event) => {
+    if (event.target === packageDialog) requestPackageDialogClose();
+  });
+  packageDialog?.querySelector('[data-keep-editing]')?.addEventListener('click', () => {
+    if (discardConfirmation) discardConfirmation.hidden = true;
+    (dialogNameInput || packageDialog.querySelector('[data-dialog-save]'))?.focus();
+  });
+  packageDialog?.querySelector('[data-discard-package]')?.addEventListener('click', closePackageDialog);
+
+  packageDialogForm?.addEventListener('input', (event) => {
+    if (event.target.matches('[data-dialog-name]') && dialogEditor) {
+      const packageName = dialogNameInput.value.trim() || 'Catering package';
+      dialogEditor.dataset.packageName = packageName;
+      if (dialogMenuList) dialogMenuList.setAttribute('aria-label', `${packageName} menu items`);
+      syncCateringMenuEditor(dialogEditor);
+    }
+    if (event.target.matches('[data-menu-item]') && dialogEditor) syncCateringMenuEditor(dialogEditor);
+    refreshPackageDialogDirty();
+  });
+  packageDialog?.addEventListener('click', (event) => {
+    const editor = event.target.closest('[data-menu-editor]');
+    if (!editor || editor !== dialogEditor || packageDialogSaving) return;
+    const list = editor.querySelector('[data-menu-list]');
+    const status = editor.querySelector('[data-menu-status]');
+    const addButton = event.target.closest('[data-menu-add]');
+    if (addButton) {
+      const rows = syncCateringMenuEditor(editor);
+      if (rows.length >= maxCateringMenuItems) return;
+      const newRow = makeCateringMenuRow(editor, rows.length + 1);
+      list.appendChild(newRow);
+      syncCateringMenuEditor(editor, true);
+      refreshPackageDialogDirty();
+      newRow.querySelector('[data-menu-item]')?.focus();
+      if (status) status.textContent = `${editor.dataset.packageName || 'Package'}: added menu item. ${rows.length + 1} of ${maxCateringMenuItems}.`;
+      return;
+    }
+    const removeButton = event.target.closest('[data-menu-remove]');
+    if (removeButton) {
+      const row = removeButton.closest('[data-menu-row]');
+      const rows = [...list.querySelectorAll('[data-menu-row]')];
+      if (!row || rows.length <= 1) return;
+      const removedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
+      const focusRow = row.nextElementSibling || row.previousElementSibling;
+      row.remove();
+      const remaining = syncCateringMenuEditor(editor, true);
+      refreshPackageDialogDirty();
+      focusRow?.querySelector('[data-menu-item]')?.focus();
+      if (status) status.textContent = `Removed ${removedName}. ${remaining.length} menu item${remaining.length === 1 ? '' : 's'} remain.`;
+      return;
+    }
+    const moveButton = event.target.closest('[data-menu-direction]');
+    const row = moveButton?.closest('[data-menu-row]');
+    if (!moveButton || !row) return;
+    const movedName = row.querySelector('[data-menu-item]')?.value.trim() || 'Menu item';
+    const direction = moveButton.dataset.menuDirection;
+    const sibling = direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
+    if (!sibling) return;
+    if (direction === 'up') list.insertBefore(row, sibling);
+    else list.insertBefore(sibling, row);
+    const rows = syncCateringMenuEditor(editor, true);
+    refreshPackageDialogDirty();
+    const position = rows.indexOf(row) + 1;
+    const focusButton = row.querySelector(`[data-menu-direction="${direction}"]`);
+    (focusButton && !focusButton.disabled ? focusButton : row.querySelector('[data-menu-item]'))?.focus();
+    if (status) status.textContent = `Moved ${movedName} to position ${position} of ${rows.length}.`;
+  });
+
+  packageDialogForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (packageDialogSaving || preferencesSaving || !dialogEditor) return;
+    syncCateringMenuEditor(dialogEditor);
+    if (!packageDialogForm.reportValidity()) {
+      if (dialogStatus) dialogStatus.textContent = 'Fix the highlighted fields before saving this package.';
+      return;
+    }
+    const summary = document.querySelector(`[data-package-summary][data-package-key="${dialogPackageKey?.value}"]`);
+    const formData = new FormData(packageDialogForm);
+    const controls = [...packageDialogForm.querySelectorAll('input, button, textarea, select')];
+    const previousDisabled = controls.map((control) => control.disabled);
+    const closeButton = packageDialog.querySelector('[data-dialog-close]');
+    const closeWasDisabled = closeButton?.disabled ?? false;
+    packageDialogSaving = true;
+    controls.forEach((control) => { control.disabled = true; });
+    if (closeButton) closeButton.disabled = true;
+    if (dialogStatus) dialogStatus.textContent = 'Saving this package…';
+    try {
+      const response = await fetch('actions/admin/save_catering_package.php', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken },
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.package) {
+        throw new Error(data.message || 'Could not save this package. Try again.');
+      }
+      renderPackageSummary(summary, data.package);
+      packageDialogBaseline = JSON.stringify(getPackageDialogState());
+      packageDialogDirty = false;
+      if (dialogStatus) dialogStatus.textContent = 'Package saved.';
+      showToast();
+      closePackageDialog();
+    } catch (error) {
+      const errorMessage = error.message || '';
+      const isNetworkFailure = error instanceof TypeError || /failed to fetch|networkerror|load failed|fetch failed/i.test(errorMessage);
+      if (dialogStatus) {
+        dialogStatus.textContent = isNetworkFailure
+          ? 'Could not save. Check your connection and try again; your edits are still here.'
+          : `Could not save. ${errorMessage || 'Try again.'} Your edits are still here.`;
+        dialogStatus.dataset.state = 'error';
+      }
+    } finally {
+      packageDialogSaving = false;
+      controls.forEach((control, index) => { control.disabled = previousDisabled[index]; });
+      if (closeButton) closeButton.disabled = closeWasDisabled;
+    }
+  });
 
   const manualPaymentForm = document.getElementById('form-manual-payment-settings');
   const manualPaymentSave = document.getElementById('btn-save-manual-payment-settings');
@@ -714,7 +937,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const unsavedModal = document.getElementById("unsaved-modal");
   let pendingUrl = "";
-  const hasUnsavedSettings = () => isFormDirty || preferencesDirty;
+  const hasUnsavedSettings = () => isFormDirty || preferencesDirty || (packageDialog?.open && (packageDialogDirty || packageDialogSaving));
 
   window.addEventListener("beforeunload", function (e) {
     if (hasUnsavedSettings()) {

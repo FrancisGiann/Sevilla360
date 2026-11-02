@@ -185,6 +185,7 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                         <button type="button" class="btn btn-primary" id="btn-save-profile">Save Changes</button>
                     </div>
                 </form>
+
             </div>
 
             <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
@@ -398,50 +399,29 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                             </div>
                             <div class="pricing-group catering-package-settings">
                                 <h5>Catering Packages</h5>
-                                <p class="field-help">Change each menu item on its own row. Add, remove, or move items to set the order guests see.</p>
-                                <div class="catering-package-settings-grid">
+                                <p class="field-help">Review each package at a glance. Edit a package to change its name, price, or menu.</p>
+                                <div class="catering-package-summary-grid">
                                     <?php foreach ($catering_packages as $package): ?>
-                                    <?php $package_label = htmlspecialchars($package['name'], ENT_QUOTES, 'UTF-8'); ?>
-                                    <?php $package_key = htmlspecialchars($package['key'], ENT_QUOTES, 'UTF-8'); ?>
-                                    <section class="catering-package-settings-item" aria-labelledby="catering-heading-<?php echo $package_key; ?>">
-                                        <h6 class="catering-package-heading" id="catering-heading-<?php echo $package_key; ?>" data-package-heading><?php echo $package_label; ?></h6>
-                                        <div class="catering-package-details">
-                                            <div class="form-group">
-                                                <label for="catering-name-<?php echo $package_key; ?>">Display name</label>
-                                                <input type="text" id="catering-name-<?php echo $package_key; ?>" name="catering_<?php echo $package_key; ?>_name" class="form-control catering-package-name"
-                                                    value="<?php echo $package_label; ?>" maxlength="60" required>
-                                            </div>
-                                            <div class="form-group">
-                                                <label for="catering-rate-<?php echo $package_key; ?>">Price per pax (₱)</label>
-                                                <input type="number" id="catering-rate-<?php echo $package_key; ?>" name="catering_<?php echo $package_key; ?>" class="form-control"
-                                                    value="<?php echo htmlspecialchars($package['rate'], ENT_QUOTES, 'UTF-8'); ?>" min="0" max="1000000" step="any" required>
-                                            </div>
+                                    <?php
+                                        $package_label = htmlspecialchars($package['name'], ENT_QUOTES, 'UTF-8');
+                                        $package_key = htmlspecialchars($package['key'], ENT_QUOTES, 'UTF-8');
+                                        $package_number = (int)substr($package['package_id'], strrpos($package['package_id'], '-') + 1);
+                                        $menu_preview = implode(' · ', array_slice($package['menu'], 0, 2));
+                                        if (count($package['menu']) > 2) $menu_preview .= ' · +' . (count($package['menu']) - 2) . ' more';
+                                    ?>
+                                    <article class="catering-package-summary" data-package-summary data-package-key="<?php echo $package_key; ?>" data-package-number="Package <?php echo $package_number; ?>">
+                                        <div class="catering-package-summary-topline">
+                                            <span class="catering-package-number">Package <?php echo $package_number; ?></span>
+                                            <button type="button" class="btn btn-outline catering-package-edit" data-catering-edit aria-label="Edit <?php echo $package_label; ?>">Edit</button>
                                         </div>
-                                        <div class="catering-menu-editor" data-menu-editor data-package-name="<?php echo $package_label; ?>">
-                                            <h6 class="catering-menu-heading">Menu items</h6>
-                                            <ol class="catering-menu-list" data-menu-list aria-label="<?php echo $package_label; ?> menu items" aria-describedby="catering-menu-status-<?php echo $package_key; ?>">
-                                                <?php foreach ($package['menu'] as $menu_index => $menu_item): ?>
-                                                <?php $menu_item_label = $package_label . ' menu item ' . ($menu_index + 1); ?>
-                                                <li class="catering-menu-row" data-menu-row>
-                                                    <span class="catering-menu-position" data-menu-position aria-hidden="true"><?php echo $menu_index + 1; ?></span>
-                                                    <input type="text" class="form-control catering-menu-item" data-menu-item
-                                                        aria-label="<?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?>"
-                                                        value="<?php echo htmlspecialchars($menu_item, ENT_QUOTES, 'UTF-8'); ?>" maxlength="120" autocomplete="off" required>
-                                                    <div class="catering-menu-row-actions">
-                                                        <button type="button" class="btn btn-outline catering-menu-move" data-menu-direction="up" aria-label="Move <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?> up">Up</button>
-                                                        <button type="button" class="btn btn-outline catering-menu-move" data-menu-direction="down" aria-label="Move <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?> down">Down</button>
-                                                        <button type="button" class="btn btn-danger catering-menu-remove" data-menu-remove aria-label="Remove <?php echo htmlspecialchars($menu_item_label, ENT_QUOTES, 'UTF-8'); ?>">Remove</button>
-                                                    </div>
-                                                </li>
-                                                <?php endforeach; ?>
-                                            </ol>
-                                            <div class="catering-menu-footer">
-                                                <button type="button" class="btn btn-outline catering-menu-add" data-menu-add>Add menu item</button>
-                                                <p class="catering-menu-status" id="catering-menu-status-<?php echo $package_key; ?>" data-menu-status role="status" aria-live="polite"><?php echo count($package['menu']); ?> menu items. Maximum 30.</p>
-                                            </div>
-                                            <textarea name="catering_<?php echo $package_key; ?>_menu" class="catering-menu-payload" data-menu-payload hidden aria-hidden="true" tabindex="-1"><?php echo htmlspecialchars(implode("\n", $package['menu']), ENT_QUOTES, 'UTF-8'); ?></textarea>
-                                        </div>
-                                    </section>
+                                        <h6 class="catering-package-summary-name" data-summary-name><?php echo $package_label; ?></h6>
+                                        <p class="catering-package-summary-rate">₱<span data-summary-rate><?php echo htmlspecialchars(catering_package_format_rate($package['rate']), ENT_QUOTES, 'UTF-8'); ?></span> / pax</p>
+                                        <p class="catering-package-summary-count" data-summary-count><?php echo count($package['menu']); ?> menu items</p>
+                                        <p class="catering-package-summary-preview" data-summary-preview><?php echo htmlspecialchars($menu_preview, ENT_QUOTES, 'UTF-8'); ?></p>
+                                        <input type="hidden" name="catering_<?php echo $package_key; ?>_name" data-package-setting="name" value="<?php echo $package_label; ?>">
+                                        <input type="hidden" name="catering_<?php echo $package_key; ?>" data-package-setting="rate" value="<?php echo htmlspecialchars($package['rate'], ENT_QUOTES, 'UTF-8'); ?>">
+                                        <textarea name="catering_<?php echo $package_key; ?>_menu" data-package-setting="menu" hidden aria-hidden="true" tabindex="-1"><?php echo htmlspecialchars(implode("\n", $package['menu']), ENT_QUOTES, 'UTF-8'); ?></textarea>
+                                    </article>
                                     <?php endforeach; ?>
                                 </div>
                             </div>
@@ -565,6 +545,60 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
         </div>
     </div>
 </div>
+
+<?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
+<dialog id="catering-package-dialog" class="catering-package-dialog" aria-labelledby="catering-dialog-title">
+    <div class="catering-dialog-shell">
+        <header class="catering-dialog-header">
+            <div>
+                <p class="catering-dialog-kicker">Catering package</p>
+                <h3 id="catering-dialog-title" data-dialog-title>Edit package</h3>
+            </div>
+            <button type="button" class="btn btn-outline catering-dialog-close" data-dialog-close aria-label="Close package editor">Close</button>
+        </header>
+        <form id="catering-package-dialog-form" class="catering-dialog-form" novalidate>
+            <div class="catering-dialog-body">
+                <input type="hidden" data-dialog-package-key name="package_key" value="">
+                <div class="catering-package-details">
+                    <div class="form-group">
+                        <label for="catering-dialog-name">Display name</label>
+                        <input type="text" id="catering-dialog-name" class="form-control" data-dialog-name maxlength="60" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="catering-dialog-rate">Price per pax (₱)</label>
+                        <input type="number" id="catering-dialog-rate" class="form-control" data-dialog-rate min="0" max="1000000" step="any" required>
+                    </div>
+                </div>
+                <div class="catering-menu-editor" data-menu-editor data-package-name="Catering package">
+                    <h4 class="catering-menu-heading">Menu items</h4>
+                    <ol class="catering-menu-list" data-menu-list aria-label="Catering package menu items" aria-describedby="catering-dialog-menu-status"></ol>
+                    <div class="catering-menu-footer">
+                        <button type="button" class="btn btn-outline catering-menu-add" data-menu-add>Add menu item</button>
+                        <p class="catering-menu-status" id="catering-dialog-menu-status" data-menu-status role="status" aria-live="polite">Menu items.</p>
+                    </div>
+                    <textarea class="catering-menu-payload" data-menu-payload hidden aria-hidden="true" tabindex="-1"></textarea>
+                </div>
+            </div>
+            <footer class="catering-dialog-footer">
+                <div class="catering-discard-confirm" data-discard-confirm hidden role="group" aria-label="Confirm discarding package edits">
+                    <p>Discard your unsaved package edits?</p>
+                    <div>
+                        <button type="button" class="btn btn-outline" data-keep-editing>Keep editing</button>
+                        <button type="button" class="btn btn-danger" data-discard-package>Discard changes</button>
+                    </div>
+                </div>
+                <div class="catering-dialog-footer-row">
+                    <p class="catering-dialog-status" data-dialog-status role="status" aria-live="polite" aria-atomic="true">Changes are saved when you choose Save package.</p>
+                    <div class="catering-dialog-actions">
+                        <button type="button" class="btn btn-outline" data-dialog-cancel>Cancel</button>
+                        <button type="submit" class="btn btn-primary" data-dialog-save>Save package</button>
+                    </div>
+                </div>
+            </footer>
+        </form>
+    </div>
+</dialog>
+<?php endif; ?>
 
 <!-- Toast Notification -->
 <div id="settings-toast" class="toast-notification" role="status" aria-live="polite" aria-atomic="true">
