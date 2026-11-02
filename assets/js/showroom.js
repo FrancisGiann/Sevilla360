@@ -58,18 +58,20 @@ function showroomBuildBookingUrl(room, startDate = null, endDate = null, guestRa
 }
 
 // Load before entering: a pending texture must not replace the stable view.
-function createShowroomSceneLoader({ show, hide, commit, ready, isCurrent = () => false, setTimer = setTimeout, clearTimer = clearTimeout, timeout = 25000 }) {
+function createShowroomSceneLoader({ show, hide, commit, ready, isCurrent = () => false, setTimer = setTimeout, clearTimer = clearTimeout, timeout = 25000, maximumTimeout = 150000 }) {
   let pending = null;
   const clean = request => {
     clearTimer(request.timer);
+    clearTimer(request.maximumTimer);
     request.pano.removeEventListener('load', request.loaded);
     request.pano.removeEventListener('error', request.failed);
+    request.pano.removeEventListener('progress', request.progress);
     request.pano.removeEventListener('enter-fade-start', request.entered);
   };
   const cancel = () => { if (pending) clean(pending); pending = null; };
   const enter = (pano, label, retry) => {
     cancel();
-    const request = { pano, committed: false };
+    const request = { pano, committed: false, receivedBytes: 0 };
     pending = request;
     const fail = () => {
       if (pending !== request) return;
@@ -77,6 +79,15 @@ function createShowroomSceneLoader({ show, hide, commit, ready, isCurrent = () =
       show(`Could not load ${label}. Check your connection and retry.`, retry, true);
     };
     request.failed = fail;
+    request.progress = event => {
+      const progress = event?.progress;
+      if (pending !== request || request.committed || !progress || progress.loaded <= request.receivedBytes) return;
+      request.receivedBytes = progress.loaded;
+      clearTimer(request.timer);
+      request.timer = setTimer(fail, timeout);
+      const percentage = progress.total > 0 ? Math.min(100, Math.floor(progress.loaded * 100 / progress.total)) : null;
+      show(`Loading ${label}…${percentage === null ? '' : ` ${percentage}%`}`, null, false);
+    };
     request.entered = () => {
       if (pending !== request || !request.committed) return;
       clean(request); pending = null; hide(); ready(pano);
@@ -91,8 +102,10 @@ function createShowroomSceneLoader({ show, hide, commit, ready, isCurrent = () =
     show(`Loading ${label}…`, null, false);
     pano.addEventListener('load', request.loaded);
     pano.addEventListener('error', request.failed);
+    pano.addEventListener('progress', request.progress);
     pano.addEventListener('enter-fade-start', request.entered);
     request.timer = setTimer(fail, timeout);
+    request.maximumTimer = setTimer(fail, maximumTimeout);
     try {
       if (pano.loaded === true && pano.material?.map) request.loaded();
       else pano.load();

@@ -63,3 +63,31 @@ test('failed destinations preserve the displayed tour, including cached venue re
     handler('hall',1,failed,panoramas,'hall');
     assert.equal(disposed,0);assert.equal(fallbacks,0);assert.equal(room.panoFailed,undefined);
 });
+
+test('guest scene watchdog follows byte progress while retaining an absolute bound', () => {
+    let now = 0, serial = 0;
+    const timers = new Map(), events = [];
+    const setTimer = (fn, delay) => { timers.set(++serial, { fn, due: now + delay }); return serial; };
+    const tick = elapsed => {
+        const target = now + elapsed;
+        while (true) {
+            const next = [...timers].filter(([, t]) => t.due <= target).sort((a, b) => a[1].due - b[1].due)[0];
+            if (!next) { now = target; return; }
+            now = next[1].due; timers.delete(next[0]); next[1].fn();
+        }
+    };
+    const listeners = new Map();
+    const pano = { loaded: false, material: {}, load() {},
+        addEventListener(t, fn) { listeners.set(t, fn); }, removeEventListener(t) { listeners.delete(t); } };
+    const loader = context.createShowroomSceneLoader({ show: (label, retry, failed) => events.push({ label, failed }),
+        hide: () => events.push('hidden'), commit: () => events.push('commit'), ready: () => events.push('ready'),
+        setTimer, clearTimer: id => timers.delete(id) });
+    loader.enter(pano, 'Large scene', () => {});
+    for (let i = 1; i <= 3; i++) { tick(20000); listeners.get('progress')({ progress: { loaded: i * 100, total: 1000 } }); }
+    assert.ok(!events.some(e => e.failed));
+    listeners.get('load')(); listeners.get('enter-fade-start')();
+    assert.equal(events.at(-1), 'ready'); assert.equal(timers.size, 0); assert.equal(listeners.size, 0);
+    loader.enter(pano, 'Endless scene', () => {});
+    for (let i = 1; i <= 7; i++) { tick(20000); listeners.get('progress')({ progress: { loaded: i * 100, total: 1000 } }); }
+    tick(10000); assert.equal(events.at(-1).failed, true); assert.equal(timers.size, 0);
+});
