@@ -540,3 +540,26 @@
 .recovery-channel-options label:focus-within { outline: 2px solid var(--color-gold); outline-offset: 2px; }
 .recovery-channel-options input { accent-color: var(--color-gold); }
 .recovery-code-link { margin-top: 16px; }
+
+/* Grouped signup keeps one coherent task visible without shrinking controls. */
+body:has(.auth-card.is-registering) { overflow: visible; }
+.auth-card.is-registering { overflow: visible; }
+.registration-group { padding: 0; margin: 0; }
+.registration-group[hidden], .registration-step-actions[hidden], #registration-back[hidden] { display: none !important; }
+.registration-group-title { margin: 0 0 1rem; font-size: 1.1rem; }
+.registration-group-title:focus { outline: none; }
+.registration-step-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-block: 0.75rem 0.25rem;
+  background: var(--color-white);
+}
+.registration-step-actions .btn-full { margin-bottom: 0.5rem; min-height: 44px; white-space: normal; }
+.registration-group .form-control { scroll-margin-block: 1rem 7rem; }
+.registration-progress li { align-items: baseline; min-width: 0; }
+@media (max-width: 480px) {
+  .registration-progress { gap: 0.5rem; font-size: 0.875rem; }
+  #view-user-register .form-group { margin-bottom: 1rem; }
+  #view-user-register .auth-subtitle { margin-bottom: 1.25rem; }
+}
