@@ -1561,3 +1561,7 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 .booking-inventory-notice p { margin: 0 0 10px; }
 .booking-inventory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .booking-inventory-actions .btn { flex: 1 1 170px; }
+
+.booking-account-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+#booking-auth-prompt h4 { margin: 0 0 0.75rem; font-family: var(--font-heading); font-size: 1.3rem; }
+#booking-auth-prompt p, #booking-staff-prompt { line-height: 1.6; margin-bottom: 1.25rem; color: var(--color-dark); }

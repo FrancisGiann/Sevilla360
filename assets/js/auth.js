@@ -28,18 +28,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     targetView.classList.add("active");
 
-    // Reset registration to Step 1 if navigating away, UNLESS target is viewTerms
-    if (targetView !== viewRegister && targetView !== viewTerms) {
-        showRegisterStep(1);
-    }
+    targetView.querySelector('input:not([type="hidden"]):not([name="website_url_honeypot"]), button')?.focus();
   }
 
-  // --- Progressive Registration Logic ---
-  const registrationSteps = [...document.querySelectorAll('#form-register .register-step')];
-  const stepSegments = [...document.querySelectorAll('#register-step-indicator .step-segment')];
-  const stepIndicator = document.getElementById('register-step-indicator');
-  const registerSubtitle = document.getElementById('register-subtitle');
-  let currentRegisterStep = 1;
+  // Account details stay together; verification is the second stage.
   const email = document.getElementById('reg-email');
   const errEmail = document.getElementById('err-email');
   let emailInteracted = false;
@@ -144,121 +136,101 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
   
-  const stepLabels = ['Email', 'Password', 'Your name', 'Contact details'];
-  function showRegisterStep(step, { focus = false } = {}) {
-      if (!registrationSteps.length) return;
-      currentRegisterStep = step;
-      registrationSteps.forEach((panel, index) => {
-          const visible = index + 1 === step;
-          panel.classList.toggle('active', visible);
-          panel.hidden = !visible;
-          panel.querySelectorAll('[data-required-field]').forEach(field => { field.required = visible; });
+  function validateRegistrationPasswords() {
+      const pass = document.getElementById('reg-password');
+      const confPass = document.getElementById('reg-confirm-password');
+      const errPass = document.getElementById('err-password');
+      const errConf = document.getElementById('err-confirm-password');
+      const passwordIssue = !pass.value
+          ? 'Password is required.'
+          : window.SevillaPasswordPolicy?.validate(pass.value).valid
+              ? ''
+              : window.SevillaPasswordPolicy?.validate(pass.value).message || 'Password does not meet the required policy.';
+      const confirmationIssue = !confPass.value
+          ? 'Please confirm your password.'
+          : pass.value !== confPass.value ? 'Passwords do not match.' : '';
+      [[pass, errPass, passwordIssue], [confPass, errConf, confirmationIssue]].forEach(([field, error, message]) => {
+          error.textContent = message;
+          error.style.display = message ? 'block' : 'none';
+          field.setAttribute('aria-invalid', message ? 'true' : 'false');
       });
-      stepSegments.forEach((segment, index) => segment.classList.toggle('active', index < step));
-      stepIndicator?.setAttribute('aria-valuenow', String(step));
-      stepIndicator?.setAttribute('aria-valuetext', `${stepLabels[step - 1]}, step ${step} of 4`);
-      if (registerSubtitle) registerSubtitle.textContent = stepLabels[step - 1];
-      if (focus) registrationSteps[step - 1]?.querySelector('input:not([type="hidden"])')?.focus();
+      return passwordIssue ? pass : (confirmationIssue ? confPass : null);
   }
-  registrationSteps.forEach(panel => panel.querySelectorAll('[required]').forEach(field => field.dataset.requiredField = 'true'));
-  showRegisterStep(1);
 
-  async function advanceRegisterStep() {
-      if (emailCheckPending || currentRegisterStep >= 4) return;
-      const step = currentRegisterStep;
-      const panel = registrationSteps[step - 1];
-      if (step === 1) {
-          emailInteracted = true;
-          if (!updateRegistrationEmailState({ normalize: true })) { email.focus(); return; }
-          const checkedEmail = email.value.trim();
-          const version = ++emailCheckVersion;
-          emailCheckPending = true;
-          const next = panel.querySelector('.register-next');
-          next.disabled = true;
-          try {
-              const state = await checkRegistrationEmail(checkedEmail);
-              if (version !== emailCheckVersion || email.value.trim() !== checkedEmail || currentRegisterStep !== step || !viewRegister?.classList.contains('active')) return;
-              if (state === 'unavailable') { showEmailCheckMessage(unavailableEmailMessage); email.focus(); return; }
-              showRegisterStep(2, { focus: true });
-          } catch (_) {
-              if (version === emailCheckVersion) { showEmailCheckMessage('We could not check this email right now. Please try again.'); email.focus(); }
-          } finally { emailCheckPending = false; next.disabled = false; }
+  registrationForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (registrationSubmit.disabled || emailCheckPending) return;
+      emailInteracted = true;
+      const emailIsValid = updateRegistrationEmailState({ normalize: true });
+      const passwordIssue = validateRegistrationPasswords();
+      const nameFields = ['reg-first-name', 'reg-last-name'].map(id => document.getElementById(id));
+      nameFields.forEach(field => {
+          field.value = field.value.trim();
+          field.setCustomValidity(field.value ? '' : 'Please enter your name.');
+      });
+      const invalidName = nameFields.find(field => !field.checkValidity());
+      if (invalidName || !emailIsValid || passwordIssue || !registrationForm.checkValidity()) {
+          if (invalidName) invalidName.reportValidity();
+          else if (!emailIsValid) email.focus();
+          else if (passwordIssue) passwordIssue.focus();
+          else registrationForm.reportValidity();
           return;
       }
-      if (step === 2) {
-          const pass = document.getElementById('reg-password');
-          const confirm = document.getElementById('reg-confirm-password');
-          const errPass = document.getElementById('err-password');
-          const errConfirm = document.getElementById('err-confirm-password');
-          const result = window.SevillaPasswordPolicy?.validate(pass.value);
-          errPass.style.display = result?.valid ? 'none' : 'block';
-          if (!result?.valid) errPass.textContent = result?.message || 'Password does not meet the required policy.';
-          errConfirm.style.display = pass.value === confirm.value && confirm.value ? 'none' : 'block';
-          if (errConfirm.style.display === 'block') errConfirm.textContent = 'Passwords do not match.';
-          if (!result?.valid) { pass.focus(); return; }
-          if (errConfirm.style.display === 'block') { confirm.focus(); return; }
-      } else {
-          const invalid = panel.querySelector('input:invalid');
-          if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
-      }
-      showRegisterStep(step + 1, { focus: true });
-  }
-
-  document.querySelectorAll('#form-register .register-next').forEach(button =>
-      button.addEventListener('click', advanceRegisterStep));
-  document.querySelectorAll('#form-register .register-back').forEach(button =>
-      button.addEventListener('click', () => showRegisterStep(Number(button.dataset.prevStep), { focus: true })));
-
-  if (registrationForm) {
-      registrationForm.addEventListener('submit', async (event) => {
-          event.preventDefault();
-          if (currentRegisterStep < 4) { await advanceRegisterStep(); return; }
-          if (registrationSubmit.disabled || emailCheckPending) return;
-          const invalid = registrationSteps[3].querySelector('input:invalid');
-          if (invalid) { invalid.reportValidity(); invalid.focus(); return; }
-          const submittedEmail = email.value.trim();
-          registrationSubmit.disabled = true;
-          try {
-              const response = await fetch(registrationForm.action, {
-                  method: 'POST',
-                  credentials: 'same-origin',
-                  cache: 'no-store',
-                  headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                  body: new FormData(registrationForm)
-              });
-              if (response.status === 409) {
-                  const result = await response.json();
-                  if (result.state !== 'unavailable') throw new Error('Invalid registration response');
-                  showRegisterStep(1);
-                  if (email.value.trim() === submittedEmail) {
-                      showEmailCheckMessage(unavailableEmailMessage);
-                      email.focus();
-                  }
-                  return;
-              }
-              const result = await response.json();
-              if (result.state === 'error' && typeof result.message === 'string' && !response.ok) {
-                  showAlert('Notice', result.message, 'warning');
-                  return;
-              }
-              if (result.state === 'redirect' && typeof result.url === 'string' && response.ok) {
-                  const target = new URL(result.url, registrationForm.action);
-                  if (target.origin !== window.location.origin || !target.pathname.endsWith('/auth.php')) {
-                      throw new Error('Unexpected registration destination');
-                  }
-                  window.location.assign(target.href);
-                  return;
-              }
-              throw new Error('Registration unavailable');
-          } catch (error) {
-              showRegisterStep(1);
-              showEmailCheckMessage('We could not create your account right now. Please try again.');
+      const submittedEmail = email.value.trim();
+      const version = ++emailCheckVersion;
+      registrationSubmit.disabled = true;
+      registrationForm.setAttribute('aria-busy', 'true');
+      let redirecting = false;
+      try {
+          emailCheckPending = true;
+          const emailState = await checkRegistrationEmail(submittedEmail);
+          emailCheckPending = false;
+          if (version !== emailCheckVersion || email.value.trim() !== submittedEmail || !viewRegister?.classList.contains('active')) return;
+          if (emailState === 'unavailable') {
+              showEmailCheckMessage(unavailableEmailMessage);
               email.focus();
-          } finally {
-              registrationSubmit.disabled = false;
+              return;
+          }
+          const response = await fetch(registrationForm.action, {
+              method: 'POST', credentials: 'same-origin', cache: 'no-store',
+              headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: new FormData(registrationForm)
+          });
+          const result = await response.json();
+          if (response.status === 409 && result.state === 'unavailable') {
+              if (email.value.trim() === submittedEmail) { showEmailCheckMessage(unavailableEmailMessage); email.focus(); }
+              return;
+          }
+          if (result.state === 'error' && typeof result.message === 'string' && !response.ok) {
+              showAlert('Notice', result.message, 'warning');
+              return;
+          }
+          if (result.state === 'redirect' && typeof result.url === 'string' && response.ok) {
+              const target = new URL(result.url, registrationForm.action);
+              if (target.origin !== window.location.origin || !target.pathname.endsWith('/auth.php')) throw new Error('Unexpected registration destination');
+              redirecting = true;
+              window.location.assign(target.href);
+              return;
+          }
+          throw new Error('Registration unavailable');
+      } catch (error) {
+          showEmailCheckMessage('We could not create your account right now. Please try again.');
+          email.focus();
+      } finally {
+          emailCheckPending = false;
+          registrationSubmit.disabled = redirecting;
+          if (!redirecting) registrationForm.removeAttribute('aria-busy');
+      }
+  });
+  ['reg-first-name', 'reg-last-name'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', event => event.target.setCustomValidity(''));
+  });
+  ['reg-password', 'reg-confirm-password'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', () => {
+          if (document.getElementById('err-password').textContent || document.getElementById('err-confirm-password').textContent) {
+              validateRegistrationPasswords();
           }
       });
-  }
+  });
 
   // --- Event Listeners for Navigation ---
   if(linkGotoRegister) linkGotoRegister.addEventListener("click", () => switchView(viewRegister));
@@ -276,14 +248,21 @@ document.addEventListener("DOMContentLoaded", () => {
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {
         switchView(viewRegister);
-        showRegisterStep(4); // Return to the consent step
-        if(agreeCheckbox) agreeCheckbox.checked = true;
+        if(agreeCheckbox) { agreeCheckbox.checked = true; agreeCheckbox.focus(); }
       });
   }
+
+  document.getElementById('btn-back-from-terms')?.addEventListener('click', () => {
+      switchView(viewRegister);
+      linkGotoTerms?.focus();
+  });
 
   // --- Password Show/Hide Toggle Logic ---
   const toggleButtons = document.querySelectorAll(".password-toggle");
   toggleButtons.forEach((button) => {
+    const controlledInput = button.previousElementSibling;
+    button.setAttribute('aria-controls', controlledInput.id);
+    button.setAttribute('aria-label', `Show ${controlledInput.id === 'reg-confirm-password' ? 'password confirmation' : 'password'}`);
     button.addEventListener("click", function () {
       const inputField = this.previousElementSibling;
       if (inputField.type === "password") {
@@ -293,6 +272,8 @@ document.addEventListener("DOMContentLoaded", () => {
         inputField.type = "password";
         this.textContent = "SHOW";
       }
+      this.setAttribute('aria-pressed', inputField.type === 'text' ? 'true' : 'false');
+      this.setAttribute('aria-label', `${inputField.type === 'text' ? 'Hide' : 'Show'} ${inputField.id === 'reg-confirm-password' ? 'password confirmation' : 'password'}`);
     });
   });
 
@@ -322,6 +303,32 @@ document.addEventListener("DOMContentLoaded", () => {
           emailInput.value = verifyEmail;
       }
   }
+
+  const verificationModal = document.getElementById('verification-modal');
+  function closeVerification() {
+      verificationModal.style.display = 'none';
+      // Dismiss the dialog without losing account details or the server's
+      // interrupted-booking destination. Never persist passwords in storage.
+      const url = new URL(window.location.href);
+      url.searchParams.delete('verify_email');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+      switchView(viewLogin);
+      const loginEmail = document.getElementById('login-email');
+      if (loginEmail && verifyEmail) loginEmail.value = verifyEmail;
+  }
+  document.getElementById('btn-close-verification')?.addEventListener('click', closeVerification);
+  verificationModal?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+          event.preventDefault();
+          closeVerification();
+      } else if (event.key === 'Tab') {
+          const controls = Array.from(verificationModal.querySelectorAll('button:not([disabled]), input:not([type="hidden"])')).filter(control => !control.closest('[hidden]'));
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+  });
 
   const codePanel = document.getElementById('verification-code-panel');
   const changePanel = document.getElementById('verification-change-panel');
@@ -378,6 +385,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!resendBtn) return;
       let remaining = 60;
       resendBtn.setAttribute('aria-disabled', 'true');
+      resendBtn.disabled = true;
       resendBtn.textContent = `Resend code in ${remaining}s`;
       resendTimer = setInterval(() => {
           remaining--;
@@ -385,15 +393,17 @@ document.addEventListener("DOMContentLoaded", () => {
               clearInterval(resendTimer);
               resendTimer = null;
               resendBtn.removeAttribute('aria-disabled');
+              resendBtn.disabled = false;
               resendBtn.textContent = phoneSignup ? 'Resend SMS code' : 'Resend verification email';
           } else resendBtn.textContent = `Resend code in ${remaining}s`;
       }, 1000);
   }
   resendBtn?.addEventListener('click', async event => {
       event.preventDefault();
-      if (resendPending || resendTimer) return;
+      if (resendPending || resendTimer || !verifyEmail) return;
       resendPending = true;
       resendBtn.setAttribute('aria-disabled', 'true');
+      resendBtn.disabled = true;
       if (phoneSignup) verificationStatus(codeStatus, '');
       try {
           const response = await fetch('actions/auth/resend_code.php', {
@@ -404,14 +414,14 @@ document.addEventListener("DOMContentLoaded", () => {
           const data = await response.json();
           const message = data.message || (data.success ? (phoneSignup ? 'A new SMS code was queued.' : 'A new verification code was sent.') : 'Could not resend code.');
           if (phoneSignup) verificationStatus(codeStatus, message, !!data.success);
-          else showAlert('Notice', message, data.success ? 'success' : 'error');
-          if (data.success) startResendCooldown();
+          else document.getElementById('resend-code-status').textContent = message;
+          if (response.ok && data.success) startResendCooldown();
       } catch (_) {
           if (phoneSignup) verificationStatus(codeStatus, 'Connection issue. Could not request a new code.');
-          else showAlert('Notice', 'Connection issue. Could not request a new code.', 'error');
+          else document.getElementById('resend-code-status').textContent = 'Connection issue. Could not request a new code.';
       } finally {
           resendPending = false;
-          if (!resendTimer) resendBtn.removeAttribute('aria-disabled');
+          if (!resendTimer) { resendBtn.removeAttribute('aria-disabled'); resendBtn.disabled = false; }
       }
   });
 
@@ -420,13 +430,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const form = document.getElementById(formId);
       if (!form) return;
       form.addEventListener("submit", function (e) {
+          if (e.defaultPrevented) return;
           const submitBtn = form.querySelector('button[type="submit"]');
           if (submitBtn) {
               if (submitBtn.disabled) {
                   e.preventDefault();
                   return false;
               }
+              submitBtn.dataset.idleHtml = submitBtn.innerHTML;
               submitBtn.disabled = true;
+              form.setAttribute('aria-busy', 'true');
               submitBtn.style.display = "inline-flex";
               submitBtn.style.alignItems = "center";
               submitBtn.style.justifyContent = "center";
@@ -435,6 +448,17 @@ document.addEventListener("DOMContentLoaded", () => {
           }
       });
   };
+
+  // BFCache restores the DOM including disabled loading buttons.
+  window.addEventListener('pageshow', event => {
+      if (!event.persisted) return;
+      if (registrationSubmit) { registrationSubmit.disabled = false; registrationForm.removeAttribute('aria-busy'); }
+      document.querySelectorAll('button[data-idle-html]').forEach(button => {
+          button.innerHTML = button.dataset.idleHtml;
+          button.disabled = false;
+          button.closest('form')?.removeAttribute('aria-busy');
+      });
+  });
 
   handleFormLoading("form-login", "SIGNING IN...");
   handleFormLoading("form-verify", "VERIFYING ACCOUNT...");

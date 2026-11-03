@@ -410,14 +410,24 @@
     margin-top: 1.5rem;
   }
 }
-/* Registration Step Logic */
-.register-step {
-  display: none;
-  animation: fadeIn 0.4s ease forwards;
+/* Two stages: complete account details, then verify the email. */
+.registration-progress {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-dark-light);
 }
 
-.register-step.active {
-  display: block;
+.registration-progress li {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-block: 0.6rem;
+  border-bottom: 2px solid #ded9d1;
 }
 .register-step[hidden] { display: none; }
 .register-back {
@@ -441,21 +451,70 @@
 .verification-text-button { display: block; margin: 16px auto 0; border: 0; background: transparent; color: var(--color-dark-light); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .verification-text-button:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 3px; }
 
-.step-indicator {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 25px;
+.registration-progress li[aria-current="step"],
+.registration-progress li.is-complete {
+  color: var(--color-dark);
+  border-color: var(--color-gold);
+  font-weight: 600;
 }
 
-.step-segment {
-  flex: 1;
-  height: 4px;
-  background-color: #eee;
-  transition: background-color 0.3s ease;
+.registration-progress span { font-variant-numeric: tabular-nums; }
+.registration-name-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
-.step-segment.active {
-  background-color: var(--color-gold);
+.registration-next-note, .verification-status {
+  color: var(--color-dark-light);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.auth-text-button, button.terms-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-dark);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.auth-text-button:hover, button.terms-link:hover { color: #805b30; }
+.auth-back-button { display: block; margin-inline: auto; padding: 0.6rem; }
+.password-toggle { border: 0; background: transparent; font-family: inherit; min-height: 44px; }
+.auth-text-button:focus-visible, .terms-link:focus-visible,
+.password-toggle:focus-visible, .verification-close:focus-visible {
+  outline: 2px solid var(--color-dark);
+  outline-offset: 3px;
+}
+.verification-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  min-width: 44px;
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  color: var(--color-dark);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+#verification-modal { overflow-y: auto; padding: 1rem; }
+#verification-modal .auth-card { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+#verify-email-display { overflow-wrap: anywhere; }
+#resend-code-btn:disabled { cursor: wait; opacity: 0.65; }
+
+@media (max-width: 480px) {
+  .registration-name-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .form-control { font-size: 1rem; }
+  .registration-progress { gap: 0.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-view { animation: none; }
 }
 .recovery-channel-options {
   border: 0;

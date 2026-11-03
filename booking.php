@@ -192,6 +192,7 @@ unset($villa);
                 <span id="countdown-wrapper" style="display: none;">Session expires in: <span id="countdown">15:00</span></span>
             </div>
             <p class="booking-step-error" data-booking-step-error role="alert" aria-live="assertive" hidden></p>
+            <button type="button" class="btn btn-outline" id="booking-retry-availability" hidden>Recheck availability</button>
 
             <!-- INJECT THE TAB COMPONENTS -->
             <?php include 'includes/partials/tab_event_hall.php'; ?>
@@ -281,6 +282,13 @@ unset($villa);
                 <div class="summary-footer booking-review-form" id="booking-summary-footer" hidden
                     style="margin-top: 25px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 20px;">
 
+                    <div id="booking-auth-prompt"<?php echo ($booking_is_customer || $booking_is_staff) ? ' hidden' : ''; ?>>
+                        <h4>Sign in to continue</h4>
+                        <p>Sign in or create an account to add your contact details and review your request. Signing in does not submit it. You will return here to finish.</p>
+                    </div>
+                    <p id="booking-staff-prompt"<?php echo $booking_is_staff ? '' : ' hidden'; ?>>Only a customer account can submit a booking or event inquiry.</p>
+                    <fieldset id="booking-account-fields" class="booking-account-fields"<?php echo $booking_is_customer ? '' : ' hidden disabled'; ?>>
+                    <legend class="visually-hidden">Contact details and consent</legend>
                     <!-- Contact Number -->
                     <div style="margin-bottom: 15px;">
                         <label for="contact-phone"
@@ -310,6 +318,8 @@ unset($villa);
                                 Conditions</a></label>
                     </div>
 
+                    </fieldset>
+
                     <!-- Action Buttons -->
                     <div id="booking-inventory-notice" class="booking-inventory-notice" role="status" aria-live="polite" hidden>
                         <p id="booking-inventory-message"></p>
@@ -318,8 +328,8 @@ unset($villa);
                             <button type="button" class="btn btn-outline" id="booking-inventory-recheck">Recheck availability</button>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-book-submit" id="btn-proceed">SUBMIT EVENT INQUIRY</button>
-                    <button class="btn btn-cancel" id="btn-cancel">CANCEL</button>
+                    <button type="button" class="btn btn-book-submit" id="btn-proceed"><?php echo $booking_is_customer ? 'SUBMIT EVENT INQUIRY' : ($booking_is_staff ? 'CUSTOMER ACCOUNT REQUIRED' : 'SIGN IN OR CREATE ACCOUNT TO CONTINUE'); ?></button>
+                    <button type="button" class="btn btn-cancel" id="btn-cancel">CANCEL</button>
                 </div>
             </div>
         </div>
@@ -354,6 +364,7 @@ unset($villa);
 <script>
 window.bookingAuth = <?php echo json_encode([
     'isCustomer' => $booking_is_customer,
+    'userId' => $booking_is_customer ? (int)$_SESSION['user_id'] : null,
     'isStaff' => $booking_is_staff,
     'isAuthenticated' => ($booking_is_customer || $booking_is_staff),
     'resume' => $booking_resume

@@ -59,7 +59,7 @@ function control(value = '') {
         selectedIndex: 0,
         dataset: {},
         dispatchEvent() {},
-        classList: { add() {}, remove() {} },
+        classList: { add() {}, remove() {}, toggle() {} },
         style: {}
     };
 }
@@ -115,7 +115,7 @@ function makeController({ category, lockResult = 'success', complete = true, eve
         activeTabId,
         step: 4,
         category,
-        venueId: '17',
+        venueId: isVilla ? '18' : '17',
         roomGroupId: '8',
         venueName: isHotel ? 'North Wing' : 'Grand Hall',
         roomType: isHotel ? 'Deluxe' : '',
@@ -183,6 +183,8 @@ function makeController({ category, lockResult = 'success', complete = true, eve
     controller.calculateSummary = () => {};
     controller.updateBookingStepUI = () => {};
     controller.clearBookingStepError = () => {};
+    controller.issues = [];
+    controller.showBookingStepIssue = issue => controller.issues.push(issue);
     controller.saveDraft = () => {};
     controller.requestDateConfirmation = () => { throw new Error('Unexpected date confirmation prompt'); };
     controller.startTimer = () => {};
@@ -200,7 +202,7 @@ async function restore({ category, lockResult, complete = true, eventGuestCount 
     return controller;
 }
 
-(async () => {
+async function run() {
     const event = await restore({ category: 'Event Hall' });
     assert.equal(event.state.currentStep, 4, 'valid event drafts return to review');
     assert.equal(event.requests.some(url => url.includes('lock_dates.php')), false, 'event inquiry does not require a hold');
@@ -276,7 +278,9 @@ async function restore({ category, lockResult, complete = true, eventGuestCount 
     console.log('PASS|stable catering package ID restores through duplicate or changed rates');
     console.log('PASS|legacy catering draft restores by saved rate when no package ID exists');
     console.log('PASS|pageshow only refreshes after BFCache return and outside restoration');
-})().catch(error => {
+}
+if (require.main === module) run().catch(error => {
     console.error(error);
     process.exitCode = 1;
 });
+module.exports = { BookingController, makeController, context, document, control };
