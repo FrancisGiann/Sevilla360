@@ -114,7 +114,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="password-wrapper">
                             <input type="password" id="login-password" name="password" class="form-control" autocomplete="current-password"
                                 placeholder="Enter your password" required>
-                            <span class="password-toggle">SHOW</span>
+                            <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                         </div>
                         <button type="button" class="forgot-link" data-forgot-password data-origin="customer">Forgot password?</button>
                     </div>
@@ -130,18 +130,19 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 </form>
 
                 <div class="auth-footer">
-                    New customer? <a id="link-goto-register" style="cursor: pointer;">Create Account</a>
+                    New customer? <button type="button" class="auth-text-button" id="link-goto-register">Create Account</button>
                 </div>
             </div>
 
             <!-- VIEW 2: USER REGISTRATION -->
             <div id="view-user-register" class="auth-view">
                 <h2 class="auth-title">Create Account</h2>
-                <p class="auth-subtitle" id="register-subtitle">Book venues & manage reservations online</p>
+                <p class="auth-subtitle" id="register-subtitle">Enter your details, then verify your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
 
-                <div class="step-indicator" id="register-step-indicator" role="progressbar" aria-label="Account setup" aria-valuemin="1" aria-valuemax="4" aria-valuenow="1" aria-valuetext="Email, step 1 of 4">
-                    <div class="step-segment active"></div><div class="step-segment"></div><div class="step-segment"></div><div class="step-segment"></div>
-                </div>
+                <ol class="registration-progress" aria-label="Account creation progress">
+                    <li aria-current="step"><span aria-hidden="true">1</span> Account details</li>
+                    <li><span aria-hidden="true">2</span> Verify <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?></li>
+                </ol>
 
                 <form id="form-register" action="actions/auth/register_process.php" method="POST">
                     <!-- CSRF TOKEN INJECTED HERE -->
@@ -153,80 +154,62 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <input type="text" name="website_url_honeypot" id="website_url_register" value="" autocomplete="off">
                     </div>
 
-                    <!-- STEP 1: Email -->
-                    <div id="register-step-1" class="register-step active">
+                    <div class="registration-name-row">
+                        <div class="form-group">
+                            <label for="reg-first-name">FIRST NAME</label>
+                            <input type="text" id="reg-first-name" name="first_name" class="form-control" placeholder="Juan" autocomplete="given-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-last-name">LAST NAME</label>
+                            <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
+                        </div>
+                    </div>
+                    <div class="registration-account-fields">
                         <div class="form-group">
                             <label for="reg-email">EMAIL ADDRESS</label>
                             <input type="email" id="reg-email" name="email" class="form-control" placeholder="you@example.com" autocomplete="email" aria-describedby="err-email" aria-errormessage="err-email" aria-invalid="false" required>
                             <div class="email-feedback" id="err-email" role="status" aria-live="polite" aria-atomic="true" hidden></div>
                         </div>
 
-                        <button type="button" class="btn btn-primary btn-full register-next" data-next-step="2">CONTINUE &rarr;</button>
-                    </div>
-
-                    <!-- STEP 2: Password -->
-                    <div id="register-step-2" class="register-step">
                         <div class="form-group">
                             <label for="reg-password">PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help">
-                                <span class="password-toggle">SHOW</span>
+                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help err-password" aria-invalid="false">
+                                <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                             </div>
                             <small id="reg-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
-                            <div class="error-msg" id="err-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                            <div class="error-msg" id="err-password" role="status" aria-live="polite" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
                         </div>
 
                         <div class="form-group">
                             <label for="reg-confirm-password">CONFIRM PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" required>
-                                <span class="password-toggle">SHOW</span>
+                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" aria-describedby="err-confirm-password" aria-invalid="false" required>
+                                <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                             </div>
-                            <div class="error-msg" id="err-confirm-password" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
+                            <div class="error-msg" id="err-confirm-password" role="status" aria-live="polite" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
                         </div>
 
-                        <button type="button" class="btn btn-primary btn-full register-next" data-next-step="3">CONTINUE &rarr;</button>
-                        <button type="button" class="register-back" data-prev-step="1">&larr; Back</button>
                     </div>
 
-                    <!-- STEP 3: Name -->
-                    <div id="register-step-3" class="register-step">
-                        <div class="form-group">
-                            <label for="reg-first-name">FIRST NAME</label>
-                            <input type="text" id="reg-first-name" name="first_name" class="form-control" placeholder="Juan" autocomplete="given-name" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="reg-last-name">LAST NAME</label>
-                            <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
-                        </div>
-
-                        <button type="button" class="btn btn-primary btn-full register-next" data-next-step="4">CONTINUE &rarr;</button>
-                        <button type="button" class="register-back" data-prev-step="2">&larr; Back</button>
-                    </div>
-
-                    <!-- STEP 4: Contact and consent -->
-                    <div id="register-step-4" class="register-step">
                         <?php require_once __DIR__ . '/includes/contact_verification.php'; if (phone_signup_enabled()): ?>
                         <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567" required></div>
                         <?php endif; ?>
-                        <div class="terms-checkbox-group">
-                            <input type="checkbox" id="agree-checkbox" name="consent" value="1" required>
-                            <label for="agree-checkbox">
-                                I agree to the <button type="button" class="terms-link" id="link-goto-terms">Terms
-                                    of Service</button> and
-                                Privacy Policy.
-                            </label>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-full">CREATE ACCOUNT</button>
-                        
-                        <button type="button" class="register-back" data-prev-step="3">&larr; Back</button>
+                    <div class="terms-checkbox-group">
+                        <input type="checkbox" id="agree-checkbox" name="consent" value="1" required>
+                        <label for="agree-checkbox">
+                            I agree to the <button type="button" class="terms-link" id="link-goto-terms">Terms
+                                of Service</button> and
+                            Privacy Policy.
+                        </label>
                     </div>
+
+                    <p class="registration-next-note" id="registration-next-note">Next: enter the 6-digit code sent to your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
+                    <button type="submit" class="btn btn-primary btn-full" aria-describedby="registration-next-note">CREATE ACCOUNT &amp; VERIFY <?php echo phone_signup_enabled() ? 'PHONE' : 'EMAIL'; ?></button>
                 </form>
 
                 <div class="auth-footer">
-                    Already have an account? <a id="link-goto-login" style="cursor: pointer;">Log in</a>
+                    Already have an account? <button type="button" class="auth-text-button" id="link-goto-login">Log in</button>
                 </div>
             </div>
 
@@ -249,6 +232,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 </div>
 
                 <button type="button" class="btn btn-primary btn-full" id="btn-agree-terms">I AGREE</button>
+                <button type="button" class="auth-text-button auth-back-button" id="btn-back-from-terms">&larr; Back to account details</button>
             </div>
 
 
@@ -299,9 +283,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
         <!-- CHANGED border-radius from 8px to 0 here -->
         <div class="auth-card verification-card"
             style="position: relative; max-width: 450px; width: 100%; text-align: center; background: #fff5e8; border: 1px solid var(--color-gold); padding: 30px; border-radius: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
-            <a href="auth.php"
-                style="position: absolute; top: 15px; right: 20px; font-size: 1.5rem; text-decoration: none; color: var(--color-dark-light); font-weight: bold;">&times;</a>
+            <button type="button" id="btn-close-verification" class="verification-close" aria-label="Return to sign in">&times;</button>
             <h2 class="auth-title" style="margin-bottom: 10px; font-family: var(--font-heading);" id="verification-title"><?php echo $verify_phone_mode ? 'Verify Your Phone' : 'Verify Your Email'; ?></h2>
+            <ol class="registration-progress" aria-label="Account creation progress">
+                <li class="is-complete"><span aria-hidden="true">✓</span> Account details</li>
+                <li aria-current="step"><span aria-hidden="true">2</span> Verify <?php echo $verify_phone_mode ? 'phone' : 'email'; ?></li>
+            </ol>
 
             <div id="verification-code-panel">
             <p class="auth-subtitle" style="font-size: 0.95rem; line-height: 1.5; color: var(--color-dark);" id="verification-description">
@@ -310,7 +297,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <?php else: ?>
                     A 6-digit verification code has been sent to <br>
                     <strong id="verify-email-display" style="color: var(--color-gold);">you@email.com</strong>.<br>
-                    Please check your inbox and enter the code below.
+                    Check your inbox or spam folder and enter the code below. Your code expires in 15 minutes.
                 <?php endif; ?>
             </p>
             <p id="verification-status" class="verification-status" role="status" aria-live="polite" <?php echo $inline_phone_alert === null ? 'hidden' : ''; ?>><?php echo htmlspecialchars((string)$inline_phone_alert, ENT_QUOTES, 'UTF-8'); ?></p>
@@ -324,7 +311,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
                 <div class="form-group">
                     <label for="verification-code">VERIFICATION CODE</label>
-                    <input type="text" id="verification-code" name="verification_code" class="form-control" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric"
+                    <input type="text" id="verification-code" name="verification_code" class="form-control" placeholder="000000" maxlength="6" minlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" inputmode="numeric"
                         style="text-align: center; font-size: 1.45rem; letter-spacing: .25em; font-weight: bold; padding: 12px;"
                         required>
                 </div>
@@ -333,8 +320,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             </form>
 
             <div class="auth-footer" style="margin-top: 15px;">
-                <a href="#" id="resend-code-btn"
-                    style="color: var(--color-dark-light); text-decoration: underline;"><?php echo $verify_phone_mode ? 'Resend SMS code' : 'Resend verification email'; ?></a>
+                <button type="button" class="auth-text-button" id="resend-code-btn"><?php echo $verify_phone_mode ? 'Resend SMS code' : 'Resend verification email'; ?></button>
+                <p id="resend-code-status" class="verification-status" role="status" aria-live="polite"></p>
             </div>
             <?php if ($verify_phone_mode): ?>
             <button type="button" id="verification-change-open" class="verification-text-button">Use a different number</button>

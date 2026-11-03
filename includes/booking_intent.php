@@ -1,8 +1,9 @@
 <?php
 /**
  * Allowlisted post-auth destination contract for an interrupted public booking.
- * The browser draft contains only non-sensitive selections; this session value
- * controls the destination and can never contain a caller-supplied URL.
+ * The tab-scoped draft retains selections and owner-scoped review text only.
+ * This server session value controls the destination, grants no authentication,
+ * and can never contain a caller-supplied URL.
  */
 const BOOKING_AUTH_DESTINATION = 'booking_resume';
 const BOOKING_AUTH_RESUME_MARKER = 'booking_resume_marker';

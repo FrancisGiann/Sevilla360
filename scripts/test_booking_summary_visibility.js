@@ -52,7 +52,7 @@ elements['villa-type'] = {selectedIndex:0,options:[{text:'Synthetic Villa (Overn
 elements['villa-guests'] = {value:'1'};
 elements['input[name="villa-stay"]:checked'] = {value:'Overnight'};
 const villaContext = villaController.getTabContextData();
-assert.equal(villaContext.venueId,null,'Villa keeps its established name-based hold contract');
+assert.equal(villaContext.venueId,'3','Villa carries its unique venue ID to availability, draft and hold requests');
 assert.equal(villaContext.baseAmt,'10000','overnight price remains unchanged');
 assert.equal(villaController.hasBookingSelection(),true,'actual Villa selection is recognized');
 villaController.updateSummaryVisibility(villaController.hasBookingSelection(),true);

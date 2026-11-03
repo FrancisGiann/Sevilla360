@@ -19,6 +19,8 @@ class BookingController {
             }
         }) || null;
         this.draftKey = 'sevilla360.booking-draft.v1';
+        this.authPendingKey = 'sevilla360.booking-auth-pending.v1';
+        this.authRedirectPending = false;
         this.draftTtlMs = 2 * 60 * 60 * 1000;
         this.state = {
             activeTabId: 'event-hall', 
@@ -77,6 +79,12 @@ class BookingController {
         // pageshow also fires on normal navigations. Only refresh after a
         // BFCache return, and never while auth draft restoration is in flight.
         if (!event?.persisted || this.isRestoringDraft) return;
+        if (this.authRedirectPending) {
+            this.authRedirectPending = false;
+            const button = this.getEl('btn-proceed');
+            if (button) button.disabled = false;
+        }
+        try { window.sessionStorage.removeItem(this.authPendingKey); } catch (error) { /* no-op */ }
         this.syncHotelRoomSelection();
         this.syncVenueSelectionDisplays();
         this.calculateSummary();
@@ -294,6 +302,9 @@ class BookingController {
             eventType: document.querySelector('input[name="event-type"]:checked')?.dataset.text || '',
             eventTypeOther: this.getEl('event-type-others')?.value || '',
             eventStyle: this.getEl('event-style')?.value || '',
+            reviewOwnerId: this.auth.isCustomer ? String(this.auth.userId || '') : '',
+            contactPhone: this.getEl('contact-phone')?.value || '',
+            notes: this.getEl('booking-notes')?.value || '',
             addons: {
                 catering: this.getEl('check-catering')?.checked === true,
                 cateringTier: selectedCateringTier?.value || '',
@@ -315,7 +326,10 @@ class BookingController {
 
     clearDraft() {
         this.state.confirmedSelectionKey = '';
-        try { window.sessionStorage.removeItem(this.draftKey); } catch (error) { /* no-op */ }
+        try {
+            window.sessionStorage.removeItem(this.draftKey);
+            window.sessionStorage.removeItem(this.authPendingKey);
+        } catch (error) { /* no-op */ }
     }
 
     async restoreAddonSelections(draft) {
@@ -386,10 +400,17 @@ class BookingController {
     }
 
     async restoreDraftIfRequested() {
-        if (!this.auth.resume) return;
+        if (this.isRestoringDraft) return;
+        let guestReturningFromAuth = false;
+        try {
+            guestReturningFromAuth = !this.auth.isCustomer && !this.auth.isStaff
+                && window.sessionStorage.getItem(this.authPendingKey) === '1';
+        } catch (error) { /* Server-authorized customer resume still works. */ }
+        if (!this.auth.resume && !guestReturningFromAuth) return;
         const draft = this.getDraft();
         if (!draft) return;
         this.isRestoringDraft = true;
+        let restoreIssue = null;
         try {
         const tab = document.querySelector('.tab-btn[data-tab="' + CSS.escape(draft.activeTabId || '') + '"]');
         if (tab) this.executeTabVisualSwitch(tab, draft.activeTabId);
@@ -400,14 +421,22 @@ class BookingController {
             element.value = String(value);
             element.dispatchEvent(new Event('change', { bubbles: true }));
         };
-        if (draft.category === 'Event Hall') {
-            const select = this.getEl('event-venue');
-            const option = Array.from(select?.options || []).find(item => String(item.dataset.id || '') === String(draft.venueId) || String(item.dataset.name || '') === String(draft.venueName));
-            if (option && select) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); }
-        } else if (draft.category === 'Resort Villa') {
-            const select = this.getEl('villa-type');
-            const option = Array.from(select?.options || []).find(item => String(item.dataset.id || '') === String(draft.venueId) || String(item.dataset.name || '') === String(draft.venueName));
-            if (option && select) { select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); }
+        let venueRestored = true;
+        if (draft.category === 'Event Hall' || draft.category === 'Resort Villa') {
+            const select = this.getEl(draft.category === 'Event Hall' ? 'event-venue' : 'villa-type');
+            const options = Array.from(select?.options || []);
+            const venueId = String(draft.venueId || '');
+            // Prices and names are not identities. A removed/stale ID must not
+            // silently resolve to a different venue, even with the same name.
+            const matches = options.filter(item => venueId && String(item.dataset.id || '') === venueId && !item.disabled);
+            venueRestored = Boolean(select && matches.length === 1);
+            if (select) {
+                select.selectedIndex = venueRestored ? options.indexOf(matches[0]) : 0;
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            if (!venueRestored) restoreIssue = { step: 1, message: 'Your saved venue is no longer available. Choose a venue to continue; your other details have been kept.', target: select };
+        }
+        if (draft.category === 'Resort Villa') {
             if (draft.stayType) {
                 const stay = document.querySelector('input[name="villa-stay"][value="' + CSS.escape(draft.stayType) + '"]');
                 if (stay && !stay.checked) { stay.checked = true; stay.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -416,8 +445,29 @@ class BookingController {
             applyChange('hotel-room-type', draft.roomType);
             const roomSelect = this.getEl('hotel-room-name');
             const option = Array.from(roomSelect?.options || []).find(item => (draft.roomGroupId && String(item.dataset.roomGroupId || '') === String(draft.roomGroupId)) || (!draft.roomGroupId && String(item.dataset.name || '') === String(draft.buildingName || draft.venueName)));
-            if (option && roomSelect) { roomSelect.value = option.value; roomSelect.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (option && roomSelect) { roomSelect.selectedIndex = Array.from(roomSelect.options).indexOf(option); roomSelect.dispatchEvent(new Event('change', { bubbles: true })); }
         }
+
+        const sameReviewOwner = !draft.reviewOwnerId
+            || (this.auth.isCustomer && String(draft.reviewOwnerId) === String(this.auth.userId || ''));
+        if (sameReviewOwner) {
+            const notes = this.getEl('booking-notes');
+            if (notes && typeof draft.notes === 'string') notes.value = draft.notes;
+            const phone = this.getEl('contact-phone');
+            if (phone && typeof draft.contactPhone === 'string' && draft.contactPhone !== '') {
+                phone.value = draft.contactPhone;
+                const alternate = phone.value !== phone.defaultValue;
+                document.querySelectorAll('input[name="contact-phone-choice"]').forEach(choice => {
+                    choice.checked = choice.value === (alternate ? 'alternate' : 'saved');
+                });
+                this.getEl('save-contact-choice')?.classList.toggle('hidden', !alternate && Boolean(phone.defaultValue));
+            }
+        }
+        // Authentication never carries consent or an account-default change.
+        const terms = this.getEl('terms-check');
+        if (terms) terms.checked = false;
+        const saveContact = this.getEl('save-contact-default');
+        if (saveContact) saveContact.checked = false;
 
         const guestsId = draft.category === 'Event Hall' ? 'event-guests' : (draft.category === 'Resort Villa' ? 'villa-guests' : 'hotel-guests');
         applyChange(guestsId, draft.guests);
@@ -456,7 +506,7 @@ class BookingController {
 
         const calendar = this.state.calendars[this.state.activeTabId === 'event-hall' ? 'event' : (this.state.activeTabId === 'hotel-rooms' ? 'hotel' : 'villa')];
         const isDate = value => this.isValidDraftDate(value) && value >= this.formatSafeDate(new Date());
-        if (!calendar || !isDate(draft.startDate)) {
+        if (!venueRestored || !calendar || !isDate(draft.startDate)) {
             this.state.confirmedSelectionKey = '';
             await this.restoreAddonSelections(draft);
             restoreCatering();
@@ -468,7 +518,15 @@ class BookingController {
         this.state.activeCalendar = calendar;
         calendar.setSelection(draft.startDate, endDate);
         const context = this.getTabContextData();
-        await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
+        const availabilityReady = await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
+        if (availabilityReady !== true) {
+            this.state.confirmedSelectionKey = '';
+            restoreIssue = { step: 2, message: 'We could not recheck availability. Your dates and details have been kept. Recheck availability to continue.', target: calendar.container, retryAvailability: true };
+            await this.restoreAddonSelections(draft);
+            restoreCatering();
+            restoreAv();
+            return;
+        }
         const invalidStart = calendar.isDateUnavailable(calendar.startDate);
         const invalidInterior = calendar.endDate && calendar.endDate > calendar.startDate && calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate);
         const invalidEnd = this.state.activeTabId !== 'hotel-rooms' && calendar.endDate && calendar.isDateUnavailable(calendar.endDate);
@@ -482,7 +540,7 @@ class BookingController {
             restoreCatering();
             restoreAv();
             this.calculateSummary();
-            showAlert('Dates changed', 'Your selected venue is still available, but those dates are no longer available. Please choose new dates.', 'info');
+            restoreIssue = { step: 2, message: 'Your selected dates are no longer available. Choose new dates; your venue and other details have been kept.', target: calendar.container };
             return;
         }
         await this.restoreAddonSelections(draft);
@@ -495,12 +553,12 @@ class BookingController {
             ? draft.confirmedSelectionKey
             : '';
         this.state.confirmedSelectionKey = restoredSelectionKey;
-        if (restoredSelectionKey && this.auth.isCustomer) {
+        if (restoredSelectionKey && (this.auth.isCustomer || guestReturningFromAuth)) {
             if (this.state.activeTabId === 'event-hall') {
                 // Event inquiries are non-exclusive: the guest's explicit
                 // date confirmation carries through without a second prompt.
                 calendar.updateDateDisplay();
-            } else {
+            } else if (this.auth.isCustomer) {
                 // The availability check above is advisory. The lock endpoint
                 // remains authoritative and is called once on resume.
                 await this.lockSelectedDates(calendar.startDate, calendar.endDate, calendar);
@@ -510,12 +568,21 @@ class BookingController {
             // use the explicit confirmation step again.
             this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
         }
+        } catch (error) {
+            this.state.confirmedSelectionKey = '';
+            restoreIssue = { step: 2, message: 'We could not restore availability. Your details have been kept. Recheck availability to continue.', target: this.state.activeCalendar?.container, retryAvailability: true };
+            console.error('Booking draft availability could not be restored.', error);
         } finally {
             this.isRestoringDraft = false;
             const requestedStep = Math.min(4, Math.max(1, Number.parseInt(draft.step, 10) || 1));
             this.state.currentStep = Math.min(requestedStep, this.getMaximumReachableStep());
             this.clearBookingStepError();
             this.updateBookingStepUI();
+            if (!restoreIssue && this.state.currentStep < requestedStep) {
+                restoreIssue = this.validateBookingStep(this.state.currentStep).issue || null;
+            }
+            if (restoreIssue) this.showBookingStepIssue(restoreIssue);
+            try { window.sessionStorage.removeItem(this.authPendingKey); } catch (error) { /* no-op */ }
             this.saveDraft();
         }
     }
@@ -870,6 +937,8 @@ class BookingController {
     }
 
     clearBookingStepError() {
+        const retry = this.getEl('booking-retry-availability');
+        if (retry) retry.hidden = true;
         const error = document.querySelector('[data-booking-step-error]');
         if (error) {
             error.textContent = '';
@@ -907,6 +976,7 @@ class BookingController {
         }
         const footer = this.getEl('booking-summary-footer');
         if (footer) footer.hidden = currentStep !== 4;
+        this.updateReviewAuthUI();
         if (this.state.activeTabId === 'event-hall') {
             const option = this.getEl('event-venue')?.selectedOptions[0];
             const capacities = ['theater', 'classroom', 'banquet'].map(key => {
@@ -924,6 +994,18 @@ class BookingController {
         this.calculateSummary();
     }
 
+    updateReviewAuthUI() {
+        const accountFields = this.getEl('booking-account-fields');
+        if (accountFields) {
+            accountFields.hidden = !this.auth.isCustomer;
+            accountFields.disabled = !this.auth.isCustomer;
+        }
+        const authPrompt = this.getEl('booking-auth-prompt');
+        if (authPrompt) authPrompt.hidden = this.auth.isCustomer || this.auth.isStaff;
+        const staffPrompt = this.getEl('booking-staff-prompt');
+        if (staffPrompt) staffPrompt.hidden = !this.auth.isStaff;
+    }
+
     focusBookingElement(element) {
         if (!element) return;
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -934,6 +1016,8 @@ class BookingController {
     }
 
     showBookingStepIssue(issue) {
+        const retry = this.getEl('booking-retry-availability');
+        if (retry) retry.hidden = !issue.retryAvailability;
         const error = document.querySelector('[data-booking-step-error]');
         if (error) {
             error.textContent = issue.message;
@@ -1270,13 +1354,14 @@ class BookingController {
     // =========================================================================
 
     bindCalculatorTriggers() {
-        document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"]').forEach(input => {
+        document.querySelectorAll('select, input[type="number"], input[type="radio"], input[type="checkbox"], #contact-phone, #booking-notes').forEach(input => {
             input.addEventListener('change', () => { this.calculateSummary(); this.saveDraft(); });
             input.addEventListener('input', () => { this.calculateSummary(); this.saveDraft(); });
         });
     }
 
     bindModalsAndSubmission() {
+        this.getEl('booking-retry-availability')?.addEventListener('click', () => this.retryBookingAvailability());
         this.getEl("open-terms")?.addEventListener("click", (e) => { e.preventDefault(); this.openTermsDialog(); });
         this.getEl("btn-close-terms")?.addEventListener("click", () => this.closeTermsDialog());
         this.getEl("btn-agree")?.addEventListener("click", () => {
@@ -1284,11 +1369,7 @@ class BookingController {
             this.closeTermsDialog();
         });
         
-        this.getEl("btn-cancel")?.addEventListener("click", () => {
-            this.clearDraft();
-            this.stopTimerAndReset();
-            this.unlockDatesAPI();
-        });
+        this.getEl("btn-cancel")?.addEventListener("click", () => this.cancelBookingAttempt());
 
         window.addEventListener("click", (e) => {
             if (!e.target.classList.contains("modal-overlay")) return;
@@ -1369,6 +1450,61 @@ class BookingController {
         if (!buttons.includes(active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
             event.preventDefault();
             (event.shiftKey ? last : first).focus();
+        }
+    }
+
+    async retryBookingAvailability() {
+        if (this.isRecheckingAvailability) return;
+        const calendar = this.getActiveBookingCalendar();
+        if (!calendar?.startDate || !calendar.endDate || this.getBookingSelectionIssue()) return;
+        this.isRecheckingAvailability = true;
+        const button = this.getEl('booking-retry-availability');
+        if (button) button.disabled = true;
+        try {
+            const context = this.getTabContextData();
+            const ready = await calendar.fetchBookedDates(context.roomType, context.roomName, context.venueId, false, context.roomGroupId);
+            if (ready !== true) throw new Error('Availability recheck failed.');
+            this.state.confirmedSelectionKey = '';
+            const unavailable = calendar.isDateUnavailable(calendar.startDate)
+                || calendar.hasInvalidDaysBetween(calendar.startDate, calendar.endDate)
+                || (this.state.activeTabId !== 'hotel-rooms' && calendar.isDateUnavailable(calendar.endDate));
+            this.clearBookingStepError();
+            if (unavailable) {
+                calendar.clearSelectedRange();
+                this.state.activeCalendar = null;
+                this.showBookingStepIssue({ step: 2, message: 'Those dates are no longer available. Choose new dates; your other details have been kept.', target: calendar.container });
+            } else {
+                // Retry is advisory; explicit confirmation still owns any hold.
+                this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
+            }
+            this.saveDraft();
+        } catch (error) {
+            this.showBookingStepIssue({ step: 2, message: 'Availability could not be rechecked. Please try again.', target: calendar.container, retryAvailability: true });
+        } finally {
+            if (button) button.disabled = false;
+            this.isRecheckingAvailability = false;
+        }
+    }
+
+    async cancelBookingAttempt() {
+        if (this.isCancellingBooking) return;
+        this.isCancellingBooking = true;
+        try {
+            if (this.state.isDatesLocked && !(await this.unlockDatesAPI())) return;
+            this.stopTimerAndReset();
+            const phone = this.getEl('contact-phone');
+            if (phone) phone.value = phone.defaultValue || '';
+            const notes = this.getEl('booking-notes');
+            if (notes) notes.value = '';
+            const saveContact = this.getEl('save-contact-default');
+            if (saveContact) saveContact.checked = false;
+            this.authRedirectPending = false;
+            const button = this.getEl('btn-proceed');
+            if (button) button.disabled = false;
+            this.setBookingStep(1, { save: false });
+            this.clearDraft();
+        } finally {
+            this.isCancellingBooking = false;
         }
     }
 
@@ -2154,7 +2290,7 @@ class BookingController {
             'hotel-rooms': this.auth.isCustomer ? 'CONTINUE TO PAYMENT' : 'SIGN IN TO CONTINUE',
             'resort-villa': this.auth.isCustomer ? 'CONTINUE TO PAYMENT' : 'SIGN IN TO CONTINUE'
         };
-        button.textContent = labels[this.state.activeTabId] || 'SUBMIT BOOKING';
+        button.textContent = this.auth.isStaff ? 'CUSTOMER ACCOUNT REQUIRED' : (!this.auth.isCustomer ? 'SIGN IN OR CREATE ACCOUNT TO CONTINUE' : (labels[this.state.activeTabId] || 'SUBMIT BOOKING'));
         if (this.state.inventoryBlocked) button.disabled = true;
         button.style.backgroundColor = this.state.activeTabId === 'event-hall' ? 'var(--color-dark)' : 'var(--color-gold)';
     }
@@ -3039,6 +3175,7 @@ class BookingController {
             const opt = this.getEl('villa-type')?.options[this.getEl('villa-type')?.selectedIndex];
             context.roomType = 'Resort Villa';
             context.roomName = opt?.text.split('(')[0].trim();
+            context.venueId = opt?.dataset.id || null;
             const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value;
             context.baseAmt  = stayType === 'Overnight' ? opt?.dataset.overnight : opt?.value;
             context.guests   = this.getEl('villa-guests')?.value;
@@ -3073,7 +3210,11 @@ class BookingController {
             return;
         }
         if (!this.auth.isCustomer) {
+            if (this.authRedirectPending) return;
             this.saveDraft();
+            try { window.sessionStorage.setItem(this.authPendingKey, '1'); } catch (error) { /* no-op */ }
+            this.authRedirectPending = true;
+            if (btn) btn.disabled = true;
             window.location.href = 'auth.php?destination=booking_resume';
             return;
         }
