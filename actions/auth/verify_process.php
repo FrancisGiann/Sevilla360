@@ -33,11 +33,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
+
+        // Reserve the existing IP/email attempt budget atomically before
+        // checking expiry or comparing any candidate, including a valid code.
+        if (!check_rate_limit($conn, $otp_rate_key, 5, 15)) {
+            $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many invalid verification attempts. Please request a new code later.', 'type' => 'error'];
+            header("Location: ../../auth.php?verify_email=" . urlencode($email));
+            exit();
+        }
         $current_time = date('Y-m-d H:i:s');
 
         // 2. Check if the code has expired
         if ($current_time > $user['verification_expires_at']) {
-            check_rate_limit($conn, $otp_rate_key, 5, 15);
             $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'This verification code has expired. Please request a new one.', 'type' => 'error'];
             header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
@@ -138,11 +145,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         } else {
             // Code was wrong
-            if (!check_rate_limit($conn, $otp_rate_key, 5, 15)) {
-                $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Too many invalid verification attempts. Please request a new code later.', 'type' => 'error'];
-                header("Location: ../../auth.php?verify_email=" . urlencode($email));
-                exit();
-            }
             $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Invalid verification code. Please try again.', 'type' => 'error'];
             header("Location: ../../auth.php?verify_email=" . urlencode($email));
             exit();
