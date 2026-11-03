@@ -137,11 +137,12 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             <!-- VIEW 2: USER REGISTRATION -->
             <div id="view-user-register" class="auth-view">
                 <h2 class="auth-title">Create Account</h2>
-                <p class="auth-subtitle" id="register-subtitle">Enter your details, then verify your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
+                <p class="auth-subtitle" id="register-subtitle">Create your login, add your contact details, then verify your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
 
                 <ol class="registration-progress" aria-label="Account creation progress">
-                    <li aria-current="step"><span aria-hidden="true">1</span> Account details</li>
-                    <li><span aria-hidden="true">2</span> Verify <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?></li>
+                    <li data-registration-stage="1" aria-current="step"><span aria-hidden="true">1</span> Account</li>
+                    <li data-registration-stage="2"><span aria-hidden="true">2</span> Contact details</li>
+                    <li data-registration-stage="3"><span aria-hidden="true">3</span> Verify <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?></li>
                 </ol>
 
                 <form id="form-register" action="actions/auth/register_process.php" method="POST">
@@ -154,17 +155,8 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <input type="text" name="website_url_honeypot" id="website_url_register" value="" autocomplete="off">
                     </div>
 
-                    <div class="registration-name-row">
-                        <div class="form-group">
-                            <label for="reg-first-name">FIRST NAME</label>
-                            <input type="text" id="reg-first-name" name="first_name" class="form-control" placeholder="Juan" autocomplete="given-name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="reg-last-name">LAST NAME</label>
-                            <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
-                        </div>
-                    </div>
-                    <div class="registration-account-fields">
+                    <section id="registration-account" class="registration-group" aria-labelledby="registration-account-title">
+                        <h3 class="registration-group-title" id="registration-account-title" tabindex="-1">Account credentials</h3>
                         <div class="form-group">
                             <label for="reg-email">EMAIL ADDRESS</label>
                             <input type="email" id="reg-email" name="email" class="form-control" placeholder="you@example.com" autocomplete="email" aria-describedby="err-email" aria-errormessage="err-email" aria-invalid="false" required>
@@ -190,8 +182,23 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                             <div class="error-msg" id="err-confirm-password" role="status" aria-live="polite" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
                         </div>
 
-                    </div>
 
+                    <div class="registration-step-actions" id="registration-account-actions" hidden>
+                        <button type="button" class="btn btn-primary btn-full" id="registration-continue">CONTINUE TO CONTACT DETAILS</button>
+                    </div>
+                    </section>
+                    <section id="registration-contact" class="registration-group" aria-labelledby="registration-contact-title">
+                        <h3 class="registration-group-title" id="registration-contact-title" tabindex="-1">Contact details</h3>
+                    <div class="registration-name-row">
+                        <div class="form-group">
+                            <label for="reg-first-name">FIRST NAME</label>
+                            <input type="text" id="reg-first-name" name="first_name" class="form-control" placeholder="Juan" autocomplete="given-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-last-name">LAST NAME</label>
+                            <input type="text" id="reg-last-name" name="last_name" class="form-control" placeholder="Dela Cruz" autocomplete="family-name" required>
+                        </div>
+                    </div>
                         <?php require_once __DIR__ . '/includes/contact_verification.php'; if (phone_signup_enabled()): ?>
                         <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567" required></div>
                         <?php endif; ?>
@@ -205,7 +212,11 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     </div>
 
                     <p class="registration-next-note" id="registration-next-note">Next: enter the 6-digit code sent to your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
-                    <button type="submit" class="btn btn-primary btn-full" aria-describedby="registration-next-note">CREATE ACCOUNT &amp; VERIFY <?php echo phone_signup_enabled() ? 'PHONE' : 'EMAIL'; ?></button>
+                    <div class="registration-step-actions">
+                        <button type="submit" class="btn btn-primary btn-full" aria-describedby="registration-next-note">CREATE ACCOUNT &amp; VERIFY <?php echo phone_signup_enabled() ? 'PHONE' : 'EMAIL'; ?></button>
+                        <button type="button" class="auth-text-button auth-back-button" id="registration-back" hidden>&larr; Back to account</button>
+                    </div>
+                    </section>
                 </form>
 
                 <div class="auth-footer">
@@ -286,8 +297,9 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
             <button type="button" id="btn-close-verification" class="verification-close" aria-label="Return to sign in">&times;</button>
             <h2 class="auth-title" style="margin-bottom: 10px; font-family: var(--font-heading);" id="verification-title"><?php echo $verify_phone_mode ? 'Verify Your Phone' : 'Verify Your Email'; ?></h2>
             <ol class="registration-progress" aria-label="Account creation progress">
-                <li class="is-complete"><span aria-hidden="true">✓</span> Account details</li>
-                <li aria-current="step"><span aria-hidden="true">2</span> Verify <?php echo $verify_phone_mode ? 'phone' : 'email'; ?></li>
+                <li class="is-complete"><span aria-hidden="true">✓</span> Account</li>
+                <li class="is-complete"><span aria-hidden="true">✓</span> Contact details</li>
+                <li aria-current="step"><span aria-hidden="true">3</span> Verify <?php echo $verify_phone_mode ? 'phone' : 'email'; ?></li>
             </ol>
 
             <div id="verification-code-panel">

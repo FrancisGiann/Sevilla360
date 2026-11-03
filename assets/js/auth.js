@@ -27,18 +27,53 @@ document.addEventListener("DOMContentLoaded", () => {
       view.classList.remove("active");
     });
     targetView.classList.add("active");
+    targetView.closest('.auth-card')?.classList.toggle('is-registering', targetView === viewRegister);
+    if (targetView !== viewRegister && targetView !== viewTerms) emailCheckVersion++;
 
-    targetView.querySelector('input:not([type="hidden"]):not([name="website_url_honeypot"]), button')?.focus();
+    if (targetView === viewRegister) showRegistrationStep(currentRegistrationStep, { focus: true });
+    else targetView.querySelector('input:not([type="hidden"]):not([name="website_url_honeypot"]), button')?.focus();
   }
 
-  // Account details stay together; verification is the second stage.
+  // Credentials and contact details are grouped; verification is the final stage.
   const email = document.getElementById('reg-email');
   const errEmail = document.getElementById('err-email');
   let emailInteracted = false;
   let emailCheckVersion = 0;
   let emailCheckPending = false;
+  let activeEmailCheckVersion = 0;
   const registrationForm = document.getElementById('form-register');
   const registrationSubmit = registrationForm?.querySelector('button[type="submit"]');
+  const accountGroup = document.getElementById('registration-account');
+  const contactGroup = document.getElementById('registration-contact');
+  const registrationContinue = document.getElementById('registration-continue');
+  const registrationBack = document.getElementById('registration-back');
+  let currentRegistrationStep = 1;
+  let checkedRegistrationEmail = '';
+  function showRegistrationStep(step, { focus = false } = {}) {
+      currentRegistrationStep = step === 2 ? 2 : 1;
+      if (accountGroup) accountGroup.hidden = currentRegistrationStep !== 1;
+      if (contactGroup) contactGroup.hidden = currentRegistrationStep !== 2;
+      document.querySelectorAll('[data-registration-stage]').forEach(item => {
+          const stage = Number(item.dataset.registrationStage);
+          item.classList.toggle('is-complete', stage < currentRegistrationStep);
+          if (stage === currentRegistrationStep) item.setAttribute('aria-current', 'step');
+          else item.removeAttribute('aria-current');
+      });
+      if (focus) document.getElementById(currentRegistrationStep === 1 ? 'registration-account-title' : 'registration-contact-title')?.focus();
+  }
+  if (registrationForm && accountGroup && contactGroup) {
+      // Step validation is handled below so hidden required fields cannot trap
+      // native validation/focus. All constraints remain on the inputs and server.
+      registrationForm.noValidate = true;
+      document.getElementById('registration-account-actions').hidden = false;
+      registrationBack.hidden = false;
+      showRegistrationStep(1);
+  }
+  registrationBack?.addEventListener('click', () => {
+      if (registrationSubmit.disabled) return;
+      emailCheckVersion++;
+      showRegistrationStep(1, { focus: true });
+  });
   const unavailableEmailMessage = 'This email cannot be used to create an account. Try another email or sign in.';
 
   function showEmailCheckMessage(message) {
@@ -131,6 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       email.addEventListener('input', () => {
           emailCheckVersion++;
+          checkedRegistrationEmail = '';
           emailInteracted = true;
           updateRegistrationEmailState();
       });
@@ -157,46 +193,83 @@ document.addEventListener("DOMContentLoaded", () => {
       return passwordIssue ? pass : (confirmationIssue ? confPass : null);
   }
 
-  registrationForm?.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (registrationSubmit.disabled || emailCheckPending) return;
+  function validateAccountGroup() {
       emailInteracted = true;
       const emailIsValid = updateRegistrationEmailState({ normalize: true });
       const passwordIssue = validateRegistrationPasswords();
+      if (!emailIsValid || passwordIssue) {
+          showRegistrationStep(1);
+          if (!emailIsValid) email.focus();
+          else passwordIssue.focus();
+          return false;
+      }
+      return true;
+  }
+  async function continueRegistration() {
+      if (emailCheckPending || registrationSubmit.disabled) return;
+      if (!validateAccountGroup()) return;
+      const submittedEmail = email.value.trim();
+      const version = ++emailCheckVersion;
+      emailCheckPending = true;
+      activeEmailCheckVersion = version;
+      registrationContinue.disabled = true;
+      registrationForm.setAttribute('aria-busy', 'true');
+      try {
+          const emailState = await checkRegistrationEmail(submittedEmail);
+          if (version !== emailCheckVersion || email.value.trim() !== submittedEmail || currentRegistrationStep !== 1 || !viewRegister?.classList.contains('active')) return;
+          if (emailState === 'unavailable') {
+              showEmailCheckMessage(unavailableEmailMessage);
+              email.focus();
+              return;
+          }
+          checkedRegistrationEmail = submittedEmail;
+          showRegistrationStep(2, { focus: true });
+      } catch (error) {
+          if (version === emailCheckVersion && currentRegistrationStep === 1) {
+              showEmailCheckMessage('We could not check this email right now. Please try again.');
+              if (viewRegister?.classList.contains('active')) email.focus();
+          }
+      } finally {
+          if (activeEmailCheckVersion === version) {
+              emailCheckPending = false;
+              registrationContinue.disabled = false;
+              registrationForm.removeAttribute('aria-busy');
+          }
+      }
+  }
+  registrationContinue?.addEventListener('click', continueRegistration);
+  registrationForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (currentRegistrationStep === 1) { await continueRegistration(); return; }
+      if (registrationSubmit.disabled || emailCheckPending) return;
+      if (!validateAccountGroup()) return;
+      const submittedEmail = email.value.trim();
+      if (checkedRegistrationEmail !== submittedEmail) { showRegistrationStep(1, { focus: true }); return; }
       const nameFields = ['reg-first-name', 'reg-last-name'].map(id => document.getElementById(id));
       nameFields.forEach(field => {
           field.value = field.value.trim();
           field.setCustomValidity(field.value ? '' : 'Please enter your name.');
       });
       const invalidName = nameFields.find(field => !field.checkValidity());
-      if (invalidName || !emailIsValid || passwordIssue || !registrationForm.checkValidity()) {
+      if (invalidName || !registrationForm.checkValidity()) {
+          showRegistrationStep(2);
           if (invalidName) invalidName.reportValidity();
-          else if (!emailIsValid) email.focus();
-          else if (passwordIssue) passwordIssue.focus();
           else registrationForm.reportValidity();
           return;
       }
-      const submittedEmail = email.value.trim();
-      const version = ++emailCheckVersion;
       registrationSubmit.disabled = true;
+      registrationBack.disabled = true;
       registrationForm.setAttribute('aria-busy', 'true');
       let redirecting = false;
       try {
-          emailCheckPending = true;
-          const emailState = await checkRegistrationEmail(submittedEmail);
-          emailCheckPending = false;
-          if (version !== emailCheckVersion || email.value.trim() !== submittedEmail || !viewRegister?.classList.contains('active')) return;
-          if (emailState === 'unavailable') {
-              showEmailCheckMessage(unavailableEmailMessage);
-              email.focus();
-              return;
-          }
           const response = await fetch(registrationForm.action, {
               method: 'POST', credentials: 'same-origin', cache: 'no-store',
               headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: new FormData(registrationForm)
           });
           const result = await response.json();
           if (response.status === 409 && result.state === 'unavailable') {
+              checkedRegistrationEmail = '';
+              showRegistrationStep(1);
               if (email.value.trim() === submittedEmail) { showEmailCheckMessage(unavailableEmailMessage); email.focus(); }
               return;
           }
@@ -214,10 +287,11 @@ document.addEventListener("DOMContentLoaded", () => {
           throw new Error('Registration unavailable');
       } catch (error) {
           showEmailCheckMessage('We could not create your account right now. Please try again.');
+          showRegistrationStep(1);
           email.focus();
       } finally {
-          emailCheckPending = false;
           registrationSubmit.disabled = redirecting;
+          registrationBack.disabled = redirecting;
           if (!redirecting) registrationForm.removeAttribute('aria-busy');
       }
   });
@@ -452,6 +526,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // BFCache restores the DOM including disabled loading buttons.
   window.addEventListener('pageshow', event => {
       if (!event.persisted) return;
+      emailCheckVersion++;
+      emailCheckPending = false;
+      if (registrationContinue) registrationContinue.disabled = false;
+      if (registrationBack) registrationBack.disabled = false;
       if (registrationSubmit) { registrationSubmit.disabled = false; registrationForm.removeAttribute('aria-busy'); }
       document.querySelectorAll('button[data-idle-html]').forEach(button => {
           button.innerHTML = button.dataset.idleHtml;
