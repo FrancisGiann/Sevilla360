@@ -13,10 +13,12 @@ function resend_test_assert(bool $condition, string $message): void
     if (!$condition) resend_test_fail($message);
 }
 
-function resend_test_run_child(string $mode): string
+function resend_test_run_child(string $mode, ?string $previewDirectory = null): string
 {
     $pipes = [];
-    $process = proc_open([PHP_BINARY, '-n', __FILE__, $mode], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $command = [PHP_BINARY, '-n', __FILE__, $mode];
+    if ($previewDirectory !== null) $command[] = $previewDirectory;
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
     if (!is_resource($process)) resend_test_fail('unable to start isolated PHP worker');
     fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]);
@@ -29,8 +31,10 @@ function resend_test_run_child(string $mode): string
 }
 
 $mode = $argv[1] ?? '';
-if ($mode === '') {
-    $worker = resend_test_run_child('--worker');
+if ($mode === '' || $mode === '--preview') {
+    $previewDirectory = $mode === '--preview' ? ($argv[2] ?? '') : null;
+    if ($previewDirectory === '' || ($previewDirectory !== null && !is_dir($previewDirectory))) resend_test_fail('preview requires an existing output directory');
+    $worker = resend_test_run_child('--worker', $previewDirectory);
     $noCurl = resend_test_run_child('--no-curl');
     if (!str_starts_with($worker, 'Resend transport and mail-flow cases passed (') || !str_ends_with($worker, ' assertions).')) resend_test_fail('unexpected worker result');
     if ($noCurl !== 'Missing-cURL behavior passed.') resend_test_fail('unexpected missing-cURL result');
@@ -171,10 +175,10 @@ class ResendTestDatabase
     ];
     public function resultFor(string $sql, array $params): mysqli_result
     {
-        if (str_contains($sql, 'booking_line_items')) return new mysqli_result([]);
-        if (str_contains($sql, 'booking_rooms')) return new mysqli_result([]);
+        if (str_contains($sql, 'booking_line_items')) return new mysqli_result($GLOBALS['resend_test_line_items'] ?? []);
+        if (str_contains($sql, 'booking_rooms')) return new mysqli_result($GLOBALS['resend_test_rooms'] ?? []);
         if (str_contains($sql, 'booking_villa_details')) return new mysqli_result([['stay_type' => 'Overnight', 'overnight_stay_inclusions' => 'Breakfast']]);
-        if (str_contains($sql, 'FROM payments p')) return new mysqli_result([]);
+        if (str_contains($sql, 'FROM payments p')) return new mysqli_result($GLOBALS['resend_test_payments'] ?? []);
         if (str_contains($sql, 'FROM cancellations')) return new mysqli_result([['fee_percent' => 0, 'fee_deducted' => 0, 'refund_amount' => 1500, 'status' => 'Pending']]);
         if (str_contains($sql, 'reschedule_requests rr')) return new mysqli_result([$this->booking]);
         if (str_contains($sql, 'FROM bookings b')) {
@@ -305,6 +309,66 @@ foreach ($statusCases as [$label, $callback, $subject, $needle]) {
     $request = resend_test_send($callback, $subject, '"Sevilla360 Accounts" <reservations@misevillas.com>', $needle);
     resend_test_assert(($request['payload']['to'][0] ?? '') === '"Customer" <customer@example.test>', $label . ' recipient changed');
 }
+
+// Exercise actual rendered templates, including dynamic rows, through fake HTTP
+// and database adapters. Preview mode writes fictional HTML only; never sends.
+$GLOBALS['resend_test_booking_overrides'] = [
+    'venue_name' => 'Infinity Hall and Garden Pavilion',
+    'start_date' => '2026-11-11', 'end_date' => '2026-11-12',
+    'guests_count' => 30,
+];
+$GLOBALS['resend_test_receipt_category'] = 'Event Hall';
+$GLOBALS['resend_test_line_items'] = [['item_name' => 'Additional audiovisual equipment and event coordination', 'amount' => 2000]];
+send_booking_receipt('planner@example.test', 'Sample Planner', 'ET-4PKVTH', '', 0, 'Event Inquiry Received');
+$previewEmails = ['inquiry' => $GLOBALS['resend_test_last_request']['payload']['html']];
+send_invoice_ready_email('planner@example.test', 'Sample Planner', 'ET-4PKVTH', 12000, 'https://example.test/dashboard');
+$previewEmails['invoice'] = $GLOBALS['resend_test_last_request']['payload']['html'];
+$GLOBALS['resend_test_receipt_category'] = 'Resort Villa';
+$GLOBALS['resend_test_rooms'] = [['building_name' => 'Garden Pavilion', 'room_type' => 'Family Suite', 'room_number' => '204', 'start_date' => '2026-11-11', 'end_date' => '2026-11-12', 'nights' => 1, 'line_total' => 2000]];
+$GLOBALS['resend_test_payments'] = [['transaction_id' => 'SAMPLE-PAYMENT-123456789012345678901234567890', 'manual_reference' => 'SAMPLE-REFERENCE-123456789012345678901234567890', 'payment_method' => 'Bank Transfer', 'amount' => 1500, 'payment_date' => '2026-11-01']];
+send_booking_receipt('guest@example.test', 'Sample Guest', 'VILLA-SAMPLE-123456789', '', 1500, 'Confirmed');
+$previewEmails['villa'] = $GLOBALS['resend_test_last_request']['payload']['html'];
+send_password_reset_email('guest@example.test', 'Sample Guest', 'https://example.test/reset?token=fictional');
+$previewEmails['password-reset'] = $GLOBALS['resend_test_last_request']['payload']['html'];
+send_welcome_email('guest@example.test', 'Sample Guest');
+$previewEmails['welcome'] = $GLOBALS['resend_test_last_request']['payload']['html'];
+foreach ($statusCases as [$label, $callback]) {
+    $callback();
+    $previewEmails[str_replace(' ', '-', $label)] = $GLOBALS['resend_test_last_request']['payload']['html'];
+}
+foreach ($previewEmails as $label => $html) {
+    resend_test_assert(substr_count($html, '<!doctype html>') === 1 && substr_count($html, '</html>') === 1, "$label must have exactly one document shell");
+    resend_test_assert(str_contains($html, 'name="viewport"') && str_contains($html, '@media only screen and (max-width:600px)'), "$label responsive document missing");
+    resend_test_assert(!preg_match('/padding:\s*(40|25)px;/', $html), "$label must keep compact inline fallback gutters");
+    if (str_contains($html, '<table')) {
+        resend_test_assert(str_contains($html, "class='email-details'") && str_contains($html, 'table-layout:fixed'), "$label details must fit the available width without media CSS");
+        preg_match_all('/<tr>(.*?)<\/tr>/s', $html, $rows);
+        foreach ($rows[1] as $row) {
+            if (str_contains($row, 'colspan=')) {
+                resend_test_assert(!str_contains($row, "class='email-label'") && !str_contains($row, "class='email-value'"), "$label full-width note must not stack as a pair");
+            } else {
+                resend_test_assert(substr_count($row, "class='email-label'") === 1 && substr_count($row, "class='email-value'") === 1, "$label every dynamic detail row must stack consistently");
+            }
+        }
+    }
+    if (isset($argv[2])) {
+        if (file_put_contents($argv[2] . '/' . $label . '.html', $html) === false) resend_test_fail('could not write fictional preview');
+    }
+}
+if (isset($argv[2])) {
+    $runner = file_get_contents(__DIR__ . '/test_email_mobile_layout.js');
+    $fixtures = json_encode($previewEmails, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+    $harness = '<!doctype html><html lang="en"><meta charset="UTF-8"><title>Email layout regression</title>'
+        . '<body><h1>Email layout regression</h1><pre id="result">Running…</pre><script>' . $runner
+        . "\n testEmailMobileLayout(" . $fixtures . ').then(result => {'
+        . 'document.getElementById("result").textContent = JSON.stringify(result, null, 2);'
+        . 'document.title = result.passed ? "PASS: email layout" : "FAIL: email layout";'
+        . '}).catch(error => {document.getElementById("result").textContent = error.stack;document.title = "FAIL: email layout";});'
+        . '</script></body></html>';
+    if (file_put_contents($argv[2] . '/layout-check.htm', $harness) === false) resend_test_fail('could not write browser regression harness');
+}
+unset($GLOBALS['resend_test_booking_overrides']);
+unset($GLOBALS['resend_test_line_items'], $GLOBALS['resend_test_rooms'], $GLOBALS['resend_test_payments']);
 
 // Optional reply-to is omitted when blank and validated when present.
 $_ENV['RESEND_REPLY_TO'] = 'support@misevillas.com';

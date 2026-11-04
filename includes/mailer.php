@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/env.php'; // Load env variables
 require_once __DIR__ . '/resend_mailer.php';
 require_once __DIR__ . '/manual_payment.php';
 require_once __DIR__ . '/booking_rules.php';
+require_once __DIR__ . '/email_layout.php';
 
 function get_biz_info() {
     global $conn;
@@ -85,7 +86,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
         if ($villa_details) {
             $villa_stay_type = (string)$villa_details['stay_type'];
             $villa_summary = villa_booking_detail_summary($villa_stay_type, (string)$booking['start_date'], (string)$booking['end_date'], $villa_details['overnight_stay_inclusions'] ?? null);
-            $villa_summary_row = "<tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Villa stay:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>" . htmlspecialchars($villa_summary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</td></tr>";
+            $villa_summary_row = "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Villa stay:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>" . htmlspecialchars($villa_summary, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</td></tr>";
             if ($villa_stay_type === 'Day Time Stay') {
                 $check_in_time = '7:00 AM'; $check_out_time = '5:00 PM';
             }
@@ -110,17 +111,17 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
 
     if (count($line_items) > 0 || count($room_addons) > 0 || $booking['category'] === 'Event Hall') {
         $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Itemized Estimate:</strong></td></tr>";
-        $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
+        $breakdown_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; color: #666; font-size: 14px;'>Venue Base Rate</td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
 
         foreach ($line_items as $item) {
             if (count($room_addons) > 0 && str_starts_with($item['item_name'], 'Room Add-on:')) continue;
-            $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
+            $breakdown_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
         }
 
         foreach ($room_addons as $room) {
             $r_num_str = $room['room_number'] ? " - Rm " . $room['room_number'] : "";
             $name_str = "Room: " . $room['building_name'] . " - " . $room['room_type'] . $r_num_str . " (" . date('M j, Y', strtotime($room['start_date'])) . " to " . date('M j, Y', strtotime($room['end_date'])) . "; " . $room['nights'] . " nights)";
-            $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($name_str) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($room['line_total'], 2) . "</td></tr>";
+            $breakdown_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; color: #666; font-size: 14px;'>" . htmlspecialchars($name_str) . "</td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($room['line_total'], 2) . "</td></tr>";
         }
     }
 
@@ -137,25 +138,25 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
             $tx_id = htmlspecialchars((string)($p['transaction_reference'] ?? 'N/A'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $p_method = htmlspecialchars($p['payment_method'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
             $p_amt = number_format($p['amount'], 2);
-            $pay_details_html .= "<tr><td style='padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px;'>Payment method: $p_method<br><span style='font-size: 11px; color: #888;'>Transaction/reference ID: $tx_id<br>Date: $pay_date<br>Amount: - ₱$p_amt</span></td><td style='padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>- ₱$p_amt</td></tr>";
+            $pay_details_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 8px 8px; border-bottom: 1px solid #eee; font-size: 13px;'>Payment method: $p_method<br><span style='font-size: 11px; color: #888;'>Transaction/reference ID: $tx_id<br>Date: $pay_date<br>Amount: - ₱$p_amt</span></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 8px 8px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>- ₱$p_amt</td></tr>";
         }
     } else {
-        $pay_details_html = "<tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Amount Paid:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>₱" . number_format($total_paid, 2) . "</td></tr>";
+        $pay_details_html = "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Amount Paid:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right; color: #4ade80;'>₱" . number_format($total_paid, 2) . "</td></tr>";
     }
 
     // Hide all money math if it is just a pending inquiry
     if ($is_inquiry) {
         $money_block = $breakdown_html . "
-            <tr><td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Estimated Total:</strong></td><td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 16px; color: #d6a870;'><strong>To Be Arranged</strong></td></tr>
+            <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 15px 8px; border-top: 2px solid #2a2522;'><strong>Estimated Total:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 15px 8px; border-top: 2px solid #2a2522; text-align: right; font-size: 16px; color: #d6a870;'><strong>To Be Arranged</strong></td></tr>
             <tr><td colspan='2' style='padding: 5px 12px; text-align: center; color: #888; font-size: 12px; font-style: italic;'>*Our coordinator will consult with you to provide an exact quotation.</td></tr>
         ";
         $header_title = "EVENT INQUIRY RECEIVED";
         $header_desc = "We have received your event inquiry. Based on your selections, here is your preliminary estimate. Our coordinator will contact you shortly to finalize the details and exact pricing.";
     } else {
         $money_block = $breakdown_html . "
-            <tr><td style='padding: 12px; border-top: 2px solid #2a2522;'><strong>Total Amount:</strong></td><td style='padding: 12px; border-top: 2px solid #2a2522; text-align: right;'>₱" . number_format($total_amt, 2) . "</td></tr>
+            <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-top: 2px solid #2a2522;'><strong>Total Amount:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-top: 2px solid #2a2522; text-align: right;'>₱" . number_format($total_amt, 2) . "</td></tr>
             $pay_details_html
-            <tr><td style='padding: 12px; border-bottom: 2px solid #2a2522; font-size: 18px;'><strong>BALANCE DUE:</strong></td><td style='padding: 12px; border-bottom: 2px solid #2a2522; text-align: right; font-size: 18px; color: #e06666;'><strong>₱" . number_format($balance, 2) . "</strong></td></tr>
+            <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 2px solid #2a2522; font-size: 18px;'><strong>BALANCE DUE:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 2px solid #2a2522; text-align: right; font-size: 18px; color: #e06666;'><strong>₱" . number_format($balance, 2) . "</strong></td></tr>
         ";
         $header_title = "OFFICIAL BOOKING ITINERARY";
         $header_desc = "Thank you for choosing {$biz['biz_name']}. Please present this e-ticket at the front desk upon arrival.";
@@ -173,22 +174,22 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
                 <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
                 <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_tagline']) . "</p>
             </div>
-            <div style='padding: 40px;'>
+            <div style='padding:24px 16px;'>
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>$header_title</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>$receipt_name</strong>,<br>$header_desc</p>
-                <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 30px;'>
-                    <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
+                <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding:8px; margin-top: 30px;'>
+                    <table class='email-details' cellpadding='0' cellspacing='0' width='100%' style='table-layout:fixed; width:100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; width: 40%;'><strong>Reference No:</strong></td>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace; font-size: 16px; color: #d6a870;'><strong>$receipt_reference</strong></td>
+                            <td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; '><strong>Reference No:</strong></td>
+                            <td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right; font-family: monospace; font-size: 16px; color: #d6a870;'><strong>$receipt_reference</strong></td>
                         </tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$receipt_venue</td></tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-in:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_in</td></tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Check-out:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$check_out</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>$receipt_venue</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Check-in:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>$check_in</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Check-out:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>$check_out</td></tr>
                         $villa_summary_row
-                        <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>$guests Persons</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;'><strong>Guests:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; text-align: right;'>$guests Persons</td></tr>
                         $money_block
-                        <tr><td style='padding: 12px; border-bottom: none;'><strong>Status:</strong></td><td style='padding: 12px; border-bottom: none; text-align: right;'><strong>$status</strong></td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: none;'><strong>Status:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: none; text-align: right;'><strong>$status</strong></td></tr>
                     </table>
                 </div>
                 <div style='margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; color: #888; line-height: 1.5;'>
@@ -203,7 +204,7 @@ function send_booking_receipt($customer_email, $customer_name, $ref_no, $venue_n
     </div>
     ";
 
-    resend_mail_send($customer_email, $customer_name, $subject, $html_content, $biz['biz_name'] . ' Reservations');
+    resend_mail_send($customer_email, $customer_name, $subject, email_layout_document($html_content), $biz['biz_name'] . ' Reservations');
     return true;
 }
 
@@ -222,18 +223,18 @@ function build_branded_booking_status_email(array $biz, array $booking, string $
     $check_in = date('F j, Y', strtotime((string)$booking['start_date']));
     $check_out = date('F j, Y', strtotime((string)$booking['end_date']));
     $stay_dates = $check_in === $check_out ? $check_in : "$check_in – $check_out";
-    $rows = "<tr><td style='padding:12px;border-bottom:1px solid #eee;width:42%;'><strong>Reference No:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;font-family:monospace;color:#d6a870;'><strong>{$esc($booking['reference_no'])}</strong></td></tr>";
-    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($booking['venue_name'])}</td></tr>";
-    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Stay / Event Date:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($stay_dates)}</td></tr>";
+    $rows = "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;'><strong>Reference No:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;text-align:right;font-family:monospace;color:#d6a870;'><strong>{$esc($booking['reference_no'])}</strong></td></tr>";
+    $rows .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;text-align:right;'>{$esc($booking['venue_name'])}</td></tr>";
+    $rows .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;'><strong>Stay / Event Date:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;text-align:right;'>{$esc($stay_dates)}</td></tr>";
     foreach ($extra_rows as $label => $value) {
-        $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>{$esc($label)}:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>{$esc($value)}</td></tr>";
+        $rows .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;'><strong>{$esc($label)}:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;text-align:right;'>{$esc($value)}</td></tr>";
     }
-    $rows .= "<tr><td style='padding:12px;border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px;border-bottom:1px solid #eee;text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>";
-    $rows .= "<tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px;text-align:right;color:" . $esc($status_color) . ";'><strong>{$esc($status)}</strong></td></tr>";
+    $rows .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;border-bottom:1px solid #eee;text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>";
+    $rows .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;'><strong>Status:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;text-align:right;color:" . $esc($status_color) . ";'><strong>{$esc($status)}</strong></td></tr>";
     $reason_html = trim($reason) !== '' ? "<div style='margin-top:20px;padding:16px;background:#fff7f7;border-left:4px solid #c05a5a;color:#5d4545;font-size:14px;line-height:1.6;'><strong>" . $esc($reason_label) . "</strong><br>" . nl2br($esc(trim($reason))) . "</div>" : '';
     $note_block = $note_title !== '' ? "<div style='margin-top:24px;padding:18px 20px;background:#f8f8f8;border-radius:6px;color:#555;font-size:14px;line-height:1.6;'><strong style='color:#2a2522;'>" . $esc($note_title) . "</strong><br>$note_html</div>" : '';
     $policies = nl2br($esc($biz['biz_policies'] ?? ''));
-    return "<div style='background:#f4f4f4;padding:40px 0;font-family:Helvetica,Arial,sans-serif;'><div style='max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,.05);'><div style='background:#2a2522;padding:30px;text-align:center;'><h1 style='color:#d6a870;margin:0;font-size:28px;letter-spacing:2px;text-transform:uppercase;'>{$esc($biz['biz_name'])}</h1><p style='color:#a3a3a3;margin:5px 0 0;font-size:12px;letter-spacing:1px;text-transform:uppercase;'>{$esc($biz['biz_tagline'])}</p></div><div style='padding:40px;'><h2 style='color:#2a2522;margin:0;font-size:20px;'>{$esc($title)}</h2><p style='color:#555;font-size:15px;line-height:1.6;'>Hello <strong>{$esc($customer_name)}</strong>,<br>{$esc($message)}</p><div style='background:#faf9f7;border:1px solid #e5e5e5;border-radius:6px;padding:25px;margin-top:30px;'><table style='width:100%;border-collapse:collapse;font-size:15px;color:#2a2522;'>$rows</table></div>$reason_html$note_block<div style='margin-top:32px;border-top:1px solid #eee;padding-top:20px;font-size:12px;color:#888;line-height:1.6;'><strong>Policies</strong><br>$policies</div><div style='margin-top:20px;font-size:12px;color:#aaa;text-align:center;line-height:1.6;'>{$esc($biz['biz_address'])} | {$esc($biz['biz_phone'])} | {$esc($biz['biz_email'])}</div></div></div></div>";
+    return email_layout_document("<div style='background:#f4f4f4;padding:40px 0;font-family:Helvetica,Arial,sans-serif;'><div style='max-width:600px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,.05);'><div style='background:#2a2522;padding:30px;text-align:center;'><h1 style='color:#d6a870;margin:0;font-size:28px;letter-spacing:2px;text-transform:uppercase;'>{$esc($biz['biz_name'])}</h1><p style='color:#a3a3a3;margin:5px 0 0;font-size:12px;letter-spacing:1px;text-transform:uppercase;'>{$esc($biz['biz_tagline'])}</p></div><div style='padding:24px 16px;'><h2 style='color:#2a2522;margin:0;font-size:20px;'>{$esc($title)}</h2><p style='color:#555;font-size:15px;line-height:1.6;'>Hello <strong>{$esc($customer_name)}</strong>,<br>{$esc($message)}</p><div style='background:#faf9f7;border:1px solid #e5e5e5;border-radius:6px;padding:8px;margin-top:30px;'><table class='email-details' cellpadding='0' cellspacing='0' width='100%' style='table-layout:fixed; width:100%;border-collapse:collapse;font-size:15px;color:#2a2522;'>$rows</table></div>$reason_html$note_block<div style='margin-top:32px;border-top:1px solid #eee;padding-top:20px;font-size:12px;color:#888;line-height:1.6;'><strong>Policies</strong><br>$policies</div><div style='margin-top:20px;font-size:12px;color:#aaa;text-align:center;line-height:1.6;'>{$esc($biz['biz_address'])} | {$esc($biz['biz_phone'])} | {$esc($biz['biz_email'])}</div></div></div></div>");
 }
 
 /** Sends branded cancellation, refund, and pending-request updates. */
@@ -332,19 +333,19 @@ function send_reschedule_approved_email($customer_email, $customer_name, $bookin
                 <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
                 <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
             </div>
-            <div style='padding:40px;'>
+            <div style='padding:24px 16px;'>
                 <h2 style='color:#2a2522; margin:0; font-size:20px;'>RESCHEDULE APPROVED</h2>
                 <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$name</strong>,<br>Good news—your request to reschedule your booking has been approved. Your reservation is now confirmed for the updated dates below.</p>
                 <div style='margin-top:26px; padding:18px 20px; background:#fffaf1; border-left:4px solid #d6a870; border-radius:4px; color:#51483d; font-size:14px; line-height:1.6;'>
                     <strong style='color:#2a2522;'>Your updated stay / event date</strong><br><span style='font-size:17px; color:#a4783d;'><strong>$stay_dates</strong></span>
                 </div>
-                <div style='background:#faf9f7; border:1px solid #e5e5e5; border-radius:6px; padding:25px; margin-top:24px;'>
-                    <table style='width:100%; border-collapse:collapse; font-size:15px; color:#2a2522;'>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee; width:42%;'><strong>Reference No:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right; font-family:monospace; font-size:16px; color:#d6a870;'><strong>$ref_no</strong></td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$venue_name</td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Updated Date:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>$stay_dates</td></tr>
-                        <tr><td style='padding:12px; border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td style='padding:12px; border-bottom:1px solid #eee; text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>
-                        <tr><td style='padding:12px;'><strong>Status:</strong></td><td style='padding:12px; text-align:right; color:#2f7d5d;'><strong>Rescheduled & Confirmed</strong></td></tr>
+                <div style='background:#faf9f7; border:1px solid #e5e5e5; border-radius:6px; padding:8px; margin-top:24px;'>
+                    <table class='email-details' cellpadding='0' cellspacing='0' width='100%' style='table-layout:fixed; width:100%; border-collapse:collapse; font-size:15px; color:#2a2522;'>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee; '><strong>Reference No:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee; text-align:right; font-family:monospace; font-size:16px; color:#d6a870;'><strong>$ref_no</strong></td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee;'><strong>Venue:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee; text-align:right;'>$venue_name</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee;'><strong>Updated Date:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee; text-align:right;'>$stay_dates</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee;'><strong>Guests:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom:1px solid #eee; text-align:right;'>" . (int)$booking['guests_count'] . " Persons</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;'><strong>Status:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; text-align:right; color:#2f7d5d;'><strong>Rescheduled & Confirmed</strong></td></tr>
                     </table>
                 </div>
                 <p style='margin:24px 0 0; color:#666; font-size:14px; line-height:1.6;'>Please keep this email for your records and present your updated itinerary at check-in.</p>
@@ -356,7 +357,7 @@ function send_reschedule_approved_email($customer_email, $customer_name, $bookin
     </div>";
 
     $subject = "{$biz['biz_name']}: Reschedule Approved [{$booking['reference_no']}]";
-    return send_custom_email($customer_email, $customer_name, $subject, $html_content);
+    return send_custom_email($customer_email, $customer_name, $subject, email_layout_document($html_content));
 }
 
 // -------------------------------------------------------------
@@ -391,10 +392,10 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     // 3. Build the Itemized Breakdown HTML
     $breakdown_html = "";
     $breakdown_html .= "<tr><td colspan='2' style='padding: 15px 12px 5px; border-top: 1px dashed #ccc; color: #2a2522;'><strong>Finalized Itemized Invoice:</strong></td></tr>";
-    $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>Venue Base Rate</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
+    $breakdown_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; color: #666; font-size: 14px;'>Venue Base Rate</td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($booking['base_amount'], 2) . "</td></tr>";
 
     foreach ($line_items as $item) {
-        $breakdown_html .= "<tr><td style='padding: 5px 12px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td style='padding: 5px 12px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
+        $breakdown_html .= "<tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; color: #666; font-size: 14px;'>" . htmlspecialchars($item['item_name']) . "</td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 5px 8px; text-align: right; color: #666; font-size: 14px;'>₱" . number_format($item['amount'], 2) . "</td></tr>";
     }
 
     // 4. Calculate the required downpayment based on their scheme
@@ -417,32 +418,32 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
                 <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
                 <p style='color: #a3a3a3; margin: 5px 0 0 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_tagline']) . "</p>
             </div>
-            <div style='padding: 40px;'>
+            <div style='padding:24px 16px;'>
                 <h2 style='color: #2a2522; margin-top: 0;'>Your Event Consultation is Complete!</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>
                     Hello <strong>$invoice_name</strong>,<br><br>
                     Our administration has finalized your customized event quotation based on our recent consultation. Please review the updated details below.
                 </p>
 
-                <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding: 25px; margin-top: 20px;'>
-                    <table style='width: 100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
+                <div style='background: #faf9f7; border: 1px solid #e5e5e5; border-radius: 6px; padding:8px; margin-top: 20px;'>
+                    <table class='email-details' cellpadding='0' cellspacing='0' width='100%' style='table-layout:fixed; width:100%; border-collapse: collapse; font-size: 15px; color: #2a2522;'>
                         <tr>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; width: 40%;'><strong>Reference No:</strong></td>
-                            <td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right; color: #d6a870;'><strong>$invoice_reference</strong></td>
+                            <td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; '><strong>Reference No:</strong></td>
+                            <td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right; color: #d6a870;'><strong>$invoice_reference</strong></td>
                         </tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$invoice_venue</td></tr>
-                        <tr><td style='padding: 12px; border-bottom: 1px solid #eee;'><strong>Event Date:</strong></td><td style='padding: 12px; border-bottom: 1px solid #eee; text-align: right;'>$date_str</td></tr>
-                        <tr><td style='padding: 12px;'><strong>Guests:</strong></td><td style='padding: 12px; text-align: right;'>" . $booking['guests_count'] . " Persons</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Venue:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>$invoice_venue</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee;'><strong>Event Date:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: 1px solid #eee; text-align: right;'>$date_str</td></tr>
+                        <tr><td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px;'><strong>Guests:</strong></td><td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; text-align: right;'>" . $booking['guests_count'] . " Persons</td></tr>
 
                         $breakdown_html
 
                         <tr>
-                            <td style='padding: 15px 12px; border-top: 2px solid #2a2522;'><strong>Final Total Amount:</strong></td>
-                            <td style='padding: 15px 12px; border-top: 2px solid #2a2522; text-align: right; font-size: 18px; color: #d6a870;'><strong>₱" . number_format($booking['total_amount'], 2) . "</strong></td>
+                            <td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 15px 8px; border-top: 2px solid #2a2522;'><strong>Final Total Amount:</strong></td>
+                            <td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding: 15px 8px; border-top: 2px solid #2a2522; text-align: right; font-size: 18px; color: #d6a870;'><strong>₱" . number_format($booking['total_amount'], 2) . "</strong></td>
                         </tr>
                         <tr>
-                            <td style='padding: 12px; border-bottom: none;'><strong>Required to Secure Dates ($invoice_scheme):</strong></td>
-                            <td style='padding: 12px; border-bottom: none; text-align: right; color: #e06666;'><strong>₱" . number_format($downpayment, 2) . "</strong></td>
+                            <td class='email-label' style='width:40%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: none;'><strong>Required to Secure Dates ($invoice_scheme):</strong></td>
+                            <td class='email-value' style='width:60%; vertical-align:top; word-wrap:break-word; overflow-wrap:break-word; padding:12px 8px; border-bottom: none; text-align: right; color: #e06666;'><strong>₱" . number_format($downpayment, 2) . "</strong></td>
                         </tr>
                     </table>
                 </div>
@@ -463,7 +464,7 @@ function send_invoice_ready_email($customer_email, $customer_name, $ref_no, $tot
     </div>
     ";
 
-    resend_mail_send($customer_email, $customer_name, $subject, $html_content, $biz['biz_name'] . ' Accounts');
+    resend_mail_send($customer_email, $customer_name, $subject, email_layout_document($html_content), $biz['biz_name'] . ' Accounts');
 }
 // -------------------------------------------------------------
 // STANDALONE FUNCTION: Password Reset Email
@@ -480,7 +481,7 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
             <div style='background-color: #2a2522; padding: 30px; text-align: center;'>
                 <h1 style='color: #d6a870; margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;'>" . htmlspecialchars($biz['biz_name']) . "</h1>
             </div>
-            <div style='padding: 40px;'>
+            <div style='padding:24px 16px;'>
                 <h2 style='color: #2a2522; margin-top: 0; font-size: 20px;'>PASSWORD RESET REQUEST</h2>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>Hello <strong>" . htmlspecialchars($to_name) . "</strong>,</p>
                 <p style='color: #555; font-size: 15px; line-height: 1.6;'>We received a request to reset your password. If you didn't make this request, you can safely ignore this email.</p>
@@ -499,7 +500,7 @@ function send_password_reset_email($to_email, $to_name, $reset_link) {
     </div>
     ";
 
-    resend_mail_send($to_email, $to_name, $subject, $html_content, $biz['biz_name'] . ' Accounts');
+    resend_mail_send($to_email, $to_name, $subject, email_layout_document($html_content), $biz['biz_name'] . ' Accounts');
     return true;
 }
 
@@ -518,7 +519,7 @@ function send_welcome_email($to_email, $to_name) {
                 <h1 style='color:#d6a870; margin:0; font-size:28px; letter-spacing:2px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_name'], ENT_QUOTES, 'UTF-8') . "</h1>
                 <p style='color:#a3a3a3; margin:5px 0 0; font-size:12px; letter-spacing:1px; text-transform:uppercase;'>" . htmlspecialchars($biz['biz_tagline'], ENT_QUOTES, 'UTF-8') . "</p>
             </div>
-            <div style='padding:40px;'>
+            <div style='padding:24px 16px;'>
                 <h2 style='color:#2a2522; margin-top:0; font-size:20px;'>WELCOME TO SEVILLA360!</h2>
                 <p style='color:#555; font-size:15px; line-height:1.6;'>Hello <strong>$first_name</strong>,<br><br>Your account has been successfully verified! Welcome to Sevilla360. You can now explore our virtual 360° showroom, view venue pricing, and make online reservations for your events.</p>
                 <div style='margin-top:32px; border-top:1px solid #eee; padding-top:20px; font-size:12px; color:#aaa; text-align:center; line-height:1.6;'>
@@ -528,6 +529,6 @@ function send_welcome_email($to_email, $to_name) {
         </div>
     </div>";
 
-    return send_custom_email($to_email, $to_name, $subject, $html_content);
+    return send_custom_email($to_email, $to_name, $subject, email_layout_document($html_content));
 }
 ?>
