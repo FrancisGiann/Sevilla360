@@ -22,7 +22,7 @@ if (filter_var($verify_email_query, FILTER_VALIDATE_EMAIL) && (int)($_SESSION['p
     $mode_stmt->close();
 }
 $inline_phone_alert = null;
-if ($verify_phone_mode && ($_SESSION['auth_alert']['type'] ?? '') === 'error') {
+if ($verify_phone_mode && isset($_SESSION['auth_alert'])) {
     $inline_phone_alert = (string)($_SESSION['auth_alert']['message'] ?? 'Verification failed. Please try again.');
     unset($_SESSION['auth_alert']);
 }

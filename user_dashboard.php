@@ -435,6 +435,11 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
             </header>
 
             <div class="dashboard-content">
+                <?php if (($_SESSION['signup_welcome'] ?? false) === true): ?>
+                    <p class="overview-intro" role="status">Welcome to Sevilla360! Your phone is verified and you’re signed in.</p>
+                    <?php unset($_SESSION['signup_welcome']); ?>
+                <?php endif; ?>
+
 
                 <!-- ================= TAB: OVERVIEW ================= -->
                 <section id="tab-overview" class="tab-pane dashboard-overview <?php echo $initial_section === 'overview' ? 'active' : ''; ?>" aria-labelledby="overview-title">

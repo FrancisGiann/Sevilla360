@@ -206,6 +206,10 @@ async function advance(f) { await f.elements.get('registration-continue').fire('
     v.result({ok:false,json:async()=>({success:false,message:'Try again later.'})});await vg('resend-code-btn').fire('click');assert.equal(vg('resend-code-btn').disabled,false);
     v.result({ok:true,json:async()=>({success:true})});await vg('resend-code-btn').fire('click');await vg('resend-code-btn').fire('click');assert.equal(v.requests(),2);
     for(let i=0;i<60;i++)for(const handler of v.timers.values())handler();assert.equal(vg('resend-code-btn').disabled,false);
+    const verifyForm=vg('form-verify');
+    event=await verifyForm.fire('submit');assert.equal(event.defaultPrevented,false);assert.equal(v.submit.disabled,true);
+    event=await verifyForm.fire('submit');assert.equal(event.defaultPrevented,true,'duplicate verification submission blocked');
+    v.windowEvents.get('pageshow')({persisted:true});assert.equal(v.submit.disabled,false,'interrupted verification can be retried');
     await vg('verification-modal').fire('keydown',{key:'Escape'});assert.equal(v.window.replacedUrl,'/auth.php?destination=booking_resume');
     console.log('PASS|existing verification, resend cooldown, keyboard trap, Escape and interrupted-booking destination remain intact (all mocked)');
 })().catch(error=>{console.error(error);process.exitCode=1;});

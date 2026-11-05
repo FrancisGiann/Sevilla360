@@ -70,4 +70,14 @@ try {
 session_regenerate_id(true);
 $_SESSION['pending_phone_user_id']=$id;
 if (!contact_send_sms($conn,$id,$phone,'signup_phone')) $back('Account saved, but the code could not be sent. Check the number, use another eligible number if SMS is unsupported, or contact support. Sign in to request another code.',$email);
-$back('A verification code was queued for your phone. Enter it to activate your account.',$email);
+// Code entry is the next screen; delivery acceptance needs no blocking alert.
+unset($_SESSION['auth_alert']);
+$url = '../../auth.php?verify_email=' . rawurlencode($email);
+if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, private');
+    echo json_encode(['state' => 'redirect', 'url' => $url]);
+    exit;
+}
+header('Location: ' . $url);
+exit;
