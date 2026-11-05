@@ -377,3 +377,12 @@ and the only hero-page scroll reset affects scroll position, not history.
 ## Author
 
 Created by Francis Giann Mendevil Empleo
+
+## Password clipboard behavior
+
+Password inputs prevent native copy and cut, including while revealed. Paste,
+autofill, selection, focus, and context menus remain available. This is a UI
+deterrent, not a security boundary. New password visibility controls must retain
+`data-password-field` when changing an input to text. The shared document listeners also cover dynamically added inputs.
+
+Run the clipboard regression tests with `node tests/password-clipboard.test.cjs`.

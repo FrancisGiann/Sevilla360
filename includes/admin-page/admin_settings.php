@@ -167,15 +167,15 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     <div class="form-grid profile-form-grid">
                         <div class="form-group">
                             <label for="prof-curr-pass">Current Password</label>
-                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-curr-pass" name="current-password" autocomplete="current-password" placeholder="Enter current password"><button type="button" class="password-toggle" data-target="prof-curr-pass" aria-label="Show current password">Show</button></div>
+                            <div class="password-input-wrap"><input data-password-field type="password" class="form-control" id="prof-curr-pass" name="current-password" autocomplete="current-password" placeholder="Enter current password"><button type="button" class="password-toggle" data-target="prof-curr-pass" aria-label="Show current password">Show</button></div>
                         </div>
                         <div class="form-group">
                             <label for="prof-new-pass">New Password</label>
-                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-new-pass" name="new-password" autocomplete="new-password" placeholder="Enter new password" aria-describedby="password-help"><button type="button" class="password-toggle" data-target="prof-new-pass" aria-label="Show new password">Show</button></div>
+                            <div class="password-input-wrap"><input data-password-field type="password" class="form-control" id="prof-new-pass" name="new-password" autocomplete="new-password" placeholder="Enter new password" aria-describedby="password-help"><button type="button" class="password-toggle" data-target="prof-new-pass" aria-label="Show new password">Show</button></div>
                         </div>
                         <div class="form-group">
                             <label for="prof-conf-pass">Confirm Password</label>
-                            <div class="password-input-wrap"><input type="password" class="form-control" id="prof-conf-pass" name="confirm-password" autocomplete="new-password" placeholder="Confirm new password"><button type="button" class="password-toggle" data-target="prof-conf-pass" aria-label="Show confirmation password">Show</button></div>
+                            <div class="password-input-wrap"><input data-password-field type="password" class="form-control" id="prof-conf-pass" name="confirm-password" autocomplete="new-password" placeholder="Confirm new password"><button type="button" class="password-toggle" data-target="prof-conf-pass" aria-label="Show confirmation password">Show</button></div>
                         </div>
                     </div>
                     <small class="field-help" id="password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>

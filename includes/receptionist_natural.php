@@ -904,6 +904,10 @@ function receptionist_natural_validate_proposal(array $payload, array $state, ar
         elseif ($key === 'purpose' && preg_match('/\b(?:family|private|relax|relaxation|pamilya|pribado)\b/i', $message)) $evidenced[$key] = $value;
         elseif (in_array($key, ['start_date', 'end_date'], true) && receptionist_natural_date_evidence($message, $state, $key, $value)) $evidenced[$key] = $value;
     }
+    if (!$trustedStructuredPatch && in_array($kind, ['booking', 'availability'], true)) {
+        $counts = receptionist_natural_group_count_values($message, $state);
+        if (count($counts) === 1 && receptionist_natural_group_count_evidence($message, $state, $counts[0])) $evidenced['group_size'] = $counts[0];
+    }
     $intent = $evidenced['intent'] ?? null;
     if (is_string($intent) && isset($state['slots']['intent']) && $intent !== $state['slots']['intent']) {
         $switchPatch = ['intent' => $intent];
@@ -1397,44 +1401,93 @@ function receptionist_natural_category_evidence(string $message): ?string
 function receptionist_natural_group_count_values(string $message, array $state): array
 {
     $words = ['one' => 1, 'two' => 2, 'three' => 3, 'four' => 4, 'five' => 5, 'six' => 6, 'seven' => 7, 'eight' => 8, 'nine' => 9, 'ten' => 10,
-        'eleven' => 11, 'twelve' => 12, 'dalawa' => 2, 'tatlo' => 3, 'apat' => 4, 'lima' => 5, 'anim' => 6, 'pito' => 7, 'walo' => 8, 'siyam' => 9, 'sampu' => 10];
-    $number = '(?:\\d{1,4}|' . implode('|', array_keys($words)) . ')';
+        'eleven' => 11, 'twelve' => 12, 'thirteen' => 13, 'fourteen' => 14, 'fifteen' => 15, 'sixteen' => 16,
+        'seventeen' => 17, 'eighteen' => 18, 'nineteen' => 19, 'twenty' => 20, 'thirty' => 30, 'forty' => 40, 'fifty' => 50, 'sixty' => 60, 'seventy' => 70, 'eighty' => 80, 'ninety' => 90, 'dalawa' => 2, 'tatlo' => 3, 'apat' => 4, 'lima' => 5, 'anim' => 6, 'pito' => 7, 'walo' => 8, 'siyam' => 9, 'sampu' => 10];
+    $number = '(?:\d{1,3}(?:,\d{3})+|\d{1,5}|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[ -](?:one|two|three|four|five|six|seven|eight|nine)|' . implode('|', array_keys($words)) . ')';
+    $units = '(?:guests?|people|persons?|pax|travelers?|bisita|tao|katao|adults?|children|kids?)';
+    // A count must be a whole token, never a decimal, signed value, date, or malformed grouped number.
+    $left = '(?<![\p{L}\p{N}.,\/+\-])';
+    $right = '(?![\p{L}\p{N}]|[.,\/+\-]\d|\s+(?:hundred|thousand)\b)';
     $toInt = static function (string $value) use ($words): ?int {
         $value = strtolower(trim($value));
-        if (ctype_digit($value)) return (int)$value;
-        return $words[$value] ?? null;
+        $digits = str_replace(',', '', $value);
+        if (ctype_digit($digits)) return (int)$digits;
+        if (isset($words[$value])) return $words[$value];
+        $parts = preg_split('/[ -]/', $value);
+        if (count($parts) === 2 && ($words[$parts[0]] ?? 0) >= 20
+            && ($words[$parts[1]] ?? 0) >= 1 && ($words[$parts[1]] ?? 0) <= 9) return $words[$parts[0]] + $words[$parts[1]];
+        return null;
     };
-    $values = [];
+    // Unsupported larger word counts must not degrade to their final component, with or without guest units.
+    if (preg_match('/\b(?:hundred|thousand)(?:[ -]+[a-z]+)*(?:\s+' . $units . '\b|[.!]?\s*$)/i', $message)) return [];
     $pending = ($state['pending_question'] ?? null) === 'group_size';
-    if ($pending && preg_match('/\\A(?:actually\\s+)?(?:we are |there are |for )?(' . $number . ')(?:\\s+(?:people|persons|guests|guest|pax|bisita))?[.!]?\\z/iu', trim($message), $match)) {
-        $value = $toInt($match[1]);
-        if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
-    }
-    $contextPattern = '/\\b(?:party|group)\\s+of\\s+(' . $number . ')\\b|\\b(' . $number . ')\\s+(?:guests?|people|persons|pax|travelers?|bisita|tao|katao)\\b|\\b(?:we are|we\\x27re|there are|kami|tayo)\\s+(' . $number . ')\\b/iu';
-    if (preg_match_all($contextPattern, $message, $matches, PREG_SET_ORDER)) {
-        foreach ($matches as $match) foreach (array_slice($match, 1) as $candidate) if ($candidate !== '') {
-            $value = $toInt($candidate);
-            if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
+    // Alternatives need guest context, which can come from a unit, a group phrase, or the pending question.
+    foreach (['(' . $number . ')\s*(?:or|to)\s*(' . $number . ')',
+        '(\d{1,3}(?:,\d{3})+|\d{1,5})\s*[-–]\s*(\d{1,3}(?:,\d{3})+|\d{1,5})'] as $alternative) {
+        if (!preg_match_all('/' . $left . $alternative . $right . '/iu', $message, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) continue;
+        foreach ($matches as $match) {
+            $prefix = substr($message, 0, $match[0][1]);
+            $suffix = substr($message, $match[0][1] + strlen($match[0][0]));
+            $groupContext = preg_match('/\b(?:(?:party|group)\s+of|we are|we[’\x27]re|there are|kami|tayo)\s*$/iu', $prefix) === 1;
+            $unitContext = preg_match('/\A\s+' . $units . '\b/iu', $suffix) === 1;
+            $pendingAnswer = $pending && preg_match('/\A\s*(?:actually\s+)?(?:for\s+)?\z/iu', $prefix) === 1
+                && preg_match('/\A\s*[.!]?\s*\z/u', $suffix) === 1;
+            if ($groupContext || $unitContext || $pendingAnswer) return [$toInt($match[1][0]) ?? 0, $toInt($match[2][0]) ?? 0];
         }
     }
-    $taglishCountPattern = '/\\b(' . $number . ')\\s+(?:kami|tayo)\\b/iu';
-    if (preg_match_all($taglishCountPattern, $message, $matches, PREG_SET_ORDER)) {
+    // Adult/child components need a total; never silently take one component (or sum uncertain counts).
+    if (preg_match('/' . $left . '(' . $number . ')' . $right . '\s+(?:adults?|children|child|kids?)\s*(?:and|with|[,+&])\s*(' . $number . '|a|an)' . $right . '\s+(?:adults?|children|child|kids?)\b/iu', $message, $parts)) {
+        return [$toInt($parts[1]) ?? 0, $toInt($parts[2]) ?? 1];
+    }
+    $values = [];
+    $patterns = [
+        '/' . $left . '(?:party|group)\s+of\s+(' . $number . ')' . $right . '/iu',
+        '/' . $left . '(' . $number . ')' . $right . '\s+' . $units . '\b/iu',
+        '/\b(?:we are|we[’\x27]re|there are|kami|tayo)\s+(' . $number . ')' . $right . '(?=\s*(?:$|[,.!?]|' . $units . '\b))/iu',
+        '/' . $left . '(' . $number . ')' . $right . '\s+(?:kami|tayo)\b/iu',
+    ];
+    if ($pending) $patterns[] = '/\A(?:actually\s+)?(?:we are |there are |for )?(' . $number . ')(?:\s+' . $units . ')?[.!]?\z/iu';
+    if (isset($state['slots']['group_size'])) $patterns[] = '/\A(?:actually|instead|make it|correction)\s+(' . $number . ')[.!]?\z/iu';
+    foreach ($patterns as $pattern) {
+        if (!preg_match_all($pattern, trim($message), $matches, PREG_SET_ORDER)) continue;
         foreach ($matches as $match) {
             $value = $toInt($match[1]);
             if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
         }
-    }
-    if (isset($state['slots']['group_size']) && preg_match('/\\A(?:actually|instead|make it|correction)\\s+(' . $number . ')[.!]?\\z/iu', trim($message), $match)) {
-        $value = $toInt($match[1]);
-        if ($value !== null && $value >= 1 && $value <= 10000) $values[] = $value;
     }
     return array_values(array_unique($values));
 }
 
 function receptionist_natural_group_count_evidence(string $message, array $state, ?int $expected = null): bool
 {
+    // A capacity example describes the venue, not the user's own party.
+    if (preg_match('/\b(?:capacity|fits?|accommodat\w*|holds?|maximum|how many|kasya)\b/i', $message) === 1
+        && preg_match('/\b(?:book|reserve|find|search|we are|we[’\']?re|party of|group of|kami|tayo)\b/i', $message) !== 1) return false;
     $values = receptionist_natural_group_count_values($message, $state);
-    return $expected === null ? $values !== [] : in_array($expected, $values, true);
+    return count($values) === 1 && ($expected === null || $values[0] === $expected);
+}
+
+/** Save plain booking/count answers locally; leave factual questions and rich requests to their handlers. */
+function receptionist_natural_local_booking_count_patch(string $message, array $state): ?array
+{
+    if (preg_match('/\b(?:capacity|fit|accommodat\w*|maximum|max|how many|ilang|kasya|price|cost|rate|beds?)\b/i', $message)
+        || preg_match('/\A\s*(?:can|could|does|do|is|are|what|which|how)\b/i', $message)) return null;
+    $counts = receptionist_natural_group_count_values($message, $state);
+    if (count($counts) !== 1) return null;
+    $category = receptionist_natural_category_evidence($message);
+    $intent = $category ?? ($state['slots']['intent'] ?? null);
+    if (!in_array($intent, ['Hotel Room', 'Event Hall', 'Resort Villa'], true)) return null;
+    if ($category === null && ($state['pending_question'] ?? null) !== 'group_size') return null;
+    if (receptionist_knowledge_booking_dates($message) !== []
+        || receptionist_natural_preference_evidence($message, $state['pending_question'] ?? null) !== null
+        || receptionist_natural_parse_room_type_choice($message) !== null) return null;
+    // Avoid stealing named venue selections and other booking details from the provider.
+    $plain = preg_match('/\A\s*(?:(?:i|we)\s+(?:want|need|would like)\s+(?:to\s+)?)?(?:book\s+|reserve\s+)?(?:a\s+)?(?:hotel(?:\s+room)?|villa|event hall)\s+for\s+(?:\d{1,4}|[a-z]+(?:[ -][a-z]+)?)\s+(?:guests?|people|persons?|pax|bisita|tao)[.!]?\s*\z/i', $message) === 1;
+    $shortAnswer = preg_match('/\A\s*(?:actually\s+)?(?:we are |we[’\']re |there are |for )?(?:\d{1,4}|[a-z]+(?:[ -][a-z]+)?)(?:\s+(?:guests?|people|persons?|pax|bisita|tao))?[.!]?\s*\z/i', $message) === 1;
+    if (($category !== null && !$plain) || ($category === null && !$shortAnswer)) return null;
+    $patch = ['group_size' => $counts[0]];
+    if ($category !== null) $patch['intent'] = $category;
+    return ['slots_patch' => $patch, 'clear_slots' => [], 'kind' => 'booking'];
 }
 
 /** Apply one clearly stated party-size correction without depending on a model parse. */
@@ -1720,9 +1773,29 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         return receptionist_natural_finish($state, $message, receptionist_natural_local_reply($pending, $language, $intent),
             in_array($pending, ['start_date', 'end_date'], true) ? 'show_dates' : 'keep', $extra, null, $requestId);
     }
+    if ($actionId === null && count(receptionist_natural_group_count_values($message, $state)) > 1
+        && preg_match('/\b(?:capacity|fits?|accommodat\w*|holds?|maximum|how many|kasya)\b/i', $message) !== 1) {
+        $category = receptionist_natural_category_evidence($message);
+        if ($category !== null && $category !== ($state['slots']['intent'] ?? null)) {
+            // Match a normal category switch: old dates, party size, and venue identity are incompatible.
+            $state['slots'] = ['intent' => $category];
+            $state['focused_room'] = null;
+            $state['focused_faq_id'] = null;
+            $state['recommendation_snapshot'] = null;
+        }
+        $state['pending_question'] = 'group_size';
+        $reply = match ($language) {
+            'fil' => 'Ilang bisita ang kabuuang kasama? May higit sa isang bilang sa mensahe ninyo.',
+            'taglish' => 'Ilang guests ang total? May more than one count sa message mo.',
+            default => 'How many guests should I plan for in total? You mentioned more than one count.',
+        };
+        return receptionist_natural_finish($state, $message, $reply, 'keep',
+            ['slots' => $state['slots'], 'validated_slots' => $state['slots'], 'missing_slots' => ['group_size']], null, $requestId);
+    }
     $localPatch = receptionist_natural_guided_context_patch($request, $state)
         ?? receptionist_natural_local_action_patch($actionId)
         ?? receptionist_natural_local_availability_patch($message, $state)
+        ?? receptionist_natural_local_booking_count_patch($message, $state)
         ?? receptionist_natural_local_pending_patch($message, $state)
         ?? receptionist_natural_local_group_count_patch($message, $state);
     if ($localPatch === null && $actionId === null) {

@@ -621,17 +621,17 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                                 <div class="form-grid">
                                     <div class="form-group">
                                         <label for="set-old-pass">Current Password</label>
-                                        <input type="password" id="set-old-pass" class="form-control"
+                                        <input data-password-field type="password" id="set-old-pass" class="form-control"
                                             placeholder="••••••••" autocomplete="current-password">
                                     </div>
                                     <div class="form-group">
                                         <label for="set-new-pass">New Password</label>
-                                        <input type="password" id="set-new-pass" class="form-control"
+                                        <input data-password-field type="password" id="set-new-pass" class="form-control"
                                             placeholder="Enter new password" autocomplete="new-password" aria-describedby="set-password-help">
                                     </div>
                                     <div class="form-group">
                                         <label for="set-confirm-pass">Confirm New Password</label>
-                                        <input type="password" id="set-confirm-pass" class="form-control"
+                                        <input data-password-field type="password" id="set-confirm-pass" class="form-control"
                                             placeholder="Re-enter new password" autocomplete="new-password">
                                     </div>
                                 </div>
@@ -925,6 +925,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     
     <!-- Global Custom Modals -->
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_clipboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
     <!-- Specific User Dashboard JS -->

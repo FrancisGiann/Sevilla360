@@ -42,7 +42,7 @@
                     </select>
                 </label>
                 <label>Current administrator password
-                    <input id="database-backup-password" type="password" autocomplete="current-password" required maxlength="1024">
+                    <input id="database-backup-password" data-password-field type="password" autocomplete="current-password" required maxlength="1024">
                 </label>
                 <label>Type RESTORE to confirm
                     <input id="database-backup-confirmation" type="text" autocomplete="off" required maxlength="7" pattern="RESTORE">

@@ -112,7 +112,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                     <div class="form-group">
                         <label for="login-password">PASSWORD</label>
                         <div class="password-wrapper">
-                            <input type="password" id="login-password" name="password" class="form-control" autocomplete="current-password"
+                            <input data-password-field type="password" id="login-password" name="password" class="form-control" autocomplete="current-password"
                                 placeholder="Enter your password" required>
                             <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                         </div>
@@ -166,7 +166,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="form-group">
                             <label for="reg-password">PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help err-password" aria-invalid="false">
+                                <input data-password-field type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help err-password" aria-invalid="false">
                                 <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                             </div>
                             <small id="reg-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
@@ -176,7 +176,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         <div class="form-group">
                             <label for="reg-confirm-password">CONFIRM PASSWORD</label>
                             <div class="password-wrapper">
-                                <input type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" aria-describedby="err-confirm-password" aria-invalid="false" required>
+                                <input data-password-field type="password" id="reg-confirm-password" name="confirm_password" class="form-control" placeholder="Confirm your password" autocomplete="new-password" aria-describedby="err-confirm-password" aria-invalid="false" required>
                                 <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                             </div>
                             <div class="error-msg" id="err-confirm-password" role="status" aria-live="polite" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
@@ -356,6 +356,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
 
     <!-- Scripts -->
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_clipboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/auth.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     

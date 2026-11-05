@@ -276,7 +276,7 @@ $today = date('Y-m-d');
                 </div>
                 <div class="um-form-group um-password-group">
                     <label for="staff_password">Password</label>
-                    <input type="password" id="staff_password" name="password" autocomplete="new-password" aria-describedby="staff-password-help" placeholder="Enter a password">
+                    <input data-password-field type="password" id="staff_password" name="password" autocomplete="new-password" aria-describedby="staff-password-help" placeholder="Enter a password">
                     <small class="field-help" id="staff-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol.</small>
                     <small class="field-help" id="pw_hint" hidden>Leave blank to keep the existing password.</small>
                 </div>
@@ -300,7 +300,7 @@ $today = date('Y-m-d');
             <input type="hidden" id="promoteStaffUserId" value="">
             <div class="um-form-group">
                 <label for="promoteStaffPassword">Your current administrator password</label>
-                <input type="password" id="promoteStaffPassword" autocomplete="current-password" required maxlength="255">
+                <input data-password-field type="password" id="promoteStaffPassword" autocomplete="current-password" required maxlength="255">
             </div>
             <div class="um-form-error" id="promoteStaffError" role="alert" hidden></div>
             <div class="um-modal-actions">

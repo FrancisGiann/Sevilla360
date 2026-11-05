@@ -82,12 +82,12 @@ if ($smsMode) {
 
                         <div class="form-group">
                             <label for="reset-new-password">NEW PASSWORD</label>
-                    <input id="reset-new-password" type="password" name="new_password" autofocus class="form-control" required autocomplete="new-password" aria-describedby="reset-password-help" data-password-policy-input>
+                    <input id="reset-new-password" data-password-field type="password" name="new_password" autofocus class="form-control" required autocomplete="new-password" aria-describedby="reset-password-help" data-password-policy-input>
                         </div>
                         
                         <div class="form-group">
                             <label for="reset-confirm-password">CONFIRM PASSWORD</label>
-                    <input id="reset-confirm-password" type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+                    <input id="reset-confirm-password" data-password-field type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
                         </div>
 
                         <small id="reset-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
@@ -108,6 +108,7 @@ if ($smsMode) {
 
     <!-- Scripts -->
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_clipboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     
     <?php if (isset($_SESSION['auth_alert'])): ?>

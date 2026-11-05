@@ -26,7 +26,11 @@ final class ReceptionistNaturalContractProvider
 }
 
 $checks = [];
-$assert = static function (string $name, bool $pass) use (&$checks): void { $checks[$name] = $pass; };
+$checkCount = 0;
+$assert = static function (string $name, bool $pass) use (&$checks, &$checkCount): void {
+    $checkCount++;
+    $checks[$name] = ($checks[$name] ?? true) && $pass;
+};
 $future = new DateTimeImmutable('today', new DateTimeZone('Asia/Manila'));
 $date1 = $future->modify('+14 days')->format('Y-m-d');
 $date2 = $future->modify('+16 days')->format('Y-m-d');
@@ -1382,6 +1386,143 @@ $deadlineSearches = 0;
 $assert('an exhausted total provider budget skips wording and never makes a third provider call', $deadlineStatus === 200
     && $deadlineSearches === 1 && count($deadlineProvider->calls) === 1 && ($deadlineResult['presentation'] ?? null) === 'show_results');
 
+
+// Party size supplied with a category must survive local shortcuts and provider omissions.
+foreach (['I want to book a hotel for two persons.' => 2, 'Hotel for 2 people' => 2,
+    'I want to book a hotel room for two persons.' => 2, 'Hotel room for 2 guests' => 2,
+    'Hotel for two persons' => 2, 'Hotel for thirteen guests' => 13,
+    'Hotel for twenty-one guests' => 21, 'Hotel for twenty one guests' => 21, 'Hotel for sixty-two guests' => 62] as $utterance => $count) {
+    foreach ([receptionist_natural_empty_state(), $hotelOpenState] as $openingState) {
+        $countProvider = new ReceptionistNaturalContractProvider([]);
+        [$countResult, $countStatus] = $run($openingState, $utterance, $countProvider);
+        $assert('explicit opener retains count without provider: ' . $utterance . ' pending=' . ($openingState['pending_question'] ?? 'none'),
+            $countStatus === 200 && ($countResult['slots']['group_size'] ?? null) === $count
+            && ($countResult['slots']['intent'] ?? null) === 'Hotel Room'
+            && !in_array('group_size', $countResult['missing_slots'] ?? [], true) && $countProvider->calls === []);
+    }
+}
+foreach (['two', 'two persons', 'thirteen', 'twenty-one', 'twenty one', 'we are two people'] as $answer) {
+    $pendingCountState = array_replace(receptionist_natural_empty_state(), [
+        'slots' => ['intent' => 'Hotel Room'], 'pending_question' => 'group_size',
+    ]);
+    $answerProvider = new ReceptionistNaturalContractProvider([]);
+    [$answerResult] = $run($pendingCountState, $answer, $answerProvider);
+    $assert('word count answer stays local: ' . $answer, isset($answerResult['slots']['group_size'])
+        && ($answerResult['natural_state']['pending_question'] ?? null) !== 'group_size' && $answerProvider->calls === []);
+}
+$omittingProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('booking', ['intent' => 'Hotel Room'])]]);
+[$exactWithOmission] = $run($baseState, 'I want to book a hotel for two persons.', $omittingProvider);
+$assert('reported utterance keeps count even with an omitting provider configured', ($exactWithOmission['slots']['group_size'] ?? null) === 2
+    && $omittingProvider->calls === []);
+$richOmittingProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('booking', ['intent' => 'Hotel Room'])]]);
+[$richWithOmission] = $run($baseState, 'I would like a hotel for two persons, please.', $richOmittingProvider);
+$assert('full handler restores count omitted by provider on a richer opener', ($richWithOmission['slots']['group_size'] ?? null) === 2
+    && count($richOmittingProvider->calls) === 1 && !in_array('group_size', $richWithOmission['missing_slots'] ?? [], true));
+$omittedCountProposal = receptionist_natural_validate_proposal($payload('booking', ['intent' => 'Hotel Room']),
+    receptionist_natural_empty_state(), $catalog, 'I would like a hotel for two persons, please.');
+$assert('provider omission cannot drop explicit guest count', ($omittedCountProposal['slots_patch']['group_size'] ?? null) === 2);
+$wrongCountProposal = receptionist_natural_validate_proposal($payload('booking', ['intent' => 'Hotel Room', 'group_size' => 3]),
+    receptionist_natural_empty_state(), $catalog, 'I would like a hotel for two persons, please.');
+$assert('explicit user count overrides a contradictory provider count', ($wrongCountProposal['slots_patch']['group_size'] ?? null) === 2);
+foreach (['Hotel for 2 or 3 guests', 'Hotel for two or three persons', 'Hotel for 2-3 guests',
+    'Hotel for two adults and two children', 'Hotel for two children and two adults', 'Hotel for two adults and a child', 'Hotel for 2 guests or 4 guests'] as $ambiguousCount) {
+    [$ambiguityResult] = $run($baseState, $ambiguousCount, new ReceptionistNaturalContractProvider([]));
+    $assert('ambiguous count asks for a total: ' . $ambiguousCount,
+        !isset($ambiguityResult['slots']['group_size']) && ($ambiguityResult['missing_slots'] ?? []) === ['group_size']
+        && str_contains((string)$ambiguityResult['reply'], 'total'));
+    [$clarifiedCount] = $run($_SESSION['receptionist_natural_state'], 'three', new ReceptionistNaturalContractProvider([]));
+    $assert('count clarification resumes original category: ' . $ambiguousCount,
+        ($clarifiedCount['slots']['intent'] ?? null) === 'Hotel Room' && ($clarifiedCount['slots']['group_size'] ?? null) === 3);
+}
+foreach (['2 rooms', 'two nights', 'for 2 nights', 'we are 2 nights', '2037-11-14', 'November 2',
+    'Room 203', '2.5 guests', '-2 guests', '10001 guests', 'booking number 1234', 'one hundred two guests', 'two thousand three guests'] as $unrelatedNumber) {
+    $assert('unrelated or invalid number is not guest evidence: ' . $unrelatedNumber,
+        receptionist_natural_group_count_values($unrelatedNumber, $pendingCountState) === []);
+}
+foreach (['Can Rafael accommodate four guests?', 'Does Rafael fit four guests?', 'Rafael fits four guests?', 'Does it hold four guests?'] as $capacityQuestion) {
+    $capacityOnly = receptionist_natural_validate_proposal($payload('booking', ['group_size' => 4]),
+        $selectedHotelState, $catalog, $capacityQuestion);
+    $assert('capacity wording cannot replace party size: ' . $capacityQuestion, !isset($capacityOnly['slots_patch']['group_size']));
+}
+$capacityAsBooking = receptionist_natural_validate_proposal($payload('booking', ['group_size' => 4]),
+    $selectedHotelState, $catalog, 'Can Rafael fit four guests?');
+$assert('misclassified capacity question still cannot change party size', !isset($capacityAsBooking['slots_patch']['group_size']));
+[$ambiguousExisting] = $run($selectedHotelState, 'Actually two or three guests', new ReceptionistNaturalContractProvider([]));
+$assert('ambiguous correction preserves validated party, dates, and venue until clarified',
+    $ambiguousExisting['slots'] === $selectedHotelState['slots'] && ($ambiguousExisting['missing_slots'] ?? []) === ['group_size']);
+$capacityProposal = receptionist_natural_validate_proposal($payload('question', ['group_size' => 4]),
+    $selectedHotelState, $catalog, 'Can Rafael fit four guests?');
+$assert('capacity question cannot change party size', !isset($capacityProposal['slots_patch']['group_size']));
+[$preservedCount] = $run($selectedHotelState, 'Hotel for two persons', new ReceptionistNaturalContractProvider([]), [
+    'hotel_exact_search' => static fn(): array => ['success' => true, 'state' => 'matched', 'results' => [$resultItem(101, 77, 'Rafael Standard Room')]],
+]);
+$assert('same category statement preserves dates and selected venue',
+    ($preservedCount['slots']['start_date'] ?? null) === $selectedHotelState['slots']['start_date']
+    && ($preservedCount['slots']['end_date'] ?? null) === $selectedHotelState['slots']['end_date']
+    && ($preservedCount['slots']['active_venue_id'] ?? null) === $selectedHotelState['slots']['active_venue_id']
+    && ($preservedCount['slots']['active_room_group_id'] ?? null) === $selectedHotelState['slots']['active_room_group_id']);
+
+// Review regressions: never accept a prefix/suffix of an invalid or ambiguous count.
+foreach (['party of 2.5', 'group of -2', 'party of one hundred', 'group of one hundred two',
+    '12,34 guests', '1,23,456 guests', '-1,234 guests', '100,001 guests', 'party of 1,234.5', 'group of 1,234,56'] as $partialCount) {
+    $assert('partial count is rejected: ' . $partialCount,
+        receptionist_natural_group_count_values($partialCount, $pendingCountState) === []);
+}
+foreach (['1,234 guests', 'party of 1,234', 'we are 1,234 guests'] as $formattedCount) {
+    $assert('formatted count is parsed as a whole: ' . $formattedCount,
+        receptionist_natural_group_count_values($formattedCount, $pendingCountState) === [1234]);
+}
+foreach (['party of 2-3', 'group of two or three', 'party of 2 to 3', 'two or three'] as $ambiguousGroup) {
+    $assert('unitless group alternative has no unique evidence: ' . $ambiguousGroup,
+        !receptionist_natural_group_count_evidence($ambiguousGroup, $pendingCountState));
+    [$groupClarification] = $run($pendingCountState, $ambiguousGroup, new ReceptionistNaturalContractProvider([]));
+    $assert('unitless group alternative requests clarification: ' . $ambiguousGroup,
+        !isset($groupClarification['slots']['group_size']) && ($groupClarification['missing_slots'] ?? []) === ['group_size']
+        && str_contains($groupClarification['reply'], 'total'));
+}
+$oldVillaAmbiguity = array_replace(receptionist_natural_empty_state(), [
+    'slots' => ['intent' => 'Resort Villa', 'group_size' => 5, 'purpose' => 'family', 'start_date' => $date1,
+        'end_date' => $date2, 'active_venue_id' => 303],
+    'focused_room' => ['venue_id' => 303], 'focused_faq_id' => 'faq-old-villa',
+    'recommendation_snapshot' => ['intent' => 'Resort Villa', 'results' => [['venue_id' => 303]]],
+]);
+[$hotelAmbiguity] = $run($oldVillaAmbiguity, 'Hotel for two or three persons', new ReceptionistNaturalContractProvider([]));
+$assert('ambiguous category switch keeps new hotel category and clears incompatible slots',
+    ($hotelAmbiguity['slots'] ?? []) === ['intent' => 'Hotel Room']
+    && ($hotelAmbiguity['natural_state']['pending_question'] ?? null) === 'group_size'
+    && ($hotelAmbiguity['natural_state']['focused_room'] ?? null) === null
+    && ($hotelAmbiguity['natural_state']['focused_faq_id'] ?? null) === null
+    && ($hotelAmbiguity['natural_state']['recommendation_snapshot'] ?? null) === null);
+[$hotelAfterAmbiguity] = $run($_SESSION['receptionist_natural_state'], 'three', new ReceptionistNaturalContractProvider([]));
+$assert('clarification after villa-to-hotel switch resumes hotel without old dates or venue',
+    ($hotelAfterAmbiguity['slots']['intent'] ?? null) === 'Hotel Room'
+    && ($hotelAfterAmbiguity['slots']['group_size'] ?? null) === 3
+    && array_intersect_key($hotelAfterAmbiguity['slots'], array_flip(['purpose', 'occasion', 'start_date', 'end_date', 'active_venue_id', 'active_room_group_id'])) === []);
+
+// Exercise the complete handler and persisted session between turns, with non-writing search fixtures.
+$flow = [];
+$flowState = receptionist_natural_empty_state();
+$flowSearches = 0;
+foreach (['I want to book a hotel for two persons.', 'lowest price', $date1, $date2] as $flowMessage) {
+    [$flowResult, $flowStatus] = $run($flowState, $flowMessage, new ReceptionistNaturalContractProvider([]), [
+        'hotel_search' => static function (mysqli $db, array $request) use (&$flowSearches, $fixtureSnapshot): array {
+            $flowSearches++;
+            return $fixtureSnapshot(['slots' => ['group_size' => $request['group_size']]], $request['check_in'], $request['check_out']);
+        },
+    ]);
+    $flowState = $_SESSION['receptionist_natural_state'];
+    $flow[] = ['user' => $flowMessage, 'reply' => $flowResult['reply'], 'slots' => $flowResult['slots'] ?? [],
+        'pending' => $flowState['pending_question'], 'presentation' => $flowResult['presentation']];
+}
+$assert('reported opener completes a local booking conversation without asking count again',
+    $flowStatus === 200 && $flowSearches === 1 && ($flowResult['presentation'] ?? null) === 'show_results'
+    && ($flowState['slots']['group_size'] ?? null) === 2 && ($flowState['slots']['start_date'] ?? null) === $date1
+    && ($flowState['slots']['end_date'] ?? null) === $date2);
+if (($transcriptPath = getenv('RECEPTIONIST_TEST_TRANSCRIPT')) !== false && $transcriptPath !== '') {
+    file_put_contents($transcriptPath, json_encode($flow, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+}
+
 $failed = array_filter($checks, static fn(bool $pass): bool => !$pass);
 foreach ($checks as $name => $pass) echo ($pass ? 'PASS' : 'FAIL') . ' - ' . $name . PHP_EOL;
+echo "Natural receptionist: {$checkCount} assertions in ".count($checks)." named groups.\n";
 if ($failed) exit(1);
