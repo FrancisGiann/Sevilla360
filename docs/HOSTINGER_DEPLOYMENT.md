@@ -81,15 +81,6 @@ chmod 700 /home/ACCOUNT/.sevilla360 /home/ACCOUNT/.sevilla360/payment-proofs
 
 The resolver rejects paths inside the web root and fails closed if the private directory is unavailable.
 
-If the database backup feature is included in the published branch, configure a separate private `BACKUP_DIR`, a deployment-specific `APP_KEY` of at least 32 characters, and the documented backup limits. Create its directory with mode `0700`:
-
-```sh
-mkdir -p /home/ACCOUNT/.sevilla360/backups
-chmod 700 /home/ACCOUNT/.sevilla360/backups
-```
-
-Backup and restore also depend on `proc_open`, `mysqldump` or `mariadb-dump`, and `mysql` or `mariadb` being available to PHP. Restore additionally requires a dedicated disposable staging database; never use production as staging. Keep proof files, database archives, job state, and SQL exports outside `public_html`.
-
 ## Media and scheduled jobs
 
 The database stores media paths, while the image files live separately under `assets/uploads`. The root `.gitignore` rule covers this entire runtime tree so Hostinger can preserve CMS originals, generated derivatives, and payment QR images across releases once a deployment includes the rule. The rule does not remove files already tracked by Git: the tracked `assets/uploads/home-hero-expanded-pool.png` fallback remains available on a fresh deployment. Before an existing site's first deployment with this rule, back up the complete uploads directory. After every deployment, confirm `assets/uploads/` is listed among the paths preserved from `.gitignore`, then check that files referenced by the database still exist. This mechanism preserves files during later deployments but does not recover files already removed by a previous deployment.
@@ -102,9 +93,8 @@ Add the PHP cron jobs in **Websites → Dashboard → Cron Jobs**. Hostinger's P
 | --- | --- | --- |
 | Every 5 minutes | `/home/ACCOUNT/domains/misevillas.com/public_html/scripts/expire_unpaid_bookings.php` | Release expired, wholly unpaid booking holds. |
 | Daily at 03:15 UTC | `/home/ACCOUNT/domains/misevillas.com/public_html/scripts/cleanup_payment_proofs.php` | Remove eligible reviewed proofs older than one year. |
-| Every 5 minutes, only if the backup feature is deployed | `/home/ACCOUNT/domains/misevillas.com/public_html/scripts/database_backup_worker.php` | Process backup/restore jobs and retention. |
 
-03:15 UTC is 11:15 in the Philippines. The backup worker requires its private directory and database tools to be available. See [Hostinger's cron job guide](https://www.hostinger.com/support/1583465-how-to-set-up-a-cron-job-at-hostinger/).
+03:15 UTC is 11:15 in the Philippines. See [Hostinger's cron job guide](https://www.hostinger.com/support/1583465-how-to-set-up-a-cron-job-at-hostinger/).
 
 Realtime notifications are optional for initial hosting; the authenticated short-polling fallback remains available. Enabling the gateway later also requires its migration, Node dependencies, Redis, TLS WebSockets, and the signing/origin settings documented in the project README.
 

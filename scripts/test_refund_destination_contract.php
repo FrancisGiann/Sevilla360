@@ -59,14 +59,18 @@ $assert(str_contains($adminRefundBranch, 'SELECT id, reason, refund_amount, fee_
     && !str_contains($adminRefundBranch, '$data[\'refund_destination\']'),
     'Refund processing locks and validates the saved destination and accepts no destination supplied by admin UI.');
 
-$assert(str_contains($customerDetails, "ORDER BY id DESC LIMIT 1")
+$assert(str_contains($customerDetails, "ORDER BY cx.id DESC LIMIT 1")
     && str_contains($customerDetails, "['Pending', 'Rejected', 'Processed']")
+    && str_contains($customerDetails, 'BINARY rs.id=BINARY cx.refund_snapshot_id')
     && str_contains($customerDetails, 'refund_destination_for_customer($cancellation)')
     && preg_match('/unset\([^;]*refund_destination_account_identifier/s', $customerDetails) === 1
     && str_contains($customerDetails, 'require_once \'../../includes/refund_helper.php\';'),
     'Customer booking details include the latest request states and remove the unmasked identifier before JSON output.');
 $assert(str_contains($adminDetails, "in_array((\$_SESSION['role'] ?? ''), ['staff', 'admin'], true)")
-    && str_contains($adminDetails, 'refund_destination_account_identifier, refund_destination_bank_name FROM cancellations')
+    && str_contains($adminDetails, 'refund_destination_account_identifier,cx.refund_destination_bank_name')
+    && str_contains($adminDetails, 'FROM cancellations cx WHERE cx.booking_id = ?')
+    && str_contains($adminDetails, 'BINARY rs.id=BINARY cx.refund_snapshot_id')
+    && str_contains($adminDetails, 'BINARY al.snapshot_id=BINARY cx.refund_snapshot_id')
     && str_contains($adminBookingsJs, 'destinationIdentifier.textContent = destination?.accountIdentifier')
     && str_contains($adminBookingsJs, 'destinationBank.textContent = showBank ? destination.bankName :')
     && str_contains($adminOverviewJs, 'bankValue.textContent = showBank ? String(cancellation.refund_destination_bank_name)')
@@ -146,6 +150,21 @@ $assert(str_contains($adminBookings, 'Mark refund sent')
     && str_contains($adminBookingsJs, 'transactionInput.reportValidity()')
     && !str_contains($adminBookings, 'Execute Refund'),
     'Admin refund UI presents a manual send workflow and disables completion until an authoritative pending destination is verified.');
+
+$assert(str_contains($adminBookings, 'id="vd-refund-method-label"')
+    && str_contains($adminBookings, 'id="vd-refund-account-name-label"')
+    && str_contains($adminBookings, 'id="vd-refund-account-identifier-label"')
+    && str_contains($adminBookings, 'id="vd-refund-bank-label"')
+    && str_contains($adminBookings, 'id="vd-refund-tx-label"')
+    && str_contains($adminBookingsJs, "details.refund_provider === 'paymongo' || refundTransactionId.toLowerCase().startsWith('paymongo:')")
+    && str_contains($adminBookingsJs, 'if (element) element.hidden = isPayMongoRefund;')
+    && str_contains($adminBookingsJs, 'if (bankLabel) bankLabel.hidden = !showBank;')
+    && str_contains($adminBookingsJs, 'transactionLabel.hidden = isPayMongoRefund || refundTransactionId ===')
+    && str_contains($adminBookingsJs, "setText('status', details.status)")
+    && str_contains($adminBookingsJs, "setText('reason', details.reason)")
+    && str_contains($adminBookingsJs, "setText('amount', Number.isFinite(amount)")
+    && str_contains($adminBookingsJs, 'isPayMongoRefund || refundTransactionId ==='),
+    'PayMongo refund details hide manual destination and internal outbound-ID rows while preserving request status, reason, and amount.');
 
 $assert(str_contains($customerPage, 'booking-row-primary')
     && substr_count($customerPage, 'booking-row-primary') === 2

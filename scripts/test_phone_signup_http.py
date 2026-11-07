@@ -45,12 +45,16 @@ with tempfile.TemporaryDirectory(prefix='sevilla-signup-') as directory:
     names += ['includes/' + name + '.php' for name in [
         'session_init', 'request_context', 'rate_limit', 'password_policy',
         'customer_login_recovery', 'booking_intent', 'contact_verification',
-        'unisms_sms', 'site_metadata']]
+        'unisms_sms', 'site_metadata', 'registration_validation']]
     names += ['auth.php', 'assets/css/ui-refinement.css']
     for name in names:
         target = app / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, target)
+    session_init = app / 'includes/session_init.php'
+    session_source = session_init.read_text()
+    session_stub = "\nif (!function_exists('session_policy_rotate_id')) { function session_policy_rotate_id(): void { session_regenerate_id(true); } }\n"
+    session_init.write_text(session_source.rsplit('?>', 1)[0] + session_stub + '?>\n')
     # Keep the real challenge issuance, HMAC, provider acceptance, throttles,
     # transaction and consumption. Stub only the outbound transport here.
     contact = app / 'includes/contact_verification.php'
@@ -142,6 +146,24 @@ CREATE TABLE media_cms (slot_assignment VARCHAR(100),file_path VARCHAR(255));'''
             check(not state(browser)['session'].get('auth_alert'), 'accepted send sets no blocking queued alert')
             return browser, last_code()
 
+        def rejected_signup(label, **overrides):
+            query('DELETE FROM rate_limits; DELETE FROM contact_throttles')
+            browser = client()
+            payload = dict(first_name='Synthetic', last_name='Test', email='reject-' + str(abs(hash(label))) + '@example.invalid', phone='09179999998', password='Test1!password', confirm_password='Test1!password', consent='1', csrf_token=state(browser)['session']['csrf_token'])
+            payload.update(overrides)
+            result = request(browser, 'actions/auth/register_process.php', payload, {'X-Requested-With': 'XMLHttpRequest'})
+            check(result[0] == 400 and json.loads(result[2]).get('state') == 'error', label + ' is rejected by the server')
+            check(query("SELECT COUNT(*) FROM users WHERE email='" + payload['email'] + "'") == '0', label + ' creates no account')
+
+        rejected_signup('digits in first name', first_name='Maria2')
+        rejected_signup('digits in last name', last_name='Test3')
+        rejected_signup('letters in phone number', phone='0917ABC1234')
+        query('DELETE FROM rate_limits; DELETE FROM contact_throttles')
+        unicode_browser = client()
+        unicode_email = 'unicode@example.invalid'
+        unicode_result = request(unicode_browser, 'actions/auth/register_process.php', dict(first_name='Jose\u0301', last_name='D’Arcy', email=unicode_email, phone='+63 (917) 999-9998', password='Test1!password', confirm_password='Test1!password', consent='1', csrf_token=state(unicode_browser)['session']['csrf_token']), {'X-Requested-With': 'XMLHttpRequest'})
+        check(unicode_result[0] == 200 and json.loads(unicode_result[2]).get('state') == 'redirect', 'valid Unicode name and internationalized punctuation are accepted')
+        check(query("SELECT CONCAT(first_name,'|',last_name) FROM customers WHERE email='" + unicode_email + "'") == 'José|D’Arcy', 'Unicode name data is stored without rewriting identity')
         browser, code = create('one@example.invalid', True)
         before = state(browser)
         verify_url = 'auth.php?verify_email=one%40example.invalid'

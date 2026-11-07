@@ -11,8 +11,9 @@ class BookingController {
     constructor() {
         this.csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         this.auth = window.bookingAuth || { isCustomer: false, isStaff: false, resume: false };
-        this.manualPayment = window.ManualPayment?.create({
+        this.manualPayment = (window.SevillaPayMongoCheckout?.enabled() ? window.SevillaPayMongoCheckout : window.ManualPayment)?.create({
             csrfToken: this.csrfToken,
+            requirePolicyConsent: () => this.getEl('terms-check')?.checked === true,
             onSubmitted: () => {
                 try { window.sessionStorage.setItem('manual-payment-proof-submitted', '1'); } catch (error) { /* Dashboard still shows the submitted booking. */ }
                 window.location.assign('user_dashboard.php');
@@ -715,12 +716,13 @@ class BookingController {
 
     initCalendars() {
         if (typeof SevillaCalendar !== 'undefined') {
-            this.state.calendars.event = new SevillaCalendar("cal-ui-event");
-            this.state.calendars.hotel = new SevillaCalendar("cal-ui-hotel");
-            this.state.calendars.villa = new SevillaCalendar("cal-ui-villa");
+            this.state.calendars.event = new SevillaCalendar("cal-ui-event", { preventPastMonthNavigation: true });
+            this.state.calendars.hotel = new SevillaCalendar("cal-ui-hotel", { preventPastMonthNavigation: true });
+            this.state.calendars.villa = new SevillaCalendar("cal-ui-villa", { preventPastMonthNavigation: true });
             this.state.calendars.addonHotel = new SevillaCalendar("cal-ui-addon-hotel", {
                 requireHotelRules: true,
                 updateSummaryDisplay: false,
+                preventPastMonthNavigation: true,
                 onRangeSelected: (start, end) => this.handleAddonRangeSelected(start, end)
             });
         }
@@ -1365,8 +1367,22 @@ class BookingController {
         this.getEl("open-terms")?.addEventListener("click", (e) => { e.preventDefault(); this.openTermsDialog(); });
         this.getEl("btn-close-terms")?.addEventListener("click", () => this.closeTermsDialog());
         this.getEl("btn-agree")?.addEventListener("click", () => {
-            this.getEl("terms-check").checked = true;
+            const checkbox = this.getEl('terms-check');
+            if (!this.termsDialogRead || !checkbox) return;
+            checkbox.disabled = false;
+            checkbox.checked = true;
+            checkbox.dataset.policyVersion = this.currentTermsPolicyVersion();
             this.closeTermsDialog();
+        });
+        this.getEl('terms-content')?.addEventListener('scroll', () => this.updateTermsDialogReadState());
+        this.getEl('terms-check')?.addEventListener('change', event => {
+            const checkbox = event.currentTarget;
+            if (checkbox.checked && !this.termsDialogRead) {
+                checkbox.checked = false;
+                return;
+            }
+            if (checkbox.checked) checkbox.dataset.policyVersion = this.currentTermsPolicyVersion();
+            else delete checkbox.dataset.policyVersion;
         });
         
         this.getEl("btn-cancel")?.addEventListener("click", () => this.cancelBookingAttempt());
@@ -1408,11 +1424,22 @@ class BookingController {
     openTermsDialog() {
         const modal = this.getEl('tnc-modal');
         if (!modal || modal.classList.contains('active')) return;
+        this.syncTermsConsentPolicy();
+        this.termsDialogRead = false;
+        const termsContent = this.getEl('terms-content');
+        if (termsContent) termsContent.scrollTop = 0;
+        const checkbox = this.getEl('terms-check');
+        const hasCurrentConsent = checkbox?.checked === true
+            && checkbox.dataset.policyVersion === this.currentTermsPolicyVersion();
+        if (checkbox && !hasCurrentConsent) checkbox.disabled = true;
+        const agreeButton = this.getEl('btn-agree');
+        if (agreeButton) agreeButton.disabled = true;
         this.termsDialogTrigger = document.activeElement;
         this.termsDialogPreviousOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         modal.classList.add('active');
         modal.setAttribute('aria-hidden', 'false');
+        this.updateTermsDialogReadState();
         this.getEl('btn-close-terms')?.focus({ preventScroll: true });
         // The shared overlay animates visibility. Retry after that transition,
         // without moving focus if the visitor already reached a dialog action.
@@ -1435,6 +1462,40 @@ class BookingController {
         if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     }
 
+    currentTermsPolicyVersion() {
+        return window.SevillaPayMongoCheckout?.policyVersion || 'terms-v4-paymongo-actual-fee';
+    }
+
+    syncTermsConsentPolicy() {
+        const checkbox = this.getEl('terms-check');
+        if (!checkbox) return;
+        const version = this.currentTermsPolicyVersion();
+        if (checkbox.checked && checkbox.dataset.policyVersion !== version) checkbox.checked = false;
+        if (checkbox.dataset.policyVersion && checkbox.dataset.policyVersion !== version) {
+            delete checkbox.dataset.policyVersion;
+        }
+        if (!checkbox.checked) checkbox.disabled = true;
+    }
+
+    updateTermsDialogReadState() {
+        const content = this.getEl('terms-content');
+        const button = this.getEl('btn-agree');
+        const hint = this.getEl('terms-scroll-hint');
+        const checkbox = this.getEl('terms-check');
+        if (!content) return;
+        const atBottom = content.scrollHeight <= content.clientHeight + 2
+            || content.scrollTop + content.clientHeight >= content.scrollHeight - 2;
+        if (atBottom) this.termsDialogRead = true;
+        const available = this.termsDialogRead === true;
+        if (button) button.disabled = !available;
+        if (checkbox && !checkbox.checked) checkbox.disabled = !available;
+        if (hint) {
+            hint.textContent = available
+                ? 'You have reached the end. Choose I Agree if you accept these terms.'
+                : 'Scroll to the bottom of these terms to enable I Agree.';
+        }
+    }
+
     handleTermsDialogKey(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
@@ -1442,12 +1503,13 @@ class BookingController {
             return;
         }
         if (event.key !== 'Tab') return;
-        const buttons = Array.from(this.getEl('tnc-modal')?.querySelectorAll('button:not(:disabled)') || []);
-        const first = buttons[0];
-        const last = buttons[buttons.length - 1];
+        const focusable = Array.from(this.getEl('tnc-modal')?.querySelectorAll('button:not(:disabled), [tabindex="0"]') || [])
+            .filter(element => !element.hidden);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
         if (!first) return;
         const active = document.activeElement;
-        if (!buttons.includes(active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
+        if (!focusable.includes(active) || (event.shiftKey && active === first) || (!event.shiftKey && active === last)) {
             event.preventDefault();
             (event.shiftKey ? last : first).focus();
         }
@@ -2277,10 +2339,14 @@ class BookingController {
     }
 
     updateBookingSubmitLabel() {
+        const paymentWindow = this.getEl('booking-payment-window');
+        if (paymentWindow) paymentWindow.hidden = !this.auth.isCustomer
+            || !window.SevillaPayMongoCheckout?.enabled()
+            || (this.state.activeTabId === 'event-hall' && !this.state.savedPaymentBookingId);
         const button = this.getEl('btn-proceed');
         if (!button) return;
         if (this.state.savedPaymentBookingId) {
-            button.textContent = 'SUBMIT PAYMENT PROOF';
+            button.textContent = window.SevillaPayMongoCheckout?.enabled() ? 'CONTINUE TO PAYMENT' : 'SUBMIT PAYMENT PROOF';
             button.disabled = false;
             button.style.opacity = '';
             return;
@@ -2557,7 +2623,7 @@ class BookingController {
         if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : 'Confirm your dates';
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : 'Available now. A 15-minute hold starts when you open payment, if the room is still available.';
+            : 'These dates are available now. Continue to review your reservation.';
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
             ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date included)` : ''}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
@@ -3189,11 +3255,20 @@ class BookingController {
     // =========================================================================
     async submitOnlineBooking() {
         const btn = this.getEl('btn-proceed');
+        this.syncTermsConsentPolicy();
         if (this.state.inventoryBlocked && !this.state.savedPaymentBookingId) {
             showAlert('Selection unavailable', 'This selection is temporarily held or has been booked. Choose another room or date, then recheck availability.', 'info');
             return;
         }
         if (this.state.savedPaymentBookingId) {
+            const paymentPolicyVersion = window.SevillaPayMongoCheckout?.policyVersion;
+            if (window.SevillaPayMongoCheckout?.enabled()
+                && paymentPolicyVersion
+                && btn?.dataset.policyVersion !== paymentPolicyVersion
+                && !this.getEl('terms-check')?.checked) {
+                showAlert("Notice", "Please review and agree to the Terms & Conditions before proceeding.");
+                return;
+            }
             if (this.manualPayment) {
                 this.manualPayment.openBooking(this.state.savedPaymentBookingId, btn);
             } else {
@@ -3274,7 +3349,7 @@ class BookingController {
         formData.append("total_amount", this.state.summary.total);
         formData.append("payment_scheme", schemeEnum);
         formData.append("policy_consent", termsCheck.value === '1' ? "1" : "0");
-        formData.append("policy_version", "terms-v3-manual-payment");
+        formData.append("policy_version", window.SevillaPayMongoCheckout?.policyVersion || "terms-v4-paymongo-actual-fee");
         
         formData.append("contact_phone", phoneInput.value.trim());
         formData.append("save_contact_default", this.getEl('save-contact-default')?.checked ? '1' : '0');
@@ -3375,6 +3450,9 @@ class BookingController {
                     showAlert("Inquiry submitted", "Your Event Hall inquiry is on its way. We will send the finalized quotation to your dashboard.", 'success');
                 } else {
                     const bookingId = String(response[2] || '');
+                    if (window.SevillaPayMongoCheckout?.enabled() && termsCheck.checked && btn?.dataset) {
+                        btn.dataset.policyVersion = window.SevillaPayMongoCheckout.policyVersion;
+                    }
                     if (!this.rememberSavedPaymentBooking(bookingId)) {
                         showAlert("Request saved", "Your request was saved, but its dates are not held yet. Open payment from My Bookings to start a 15-minute hold.", 'error');
                     } else {

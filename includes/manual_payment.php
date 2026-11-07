@@ -548,10 +548,21 @@ function manual_payment_db_now(mysqli $conn): string
 }
 
 /** Acquire once per token. Reopening with a new token never extends an existing hold. */
-function manual_payment_acquire_step_hold_locked(mysqli $conn, array $booking, string $token): ?string
+function manual_payment_acquire_step_hold_locked(mysqli $conn, array $booking, string $token, bool $retainUntilReleased = false): ?string
 {
     require_once __DIR__ . '/booking_rules.php';
     $bookingId = (int)$booking['id'];
+    // The legacy manual-payment dialog is retired in PayMongo mode. Keep this
+    // shared helper fail-closed too, so a stale/manual caller cannot replace a
+    // provider-owned durable lock after its customer-facing timer ends.
+    require_once __DIR__ . '/paymongo_mode.php';
+    if (paymongo_capstone_enabled()) {
+        $providerAttempt = $conn->prepare("SELECT id FROM pm_attempts WHERE booking_id = ? AND status IN ('creating','open','uncertain','review') LIMIT 1 FOR UPDATE");
+        if (!$providerAttempt) throw new RuntimeException('Unable to verify the active provider checkout.');
+        $providerAttempt->bind_param('i', $bookingId);
+        if (!$providerAttempt->execute()) throw new RuntimeException('Unable to verify the active provider checkout.');
+        if ($providerAttempt->get_result()->num_rows > 0) return null;
+    }
     $exit = $conn->prepare('SELECT token FROM payment_step_exits WHERE token = ? AND booking_id = ? LIMIT 1');
     $exit->bind_param('si', $token, $bookingId);
     if (!$exit->execute()) throw new RuntimeException('Unable to check payment step state.');
@@ -581,18 +592,36 @@ function manual_payment_acquire_step_hold_locked(mysqli $conn, array $booking, s
         if (!$delete->execute()) throw new RuntimeException('Unable to clear an expired payment hold.');
     }
     if (!manual_payment_claim_inventory_locked($conn, $booking)) return null;
+    if ($retainUntilReleased) {
+        if (!empty($booking['payment_step_seen_at'])) {
+            $expiryStmt = $conn->prepare('SELECT DATE_ADD(payment_step_seen_at, INTERVAL 15 MINUTE) AS expiry FROM bookings WHERE id = ?');
+            $expiryStmt->bind_param('i', $bookingId);
+        } else {
+            $expiryStmt = $conn->prepare('SELECT DATE_ADD(NOW(), INTERVAL 15 MINUTE) AS expiry');
+        }
+        if (!$expiryStmt || !$expiryStmt->execute()) throw new RuntimeException('Unable to set the original payment deadline.');
+        $expiry = (string)($expiryStmt->get_result()->fetch_assoc()['expiry'] ?? '');
+        if ($expiry === '' || $expiry <= manual_payment_db_now($conn)) return null;
+    }
     $lockId = manual_payment_step_lock_id($token);
-    $insert = $conn->prepare("INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) VALUES (?, ?, 'online', ?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+    $lockExpiry = $retainUntilReleased ? '9999-12-31 23:59:59' : null;
+    $insert = $retainUntilReleased
+        ? $conn->prepare("INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) VALUES (?, ?, 'online', ?, ?, ?)")
+        : $conn->prepare("INSERT INTO booking_locks (venue_id, session_id, source, start_date, end_date, expires_at) VALUES (?, ?, 'online', ?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
     if (!$insert) throw new RuntimeException('Unable to create a payment hold.');
     foreach ($resources as $resource) {
         $venueId = (int)$resource['venue_id'];
         $start = (string)$resource['start_date'];
         $end = (string)$resource['end_date'];
-        $insert->bind_param('isss', $venueId, $lockId, $start, $end);
+        if ($retainUntilReleased) $insert->bind_param('issss', $venueId, $lockId, $start, $end, $lockExpiry);
+        else $insert->bind_param('isss', $venueId, $lockId, $start, $end);
         if (!$insert->execute()) throw new RuntimeException('Unable to hold every selected room.');
     }
-    $update = $conn->prepare('UPDATE bookings SET payment_step_token = ?, payment_step_expires_at = DATE_ADD(NOW(), INTERVAL 15 MINUTE), payment_step_seen_at = COALESCE(payment_step_seen_at, NOW()) WHERE id = ?');
-    $update->bind_param('si', $token, $bookingId);
+    $update = $retainUntilReleased
+        ? $conn->prepare('UPDATE bookings SET payment_step_token = ?, payment_step_expires_at = ?, payment_step_seen_at = COALESCE(payment_step_seen_at, NOW()) WHERE id = ?')
+        : $conn->prepare('UPDATE bookings SET payment_step_token = ?, payment_step_expires_at = DATE_ADD(NOW(), INTERVAL 15 MINUTE), payment_step_seen_at = COALESCE(payment_step_seen_at, NOW()) WHERE id = ?');
+    if ($retainUntilReleased) $update->bind_param('ssi', $token, $expiry, $bookingId);
+    else $update->bind_param('si', $token, $bookingId);
     if (!$update->execute()) throw new RuntimeException('Unable to save payment hold.');
     $read = $conn->prepare('SELECT payment_step_expires_at FROM bookings WHERE id = ?');
     $read->bind_param('i', $bookingId);
@@ -1019,6 +1048,11 @@ function manual_payment_credit_locked(mysqli $conn, array $booking, float $amoun
 /** Cancel expired, wholly-unpaid online holds. Call from the CLI scheduler only. */
 function manual_payment_expire_due_bookings(mysqli $conn, int $limit = 100): int
 {
+    require_once __DIR__.'/paymongo_mode.php';
+    if (paymongo_capstone_enabled()) {
+        require_once __DIR__.'/paymongo_native.php';
+        return paymongo_native_expire_due($conn,null,$limit);
+    }
     require_once __DIR__ . '/booking_lifecycle.php';
     require_once __DIR__ . '/notifications.php';
     require_once __DIR__ . '/request_context.php';

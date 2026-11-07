@@ -126,12 +126,12 @@ foreach ([
 foreach (['actions/admin/create_backup.php', 'actions/admin/delete_backup.php', 'actions/admin/download_backup.php', 'actions/admin/import_backup.php', 'actions/admin/restore_backup.php', 'includes/backup_helper.php', 'includes/admin-page/admin_backups.php', 'assets/js/admin-page/admin_backups.js', 'assets/css/admin-page/admin_backups.css', 'scripts/daily_backup.php'] as $path) {
     audit_backup_contract_assert(!file_exists(__DIR__ . '/../' . $path), "obsolete backup feature file is removed ({$path})");
 }
-foreach (['actions/admin/create_database_backup.php', 'actions/admin/upload_database_backup.php', 'actions/admin/restore_database_backup.php', 'actions/admin/download_database_backup.php', 'actions/admin/get_database_backup_status.php', 'includes/database_backup.php', 'includes/admin-page/admin_database_backups.php', 'assets/js/admin-page/admin_database_backups.js', 'assets/css/admin-page/admin_database_backups.css', 'scripts/database_backup_worker.php'] as $path) {
-    audit_backup_contract_assert(file_exists(__DIR__ . '/../' . $path), "managed database backup component exists ({$path})");
+foreach (['actions/admin/create_database_backup.php', 'actions/admin/upload_database_backup.php', 'actions/admin/restore_database_backup.php', 'actions/admin/download_database_backup.php', 'actions/admin/get_database_backup_status.php', 'includes/admin-page/admin_database_backups.php', 'assets/js/admin-page/admin_database_backups.js', 'assets/css/admin-page/admin_database_backups.css', 'scripts/database_backup_worker.php', 'scripts/database_backup_setup.php', 'scripts/database_backup_setup_staging.php'] as $path) {
+    audit_backup_contract_assert(!file_exists(__DIR__ . '/../' . $path), "database backup feature entry point is removed ({$path})");
 }
-audit_backup_contract_assert(str_contains($dashboard, 'database_backups') && str_contains($dashboard, 'admin_database_backups'), 'database backup management is available only through the admin dashboard route');
-audit_backup_contract_assert(str_contains($readme, 'Database backup and recovery') && str_contains($readme, 'database_backup_worker.php'), 'README documents database backup deployment and worker setup');
-audit_backup_contract_assert(str_contains($checklist, 'Database backup and recovery'), 'testing checklist includes archive and restore checks');
+audit_backup_contract_assert(!str_contains($dashboard, 'database_backups') && !str_contains($dashboard, 'admin_database_backups'), 'database backup management is removed from the admin dashboard');
+audit_backup_contract_assert(!str_contains($readme, 'Database backup and recovery') && !str_contains($readme, 'database_backup_worker.php'), 'README no longer instructs operators to deploy a database backup worker');
+audit_backup_contract_assert(!str_contains($checklist, '## Database backup and recovery'), 'testing checklist no longer advertises the removed feature');
 audit_backup_contract_assert((bool)preg_match('/DROP\s+TABLE\s+IF\s+EXISTS\s+`?backups`?/i', $backupMigration), 'forward migration drops only the obsolete backups metadata table idempotently');
 
 echo "Audit/backup contract checks passed\n";

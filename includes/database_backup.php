@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/database_backup_media.php';
+
 const DATABASE_BACKUP_MAGIC = "S360DBA1";
 const DATABASE_BACKUP_HEADER_MAX_BYTES = 4096;
 const DATABASE_BACKUP_DEFAULT_MAX_BYTES = 52428800;
@@ -287,12 +289,12 @@ function database_backup_archive_header_from_stream($stream, int $fileSize): arr
     }
     $expectedKeys = ['format', 'database', 'created_at', 'kind', 'compression', 'payload_bytes', 'payload_sha256', 'uncompressed_bytes', 'signature'];
     if (!is_array($header) || array_keys($header) !== $expectedKeys) throw new RuntimeException('The database archive metadata is incomplete or unsupported.');
-    if (($header['format'] ?? null) !== 1 || ($header['compression'] ?? null) !== 'gzip' || !in_array($header['kind'] ?? null, ['scheduled', 'manual', 'pre_restore', 'uploaded'], true)) throw new RuntimeException('The database archive format is incompatible.');
+    if (!in_array($header['format'] ?? null, [1, 2], true) || ($header['compression'] ?? null) !== 'gzip' || !in_array($header['kind'] ?? null, ['scheduled', 'manual', 'pre_restore', 'uploaded'], true)) throw new RuntimeException('The database archive format is incompatible.');
     $config = database_backup_connection_config('DB_');
     if (!is_string($header['database'] ?? null) || !hash_equals($config['name'], $header['database'])) throw new RuntimeException('This archive belongs to a different database.');
     if (!is_string($header['created_at'] ?? null) || !preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\z/D', $header['created_at'])) throw new RuntimeException('The database archive timestamp is invalid.');
     if (!is_int($header['payload_bytes'] ?? null) || $header['payload_bytes'] < 20 || $header['payload_bytes'] > $maxBytes) throw new RuntimeException('The database archive payload length is invalid.');
-    if (!is_int($header['uncompressed_bytes'] ?? null) || $header['uncompressed_bytes'] < 1 || $header['uncompressed_bytes'] > database_backup_max_sql_bytes()) throw new RuntimeException('The database archive SQL payload exceeds the configured safety limit.');
+    if (!is_int($header['uncompressed_bytes'] ?? null) || $header['uncompressed_bytes'] < 1 || $header['uncompressed_bytes'] > database_backup_max_sql_bytes()) throw new RuntimeException('The archive expanded payload exceeds the configured safety limit.');
     if (!is_string($header['payload_sha256'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D', $header['payload_sha256'])) throw new RuntimeException('The database archive checksum is invalid.');
     if (!is_string($header['signature'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D', $header['signature'])) throw new RuntimeException('The database archive signature is invalid.');
     $key = database_backup_app_key();
@@ -367,9 +369,9 @@ function database_backup_validate_archive(string $path): array
         } finally {
             gzclose($gzip);
         }
-        if ($uncompressed !== $header['uncompressed_bytes']) throw new RuntimeException('The database archive SQL length does not match its metadata.');
+        if ($uncompressed !== $header['uncompressed_bytes']) throw new RuntimeException('The archive expanded length does not match its metadata.');
         $header['_payload_temp'] = $payloadTemp;
-        return $header;
+        return $header['format'] === 2 ? database_backup_media_unpack($header) : $header;
     } catch (Throwable $error) {
         if (is_string($payloadTemp) && is_file($payloadTemp)) @unlink($payloadTemp);
         throw $error;
@@ -380,6 +382,7 @@ function database_backup_validate_archive(string $path): array
 
 function database_backup_remove_validation_temp(array $metadata): void
 {
+    if (isset($metadata['_media_directory'])) database_backup_media_cleanup($metadata['_media_directory']);
     $path = $metadata['_payload_temp'] ?? null;
     if (is_string($path) && is_file($path) && !is_link($path)) @unlink($path);
 }
@@ -419,8 +422,28 @@ function database_backup_process(string $binary, array $arguments, array $descri
     return ['status' => $status, 'pipes' => $pipes];
 }
 
-function database_backup_run_dump(string $kind, ?int $actorId = null): array
+/** Standalone callers acquire the snapshot lock; worker restore already owns it. */
+function database_backup_run_dump(string $kind, ?int $actorId = null, bool $alreadyLocked = false, ?callable $onPhase = null): array
 {
+    $snapshotLock = null;
+    if (!$alreadyLocked) {
+        $snapshotLock = database_backup_lock(true, true);
+        if ($snapshotLock === false) throw new RuntimeException('Unable to acquire the exclusive snapshot lock.');
+        if (database_backup_maintenance_state() !== null) {
+            database_backup_release_lock($snapshotLock);
+            throw new RuntimeException('Maintenance is active; snapshot creation is paused.');
+        }
+    }
+    try { return database_backup_run_dump_locked($kind, $actorId, $onPhase); }
+    finally { database_backup_release_lock($snapshotLock); }
+}
+
+function database_backup_run_dump_locked(string $kind, ?int $actorId = null, ?callable $onPhase = null): array
+{
+    $reportPhase = static function (string $phase) use ($onPhase): void {
+        if ($onPhase !== null) $onPhase($phase);
+    };
+    $reportPhase('Preparing database dump');
     if (!in_array($kind, ['scheduled', 'manual', 'pre_restore'], true)) throw new RuntimeException('Invalid database backup type.');
     $config = database_backup_connection_config('DB_');
     $binary = database_backup_find_binary('MYSQLDUMP_BIN', ['mysqldump', 'mariadb-dump']);
@@ -430,13 +453,15 @@ function database_backup_run_dump(string $kind, ?int $actorId = null): array
     $sqlTemp = tempnam($directory, '.dump-');
     $stderrTemp = tempnam($directory, '.dump-error-');
     $gzipTemp = tempnam($directory, '.gzip-');
-    if ($sqlTemp === false || $stderrTemp === false || $gzipTemp === false) {
-        foreach ([$sqlTemp, $stderrTemp, $gzipTemp] as $temp) if (is_string($temp)) @unlink($temp);
+    $bundleTemp = tempnam($directory, '.bundle-');
+    if ($sqlTemp === false || $stderrTemp === false || $gzipTemp === false || $bundleTemp === false) {
+        foreach ([$sqlTemp, $stderrTemp, $gzipTemp, $bundleTemp] as $temp) if (is_string($temp)) @unlink($temp);
         @unlink($defaults);
         throw new RuntimeException('Unable to prepare private temporary backup files.');
     }
-    foreach ([$sqlTemp, $stderrTemp, $gzipTemp] as $temp) @chmod($temp, 0600);
+    foreach ([$sqlTemp, $stderrTemp, $gzipTemp, $bundleTemp] as $temp) @chmod($temp, 0600);
     try {
+        $reportPhase('Running database dump');
         $dumpArgs = [
             '--defaults-extra-file=' . $defaults,
             '--single-transaction', '--quick', '--routines', '--triggers', '--events',
@@ -457,7 +482,10 @@ function database_backup_run_dump(string $kind, ?int $actorId = null): array
         }
         $sqlBytes = filesize($sqlTemp);
         if ($sqlBytes === false || $sqlBytes < 1 || $sqlBytes > database_backup_max_sql_bytes()) throw new RuntimeException('The SQL dump is empty or exceeds BACKUP_MAX_UNCOMPRESSED_BYTES.');
-        $source = fopen($sqlTemp, 'rb');
+        $reportPhase('Collecting site images');
+        $bundleBytes = database_backup_media_bundle($sqlTemp, $bundleTemp);
+        $reportPhase('Compressing archive');
+        $source = fopen($bundleTemp, 'rb');
         $gzip = gzopen($gzipTemp, 'wb6');
         if ($source === false || $gzip === false) {
             if (is_resource($source)) fclose($source);
@@ -478,15 +506,16 @@ function database_backup_run_dump(string $kind, ?int $actorId = null): array
         $payloadBytes = filesize($gzipTemp);
         $payloadSha = hash_file('sha256', $gzipTemp);
         if ($payloadBytes === false || $payloadSha === false) throw new RuntimeException('Unable to validate compressed backup output.');
+        $reportPhase('Signing archive');
         $metadata = [
-            'format' => 1,
+            'format' => 2,
             'database' => $config['name'],
             'created_at' => gmdate('Y-m-d\TH:i:s\Z'),
             'kind' => $kind,
             'compression' => 'gzip',
             'payload_bytes' => (int)$payloadBytes,
             'payload_sha256' => $payloadSha,
-            'uncompressed_bytes' => (int)$sqlBytes,
+            'uncompressed_bytes' => $bundleBytes,
         ];
         $key = database_backup_app_key();
         if ($key === null) throw new RuntimeException('APP_KEY must contain at least 32 characters before database backups can be created.');
@@ -495,6 +524,7 @@ function database_backup_run_dump(string $kind, ?int $actorId = null): array
         if (strlen($header) > DATABASE_BACKUP_HEADER_MAX_BYTES) throw new RuntimeException('Database backup metadata exceeds the supported limit.');
         if (12 + strlen($header) + $payloadBytes > database_backup_max_bytes()) throw new RuntimeException('The compressed database backup exceeds BACKUP_MAX_BYTES.');
 
+        $reportPhase('Publishing archive');
         $id = 'db-' . bin2hex(random_bytes(16)) . '.s360db';
         $target = database_backup_archive_path($id, false);
         $archiveTemp = tempnam($directory, '.archive-');
@@ -523,13 +553,13 @@ function database_backup_run_dump(string $kind, ?int $actorId = null): array
         @chmod($target, 0600);
         return ['id' => $id, 'metadata' => $metadata, 'bytes' => filesize($target) ?: 0, 'actor_id' => $actorId];
     } finally {
-        foreach ([$defaults, $sqlTemp, $stderrTemp, $gzipTemp] as $temp) if (is_file($temp) && !is_link($temp)) @unlink($temp);
+        foreach ([$defaults, $sqlTemp, $stderrTemp, $gzipTemp, $bundleTemp] as $temp) if (is_file($temp) && !is_link($temp)) @unlink($temp);
     }
 }
 
 function database_backup_extract_payload(array $metadata): string
 {
-    $temp = $metadata['_payload_temp'] ?? null;
+    $temp = $metadata['_sql_temp'] ?? $metadata['_payload_temp'] ?? null;
     if (!is_string($temp) || !is_file($temp) || is_link($temp)) throw new RuntimeException('Verified database payload is unavailable.');
     return $temp;
 }
@@ -727,14 +757,15 @@ function database_backup_capture_schema_reference(mysqli $connection): array
 /** Minimum current business, authentication, payment, and cancellation schema. */
 function database_backup_required_schema_columns(): array
 {
-    return [
+    $required = [
         // reset_token_hash (019), contact/policy/deadline fields (006/010/020),
         // refund fields (007/012/022), and manual payments (020) are used by
         // current authentication and transaction flows. Optional integrations
         // such as Google sign-in, reviews, realtime delivery, and room groups
         // do not block when absent; any such tables/columns enabled on live
         // production are required by the captured schema reference.
-        'users' => ['id', 'email', 'role', 'status', 'password_hash', 'reset_token_hash'],
+        'users' => ['id', 'email', 'role', 'status', 'password_hash', 'reset_token_hash', 'auth_version'],
+        'account_sessions' => ['user_id', 'token_hash', 'authenticated_at'],
         'staff' => ['user_id', 'status'],
         'customers' => ['id', 'user_id', 'first_name', 'last_name', 'email', 'phone'],
         'venues' => ['id', 'name', 'category', 'status'],
@@ -749,6 +780,14 @@ function database_backup_required_schema_columns(): array
         'seminar_payments' => ['id', 'seminar_id', 'amount', 'payment_method', 'transaction_reference', 'reference_fingerprint', 'idempotency_key', 'status', 'created_by', 'created_at', 'voided_by', 'voided_at', 'void_reason'],
         'audit_logs' => ['id', 'user_id', 'created_at', 'module', 'action', 'ip_address'],
     ];
+    if (database_backup_env('PAYMONGO_CAPSTONE_MODE') === 'test') {
+        $required['bookings'] = array_merge($required['bookings'], ['quote_version','quote_accepted']);
+        $required['pm_capstone_identity'] = ['purpose'];
+        $required['pm_attempts'] = ['id','booking_id','snapshot','amount_cents','base_paid_cents','hold_token','expires_at','status','provider_session_id','checkout_url','created_at','restore_epoch'];
+        $required['pm_events'] = ['id','digest','outcome','created_at'];
+        $required['pm_receipts'] = ['payment_id','attempt_id','amount_cents','currency','disposition','created_at'];
+    }
+    return $required;
 }
 
 /** Return missing base tables and columns using case-insensitive schema names. */
@@ -837,7 +876,8 @@ function database_backup_maintenance_state(): ?array
         if ($configured !== '' && !str_contains($configured, "\0") && (file_exists($marker) || is_link($marker))) return ['active' => true, 'state' => 'unreadable'];
         return null;
     }
-    if (is_link($path) || !is_file($path)) return null;
+    if (is_link($path)) return ['active' => true, 'state' => 'invalid'];
+    if (!is_file($path)) return null;
     $raw = file_get_contents($path);
     if (!is_string($raw) || strlen($raw) > 4096) return ['active' => true, 'state' => 'unreadable'];
     $state = json_decode($raw, true);
@@ -902,9 +942,9 @@ function database_backup_route_uses_gate(string $script, string $method): bool
         '/actions/admin/download_database_backup.php',
     ];
     foreach ($allowed as $path) if ($script === $path || str_ends_with($script, $path)) return false;
-    $method = strtoupper($method);
-    $isAction = str_contains('/' . ltrim($script, '/'), '/actions/');
-    return $isAction || !in_array($method, ['GET', 'HEAD', 'OPTIONS'], true);
+    // Readers also hold the shared lock: restore must not clear the DB while
+    // an in-flight page is reading it, or serve references during media install.
+    return true;
 }
 
 function database_backup_web_request_uses_gate(): bool
@@ -913,7 +953,120 @@ function database_backup_web_request_uses_gate(): bool
     return database_backup_route_uses_gate((string)($_SERVER['SCRIPT_NAME'] ?? ''), (string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 }
 
-/** Gate all unsafe web methods for the full request lifetime. */
+/** Non-secret authority generation lives outside SQL/media archives. */
+function database_backup_authentication_epoch(): string
+{
+    if (database_backup_env('BACKUP_DIR') === '') return '0';
+    $path = database_backup_directory(false) . '/auth-epoch.json';
+    if (is_link($path)) throw new RuntimeException('Authentication generation is invalid.');
+    if (!file_exists($path)) throw new RuntimeException('Authentication generation is missing; explicit initialization is required.');
+    $raw = file_get_contents($path);
+    if (!is_string($raw) || strlen($raw) > 256) throw new RuntimeException('Authentication generation is unreadable.');
+    $value = json_decode($raw, true);
+    if (!is_array($value) || !is_string($value['epoch'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/', $value['epoch'])) throw new RuntimeException('Authentication generation is invalid.');
+    return $value['epoch'];
+}
+
+/** Publish under maintenance and the caller's exclusive operation lock. */
+function database_backup_initialize_epoch_without_link(string $target, string $contents): bool
+{
+    // Exclusive creation never replaces existing authority. Call only under
+    // maintenance and the same worker/operation locks as normal initialization.
+    $mask = umask(0077);
+    try {
+        $handle = fopen($target, 'x+b');
+    } finally {
+        umask($mask);
+    }
+    if ($handle === false) throw new RuntimeException('Cannot exclusively create authentication generation.');
+    try {
+        if (!chmod($target, 0600)
+            || fwrite($handle, $contents) !== strlen($contents)
+            || !fflush($handle)) {
+            throw new RuntimeException('Cannot write authentication generation.');
+        }
+    } finally {
+        fclose($handle);
+    }
+    // On failure retain the target and maintenance: never silently retry or
+    // erase partially published authority. The caller validates before success.
+    return true;
+}
+
+function database_backup_publish_authentication_epoch(bool $initialize): void
+{
+    if (database_backup_maintenance_state() === null) throw new RuntimeException('Authentication fencing requires maintenance.');
+    $directory = database_backup_directory(false);
+    $target = $directory . '/auth-epoch.json';
+    if (is_link($target)) throw new RuntimeException('Authentication generation is invalid.');
+    if ($initialize) {
+        if (file_exists($target)) throw new RuntimeException('Authentication generation already exists; initialization cannot replace it.');
+    } else {
+        database_backup_authentication_epoch(); // Missing state must never silently downgrade.
+    }
+    // Publish stage: create.
+    $temp = tempnam($directory, '.auth-epoch-');
+    if ($temp === false) throw new RuntimeException('Cannot create authentication generation.');
+    try {
+        // Publish stage: write.
+        $contents = json_encode(['epoch' => bin2hex(random_bytes(32))], JSON_THROW_ON_ERROR);
+        if (!chmod($temp, 0600) || file_put_contents($temp, $contents, LOCK_EX) !== strlen($contents)) throw new RuntimeException('Cannot write authentication generation.');
+        // Publish stage: rename.
+        // Initialization atomically refuses an existing target, including one
+        // created concurrently; normal restore rotation atomically replaces it.
+        $published = $initialize
+            ? (function_exists('link') ? link($temp, $target) : database_backup_initialize_epoch_without_link($target, $contents))
+            : rename($temp, $target);
+        if (!$published) throw new RuntimeException('Cannot publish authentication generation.');
+        clearstatcache(true, $target);
+        // Publish stage: readback.
+        database_backup_authentication_epoch();
+    } finally { if (is_file($temp)) unlink($temp); }
+}
+
+/** First initialization is an explicit CLI maintenance operation, never a read side effect. */
+function database_backup_initialize_authentication_epoch(): void
+{
+    database_backup_publish_authentication_epoch(true);
+}
+
+/** Must run under the restore's exclusive lock and active maintenance marker. */
+function database_backup_rotate_authentication_epoch(): void
+{
+    database_backup_publish_authentication_epoch(false);
+}
+
+/** Imported credentials are never restored as current authenticated authority. */
+function database_backup_invalidate_restored_authority(array $config): void
+{
+    if (database_backup_maintenance_state() === null) throw new RuntimeException('Session invalidation requires maintenance.');
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $db = new mysqli($config['host'],$config['user'],$config['password'],$config['name'],$config['port']??3306);
+    try {
+        $reference = database_backup_capture_schema_reference($db);
+        $columns = $reference['columns'] ?? [];
+        if (!isset($columns['users'],$columns['account_sessions']) || !in_array('auth_version',$columns['users'],true)) throw new RuntimeException('Restored session schema is incompatible.');
+        $unique = false;
+        $indexes = $db->query('SHOW INDEX FROM account_sessions');
+        $groups=[];
+        while($index=$indexes->fetch_assoc()) if((int)$index['Non_unique']===0)$groups[$index['Key_name']][]=$index['Column_name'];
+        foreach($groups as $group) if($group===['user_id'])$unique=true;
+        if(!$unique)throw new RuntimeException('Restored session registry is not uniquely keyed.');
+        $db->begin_transaction();
+        $db->query('DELETE FROM account_sessions');
+        $maximum=$db->query('SELECT MAX(auth_version) AS v FROM users')->fetch_assoc()['v']??0;
+        if(!is_numeric($maximum)||(float)$maximum>=4294967295)throw new RuntimeException('Credential version cannot be safely invalidated.');
+        $assign=['auth_version=COALESCE(auth_version,0)+1'];
+        foreach(['reset_token','reset_token_hash','reset_expires_at','verification_code','verification_expires_at'] as $field)if(in_array($field,$columns['users'],true))$assign[]='`'.$field.'`=NULL';
+        $db->query('UPDATE users SET '.implode(',',$assign));
+        foreach(['contact_challenges','recovery_sms_challenges'] as $table)if(isset($columns[$table]))$db->query('DELETE FROM `'.$table.'`');
+        if(!$db->commit())throw new RuntimeException('Restored session invalidation could not commit.');
+        if((int)$db->query('SELECT COUNT(*) AS n FROM account_sessions')->fetch_assoc()['n']!==0)throw new RuntimeException('Restored session registry was not cleared.');
+    } catch(Throwable $error){try{$db->rollback();}catch(Throwable $ignored){}throw $error;}
+    finally{$db->close();}
+}
+
+/** Gate application reads and writes for the full request lifetime. */
 function database_backup_enforce_web_write_gate(): void
 {
     if (!database_backup_web_request_uses_gate()) return;
@@ -1075,6 +1228,7 @@ function database_backup_list_archives(bool $verify = false): array
             $metadata = database_backup_read_archive_header($path);
             $row['created_at'] = $metadata['created_at'];
             $row['kind'] = $metadata['kind'];
+            $row['coverage'] = $metadata['format'] === 2 ? 'Database + site images (QR excluded on restore)' : 'Legacy database only (no image files)';
             $row['header_valid'] = true;
         } catch (Throwable $error) {
             $row['message'] = 'Archive metadata check failed.';
@@ -1214,6 +1368,113 @@ function database_backup_verify_request_admin(bool $allowMaintenanceFallback = f
     }
 }
 
+function database_backup_create_failure_summary(string $code): ?string
+{
+    return match ($code) {
+        'archive_size_limit' => 'The backup exceeds a configured archive size limit.',
+        'database_operation' => 'A database connection or query failed; verify the backup account and grants.',
+        'database_dump' => 'The database dump command failed; verify the CLI client and database permissions.',
+        'host_capability' => 'A required host capability or backup configuration is unavailable.',
+        'signing_configuration' => 'Backup signing is not configured correctly.',
+        'site_images' => 'A supported site image could not be included; check the upload files and permissions.',
+        'private_storage' => 'Private backup storage could not be used; check its configured path and permissions.',
+        'archive_output' => 'The archive could not be compressed, signed, or published to private storage.',
+        'site_image_storage_unsafe' => 'The upload path contains an unsafe link or non-directory entry.',
+        'site_image_path_unsupported' => 'An image file is outside the supported backup paths or formats.',
+        'site_image_invalid' => 'An uploaded image is invalid, unreadable, linked, empty, or exceeds the per-file limit.',
+        'site_image_unreadable' => 'The worker could not read an uploaded image file.',
+        'site_image_changed' => 'An uploaded image changed while the backup was being created.',
+        'site_image_limit' => 'The upload tree exceeds the configured image count or scan limit.',
+        'site_image_bundle_io' => 'The worker could not read or write the temporary image bundle.',
+        'unexpected_failure' => 'The job failed unexpectedly; use the job ID to correlate with host logs.',
+        default => null,
+    };
+}
+
+function database_backup_create_failure_diagnostic(Throwable $error): array
+{
+    $message = $error->getMessage();
+    if (str_contains($message, 'BACKUP_MAX_BYTES') || str_contains($message, 'BACKUP_MAX_UNCOMPRESSED_BYTES')) {
+        $code = 'archive_size_limit';
+    } elseif ($error instanceof mysqli_sql_exception) {
+        $code = 'database_operation';
+    } elseif (str_contains($message, 'process execution') || str_contains($message, 'mysqldump is unavailable')) {
+        $code = 'host_capability';
+    } elseif (str_contains($message, 'mysqldump') || str_contains($message, 'database dump command')) {
+        $code = 'database_dump';
+    } elseif (str_contains($message, 'APP_KEY')) {
+        $code = 'signing_configuration';
+    } elseif (str_contains($message, 'image') || str_contains($message, 'uploaded')) {
+        $lowerMessage = strtolower($message);
+        if (str_contains($lowerMessage, 'unsafe ancestor') || str_contains($lowerMessage, 'symbolic link') || str_contains($lowerMessage, 'non-regular file')) {
+            $code = 'site_image_storage_unsafe';
+        } elseif (str_contains($lowerMessage, 'outside supported backup coverage')) {
+            $code = 'site_image_path_unsupported';
+        } elseif (str_contains($lowerMessage, 'unavailable, linked') || str_contains($lowerMessage, 'unsupported or invalid content')) {
+            $code = 'site_image_invalid';
+        } elseif (str_contains($lowerMessage, 'changed during backup')) {
+            $code = 'site_image_changed';
+        } elseif (str_contains($lowerMessage, 'unable to read a backup image') || str_contains($lowerMessage, 'backup stream is incomplete')) {
+            $code = 'site_image_unreadable';
+        } elseif (str_contains($lowerMessage, 'too many entries') || str_contains($lowerMessage, '10,000-file limit')) {
+            $code = 'site_image_limit';
+        } elseif (str_contains($lowerMessage, 'image bundle') || str_contains($lowerMessage, 'backup image') || str_contains($lowerMessage, 'image storage')) {
+            $code = 'site_image_bundle_io';
+        } else {
+            $code = 'site_images';
+        }
+    } elseif (str_contains($message, 'private') || str_contains($message, 'storage')) {
+        $code = 'private_storage';
+    } elseif (str_contains($message, 'compress') || str_contains($message, 'archive') || str_contains($message, 'gzip')) {
+        $code = 'archive_output';
+    } else {
+        $code = 'unexpected_failure';
+    }
+
+    $class = match (true) {
+        $error instanceof mysqli_sql_exception => 'mysqli_sql_exception',
+        $error instanceof RuntimeException => 'RuntimeException',
+        $error instanceof JsonException => 'JsonException',
+        $error instanceof ErrorException => 'ErrorException',
+        $error instanceof TypeError => 'TypeError',
+        $error instanceof Error => 'Error',
+        $error instanceof Exception => 'Exception',
+        default => 'OtherError',
+    };
+
+    return ['code' => $code, 'exception_class' => $class];
+}
+
+function database_backup_create_job_phase(string $phase): string
+{
+    static $allowed = [
+        'Preparing snapshot',
+        'Preparing database dump',
+        'Running database dump',
+        'Collecting site images',
+        'Compressing archive',
+        'Signing archive',
+        'Publishing archive',
+        'Finalizing backup',
+    ];
+    return in_array($phase, $allowed, true) ? $phase : 'Preparing snapshot';
+}
+
+/** Return only allowlisted diagnostic data to the authenticated admin status view. */
+function database_backup_public_job_failure(mixed $failure): ?array
+{
+    if (!is_array($failure)) return null;
+    $code = is_string($failure['code'] ?? null) ? $failure['code'] : '';
+    $summary = database_backup_create_failure_summary($code);
+    if ($summary === null) return null;
+    $allowedCodes = ['archive_size_limit', 'database_operation', 'database_dump', 'host_capability', 'signing_configuration', 'site_images', 'site_image_storage_unsafe', 'site_image_path_unsupported', 'site_image_invalid', 'site_image_unreadable', 'site_image_changed', 'site_image_limit', 'site_image_bundle_io', 'private_storage', 'archive_output', 'unexpected_failure'];
+    if (!in_array($code, $allowedCodes, true)) return null;
+    $classes = ['mysqli_sql_exception', 'RuntimeException', 'JsonException', 'ErrorException', 'TypeError', 'Error', 'Exception', 'OtherError'];
+    $class = in_array($failure['exception_class'] ?? null, $classes, true) ? $failure['exception_class'] : 'OtherError';
+    $phase = database_backup_create_job_phase(is_string($failure['phase'] ?? null) ? $failure['phase'] : '');
+    return ['code' => $code, 'summary' => $summary, 'exception_class' => $class, 'phase' => $phase];
+}
+
 function database_backup_job_update(array &$job, string $status, string $phase, string $message, array $extra = []): void
 {
     $job['status'] = $status;
@@ -1234,6 +1495,59 @@ function database_backup_connect_production(): mysqli
     return $connection;
 }
 
+/** Snapshot the current legacy payment-method setting so archives cannot replace it. */
+function database_backup_capture_manual_payment_setting(mysqli $connection): array
+{
+    $key = 'manual_payment_instructions';
+    $statement = $connection->prepare('SELECT setting_value, description FROM system_settings WHERE setting_key = ? LIMIT 1');
+    if (!$statement) throw new RuntimeException('The current payment-method setting could not be protected from restore.');
+    $statement->bind_param('s', $key);
+    if (!$statement->execute()) throw new RuntimeException('The current payment-method setting could not be protected from restore.');
+    $row = $statement->get_result()->fetch_assoc();
+    $statement->close();
+    if (!$row) return ['present' => false];
+    return [
+        'present' => true,
+        'setting_value' => $row['setting_value'] === null ? null : (string)$row['setting_value'],
+        'description' => $row['description'] === null ? null : (string)$row['description'],
+    ];
+}
+
+/** Reapply only the pre-restore value; never import this configuration from an archive. */
+function database_backup_restore_manual_payment_setting(array $snapshot): void
+{
+    if (!is_bool($snapshot['present'] ?? null)) throw new RuntimeException('The protected payment-method setting snapshot is invalid.');
+    $connection = database_backup_connect_production();
+    try {
+        $connection->begin_transaction();
+        $key = 'manual_payment_instructions';
+        if ($snapshot['present']) {
+            if (!array_key_exists('setting_value', $snapshot) || !array_key_exists('description', $snapshot)) throw new RuntimeException('The protected payment-method setting snapshot is incomplete.');
+            $value = $snapshot['setting_value'];
+            $description = $snapshot['description'];
+            $statement = $connection->prepare('INSERT INTO system_settings (setting_key, setting_value, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), description = VALUES(description)');
+            if (!$statement) throw new RuntimeException('The protected payment-method setting could not be restored.');
+            $statement->bind_param('sss', $key, $value, $description);
+            if (!$statement->execute()) throw new RuntimeException('The protected payment-method setting could not be restored.');
+            $statement->close();
+        } else {
+            $statement = $connection->prepare('DELETE FROM system_settings WHERE setting_key = ?');
+            if (!$statement) throw new RuntimeException('The archived payment-method setting could not be removed.');
+            $statement->bind_param('s', $key);
+            if (!$statement->execute()) throw new RuntimeException('The archived payment-method setting could not be removed.');
+            $statement->close();
+        }
+        if (!$connection->commit()) throw new RuntimeException('The payment-method setting protection could not be committed.');
+        $verified = database_backup_capture_manual_payment_setting($connection);
+        if ($verified !== $snapshot) throw new RuntimeException('The payment-method setting did not match its pre-restore value.');
+    } catch (Throwable $error) {
+        try { $connection->rollback(); } catch (Throwable $rollbackError) {}
+        throw $error;
+    } finally {
+        $connection->close();
+    }
+}
+
 /** Execute one queued create/validate/restore job. Called only by the CLI worker. */
 function database_backup_process_job(string $id): array
 {
@@ -1244,18 +1558,32 @@ function database_backup_process_job(string $id): array
     $lock = null;
     $schemaReference = null;
     $restoreVerified = false;
+    $manualPaymentSettingSnapshot = null;
     try {
         if (database_backup_maintenance_state() !== null) throw new RuntimeException('Database maintenance is already active; use the CLI recovery path before starting queued backup work.');
         $conn = database_backup_connect_production();
         database_backup_verify_fresh_admin($conn, (int)($job['actor_id'] ?? 0));
         if ($action === 'create') {
-            $lock = database_backup_lock(false, false);
+            $lock = database_backup_lock(true, true);
             if ($lock === false || database_backup_maintenance_state() !== null) throw new RuntimeException('Database restore is active; the backup job will be retried after maintenance.');
-            database_backup_job_update($job, 'running', 'Creating database dump', 'Dumping and signing the database.');
-            $created = database_backup_run_dump('manual', (int)$job['actor_id']);
+            database_backup_job_update($job, 'running', 'Preparing snapshot', 'Preparing the database and supported site images for backup.');
+            $reportCreatePhase = static function (string $phase) use (&$job): void {
+                $safePhase = database_backup_create_job_phase($phase);
+                try {
+                    database_backup_job_update($job, 'running', $safePhase, 'Backup creation is in progress.');
+                } catch (Throwable $statusError) {
+                    // Status detail is best-effort; a transient job-file failure
+                    // must not change the database/archive operation itself.
+                    $job['phase'] = $safePhase;
+                    $job['message'] = 'Backup creation is in progress.';
+                    error_log('Database backup job phase update failed: ' . get_class($statusError));
+                }
+            };
+            $created = database_backup_run_dump('manual', (int)$job['actor_id'], true, $reportCreatePhase);
+            database_backup_job_update($job, 'running', 'Finalizing backup', 'The archive was created; finishing audit and retention work.');
             database_backup_audit($conn, (int)$job['actor_id'], 'database.backup_created', 'Created signed database backup', ['archive_id' => $created['id'], 'job_id' => $id, 'kind' => 'manual', 'status' => 'succeeded']);
             database_backup_apply_retention();
-            database_backup_job_update($job, 'succeeded', 'Complete', 'Signed database backup is ready for download.', ['archive_id' => $created['id']]);
+            database_backup_job_update($job, 'succeeded', 'Complete', 'Signed database and image backup is ready for download.', ['archive_id' => $created['id']]);
             return $job;
         }
         if (!in_array($action, ['restore', 'validate'], true)) throw new RuntimeException('Unsupported database backup job.');
@@ -1273,22 +1601,29 @@ function database_backup_process_job(string $id): array
         }
         database_backup_verify_fresh_admin($conn, (int)$job['actor_id']);
         $lock = database_backup_lock(true, true);
+        if ($lock === false || database_backup_maintenance_state() !== null) throw new RuntimeException('Database restore is active; the restore job will be retried after maintenance.');
+        $manualPaymentSettingSnapshot = database_backup_capture_manual_payment_setting($conn);
         database_backup_write_maintenance($id, 'Preparing pre-restore safety backup');
         database_backup_job_update($job, 'running', 'Creating safety backup', 'The site write gate is active; creating a signed pre-restore safety backup.');
         database_backup_audit($conn, (int)$job['actor_id'], 'database.restore_started', 'Started database restore', ['archive_id' => $archiveId, 'job_id' => $id, 'status' => 'running']);
-        $safety = database_backup_run_dump('pre_restore', (int)$job['actor_id']);
+        $safety = database_backup_run_dump('pre_restore', (int)$job['actor_id'], true);
         $job['safety_archive_id'] = $safety['id'];
         database_backup_write_job($job);
         database_backup_write_maintenance($id, 'Restoring production database');
         database_backup_job_update($job, 'running', 'Restoring production database', 'Applying the verified archive to production.');
-        database_backup_clear_database_objects(database_backup_connection_config('DB_'));
         $metadata = database_backup_validate_archive($archivePath);
         try {
+            database_backup_media_prepare($metadata);
+            database_backup_rotate_authentication_epoch();
+            database_backup_clear_database_objects(database_backup_connection_config('DB_'));
             database_backup_import_payload(database_backup_extract_payload($metadata), database_backup_connection_config('DB_'), database_backup_connection_config('DB_')['name']);
+            database_backup_restore_manual_payment_setting($manualPaymentSettingSnapshot);
+            database_backup_media_install($metadata);
         } finally {
             database_backup_remove_validation_temp($metadata);
         }
         database_backup_verify_database(database_backup_connection_config('DB_'), $schemaReference);
+        database_backup_invalidate_restored_authority(database_backup_connection_config('DB_'));
         $restoreVerified = true;
         $conn->close();
         $conn = database_backup_connect_production();
@@ -1325,12 +1660,17 @@ function database_backup_process_job(string $id): array
                 $safetyPath = database_backup_archive_path($job['safety_archive_id'], true);
                 $safety = database_backup_validate_archive($safetyPath);
                 try {
+                    database_backup_media_prepare($safety);
+                    database_backup_rotate_authentication_epoch();
                     database_backup_clear_database_objects(database_backup_connection_config('DB_'));
                     database_backup_import_payload(database_backup_extract_payload($safety), database_backup_connection_config('DB_'), database_backup_connection_config('DB_')['name']);
+                    database_backup_restore_manual_payment_setting($manualPaymentSettingSnapshot);
+                    database_backup_media_install($safety);
                 } finally {
                     database_backup_remove_validation_temp($safety);
                 }
                 database_backup_verify_database(database_backup_connection_config('DB_'), $schemaReference);
+                database_backup_invalidate_restored_authority(database_backup_connection_config('DB_'));
                 $recoveryVerified = true;
                 database_backup_job_update($job, 'failed_recovered', 'Recovered from safety backup', 'The restore failed. Production was recovered and verified; clearing the maintenance gate.', ['recovery_completed_at' => gmdate('Y-m-d\TH:i:s\Z')]);
                 try {
@@ -1372,6 +1712,11 @@ function database_backup_process_job(string $id): array
                     error_log('Failed database restore job status could not be updated.');
                 }
             }
+        } elseif ($action === 'create') {
+            $phase = database_backup_create_job_phase((string)($job['phase'] ?? ''));
+            $failure = database_backup_create_failure_diagnostic($error);
+            $failure['phase'] = $phase;
+            database_backup_job_update($job, 'failed', $phase, 'Backup creation failed. Review the safe diagnostic details.', ['failure' => $failure]);
         } else {
             database_backup_job_update($job, 'failed', 'Failed', 'The database backup job failed. Check the server log and host capabilities.');
         }

@@ -90,7 +90,8 @@ $assert(str_contains($markRead, '$_SERVER[\'REQUEST_METHOD\']') && str_contains(
     && str_contains($markRead, 'admin_notification_key_is_active') && str_contains($markRead, 'ON DUPLICATE KEY UPDATE'), 'mark-read endpoint is POST-only, CSRF-protected, active-key validated, and idempotent');
 $assert(str_contains($dashboardJs, 'Needs action') && str_contains($dashboardJs, 'mark_notification_read.php') && str_contains($dashboardJs, 'read-error')
     && str_contains($header, 'payment-proof') === false && str_contains($header, 'data-admin-notification-key') && str_contains($header, 'Could not save read state'), 'admin action list stays unresolved while per-account read failures recover visibly');
-$assert(str_contains($adminBookings, 'open_payment_proof') && str_contains($adminBookings, 'open-manual-proof')
+$assert(str_contains($notifications, 'open_payment_proof=') && str_contains($adminBookings, "urlParams.get('booking_id')")
+    && str_contains($adminBookings, 'exactViewButton') && !str_contains($adminBookings, 'open-manual-proof')
     && str_contains($adminBookings, 'payment.proof_submitted') && str_contains($adminBookings, 'payment.received')
     && str_contains($adminBookings, 'booking.updated') && str_contains($adminBookings, 'booking.expired'), 'payment proof notifications deep-link and refresh admin bookings on lifecycle events');
 $assert(str_contains($header, 'response.ok') && str_contains($header, '!res.success') && str_contains($header, 's-notif-read-state'), 'customer notification UI mutates only after successful JSON writes and updates read state');

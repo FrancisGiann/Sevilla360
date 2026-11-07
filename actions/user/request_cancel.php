@@ -8,6 +8,8 @@ require_once '../../includes/refund_helper.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
+require_once __DIR__ . '/../../includes/paymongo_mode.php';
+require_once __DIR__ . '/../../includes/paymongo_refunds.php';
 $booking_completion_sql = booking_completion_sql('b');
 
 // Auth Guard: Must be a logged-in customer
@@ -44,7 +46,7 @@ if ($booking_id < 1 || $reason === '' || strlen($reason) > 1000 || preg_match('/
 
 // 1. Verify this booking actually belongs to this user! (Security Check)
 $stmt_check = $conn->prepare("
-    SELECT b.id, b.amount_paid, b.booking_status FROM bookings b
+    SELECT b.id, b.customer_id, b.amount_paid, b.booking_status FROM bookings b
     JOIN customers c ON b.customer_id = c.id 
     WHERE b.id = ? AND c.user_id = ?
 ");
@@ -63,7 +65,7 @@ if ($booking['booking_status'] === 'Completed') {
     echo json_encode(['success' => false, 'message' => 'This booking is complete and can no longer be cancelled or refunded.']);
     exit;
 }
-if (!in_array($booking['booking_status'], ['Pending', 'Confirmed'], true)) {
+if (!in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true)) {
     echo json_encode(['success' => false, 'message' => 'This booking is no longer eligible for cancellation.']);
     exit;
 }
@@ -75,6 +77,31 @@ $refund_amount = $refund['refund'];
 $fee_percent = $refund['fee_percent'];
 
 try {
+    $pmRefundSnapshot = null;
+    $pmRefundProvider = null;
+    if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) {
+        require_once __DIR__.'/../../includes/paymongo_native.php';
+        paymongo_native_gate();
+        $pmStore=paymongo_native_store($conn);
+        $pmFlow=new PayMongoHostedFlow($pmStore,paymongo_native_provider());
+        $attempts=$pmStore->query("SELECT id FROM pm_attempts WHERE booking_id=? AND status IN ('creating','open','uncertain') ORDER BY created_at",[$booking_id]);
+        while ($attempt=$attempts->fetch_assoc()) $pmFlow->recover($attempt['id'],(int)$booking['customer_id'],true);
+        $current=$pmStore->row('SELECT booking_status FROM bookings WHERE id=?',[$booking_id]);
+        if (($current['booking_status'] ?? '')==='Cancelled') {
+            echo json_encode(['success'=>true,'message'=>'The unpaid booking has expired and was cancelled.']);
+            exit;
+        }
+        if (paymongo_refund_is_booking($conn, $booking_id)) {
+            $pmRefundProvider = paymongo_native_provider();
+            // Provider calls happen before the booking transaction/locks.
+            $pmRefundSnapshot = paymongo_refund_prepare_snapshot($conn, $booking_id, $pmRefundProvider);
+            $acknowledged = ($data['refund_acknowledged'] ?? null) === true;
+            $previewFingerprint = is_string($data['refund_preview_fingerprint'] ?? null) ? $data['refund_preview_fingerprint'] : '';
+            if (!$acknowledged || !hash_equals((string)$pmRefundSnapshot['fingerprint'], $previewFingerprint)) {
+                throw new InvalidArgumentException('The refund preview changed. Close this dialog and load the updated amount before submitting.');
+            }
+        }
+    }
     $conn->begin_transaction();
 
     $stmt_booking_lock = $conn->prepare("SELECT b.amount_paid, b.booking_status, b.start_date, b.end_date, b.reference_no, CASE WHEN $booking_completion_sql THEN 1 ELSE 0 END AS is_completed, v.category FROM bookings b INNER JOIN venues v ON v.id = b.venue_id WHERE b.id = ? FOR UPDATE");
@@ -83,16 +110,33 @@ try {
     $locked_booking = $stmt_booking_lock->get_result()->fetch_assoc();
     if (!$locked_booking) throw new Exception('This booking is no longer available.');
     if (booking_is_completed($locked_booking)) throw new Exception('This booking is complete and can no longer be cancelled or refunded.');
-    if (!in_array($locked_booking['booking_status'], ['Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
+    if (!in_array($locked_booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed'], true)) throw new Exception('This booking is no longer eligible for cancellation.');
+    if (isset($pmStore) && ($pmStore->row("SELECT id FROM pm_attempts WHERE booking_id=? AND status IN ('creating','open','uncertain','review') LIMIT 1 FOR UPDATE",[$booking_id])
+        || $pmStore->row("SELECT r.payment_id FROM pm_receipts r JOIN pm_attempts a ON a.id=r.attempt_id WHERE a.booking_id=? AND r.disposition<>'applied' LIMIT 1",[$booking_id]))) {
+        throw new RuntimeException('Payment verification is still pending.');
+    }
     $amount_paid = (float)$locked_booking['amount_paid'];
     $destination = null;
     if ($amount_paid > 0) {
-        $destination = normalize_refund_destination(is_array($data['refund_destination'] ?? null) ? $data['refund_destination'] : []);
+        if ($pmRefundSnapshot !== null) {
+            if (paymongo_refund_money_to_cents((string)$locked_booking['amount_paid']) !== (int)$pmRefundSnapshot['gross_cents']
+                || !paymongo_refund_local_snapshot_matches($conn, $booking_id, $pmRefundSnapshot)) {
+                throw new InvalidArgumentException('The paid amount changed. Refresh the refund preview before submitting.');
+            }
+        } else {
+            $destination = normalize_refund_destination(is_array($data['refund_destination'] ?? null) ? $data['refund_destination'] : []);
+        }
     }
-    $refund = calculate_refund_breakdown($amount_paid);
-    $fee = $refund['fee'];
-    $refund_amount = $refund['refund'];
-    $fee_percent = $refund['fee_percent'];
+    if ($pmRefundSnapshot !== null) {
+        $fee = paymongo_refund_snapshot_money((int)$pmRefundSnapshot['fee_cents']);
+        $refund_amount = paymongo_refund_snapshot_money((int)$pmRefundSnapshot['refund_cents']);
+        $fee_percent = 0.0;
+    } else {
+        $refund = calculate_refund_breakdown($amount_paid);
+        $fee = $refund['fee'];
+        $refund_amount = $refund['refund'];
+        $fee_percent = $refund['fee_percent'];
+    }
 
     $stmt_existing = $conn->prepare("SELECT id, status FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
     $stmt_existing->bind_param('i', $booking_id);
@@ -106,17 +150,38 @@ try {
         // prior state remains in cancellation_history.
         if ($existing) {
             if ($existing['status'] !== 'Rejected') throw new Exception('This booking is not eligible for another refund request.');
-            $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_destination_method = ?, refund_destination_account_name = ?, refund_destination_account_identifier = ?, refund_destination_bank_name = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
-            $stmt_cx->bind_param("sdddssssi", $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
+            if ($pmRefundSnapshot !== null) {
+                $gross = paymongo_refund_snapshot_money((int)$pmRefundSnapshot['gross_cents']);
+                $policy = PAYMONGO_REFUND_POLICY_VERSION;
+                $stmt_cx = $conn->prepare("UPDATE cancellations SET reason=?,refund_amount=?,fee_deducted=?,fee_percent=0,refund_gross_amount=?,refund_provider='paymongo',refund_provider_status='ready',refund_policy_version=?,refund_snapshot_id=NULL,refund_destination_method=NULL,refund_destination_account_name=NULL,refund_destination_account_identifier=NULL,refund_destination_bank_name=NULL,refund_transaction_id=NULL,status='Pending',admin_reply=NULL WHERE id=? AND status='Rejected'");
+                $stmt_cx->bind_param('sdddsi', $reason, $refund_amount, $fee, $gross, $policy, $existing['id']);
+            } else {
+                $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_destination_method = ?, refund_destination_account_name = ?, refund_destination_account_identifier = ?, refund_destination_bank_name = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
+                $stmt_cx->bind_param("sdddssssi", $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
+            }
             if (!$stmt_cx->execute() || $stmt_cx->affected_rows !== 1) throw new Exception('The prior refund request changed before it could be reopened.');
             $cancellation_id = (int)$existing['id'];
             $history_action = 'reopened';
         } else {
-            $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
-            $stmt_cx->bind_param("isdddssss", $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
+            if ($pmRefundSnapshot !== null) {
+                $gross = paymongo_refund_snapshot_money((int)$pmRefundSnapshot['gross_cents']);
+                $policy = PAYMONGO_REFUND_POLICY_VERSION;
+                $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id,reason,refund_amount,fee_deducted,fee_percent,refund_gross_amount,refund_provider,refund_provider_status,refund_policy_version,status) VALUES (?,?,?,?,0,?,'paymongo','ready',?,'Pending')");
+                $stmt_cx->bind_param('isddds', $booking_id, $reason, $refund_amount, $fee, $gross, $policy);
+            } else {
+                $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
+                $stmt_cx->bind_param("isdddssss", $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
+            }
             if (!$stmt_cx->execute()) throw new Exception('Unable to submit the refund request.');
             $cancellation_id = (int)$conn->insert_id;
             $history_action = 'requested';
+        }
+        if ($pmRefundSnapshot !== null) {
+            $snapshotId = paymongo_refund_persist_snapshot($conn, $pmRefundSnapshot, $booking_id, $cancellation_id, (int)$_SESSION['user_id']);
+            $snapshotUpdate = $conn->prepare("UPDATE cancellations SET refund_snapshot_id=? WHERE id=? AND status='Pending' AND refund_provider='paymongo'");
+            if (!$snapshotUpdate) throw new RuntimeException('The immutable PayMongo refund snapshot could not be linked.');
+            $snapshotUpdate->bind_param('si', $snapshotId, $cancellation_id);
+            if (!$snapshotUpdate->execute() || $snapshotUpdate->affected_rows !== 1) throw new RuntimeException('The immutable PayMongo refund snapshot could not be linked.');
         }
         record_cancellation_history($conn, $booking_id, $cancellation_id, $history_action, $reason, $refund_amount, $fee, $fee_percent, null, (int)$_SESSION['user_id']);
 
@@ -124,7 +189,11 @@ try {
 
     } else {
         // SCENARIO B: They haven't paid anything yet! Instantly cancel it.
-        manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, null, 'Customer cancelled the unpaid booking before payment proof review.');
+        if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)) manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, null, 'Customer cancelled the unpaid booking before payment proof review.');
+        if (isset($pmStore)) {
+            $holdBooking=$pmStore->booking($booking_id,(int)$booking['customer_id']);
+            manual_payment_clear_step_hold_locked($conn,$holdBooking);
+        }
         $stmt_cancel = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL, updated_at = NOW() WHERE id = ?");
         $stmt_cancel->bind_param("i", $booking_id);
         $stmt_cancel->execute();

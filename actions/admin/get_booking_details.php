@@ -124,7 +124,13 @@ try {
     }, $st_proofs->get_result()->fetch_all(MYSQLI_ASSOC));
 
     // Fetch Cancellation Data
-    $st_cx = $conn->prepare("SELECT reason, refund_amount, refund_transaction_id, fee_deducted, fee_percent, status, admin_reply, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+    $st_cx = $conn->prepare("SELECT cx.reason,cx.refund_amount,cx.refund_transaction_id,cx.fee_deducted,cx.fee_percent,cx.status,cx.admin_reply,
+        CASE WHEN cx.refund_provider='paymongo' OR EXISTS (SELECT 1 FROM payments rp WHERE rp.booking_id=cx.booking_id AND rp.status='Success' AND LEFT(rp.transaction_id,4)='pay_') THEN 'paymongo' ELSE cx.refund_provider END AS refund_provider,
+        CASE WHEN (cx.refund_provider='paymongo' AND cx.refund_snapshot_id IS NULL) OR (cx.refund_provider IS NULL AND EXISTS (SELECT 1 FROM payments rp WHERE rp.booking_id=cx.booking_id AND rp.status='Success' AND LEFT(rp.transaction_id,4)='pay_')) THEN 'preview_required' ELSE cx.refund_provider_status END AS refund_provider_status,
+        cx.refund_snapshot_id,(SELECT COALESCE(MAX(rs.prior_refund_cents),0)/100 FROM pm_refund_snapshots rs WHERE BINARY rs.id=BINARY cx.refund_snapshot_id) AS refund_prior_amount,
+        cx.refund_destination_method,cx.refund_destination_account_name,cx.refund_destination_account_identifier,cx.refund_destination_bank_name,
+        EXISTS(SELECT 1 FROM pm_refund_attempts at JOIN pm_refund_allocations al ON al.id=at.allocation_id WHERE BINARY al.snapshot_id=BINARY cx.refund_snapshot_id AND at.status IN ('creating','uncertain','pending','processing','succeeded','review')) AS refund_provider_locked
+        FROM cancellations cx WHERE cx.booking_id = ? ORDER BY cx.id DESC LIMIT 1");
     $st_cx->bind_param("i", $booking_id);
     $st_cx->execute();
     $cx_res = $st_cx->get_result()->fetch_assoc();

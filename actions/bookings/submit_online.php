@@ -42,7 +42,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // The accepted legal text is server-owned.  A posted version may be
         // retained by older clients for compatibility, but it can never
         // select which policy is recorded for this booking.
-        $policy_version = 'terms-v3-manual-payment';
+        $policy_version = 'terms-v4-paymongo-actual-fee';
 
         $sDate = trim(is_string($_POST['start_date'] ?? null) ? $_POST['start_date'] : '');
         $eDate = trim(is_string($_POST['end_date'] ?? null) ? $_POST['end_date'] : '');

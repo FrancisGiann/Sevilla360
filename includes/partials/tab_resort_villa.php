@@ -117,7 +117,7 @@
 
     <section class="booking-step-panel booking-review-panel" data-booking-step-panel="4" aria-labelledby="villa-step-review" hidden>
         <h3 class="booking-step-heading" id="villa-step-review" tabindex="-1">Review your villa reservation</h3>
-        <p>Customers can place a 15-minute hold after confirming dates. Guests confirm dates here and sign in when submitting. After reservation, the secure payment window provides manual payment instructions.</p>
+        <p>Review your villa, dates and payment scheme before continuing.</p>
         <div class="booking-step-actions">
             <button type="button" class="btn booking-step-back" data-booking-step-back="3">Back to options</button>
         </div>

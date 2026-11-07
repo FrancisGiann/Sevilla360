@@ -15,11 +15,13 @@ $auth_source = file_get_contents(__DIR__ . '/../auth.php');
 $js_source = file_get_contents(__DIR__ . '/../assets/js/auth.js');
 $css_source = file_get_contents(__DIR__ . '/../assets/css/auth.css');
 $server_source = file_get_contents(__DIR__ . '/../actions/auth/register_process.php');
+$validation_source = file_get_contents(__DIR__ . '/../includes/registration_validation.php');
 
 auth_registration_test_assert($auth_source !== false, 'registration markup can be inspected');
 auth_registration_test_assert($js_source !== false, 'registration validation script can be inspected');
 auth_registration_test_assert($css_source !== false, 'registration styles can be inspected');
 auth_registration_test_assert($server_source !== false, 'registration endpoint can be inspected');
+auth_registration_test_assert($validation_source !== false, 'shared registration validation can be inspected');
 
 auth_registration_test_assert(
     preg_match('/<label\s+for="reg-email">\s*EMAIL ADDRESS\s*<\/label>/', $auth_source) === 1,
@@ -64,6 +66,28 @@ foreach (['.form-control.email-invalid', '.form-control.email-valid', '.email-fe
 
 auth_registration_test_contains($server_source, '$email = trim((string)($_POST[\'email\'] ?? \'\'));', 'server-side email trimming remains enabled');
 auth_registration_test_contains($server_source, '!filter_var($email, FILTER_VALIDATE_EMAIL)', 'server-side email validation remains authoritative');
+auth_registration_test_contains($server_source, 'registration_name_is_valid($first_name)', 'legacy registration validates first names on the server');
+auth_registration_test_contains($validation_source, '\\p{L}', 'server name validation supports Unicode letters');
+auth_registration_test_contains($validation_source, '\\p{M}', 'server name validation supports combining marks');
+auth_registration_test_contains($js_source, 'registrationNameIssue(field.value)', 'browser validates account names before submission');
+auth_registration_test_contains($js_source, 'registrationPhoneIssue(registrationPhone.value)', 'browser validates registration phone characters before submission');
+
+require_once __DIR__ . '/../includes/registration_validation.php';
+foreach ([
+    'Maria' => true,
+    "Jose\u{0301}" => true,
+    'D\'Arcy' => true,
+    'Anne-Marie' => true,
+    'Dela Cruz' => true,
+    'Maria2' => false,
+    '7Juan' => false,
+    'Jean..Luc' => false,
+] as $name => $expected_valid) {
+    auth_registration_test_assert(
+        registration_name_is_valid($name) === $expected_valid,
+        'server name validation fixture (' . $name . ')'
+    );
+}
 
 foreach ([
     'name+tag@example.co.uk' => true,

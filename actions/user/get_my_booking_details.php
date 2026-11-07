@@ -134,12 +134,23 @@ try {
 
     // 4.5. Return the latest request on any booking state, exposing only a
     // masked identifier to the owning customer.
-    $stmt_cx = $conn->prepare("SELECT reason, admin_reply, status, refund_amount, fee_deducted, fee_percent, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name FROM cancellations WHERE booking_id = ? ORDER BY id DESC LIMIT 1");
+    $stmt_cx = $conn->prepare("SELECT cx.reason,cx.admin_reply,cx.status,cx.refund_amount,cx.fee_deducted,cx.fee_percent,
+        CASE WHEN cx.refund_provider='paymongo' OR EXISTS (SELECT 1 FROM payments rp WHERE rp.booking_id=cx.booking_id AND rp.status='Success' AND LEFT(rp.transaction_id,4)='pay_') THEN 'paymongo' ELSE cx.refund_provider END AS refund_provider,
+        CASE WHEN (cx.refund_provider='paymongo' AND cx.refund_snapshot_id IS NULL) OR (cx.refund_provider IS NULL AND EXISTS (SELECT 1 FROM payments rp WHERE rp.booking_id=cx.booking_id AND rp.status='Success' AND LEFT(rp.transaction_id,4)='pay_')) THEN 'preview_required' ELSE cx.refund_provider_status END AS refund_provider_status,
+        cx.refund_snapshot_id,(SELECT COALESCE(MAX(rs.prior_refund_cents),0)/100 FROM pm_refund_snapshots rs WHERE BINARY rs.id=BINARY cx.refund_snapshot_id) AS refund_prior_amount,
+        cx.refund_destination_method,cx.refund_destination_account_name,cx.refund_destination_account_identifier,cx.refund_destination_bank_name
+        FROM cancellations cx WHERE cx.booking_id = ? ORDER BY cx.id DESC LIMIT 1");
     $stmt_cx->bind_param("i", $booking_id);
     $stmt_cx->execute();
     $cancellation = $stmt_cx->get_result()->fetch_assoc();
     if ($cancellation && in_array($cancellation['status'], ['Pending', 'Rejected', 'Processed'], true)) {
-        $cancellation['refund_destination'] = refund_destination_for_customer($cancellation);
+        $cancellation['refund_destination'] = ($cancellation['refund_provider'] ?? '') === 'paymongo'
+            ? ['method'=>'Original PayMongo payment method','account_name'=>'','masked_identifier'=>'','bank_name'=>'']
+            : refund_destination_for_customer($cancellation);
+        if (($cancellation['refund_provider'] ?? '') === 'paymongo' && ($cancellation['refund_provider_status'] ?? '') === 'preview_required') {
+            $cancellation['refund_amount'] = null;
+            $cancellation['fee_deducted'] = null;
+        }
         unset($cancellation['refund_destination_method'], $cancellation['refund_destination_account_name'], $cancellation['refund_destination_account_identifier'], $cancellation['refund_destination_bank_name']);
         $response['data']['cancellation'] = $cancellation;
     } else {

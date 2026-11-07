@@ -1,0 +1,2 @@
+# Prototype is served only through the localhost PHP router, never Apache.
+Require all denied

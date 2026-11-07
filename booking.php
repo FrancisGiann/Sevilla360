@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/includes/paymongo_mode.php';
 $page_title = 'Book Your Stay - SEVILLA360';
 $extra_css = [
     'assets/css/booking.css',
@@ -6,10 +7,15 @@ $extra_css = [
     'assets/css/booking_walkthrough.css',
 ];
 $extra_js = [
+    'assets/js/paymongo_checkout.js',
     'assets/js/manual_payment.js',
     'assets/js/booking.js',
     'assets/js/booking_walkthrough.js',
 ];
+if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) {
+    $extra_js = array_values(array_diff($extra_js, ['assets/js/manual_payment.js']));
+    $extra_css = array_values(array_diff($extra_css, ['assets/css/manual_payment.css']));
+}
 $active_page = 'booking';              
 require_once 'includes/session_init.php';
 require_once 'includes/booking_intent.php';
@@ -313,9 +319,10 @@ unset($villa);
                     </div>
 
                     <div class="terms-group">
-                        <input type="checkbox" id="terms-check" name="policy_consent" value="1">
+                        <input type="checkbox" id="terms-check" name="policy_consent" value="1" aria-describedby="terms-consent-hint" disabled>
                         <label for="terms-check">I agree to the <a href="#" id="open-terms">Terms &
                                 Conditions</a></label>
+                        <span class="visually-hidden" id="terms-consent-hint">Open the Terms and Conditions, read to the bottom, then choose I Agree.</span>
                     </div>
 
                     </fieldset>
@@ -326,6 +333,13 @@ unset($villa);
                         <div class="booking-inventory-actions">
                             <button type="button" class="btn btn-outline" id="booking-inventory-change">Change room or dates</button>
                             <button type="button" class="btn btn-outline" id="booking-inventory-recheck">Recheck availability</button>
+                        </div>
+                    </div>
+                    <div class="booking-payment-window" id="booking-payment-window" hidden>
+                        <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                        <div>
+                            <strong>15 minutes to complete payment</strong>
+                            <p>When you continue to payment, we check availability and hold your dates for 15 minutes. Complete payment before the timer ends to keep your reservation.</p>
                         </div>
                     </div>
                     <button type="button" class="btn btn-book-submit" id="btn-proceed"><?php echo $booking_is_customer ? 'SUBMIT EVENT INQUIRY' : ($booking_is_staff ? 'CUSTOMER ACCOUNT REQUIRED' : 'SIGN IN OR CREATE ACCOUNT TO CONTINUE'); ?></button>
@@ -359,7 +373,7 @@ unset($villa);
 
 <!-- INJECT THE MODALS -->
 <?php include 'includes/partials/booking_modals.php'; ?>
-<?php include 'includes/partials/manual_payment_modal.php'; ?>
+<?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)) include 'includes/partials/manual_payment_modal.php'; ?>
 
 <script>
 window.bookingAuth = <?php echo json_encode([

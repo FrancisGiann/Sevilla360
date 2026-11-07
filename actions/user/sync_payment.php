@@ -1,4 +1,3 @@
 <?php
-http_response_code(410);
-header('Content-Type: application/json; charset=utf-8');
-echo json_encode(['success' => false, 'message' => 'Payment-provider synchronization is retired.']);
+require_once __DIR__.'/../../includes/paymongo_native.php';
+paymongo_native_customer_action('recover');

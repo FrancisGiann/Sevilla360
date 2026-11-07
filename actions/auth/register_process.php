@@ -4,6 +4,7 @@ require '../../config/db_connect.php';
 require_once '../../includes/rate_limit.php';
 require_once '../../includes/password_policy.php';
 require_once __DIR__ . '/../../includes/contact_verification.php';
+require_once __DIR__ . '/../../includes/registration_validation.php';
 
 function registration_fail(string $message, string $title = 'Error', string $type = 'error'): never
 {
@@ -78,6 +79,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if (empty($first_name) || empty($last_name) || empty($email) || empty($password) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         registration_fail('Please fill in all required fields.');
+    }
+    if (!registration_name_is_valid($first_name) || !registration_name_is_valid($last_name)) {
+        registration_fail('Use letters, spaces, apostrophes, or hyphens in your name.');
     }
     $password_policy = password_policy_validate($password);
     if (!$password_policy['valid']) {

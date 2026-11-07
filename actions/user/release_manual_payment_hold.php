@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__.'/../../includes/paymongo_mode.php';
+if(paymongo_capstone_enabled()){http_response_code(403);exit('Manual payment is disabled.');}
+
 require_once __DIR__ . '/../../includes/session_init.php';
 header('Content-Type: application/json; charset=utf-8');
 $csrf = (string)($_SESSION['csrf_token'] ?? '');

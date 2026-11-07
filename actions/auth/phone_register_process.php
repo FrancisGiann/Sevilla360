@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/contact_verification.php';
+require_once __DIR__ . '/../../includes/registration_validation.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: ../../auth.php'); exit; }
 $back = static function (string $message, string $email=''): never {
     if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
@@ -30,10 +31,14 @@ $emailUnavailable = static function () use ($back): never {
 if (!sms_ready()) $back('Phone verification is temporarily unavailable. Please try again later.');
 if (empty($_POST['csrf_token']) || !hash_equals((string)($_SESSION['csrf_token']??''),(string)$_POST['csrf_token'])) $back('Security token expired. Refresh the page.');
 if (!empty($_POST['website_url_honeypot']) || !check_rate_limit($conn,'register_attempt',3,60)) $back('Please try again later.');
-$email=trim((string)($_POST['email']??'')); $first=trim((string)($_POST['first_name']??'')); $last=trim((string)($_POST['last_name']??''));
+$email=trim((string)($_POST['email']??''));
+$firstInput=$_POST['first_name']??''; $lastInput=$_POST['last_name']??'';
+$first=is_string($firstInput)?trim($firstInput):''; $last=is_string($lastInput)?trim($lastInput):'';
 $password=(string)($_POST['password']??'');
-try { $phone=unisms_normalize_mobile((string)($_POST['phone']??'')); } catch(Throwable $e) { $back('Enter a Philippine mobile number.'); }
-if (!filter_var($email,FILTER_VALIDATE_EMAIL) || $first==='' || $last==='' || $password!==($_POST['confirm_password']??null) || !password_policy_validate($password)['valid'] || ($_POST['consent']??null)!=='1') $back('Check the required account details and try again.');
+if (!registration_name_is_valid($first) || !registration_name_is_valid($last)) $back('Use letters, spaces, apostrophes, or hyphens in your name.');
+$phoneInput=$_POST['phone']??'';
+try { if (!is_string($phoneInput)) throw new InvalidArgumentException('Enter a Philippine mobile number.'); $phone=unisms_normalize_mobile($phoneInput); } catch(Throwable $e) { $back('Enter a Philippine mobile number.'); }
+if (!filter_var($email,FILTER_VALIDATE_EMAIL) || $password!==($_POST['confirm_password']??null) || !password_policy_validate($password)['valid'] || ($_POST['consent']??null)!=='1') $back('Check the required account details and try again.');
 try {
     $conn->begin_transaction();
     $stmt=$conn->prepare('SELECT id FROM users WHERE LOWER(email)=LOWER(?) LIMIT 1'); $stmt->bind_param('s',$email); $stmt->execute(); if ($stmt->get_result()->num_rows) throw new RuntimeException('Email unavailable',409);
@@ -67,7 +72,7 @@ try {
     }
     $back($e instanceof RuntimeException?$e->getMessage():'Could not create the account. Check your details and try again.');
 }
-session_regenerate_id(true);
+session_policy_rotate_id();
 $_SESSION['pending_phone_user_id']=$id;
 if (!contact_send_sms($conn,$id,$phone,'signup_phone')) $back('Account saved, but the code could not be sent. Check the number, use another eligible number if SMS is unsupported, or contact support. Sign in to request another code.',$email);
 // Code entry is the next screen; delivery acceptance needs no blocking alert.

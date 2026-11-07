@@ -141,7 +141,8 @@
                 <span class="label">Venue Type:</span> <span class="value">--</span>
                 <span class="label">Date:</span> <span class="value">--</span>
                 <span class="label">Total Paid by Guest:</span> <span class="value">₱0.00</span>
-                <span class="label">Payment-processing fee:</span> <span class="value">₱0.00 (no fee deducted)</span>
+                <span class="label" id="admin-refund-fee-label">Payment-processing fee:</span> <span class="value">₱0.00 (no fee deducted)</span>
+                <span class="label" id="admin-refund-prior-label" hidden>Previously refunded:</span> <span class="value" id="admin-refund-prior-value" hidden>—</span>
                 <span class="label">Reason:</span>
                 <span class="value text-sub-muted" id="modal-ref-reason">--</span>
             </div>
@@ -156,9 +157,10 @@
                 </div>
             </section>
             <p class="refund-destination-status" id="refund-destination-status" role="status" aria-live="polite" hidden></p>
+            <p class="refund-destination-status" id="refund-provider-status" role="status" aria-live="polite" hidden></p>
 
             <p class="refund-manual-instructions">Send the refund to this destination outside the system. Mark it sent only after the transfer is complete.</p>
-            <div class="form-group refund-reference-field">
+            <div class="form-group refund-reference-field" id="refund-reference-field">
                 <label class="form-label-med" for="refund-transaction-id">Refund transfer / cash handover reference ID <span class="required-mark">*</span></label>
                 <input type="text" id="refund-transaction-id" class="form-input-padded" maxlength="160" autocomplete="off" placeholder="Enter the transfer or cash handover reference" required>
             </div>
@@ -242,9 +244,9 @@
                     <span>Request reason</span><strong id="vd-refund-reason">—</strong>
                     <span>Resort reply</span><strong id="vd-refund-reply">—</strong>
                     <span>Refund amount</span><strong id="vd-refund-amount">—</strong>
-                    <span>Destination method</span><strong id="vd-refund-method">—</strong>
-                    <span>Account holder</span><strong id="vd-refund-account-name">—</strong>
-                    <span>Wallet / account number</span><strong id="vd-refund-account-identifier">—</strong>
+                    <span id="vd-refund-method-label">Destination method</span><strong id="vd-refund-method">—</strong>
+                    <span id="vd-refund-account-name-label">Account holder</span><strong id="vd-refund-account-name">—</strong>
+                    <span id="vd-refund-account-identifier-label">Wallet / account number</span><strong id="vd-refund-account-identifier">—</strong>
                     <span id="vd-refund-bank-label" hidden>Bank</span><strong id="vd-refund-bank" hidden>—</strong>
                     <span id="vd-refund-tx-label" hidden>Outbound transaction ID</span><strong id="vd-refund-tx-value" hidden>—</strong>
                 </div>
@@ -296,35 +298,6 @@
             </div>
             </div>
         </div>
-
-        <section class="admin-modal manual-proof-review-modal" id="manualPaymentReviewModal" role="dialog" aria-modal="true" aria-labelledby="manual-proof-title" aria-describedby="manual-proof-status" tabindex="-1">
-            <h3 class="modal-main-title" id="manual-proof-title">Review payment proof</h3>
-            <p class="manual-proof-context" id="manual-proof-context">Booking and customer details</p>
-            <div class="summary-grid manual-proof-summary">
-                <span class="label">Expected amount:</span><strong class="value" id="manual-proof-amount">—</strong>
-                <span class="label">Method:</span><strong class="value" id="manual-proof-method">—</strong>
-                <span class="label">Transaction reference:</span><strong class="value" id="manual-proof-reference">—</strong>
-            </div>
-            <figure class="manual-proof-preview-wrap">
-                <img id="manual-proof-preview" src="assets/img/Logo.png" alt="Customer-submitted payment receipt" hidden>
-                <figcaption>Protected customer receipt preview</figcaption>
-            </figure>
-            <div class="manual-proof-late-ack" id="manual-proof-late-ack-wrap" hidden>
-                <p>This event has ended. Verifying proof records payment only and will not change the booking status or mark attendance.</p>
-                <label for="manual-proof-late-ack">
-                    <input type="checkbox" id="manual-proof-late-ack">
-                    I acknowledge this is a late payment verification.
-                </label>
-            </div>
-            <label class="form-label-med" for="manual-proof-rejection-reason">Rejection reason <span>(required when rejecting)</span></label>
-            <textarea id="manual-proof-rejection-reason" class="form-input-padded" rows="3" maxlength="500" aria-describedby="manual-proof-status" placeholder="Explain what needs to be corrected"></textarea>
-            <p class="manual-proof-status" id="manual-proof-status" role="status" aria-live="polite" hidden></p>
-            <div class="modal-actions">
-                <button type="button" class="btn-modal btn-modal-cancel close-modal">Close</button>
-                <button type="button" class="btn-modal btn-modal-danger" id="btn-reject-manual-proof">Reject proof</button>
-                <button type="button" class="btn-modal btn-modal-primary" id="btn-approve-manual-proof">Approve payment</button>
-            </div>
-        </section>
 
         <!-- Collect Payment Modal -->
         <div class="admin-modal modal-sm" id="paymentModal">

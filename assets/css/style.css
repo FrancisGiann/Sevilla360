@@ -706,6 +706,16 @@ section {
   color: var(--color-gold);
 }
 
+.cal-nav:disabled {
+  color: var(--color-dark-light);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.cal-nav:disabled:hover {
+  color: var(--color-dark-light);
+}
+
 .cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1381,3 +1391,29 @@ section {
 .addon-room-calendar-heading span { color: #6b7280; font-size: .88rem; text-align: right; }
 .contact-number-options, .save-contact-choice { display: grid; gap: .45rem; margin: .5rem 0; color: #4b5563; font-size: .9rem; }
 @media (max-width: 640px) { .addon-room-calendar-heading { flex-direction: column; } .addon-room-calendar-heading span { text-align: left; } }
+
+/* Payment recovery shares the centered white alert treatment on booking and dashboard pages. */
+.paymongo-recovery-overlay { z-index: 10000; background: rgba(0, 0, 0, .5); }
+.paymongo-recovery-dialog {
+  box-sizing: border-box; width: 90%; max-width: 400px; max-height: 90dvh; overflow-y: auto;
+  padding: 25px; border-radius: 8px; background: #fff;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, .2); text-align: center;
+}
+.paymongo-recovery-icon { display: block; margin: 0 auto 15px; color: #d6a870; font-size: 3rem; }
+.paymongo-recovery-title { margin: 0 0 10px; color: #2a2522; font-size: 1.45rem; line-height: 1.25; text-align: center; }
+.paymongo-recovery-message { margin: 0 0 20px; color: #666; font-size: .95rem; line-height: 1.5; overflow-wrap: anywhere; }
+.paymongo-recovery-actions { display: grid; gap: 10px; margin: 0; }
+.paymongo-recovery-button {
+  box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 14px;
+  border-radius: 4px; font: 600 .95rem/1.3 var(--font-body, Inter, sans-serif); cursor: pointer;
+}
+.paymongo-recovery-button--primary { border: 1px solid #8b602b; background: #8b602b; color: #fff; }
+.paymongo-recovery-button--primary:hover { background: #735023; border-color: #735023; }
+.paymongo-recovery-button--secondary { border: 1px solid rgba(42, 37, 34, .28); background: #fff; color: #4a4440; }
+.paymongo-recovery-button--secondary:hover { background: #f7f3ed; }
+.paymongo-recovery-button:focus-visible { outline: 2px solid #d6a870; outline-offset: 3px; }
+.paymongo-recovery-actions [hidden] { display: none !important; }
+@media (max-width: 480px) {
+  .paymongo-recovery-dialog { width: calc(100% - 24px); padding: 22px 18px; }
+  .paymongo-recovery-title { font-size: 1.35rem; }
+}

@@ -155,9 +155,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const historyIdHeading = document.getElementById('booking-history-id-heading');
     const historyNameHeading = document.getElementById('booking-history-name-heading');
     const historyRecordCount = document.getElementById('history-record-count');
-    const manualProofModal = document.getElementById('manualPaymentReviewModal');
-    const manualProofStatus = document.getElementById('manual-proof-status');
-    let proofReviewInvoker = null;
     const bookingActionPanelOrigins = new WeakMap();
 
     function closeBookingActionMenu(restoreFocus = false) {
@@ -410,18 +407,24 @@ document.addEventListener("DOMContentLoaded", () => {
         section.hidden = !details;
         if (!details) return;
 
+        const refundTransactionId = String(details.refund_transaction_id || '');
+        const isPayMongoRefund = details.refund_provider === 'paymongo' || refundTransactionId.toLowerCase().startsWith('paymongo:');
         setText('status', details.status);
         setText('reason', details.reason);
         setText('reply', details.admin_reply);
         const amount = Number(details.refund_amount);
         setText('amount', Number.isFinite(amount) ? `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Not available');
+        ['method-label', 'method', 'account-name-label', 'account-name', 'account-identifier-label', 'account-identifier'].forEach(suffix => {
+            const element = document.getElementById(`${prefix}-refund-${suffix}`);
+            if (element) element.hidden = isPayMongoRefund;
+        });
         setText('method', details.refund_destination_method);
         setText('account-name', details.refund_destination_account_name);
         setText('account-identifier', details.refund_destination_account_identifier);
 
         const bankLabel = document.getElementById(`${prefix}-refund-bank-label`);
         const bankValue = document.getElementById(`${prefix}-refund-bank`);
-        const showBank = details.refund_destination_method === 'Bank Transfer' && Boolean(details.refund_destination_bank_name);
+        const showBank = !isPayMongoRefund && details.refund_destination_method === 'Bank Transfer' && Boolean(details.refund_destination_bank_name);
         if (bankLabel) bankLabel.hidden = !showBank;
         if (bankValue) {
             bankValue.hidden = !showBank;
@@ -430,11 +433,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const transactionLabel = document.getElementById(`${prefix}-refund-tx-label`);
         const transactionValue = document.getElementById(`${prefix}-refund-tx-value`);
-        const transactionId = String(details.refund_transaction_id || '');
-        if (transactionLabel) transactionLabel.hidden = transactionId === '';
+        if (transactionLabel) transactionLabel.hidden = isPayMongoRefund || refundTransactionId === '';
         if (transactionValue) {
-            transactionValue.hidden = transactionId === '';
-            transactionValue.textContent = transactionId;
+            transactionValue.hidden = isPayMongoRefund || refundTransactionId === '';
+            transactionValue.textContent = refundTransactionId;
         }
     }
   
@@ -448,6 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let queuedLoadIsBackground = true;
     let bookingsRequestSequence = 0;
     let refundDestinationRequestSequence = 0;
+    let editPriceRequestSequence = 0;
     let realtimeRefreshTimeout = null;
     let bookingPollTimer = null;
     let bookingPollFailures = 0;
@@ -722,16 +725,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (exactMatch) {
                     highlightRow(exactMatch.reference_no);
                     setTimeout(() => {
-                        const exactProofButton = openPaymentProofId
-                            ? Array.from(document.querySelectorAll('.open-manual-proof')).find(button => String(button.dataset.submissionId) === openPaymentProofId)
-                            : null;
                         const exactViewButton = Array.from(document.querySelectorAll('.btn-view')).find(button => String(button.getAttribute('data-id')) === exactBookingId);
-                        if (exactProofButton) exactProofButton.click();
-                        else if (exactViewButton) exactViewButton.click();
+                        if (exactViewButton) exactViewButton.click();
                     }, 300);
                 }
                 urlBookingId = null;
-                openPaymentProofId = null;
             } else if (!suppressUrlSearchAction && requestState.recordType === 'booking' && urlSearch && res.data && res.data.length > 0) {
                 const match = res.data.find(b => String(b.reference_no || '').toLowerCase() === urlSearch.toLowerCase() || String(b.reference_no || '').toLowerCase().includes(urlSearch.toLowerCase()) || String(b.id) === urlSearch);
                 const targetRef = match ? match.reference_no : urlSearch;
@@ -932,6 +930,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const balanceDue = totalAmt - amtPaid;
   
             const isPendingInquiry = (b.venue_category === 'Event Hall' && displayStatus === 'Pending');
+            const canCancelPendingInquiry = isPendingInquiry
+                && !hasPendingProof
+                && b.payment_status === 'Unpaid'
+                && Number.isFinite(rawPaid)
+                && rawPaid === 0;
             const displayAmount = isPendingInquiry ? '<span class="booking-amount-unavailable">To Be Arranged</span>' : `₱${totalAmt.toLocaleString('en-US', {minimumFractionDigits:2})}`;
   
             // Badges
@@ -962,6 +965,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // existing actions in the native, keyboard-operable disclosure.
             let primaryAction = '';
             const secondaryActions = [];
+            const visibleSecondaryActions = [];
             const setPrimary = action => {
                 if (primaryAction) secondaryActions.unshift(primaryAction);
                 primaryAction = action;
@@ -969,15 +973,19 @@ document.addEventListener("DOMContentLoaded", () => {
             const addSecondary = action => secondaryActions.push(action);
             const rowId = `data-id="${bookingId}"`;
             if (!isCompleted && displayStatus === 'Pending') {
-                if (eventEnded) {
-                    addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>${isPendingInquiry ? 'Quotation unavailable after event end' : 'Approval unavailable after event end'}</button>`);
-                    addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
-                } else if (isPendingInquiry) {
-                    if (hasPendingProof) {
-                        addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>Finalize after proof review</button>`);
-                    } else {
-                        setPrimary(`<button type="button" class="btn-action open-edit-price" ${rowId}>Edit Price / Finalize</button>`);
+                if (isPendingInquiry) {
+                    if (canCancelPendingInquiry) {
+                        visibleSecondaryActions.push(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
                     }
+                    if (eventEnded) {
+                        addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>Quotation unavailable after event end</button>`);
+                    } else if (hasPendingProof) {
+                        addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>Finalization unavailable while payment is unresolved</button>`);
+                    } else {
+                        setPrimary(`<button type="button" class="btn-action btn-confirm open-edit-price" ${rowId}>Edit Price / Finalize</button>`);
+                    }
+                } else if (eventEnded) {
+                    addSecondary(`<button type="button" class="btn-action btn-action--disabled" ${rowId} disabled>${isPendingInquiry ? 'Quotation unavailable after event end' : 'Approval unavailable after event end'}</button>`);
                     addSecondary(`<button type="button" class="btn-action btn-cancel open-decline" ${rowId}>Decline</button>`);
                 } else {
                     setPrimary(`<button type="button" class="btn-action btn-confirm open-approve" ${rowId}>Approve</button>`);
@@ -988,7 +996,7 @@ document.addEventListener("DOMContentLoaded", () => {
             } 
             else if (!isCompleted && displayStatus === 'Confirmed') {
                 if (b.cancel_status === 'Pending') {
-                    setPrimary(`<button type="button" class="btn-action btn-refund open-refund" ${rowId} data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent === null || b.cancel_fee_percent === '' ? '' : Number(b.cancel_fee_percent)}" data-fee="${b.cancel_fee === null || b.cancel_fee === '' ? '' : Number(b.cancel_fee)}" data-refund="${b.cancel_refund === null || b.cancel_refund === '' ? '' : Number(b.cancel_refund)}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>`);
+                    setPrimary(`<button type="button" class="btn-action btn-refund open-refund" ${rowId} data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-paid="${amtPaid}" data-fee-percent="${b.cancel_fee_percent === null || b.cancel_fee_percent === '' ? '' : Number(b.cancel_fee_percent)}" data-fee="${b.cancel_fee === null || b.cancel_fee === '' ? '' : Number(b.cancel_fee)}" data-refund="${b.cancel_refund === null || b.cancel_refund === '' ? '' : Number(b.cancel_refund)}" data-provider="${attr(b.cancel_provider)}" data-provider-status="${attr(b.cancel_provider_status)}" data-reason="${attr(b.cancel_reason)}">Refund Req</button>`);
                 } else if (b.resched_status === 'Pending') {
                     setPrimary(`<button type="button" class="btn-action btn-reschedule open-review-resched" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-old="${attr(dateStr)}" data-newstart="${attr(b.new_start_date)}" data-newend="${attr(b.new_end_date)}" data-reason="${attr(b.resched_reason)}" data-conflict="false">Review Resched</button>`);
                 } else {
@@ -997,11 +1005,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     addSecondary(`<button type="button" class="btn-action btn-reschedule open-reschedule" ${rowId} data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-type="${attr(actualRoomType)}" data-date="${attr(dateStr)}" data-start="${attr(b.start_date)}" data-end="${attr(b.end_date)}">Reschedule</button>`);
                 }
-            }
-            if (hasPendingProof) {
-                const submissionIdValue = Number(b.pending_payment_submission_id);
-                const submissionId = Number.isSafeInteger(submissionIdValue) && submissionIdValue > 0 ? submissionIdValue : 0;
-                setPrimary(`<button type="button" class="btn-action btn-confirm open-manual-proof" ${rowId} data-submission-id="${submissionId}" data-ref="${attr(referenceNo)}" data-customer="${attr(customerName)}" data-venue="${attr(venueName)}" data-date="${attr(dateStr)}" data-amount="${Number(b.pending_payment_expected_amount) || 0}" data-method="${attr(b.pending_payment_method)}" data-reference="${attr(b.pending_payment_reference)}" data-event-ended="${eventEnded ? '1' : '0'}">Review Proof</button>`);
             }
             if (!isCompleted && displayStatus === 'Confirmed' && Number(b.is_guest_walkin) === 1
                 && amtPaid > 0 && ['Paid', 'Partial'].includes(b.payment_status) && b.cancel_status !== 'Pending' && b.cancel_status !== 'Processed') {
@@ -1016,6 +1019,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const actionMenu = menuItems.length
                 ? `<div class="booking-action-menu"><button type="button" class="booking-action-menu-toggle" aria-label="More actions for booking ${attr(referenceNo)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}"><span>More actions</span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button><div id="${menuId}" class="booking-action-menu-panel" role="menu" aria-label="More actions for booking ${attr(referenceNo)}" hidden>${menuItems.join('')}</div></div>`
                 : '';
+            const visibleSecondaryMarkup = visibleSecondaryActions.join('');
 
             html += `
             <tr class="${displayStatus === 'Cancelled' ? 'faded-row' : ''}" data-ref="${attr(referenceNo.toLowerCase())}">
@@ -1025,7 +1029,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td data-label="Date">${attr(dateStr)}</td>
                 <td data-label="Amount" class="${fadeClass}">${displayAmount}</td>
                 <td data-label="Status"><div class="status-group"><span class="status-badge ${badgeClass}">${statusText}</span>${proofOverdue ? ' <span class="status-note status-note--overdue"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Event ended — payment still unverified</span></span>' : ''}${!isCompleted && Number(b.has_rescheduled) === 1 && displayStatus === 'Confirmed' ? ' <span class="status-note"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Rescheduled</span></span>' : ''}</div></td>
-                <td data-label="Actions" class="action-cells"><div class="action-buttons">${primaryAction}${actionMenu}</div></td>
+                <td data-label="Actions" class="action-cells"><div class="action-buttons">${primaryAction}${visibleSecondaryMarkup}${actionMenu}</div></td>
             </tr>`;
         });
 
@@ -1149,8 +1153,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const urlFilter = urlParams.get('filter');
     const urlSearch = urlParams.get('search');
     let urlBookingId = urlParams.get('booking_id');
-    let openPaymentProofId = urlParams.get('open_payment_proof');
-
     if (urlFilter) {
         const isQuickFilter = Array.from(tabFilters).some(tab => tab.dataset.filter === urlFilter);
         const isMenuFilter = Array.from(bookingFilterSelect?.options || []).some(option => option.value !== '' && option.value === urlFilter);
@@ -1249,7 +1251,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const guestRequestModal = document.getElementById('guestRefundRequestModal');
       const detailWasActive = bookingDetailBodyLockActive || viewDetailsModal?.classList.contains('active');
       const restoreDetailFocus = detailWasActive ? bookingDetailInvoker : null;
-      const restoreProofFocus = manualProofModal?.classList.contains('active') ? proofReviewInvoker : guestRequestModal?.classList.contains('active') ? guestRequestModal._invoker : null;
+      const restoreGuestRefundFocus = guestRequestModal?.classList.contains('active') ? guestRequestModal._invoker : null;
       modalOverlay.classList.remove("active");
       modalOverlay.classList.remove('booking-detail-open');
       document.querySelectorAll(".admin-modal").forEach((m) => m.classList.remove("active"));
@@ -1262,23 +1264,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const refundReason = document.getElementById('refund-rejection-reason');
       if (refundTx) { refundTx.value = ''; refundTx.required = false; }
       if (refundReason) { refundReason.value = ''; refundReason.required = false; }
-      if (manualProofStatus) { manualProofStatus.hidden = true; manualProofStatus.textContent = ''; }
-      const proofImage = document.getElementById('manual-proof-preview');
-      if (proofImage) { proofImage.hidden = true; proofImage.removeAttribute('src'); }
-      const rejectionReason = document.getElementById('manual-proof-rejection-reason');
-      if (rejectionReason) rejectionReason.value = '';
-      const lateAck = document.getElementById('manual-proof-late-ack');
-      const lateAckWrap = document.getElementById('manual-proof-late-ack-wrap');
-      if (lateAck) lateAck.checked = false;
-      if (lateAckWrap) lateAckWrap.hidden = true;
-      if (manualProofModal) {
-        delete manualProofModal.dataset.submissionId;
-        delete manualProofModal.dataset.bookingId;
-        delete manualProofModal.dataset.eventEnded;
-      }
-      proofReviewInvoker = null;
       if (restoreDetailFocus?.isConnected) window.requestAnimationFrame(() => restoreDetailFocus.focus({ preventScroll: true }));
-      if (restoreProofFocus?.isConnected) window.requestAnimationFrame(() => restoreProofFocus.focus());
+      if (restoreGuestRefundFocus?.isConnected) window.requestAnimationFrame(() => restoreGuestRefundFocus.focus());
     };
   
     document.querySelectorAll(".close-modal").forEach((btn) => btn.addEventListener("click", closeModal));
@@ -1306,72 +1293,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    const reviewManualProof = async decision => {
-      const submissionId = manualProofModal?.dataset.submissionId;
-      const bookingId = manualProofModal?.dataset.bookingId;
-      const reason = document.getElementById('manual-proof-rejection-reason')?.value.trim() || '';
-      const lateAck = document.getElementById('manual-proof-late-ack');
-      const lateAckRequired = manualProofModal?.dataset.eventEnded === '1';
-      if (!submissionId) return;
-      if (decision === 'approve' && lateAckRequired && !lateAck?.checked) {
-        manualProofStatus.textContent = 'Acknowledge that this event has ended before approving payment proof.';
-        manualProofStatus.hidden = false;
-        manualProofStatus.dataset.error = 'true';
-        lateAck?.focus();
-        return;
-      }
-      if (decision === 'reject' && (!reason || reason.length > 500)) {
-        manualProofStatus.textContent = 'Enter a rejection reason between 1 and 500 characters.';
-        manualProofStatus.hidden = false;
-        manualProofStatus.dataset.error = 'true';
-        document.getElementById('manual-proof-rejection-reason')?.focus();
-        return;
-      }
-      const approveButton = document.getElementById('btn-approve-manual-proof');
-      const rejectButton = document.getElementById('btn-reject-manual-proof');
-      approveButton.disabled = true;
-      rejectButton.disabled = true;
-      const button = decision === 'approve' ? approveButton : rejectButton;
-      const originalText = button.textContent;
-      button.textContent = 'Saving…';
-      manualProofStatus.textContent = 'Recording the review…';
-      manualProofStatus.hidden = false;
-      manualProofStatus.dataset.error = 'false';
-      try {
-        const response = await fetch('actions/admin/review_manual_payment.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken, 'Accept': 'application/json' },
-          body: JSON.stringify({ submission_id: submissionId, decision, rejection_reason: reason, acknowledge_late_verification: lateAck?.checked === true })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.message || 'Payment review could not be completed.');
-        const viewInvoker = decision === 'approve' ? findBookingViewButton(bookingId) : null;
-        closeModal();
-        if (decision === 'approve') showBookingSuccessAlert('Payment verified', result.message, bookingId, viewInvoker);
-        else showAlert('Proof rejected', result.message, 'success');
-        loadBookings({ suppressUrlSearchAction: true });
-      } catch (error) {
-        manualProofStatus.textContent = error.message || 'Payment review could not be completed.';
-        manualProofStatus.hidden = false;
-        manualProofStatus.dataset.error = 'true';
-      } finally {
-        approveButton.disabled = false;
-        rejectButton.disabled = false;
-        button.textContent = originalText;
-      }
-    };
-    document.getElementById('btn-approve-manual-proof')?.addEventListener('click', () => reviewManualProof('approve'));
-    document.getElementById('btn-reject-manual-proof')?.addEventListener('click', () => reviewManualProof('reject'));
-    document.addEventListener('keydown', event => {
-      if (!manualProofModal?.classList.contains('active')) return;
-      if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
-      if (event.key !== 'Tab') return;
-      const focusable = Array.from(manualProofModal.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')).filter(item => item.offsetParent !== null);
-      if (!focusable.length) { event.preventDefault(); manualProofModal.focus(); return; }
-      if (event.shiftKey && document.activeElement === focusable[0]) { event.preventDefault(); focusable.at(-1).focus(); }
-      else if (!event.shiftKey && document.activeElement === focusable.at(-1)) { event.preventDefault(); focusable[0].focus(); }
-    });
-  
     const guestRefundForm = document.getElementById('guest-refund-form');
     const guestRefundControls = window.SevillaRefundDestination?.bind({
         method: document.getElementById('guest-refund-method'),
@@ -1459,6 +1380,18 @@ document.addEventListener("DOMContentLoaded", () => {
     // 5. HELPER TO RE-BIND DYNAMIC BUTTONS AFTER AJAX LOAD
     // =========================================================
     function bindDynamicButtons() {
+        function resetBookingActionButton(button, label) {
+            if (!button) return null;
+            const freshButton = button.cloneNode(true);
+            freshButton.disabled = false;
+            freshButton.textContent = label;
+            freshButton.style.opacity = '';
+            freshButton.style.backgroundColor = '';
+            freshButton.style.borderColor = '';
+            button.replaceWith(freshButton);
+            return freshButton;
+        }
+
         document.querySelectorAll('.open-guest-refund-request').forEach(button => {
             button.addEventListener('click', () => {
                 const modal = document.getElementById('guestRefundRequestModal');
@@ -1486,8 +1419,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 // Clear old listener if exists, add new one
                 const executeBtn = document.getElementById('btn-execute-approve');
-                const newBtn = executeBtn.cloneNode(true);
-                executeBtn.parentNode.replaceChild(newBtn, executeBtn);
+                const newBtn = resetBookingActionButton(executeBtn, 'Yes, Approve');
+                if (!newBtn) return;
                 
                 newBtn.setAttribute('data-id', bookingId);
                 newBtn.addEventListener('click', function() { processBookingAction(this.getAttribute('data-id'), 'confirm', this); });
@@ -1503,8 +1436,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById('decline-booking-id').innerText = bookingId;
                 
                 const executeBtn = document.getElementById('btn-execute-decline');
-                const newBtn = executeBtn.cloneNode(true);
-                executeBtn.parentNode.replaceChild(newBtn, executeBtn);
+                const newBtn = resetBookingActionButton(executeBtn, 'Yes, Cancel It');
+                if (!newBtn) return;
                 
                 newBtn.setAttribute('data-id', bookingId);
                 newBtn.addEventListener('click', function() { processBookingAction(this.getAttribute('data-id'), 'cancel', this); });
@@ -1522,18 +1455,26 @@ document.addEventListener("DOMContentLoaded", () => {
             const referenceId = this.getAttribute('data-ref') || bookingId;
             const requestSequence = ++refundDestinationRequestSequence;
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
+            let paymongoAction = null;
+            let isPayMongoRefund = this.getAttribute('data-provider') === 'paymongo';
             const feePercentRaw = this.getAttribute('data-fee-percent');
             const parsedFeePercent = feePercentRaw !== null && feePercentRaw !== '' ? Number(feePercentRaw) : 0;
             const feePercent = Number.isFinite(parsedFeePercent) && parsedFeePercent >= 0 ? parsedFeePercent : 0;
             const feeAttr = this.getAttribute('data-fee');
             const refundAttr = this.getAttribute('data-refund');
-            const fee = feeAttr !== null && feeAttr !== '' ? Number(feeAttr) : Math.round(totalPaid * feePercent) / 100;
-            const refundAmt = refundAttr !== null && refundAttr !== '' ? Number(refundAttr) : Math.max(0, Math.round((totalPaid - fee) * 100) / 100);
+            const fee = isPayMongoRefund ? null : (feeAttr !== null && feeAttr !== '' ? Number(feeAttr) : Math.round(totalPaid * feePercent) / 100);
+            const refundAmt = isPayMongoRefund ? null : (refundAttr !== null && refundAttr !== '' ? Number(refundAttr) : Math.max(0, Math.round((totalPaid - fee) * 100) / 100));
       
             const titleEl = document.querySelector('#refundModal .modal-main-title');
             if(titleEl) titleEl.textContent = `Mark refund sent — Booking ${referenceId}`;
 
             const transactionInput = document.getElementById('refund-transaction-id');
+            const transactionField = document.getElementById('refund-reference-field');
+            const instructionsField = document.querySelector('#refundModal .refund-manual-instructions');
+            const feeLabel = document.getElementById('admin-refund-fee-label');
+            const priorLabel = document.getElementById('admin-refund-prior-label');
+            const priorValue = document.getElementById('admin-refund-prior-value');
+            const providerStatus = document.getElementById('refund-provider-status');
             const rejectionInput = document.getElementById('refund-rejection-reason');
             if (transactionInput) { transactionInput.value = ''; transactionInput.required = true; }
             if (rejectionInput) { rejectionInput.value = ''; rejectionInput.required = false; }
@@ -1544,14 +1485,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 spans[1].textContent = this.getAttribute('data-venue') || "Unknown";
                 spans[2].textContent = this.getAttribute('data-date') || "--";
                 spans[3].textContent = `₱${totalPaid.toLocaleString()}`;
-                spans[4].textContent = fee > 0 ? `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)` : '₱0.00 (no fee deducted)';
+                spans[4].textContent = isPayMongoRefund ? 'Loading verified actual fee…' : (fee > 0 ? `₱${fee.toLocaleString(undefined, {minimumFractionDigits: 2})} (${feePercent}%)` : '₱0.00 (no fee deducted)');
             }
+            if (priorLabel) priorLabel.hidden = true;
+            if (priorValue) priorValue.hidden = true;
             
             const reasonEl = document.getElementById('modal-ref-reason');
             if (reasonEl) reasonEl.textContent = this.getAttribute('data-reason') || "No reason provided by customer.";
       
             const refundTotalEl = document.querySelector('#refundModal .refund-total .amount');
-            if (refundTotalEl) refundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
+            if (refundTotalEl) refundTotalEl.textContent = isPayMongoRefund ? 'Loading provider refund amount…' : `₱${refundAmt.toLocaleString()}`;
 
             const destinationSection = document.getElementById('refund-destination-section');
             const destinationStatus = document.getElementById('refund-destination-status');
@@ -1579,6 +1522,16 @@ document.addEventListener("DOMContentLoaded", () => {
             newBtn.setAttribute('data-id', bookingId);
             newBtn.addEventListener('click', function() {
               if (this.disabled) return;
+              if (isPayMongoRefund && paymongoAction) {
+                if (rejectionInput) rejectionInput.required = false;
+                const confirmation = paymongoAction === 'refund'
+                  ? 'Submit the approved refund to PayMongo. The provider will return it through the original payment method; the booking stays active until every allocation succeeds.'
+                  : paymongoAction === 'retry_paymongo_refund'
+                    ? 'PayMongo reported a failed refund attempt. Submit a new attempt now? This creates a new provider request for failed allocations only.'
+                    : 'Check the existing PayMongo refund with the provider. No new refund request will be created.';
+                showConfirmModal(confirmation, () => processBookingAction(this.getAttribute('data-id'), paymongoAction, this), 'refundModal');
+                return;
+              }
               if (transactionInput) { transactionInput.required = true; transactionInput.reportValidity(); }
               if (rejectionInput) rejectionInput.required = false;
               const refundTxId = document.getElementById('refund-transaction-id').value.trim();
@@ -1630,6 +1583,8 @@ document.addEventListener("DOMContentLoaded", () => {
               .then(result => {
                 if (requestSequence !== refundDestinationRequestSequence || !refundModal.classList.contains('active')) return;
                 const cancellation = result?.success ? result.data?.cancellation : null;
+                isPayMongoRefund = cancellation?.refund_provider === 'paymongo';
+                const providerState = String(cancellation?.refund_provider_status || 'ready');
                 const destination = cancellation ? {
                   method: String(cancellation.refund_destination_method || ''),
                   accountName: String(cancellation.refund_destination_account_name || ''),
@@ -1641,9 +1596,30 @@ document.addEventListener("DOMContentLoaded", () => {
                   && (destination.method === 'Cash' || destination.accountIdentifier.trim().length >= 4)
                   && (destination.method !== 'Bank Transfer' || destination.bankName.trim().length >= 2);
                 const requestIsPending = cancellation?.status === 'Pending';
+                const needsFreshPreview = isPayMongoRefund && providerState === 'preview_required';
                 const instructions = document.querySelector('#refundModal .refund-manual-instructions');
+                if (feeLabel) feeLabel.textContent = isPayMongoRefund ? 'Actual PayMongo processing fee:' : 'Payment-processing fee:';
+                if (isPayMongoRefund && spans.length >= 5) {
+                  const actualFee = cancellation?.fee_deducted === null || cancellation?.fee_deducted === undefined ? null : Number(cancellation.fee_deducted);
+                  spans[4].textContent = needsFreshPreview || actualFee === null
+                    ? 'Unavailable — reject and resubmit for a verified preview'
+                    : `₱${actualFee.toLocaleString('en-PH', {minimumFractionDigits:2,maximumFractionDigits:2})} (actual provider fee)`;
+                  const refundTotal = document.querySelector('#refundModal .refund-total .amount');
+                  if (refundTotal) refundTotal.textContent = needsFreshPreview || cancellation?.refund_amount === null
+                    ? 'New preview required after staff rejection'
+                    : `₱${Number(cancellation.refund_amount).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+                  const prior = Number(cancellation?.refund_prior_amount || 0);
+                  if (priorLabel) priorLabel.hidden = needsFreshPreview || prior <= 0;
+                  if (priorValue) {
+                    priorValue.hidden = needsFreshPreview || prior <= 0;
+                    priorValue.textContent = `₱${prior.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+                  }
+                }
+                if (transactionField) transactionField.hidden = isPayMongoRefund;
+                if (transactionInput) transactionInput.required = !isPayMongoRefund;
+                if (instructions) instructions.hidden = isPayMongoRefund;
                 if (instructions) instructions.textContent = destination?.method === 'Cash' ? 'Return the cash to the named recipient outside the system. Record the cash handover reference only after the recipient has received it.' : 'Send the refund to this destination outside the system. Mark it sent only after the transfer is complete.';
-                if (destinationSection) destinationSection.hidden = !cancellation;
+                if (destinationSection) destinationSection.hidden = !cancellation || isPayMongoRefund;
                 if (destinationMethod) destinationMethod.textContent = destination?.method || 'Not provided';
                 if (destinationName) destinationName.textContent = destination?.accountName || 'Not provided';
                 if (destinationIdentifier) destinationIdentifier.textContent = destination?.accountIdentifier || (destination?.method === 'Cash' ? 'Cash handover — no account number' : 'Not provided');
@@ -1654,16 +1630,36 @@ document.addEventListener("DOMContentLoaded", () => {
                   destinationBank.textContent = showBank ? destination.bankName : '';
                 }
                 if (destinationStatus) {
-                  destinationStatus.hidden = requestIsPending && hasRequiredDetails;
-                  destinationStatus.dataset.error = String(!requestIsPending || !hasRequiredDetails);
+                  destinationStatus.hidden = isPayMongoRefund || (requestIsPending && hasRequiredDetails);
+                  destinationStatus.dataset.error = String(!requestIsPending || (!isPayMongoRefund && !hasRequiredDetails));
                   destinationStatus.textContent = !cancellation
                     ? 'No cancellation request was found. Refresh the bookings list before continuing.'
                     : !requestIsPending
                       ? 'This refund request is no longer pending. Refresh the bookings list before continuing.'
                       : 'This refund request has incomplete destination details. Contact the customer before sending funds.';
                 }
-                newBtn.disabled = !requestIsPending || !hasRequiredDetails;
-                if (newRejectBtn) newRejectBtn.disabled = !requestIsPending;
+                if (providerStatus) {
+                  providerStatus.hidden = !isPayMongoRefund;
+                  providerStatus.textContent = isPayMongoRefund
+                    ? (needsFreshPreview
+                      ? 'Older request has no verified actual-fee snapshot. Reject it so the customer can submit a new preview.'
+                      : `Original PayMongo payment method · ${providerState.replaceAll('_',' ')}`)
+                    : '';
+                }
+                if (isPayMongoRefund) {
+                  paymongoAction = needsFreshPreview ? null : providerState === 'failed' || providerState === 'partially_refunded'
+                    ? 'retry_paymongo_refund'
+                    : ['processing','pending','uncertain','creating','succeeded'].includes(providerState)
+                      ? 'reconcile_paymongo_refund' : 'refund';
+                  newBtn.textContent = needsFreshPreview ? 'Verified preview required' : paymongoAction === 'refund' ? 'Issue PayMongo refund'
+                    : paymongoAction === 'retry_paymongo_refund' ? 'Retry failed allocation' : 'Check PayMongo status';
+                  newBtn.disabled = !requestIsPending || needsFreshPreview;
+                } else {
+                  paymongoAction = null;
+                  newBtn.textContent = 'Mark refund sent';
+                  newBtn.disabled = !requestIsPending || !hasRequiredDetails;
+                }
+                if (newRejectBtn) newRejectBtn.disabled = !requestIsPending || Boolean(cancellation?.refund_provider_locked);
               })
               .catch(() => {
                 if (requestSequence !== refundDestinationRequestSequence || !refundModal.classList.contains('active')) return;
@@ -1781,44 +1777,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
 
-        document.querySelectorAll('.open-manual-proof').forEach(btn => {
-            btn.addEventListener('click', function() {
-                proofReviewInvoker = this;
-                manualProofModal.dataset.submissionId = this.dataset.submissionId;
-                manualProofModal.dataset.bookingId = this.dataset.id;
-                manualProofModal.dataset.eventEnded = this.dataset.eventEnded === '1' ? '1' : '0';
-                const lateAckWrap = document.getElementById('manual-proof-late-ack-wrap');
-                const lateAck = document.getElementById('manual-proof-late-ack');
-                if (lateAckWrap) lateAckWrap.hidden = manualProofModal.dataset.eventEnded !== '1';
-                if (lateAck) lateAck.checked = false;
-                document.getElementById('manual-proof-context').textContent = `Booking ${this.dataset.ref || `#${this.dataset.id}`} · ${this.dataset.customer || 'Customer'} · ${this.dataset.venue || 'Venue'} · ${this.dataset.date || 'Date'}`;
-                document.getElementById('manual-proof-amount').textContent = `₱${Number(this.dataset.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                document.getElementById('manual-proof-method').textContent = this.dataset.method || '—';
-                document.getElementById('manual-proof-reference').textContent = this.dataset.reference || '—';
-                document.getElementById('manual-proof-rejection-reason').value = '';
-                manualProofStatus.hidden = true;
-                manualProofStatus.textContent = '';
-                const proofImage = document.getElementById('manual-proof-preview');
-                manualProofStatus.textContent = 'Loading protected receipt…';
-                manualProofStatus.hidden = false;
-                manualProofStatus.dataset.error = 'false';
-                proofImage.onload = () => { manualProofStatus.hidden = true; manualProofStatus.textContent = ''; };
-                proofImage.onerror = () => {
-                    proofImage.hidden = true;
-                    manualProofStatus.textContent = 'The protected receipt could not be loaded. Refresh the booking list or contact an administrator.';
-                    manualProofStatus.hidden = false;
-                    manualProofStatus.dataset.error = 'true';
-                };
-                proofImage.src = `actions/user/payment_proof.php?id=${encodeURIComponent(this.dataset.submissionId)}`;
-                proofImage.hidden = false;
-                modalOverlay.classList.add('active');
-                manualProofModal.classList.add('active');
-                window.requestAnimationFrame(() => {
-                    if (manualProofModal.dataset.eventEnded === '1') lateAck?.focus();
-                    else manualProofModal.focus();
-                });
-            });
-        });
        // REVIEW RESCHEDULE REQUEST MODAL
        const reviewReschedModal = document.getElementById("reviewReschedModal");
       
@@ -2108,13 +2066,23 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.addEventListener('click', function() {
                 const bookingId = this.getAttribute('data-id');
                 const originalText = this.innerText;
+                const requestSequence = ++editPriceRequestSequence;
+                this.disabled = true;
                 this.innerText = "Loading...";
                 
-                fetch(`actions/admin/get_booking_details.php?id=${bookingId}`)
-                .then(res => res.json())
+                fetch(`actions/admin/get_booking_details.php?id=${encodeURIComponent(bookingId)}`, { cache: 'no-store' })
+                .then(response => {
+                    if (!response.ok) throw new Error('Request failed');
+                    return response.json();
+                })
                 .then(res => {
+                    if (requestSequence !== editPriceRequestSequence || !this.isConnected) {
+                        if (this.isConnected) { this.disabled = false; this.innerText = originalText; }
+                        return;
+                    }
+                    this.disabled = false;
                     this.innerText = originalText;
-                    if (!res.success) return showAlert("Error", res.message, "error", false);
+                    if (!res?.success || !res.data?.booking) return showAlert("Error", res?.message || 'Event quote details could not be loaded.', "error", false);
       
                     const data = res.data.booking;
                     const specifics = res.data.specifics;
@@ -2134,6 +2102,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         document.getElementById('ep-admin-notes').value = specifics ? (specifics.admin_notes || "") : "";
                     }
                     baseRateInput.value = parseFloat(data.base_amount).toFixed(2);
+                    const paymentSchemeSelect = document.getElementById('ep-payment-scheme');
+                    if (paymentSchemeSelect) paymentSchemeSelect.value = data.payment_scheme || '20% Reservation';
                     
                     lineItemsContainer.innerHTML = ""; 
       
@@ -2148,11 +2118,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     calculateInvoiceTotal();
       
                     const executeBtn = document.getElementById('btn-execute-edit-price');
-                    const newBtn = executeBtn.cloneNode(true);
-                    executeBtn.parentNode.replaceChild(newBtn, executeBtn);
+                    const newBtn = resetBookingActionButton(executeBtn, 'Save & Send Invoice');
                     
-                    newBtn.setAttribute('data-id', bookingId);
-                    newBtn.addEventListener('click', function() {
+                    if (newBtn) {
+                      newBtn.setAttribute('data-id', bookingId);
+                      newBtn.addEventListener('click', function() {
                         const guests = document.getElementById('ep-guests').value;
                         const eventType = document.getElementById('ep-event-type').value;
                         const eventStyleKey = eventStyleSelect?.value || '';
@@ -2183,10 +2153,20 @@ document.addEventListener("DOMContentLoaded", () => {
                                 line_items: lineItemsArr
                             });
                         }, 'editPriceModal');
-                    });
+                      });
+                    }
       
                     modalOverlay.classList.add('active');
                     editPriceModal.classList.add('active');
+                })
+                .catch(() => {
+                    if (requestSequence !== editPriceRequestSequence || !this.isConnected) {
+                        if (this.isConnected) { this.disabled = false; this.innerText = originalText; }
+                        return;
+                    }
+                    this.disabled = false;
+                    this.innerText = originalText;
+                    showAlert("Error", "Event quote details could not be loaded. Please try again.", "error", false);
                 });
             });
         });

@@ -1,6 +1,5 @@
 <?php
 require_once 'config/db_connect.php';
-require_once __DIR__ . '/../manual_payment.php';
 require_once __DIR__ . '/../google_maps.php';
 require_once __DIR__ . '/../hotel_rooms.php';
 require_once __DIR__ . '/../receptionist_faq.php';
@@ -19,9 +18,6 @@ if ($settings_query) {
 $biz_map_embed_for_form = google_maps_normalize_embed($current_settings['biz_map_embed'] ?? '') ?? '';
 $social_links = json_decode($current_settings['social_links_json'] ?? '[]', true);
 $social_links = is_array($social_links) ? $social_links : [];
-$manual_payment_instructions = manual_payment_load_instructions($conn);
-$manual_payment_deadline_hours = manual_payment_deadline_hours($conn);
-$manual_payment_review_hours = manual_payment_review_hours($conn);
 $support_defaults = [
     'support_intro' => 'Everything you need to plan your event or stay with confidence.',
     'support_contact_heading' => 'We are here to help',
@@ -103,7 +99,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             <button class="tab-link" data-target="panel-venues">Manage Venues</button>
             <button class="tab-link" data-target="panel-support">Support &amp; Information</button>
             <button class="tab-link" data-target="panel-prefs">System Preferences</button>
-            <button class="tab-link" data-target="panel-payments">Customer Payments</button>
             <?php endif; ?>
         </div>
         <label class="settings-tab-select-label" for="settingsTabSelect">Settings section</label>
@@ -113,7 +108,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
             <option value="panel-venues">Manage Venues</option>
             <option value="panel-support">Support &amp; Information</option>
             <option value="panel-prefs">System Preferences</option>
-            <option value="panel-payments">Customer Payments</option>
             <?php endif; ?>
         </select>
 
@@ -456,89 +450,6 @@ window.allVenuesData = <?php echo json_encode($all_venues, JSON_HEX_TAG | JSON_H
                     </div>
                 </form>
             </div>
-
-            <!-- PANEL 5: Manual customer payment instructions -->
-            <?php if (($_SESSION['role'] ?? '') === 'admin'): ?>
-            <div class="settings-panel" id="panel-payments">
-                <h2 class="panel-heading">Customer Payments</h2>
-                <p class="settings-section-note">Choose the transfer methods customers can use, then provide account details and optional QR images. Proof is reviewed by staff before a payment is recorded.</p>
-                <form id="form-manual-payment-settings" class="settings-form" enctype="multipart/form-data" onsubmit="return false;">
-                    <div class="manual-payment-deadline settings-section-card">
-                        <div>
-                            <h3>Payment window</h3>
-                            <p>New online bookings and rejected proofs receive this many hours to submit payment.</p>
-                        </div>
-                        <div class="form-group">
-                            <label for="manual-payment-deadline">Deadline (hours)</label>
-                            <input type="number" class="form-control" id="manual-payment-deadline" name="deadline_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_deadline_hours; ?>" required>
-                        </div>
-                    </div>
-                    <div class="manual-payment-deadline settings-section-card">
-                        <div>
-                            <h3>Proof review escalation</h3>
-                            <p>Flag an unreviewed receipt for urgent staff attention after this many hours. The booking stays reserved until staff approves, rejects, or resolves it.</p>
-                        </div>
-                        <div class="form-group">
-                            <label for="manual-payment-review-hours">Review threshold (hours)</label>
-                            <input type="number" class="form-control" id="manual-payment-review-hours" name="review_hours" min="1" max="168" step="1" value="<?php echo (int)$manual_payment_review_hours; ?>" required>
-                        </div>
-                    </div>
-                    <div class="manual-payment-list-heading">
-                        <div>
-                            <h3>Payment methods</h3>
-                            <p>Reorder methods for customers or switch one off when it is no longer offered. Retired methods stay available here for payment history.</p>
-                        </div>
-                        <button type="button" class="btn btn-outline" id="btn-add-manual-payment-method">+ Add payment method</button>
-                    </div>
-                    <div class="manual-payment-methods" id="manual-payment-methods">
-                    <?php $method_index = 0; foreach ($manual_payment_instructions as $method_key => $method_settings): $method_label = (string)$method_settings['name']; $safe_method_key = htmlspecialchars($method_key, ENT_QUOTES, 'UTF-8'); $safe_method_label = htmlspecialchars($method_label, ENT_QUOTES, 'UTF-8'); ?>
-                        <fieldset class="manual-payment-method settings-section-card" data-method-key="<?php echo $safe_method_key; ?>">
-                            <legend><?php echo $safe_method_label; ?></legend>
-                            <div class="manual-payment-method-actions" aria-label="Order <?php echo $safe_method_label; ?> for customers">
-                                <button type="button" class="btn btn-outline manual-payment-move-up" aria-label="Move <?php echo $safe_method_label; ?> up" <?php echo $method_index === 0 ? 'disabled' : ''; ?>>Move up</button>
-                                <button type="button" class="btn btn-outline manual-payment-move-down" aria-label="Move <?php echo $safe_method_label; ?> down" <?php echo $method_index === count($manual_payment_instructions) - 1 ? 'disabled' : ''; ?>>Move down</button>
-                                <button type="button" class="btn btn-danger btn-remove-manual-payment" aria-label="Remove <?php echo $safe_method_label; ?>">Remove</button>
-                            </div>
-                            <label class="manual-payment-enabled">
-                                <input type="checkbox" name="methods[<?php echo $safe_method_key; ?>][enabled]" value="1" <?php echo $method_settings['enabled'] ? 'checked' : ''; ?>>
-                                Offer this method to customers
-                            </label>
-                            <div class="form-grid settings-form-grid">
-                                <div class="form-group">
-                                    <label for="payment-<?php echo $safe_method_key; ?>-name">Display name</label>
-                                    <input id="payment-<?php echo $safe_method_key; ?>-name" name="methods[<?php echo $safe_method_key; ?>][name]" class="form-control manual-payment-name" maxlength="120" value="<?php echo $safe_method_label; ?>" autocomplete="off" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="payment-<?php echo $safe_method_key; ?>-account-name">Account holder / name</label>
-                                    <input id="payment-<?php echo $safe_method_key; ?>-account-name" name="methods[<?php echo $safe_method_key; ?>][account_name]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_name'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
-                                </div>
-                                <div class="form-group settings-field-wide">
-                                    <label for="payment-<?php echo $safe_method_key; ?>-number">Account or mobile number</label>
-                                    <input id="payment-<?php echo $safe_method_key; ?>-number" name="methods[<?php echo $safe_method_key; ?>][account_number]" class="form-control" maxlength="120" value="<?php echo htmlspecialchars($method_settings['account_number'], ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
-                                </div>
-                                <div class="form-group settings-field-wide">
-                                    <label for="payment-<?php echo $safe_method_key; ?>-details">Payment instructions</label>
-                                    <textarea id="payment-<?php echo $safe_method_key; ?>-details" name="methods[<?php echo $safe_method_key; ?>][details]" class="form-control" rows="3" maxlength="1000"><?php echo htmlspecialchars($method_settings['details'], ENT_QUOTES, 'UTF-8'); ?></textarea>
-                                </div>
-                                <div class="form-group settings-field-wide">
-                                    <label for="payment-<?php echo $safe_method_key; ?>-qr">Optional QR image <span class="field-help">JPEG, PNG, or WebP; up to 5 MiB.</span></label>
-                                    <input id="payment-<?php echo $safe_method_key; ?>-qr" name="qr_<?php echo $safe_method_key; ?>" class="form-control" type="file" accept="image/jpeg,image/png,image/webp">
-                                    <?php if ($method_settings['qr_path'] !== ''): ?>
-                                    <img class="manual-payment-current-qr" src="<?php echo htmlspecialchars($method_settings['qr_path'], ENT_QUOTES, 'UTF-8'); ?>" alt="Current <?php echo $safe_method_label; ?> payment QR code">
-                                    <label class="manual-payment-remove-qr"><input type="checkbox" name="methods[<?php echo $safe_method_key; ?>][remove_qr]" value="1"> Remove this QR image</label>
-                                    <?php else: ?>
-                                    <p class="field-help">No QR image uploaded.</p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </fieldset>
-                    <?php $method_index++; endforeach; ?>
-                    </div>
-                    <p class="field-help" id="manual-payment-settings-status" role="status" aria-live="polite" data-error="false"></p>
-                    <div class="panel-footer"><button type="button" id="btn-save-manual-payment-settings" class="btn btn-primary save-btn">Save Payment Instructions</button></div>
-                </form>
-            </div>
-            <?php endif; ?>
 
             <?php endif; ?>
 

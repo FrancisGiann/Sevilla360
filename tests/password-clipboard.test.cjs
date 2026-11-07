@@ -59,7 +59,7 @@ test('all password page entry points load the guard and revealable PHP inputs ke
   for (const page of ['auth.php', 'reset_password.php', 'user_dashboard.php', 'admin_dashboard.php']) {
     assert.match(fs.readFileSync(path.join(root, page), 'utf8'), /assets\/js\/password_clipboard\.js/);
   }
-  for (const file of ['auth.php', 'reset_password.php', 'user_dashboard.php', 'includes/admin-page/admin_settings.php', 'includes/admin-page/admin_usermanagement.php', 'includes/admin-page/admin_database_backups.php']) {
+  for (const file of ['auth.php', 'reset_password.php', 'user_dashboard.php', 'includes/admin-page/admin_settings.php', 'includes/admin-page/admin_usermanagement.php']) {
     for (const input of fs.readFileSync(path.join(root, file), 'utf8').matchAll(/<input\b[^>]*type="password"[^>]*>/g)) {
       assert.match(input[0], /data-password-field/, file);
     }

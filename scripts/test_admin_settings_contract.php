@@ -153,17 +153,22 @@ $paymentDetails = $read('actions/user/get_manual_payment_details.php');
 $paymentSubmission = $read('actions/user/submit_manual_payment.php');
 $migration = $read('migrations/026_custom_manual_payment_methods.sql');
 $rollback = $read('migrations/rollback/026_custom_manual_payment_methods.sql');
-$assert(str_contains($settings, 'foreach ($manual_payment_instructions as $method_key => $method_settings)')
-    && str_contains($settings, 'methods[<?php echo $safe_method_key; ?>][name]')
-    && str_contains($settings, 'id="btn-add-manual-payment-method"')
-    && str_contains($settings, 'manual-payment-move-up')
-    && str_contains($settings, 'methods[<?php echo $safe_method_key; ?>][remove_qr]'), 'Customer Payments renders the configured method list with editable names, add/reorder controls, and optional QR management.');
+$assert(!str_contains($settings, 'panel-payments')
+    && !str_contains($settings, 'Customer Payments')
+    && !str_contains($settings, 'manual_payment_load_instructions')
+    && !str_contains($settings, 'payment-qrs'), 'the admin settings page no longer exposes the Customer Payments panel or method/QR controls.');
+$assert(!str_contains($settingsClient, 'form-manual-payment-settings')
+    && !str_contains($settingsClient, 'save_manual_payment_settings.php')
+    && !str_contains($settingsClient, 'manual-payment-methods')
+    && !str_contains($settingsClient, 'manual_payment_deadline_hours')
+    && !str_contains($settingsClient, 'manual_payment_review_hours')
+    && !str_contains($settingsStyles, '.manual-payment-methods'), 'the settings controller and stylesheet no longer manage manual payment methods or QR images.');
 $assert(str_contains($paymentSettingsSave, "\$_SESSION['role'] ?? '') !== 'admin'")
     && str_contains($paymentSettingsSave, 'hash_equals($_SESSION[\'csrf_token\'], $csrf)')
-    && str_contains($paymentSettingsSave, 'manual_payment_method_key_is_valid($key)')
-    && str_contains($paymentSettingsSave, 'manual_payment_store_qr_image($temporaryPath)')
-    && str_contains($paymentSettingsSave, 'if (!$conn->commit())')
-    && str_contains($paymentSettingsSave, 'foreach ($oldFiles as $oldFile)'), 'method saves retain admin/CSRF guards and verified QR replacement cleanup follows a successful database commit.');
+    && str_contains($paymentSettingsSave, 'http_response_code(410)')
+    && !str_contains($paymentSettingsSave, 'manual_payment_store_qr_image')
+    && !str_contains($paymentSettingsSave, 'manual_payment_instructions')
+    && !str_contains($paymentSettingsSave, 'unlink('), 'the retired settings endpoint retains admin/CSRF checks and rejects writes without altering payment settings or QR files.');
 $assert(str_contains($manualPaymentHelper, "'sort_order' => " . '$order')
     && str_contains($manualPaymentHelper, 'MANUAL_PAYMENT_MAX_METHODS = 50')
     && str_contains($paymentDetails, "'label' => \$method['name']")

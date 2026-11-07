@@ -12,6 +12,7 @@ class FakeElement {
     this.tagName = tagName;
     this.children = [];
     this.attributes = {};
+    this.listeners = {};
     this.classSet = new Set();
     this.classList = {
       add: (...names) => names.forEach(name => this.classSet.add(name)),
@@ -42,7 +43,7 @@ class FakeElement {
     return child;
   }
 
-  addEventListener() {}
+  addEventListener(name, callback) { this.listeners[name] = callback; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   querySelector(selector) {
     if (selector === '.cal-days-grid') return this.children.find(child => child.className === 'cal-days-grid') || null;
@@ -53,14 +54,19 @@ class FakeElement {
   }
 }
 
-const root = new FakeElement('div');
-root.appendChild(Object.assign(new FakeElement('div'), { className: 'cal-days-grid' }));
-root.appendChild(Object.assign(new FakeElement('h4'), { className: 'cal-month-year' }));
-root.appendChild(Object.assign(new FakeElement('button'), { className: 'prev-month' }));
-root.appendChild(Object.assign(new FakeElement('button'), { className: 'next-month' }));
+const makeCalendarRoot = () => {
+  const root = new FakeElement('div');
+  root.appendChild(Object.assign(new FakeElement('div'), { className: 'cal-days-grid' }));
+  root.appendChild(Object.assign(new FakeElement('h4'), { className: 'cal-month-year' }));
+  root.appendChild(Object.assign(new FakeElement('button'), { className: 'prev-month' }));
+  root.appendChild(Object.assign(new FakeElement('button'), { className: 'next-month' }));
+  return root;
+};
+const root = makeCalendarRoot();
+const boundedRoot = makeCalendarRoot();
 
 const document = {
-  getElementById: id => id === 'calendar' ? root : null,
+  getElementById: id => id === 'calendar' ? root : id === 'bounded-calendar' ? boundedRoot : null,
   createElement: tagName => new FakeElement(tagName),
   getElementByClassName: () => null,
   querySelectorAll: () => []
@@ -68,7 +74,7 @@ const document = {
 const context = { Date, document, console, window: {}, setTimeout, clearTimeout, FormData, fetch: async () => ({}) };
 vm.createContext(context);
 const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'assets/js/calendar.js'), 'utf8');
-vm.runInContext(`${source}\nthis.SevillaCalendar = SevillaCalendar; this.normalizeCalendarDate = normalizeCalendarDate; this.calendarNightDifference = calendarNightDifference;`, context);
+vm.runInContext(`${source}\nthis.SevillaCalendar = SevillaCalendar; this.normalizeCalendarDate = normalizeCalendarDate; this.calendarNightDifference = calendarNightDifference; this.calendarMonthInTimeZone = calendarMonthInTimeZone;`, context);
 assert.ok(source.includes('calendarNightDifference(this.startDate, cellDate)'), 'minimum-night validation uses date-only calendar arithmetic');
 assert.ok(source.includes('calendarNightDifference(this.startDate, this.endDate)'), 'displayed night totals use date-only calendar arithmetic');
 
@@ -115,6 +121,26 @@ assert.equal(calendar.hasUnavailableDatesInclusive(new Date(2035, 8, 3), new Dat
 calendar.bookedDatesList = [];
 assert.equal(calendar.hasUnavailableDatesInclusive(new Date(2035, 8, 3), new Date(2035, 8, 5)), false, 'an available two-night Villa range remains selectable');
 assert.equal(context.calendarNightDifference(new Date(2035, 8, 3), new Date(2035, 8, 4)), 1, 'minimum-night checks use calendar dates rather than elapsed hours');
+
+const manilaBoundaryMonth = context.calendarMonthInTimeZone(new Date('2025-12-31T16:30:00.000Z'), 'Asia/Manila');
+assert.equal(manilaBoundaryMonth.getFullYear(), 2026, 'Manila current month follows its local calendar at the UTC year boundary');
+assert.equal(manilaBoundaryMonth.getMonth(), 0, 'Manila January is not treated as December by another timezone');
+const boundedCalendar = new context.SevillaCalendar('bounded-calendar', { preventPastMonthNavigation: true });
+boundedCalendar.minimumMonthDate = new Date(2026, 0, 1);
+boundedCalendar.currentDate = new Date(2025, 11, 1);
+boundedCalendar.render();
+assert.equal(boundedCalendar.monthYearDisplay.innerText, 'January 2026', 'a customer calendar opened before the month floor starts at Manila current month');
+assert.equal(boundedCalendar.prevBtn.disabled, true, 'previous month is disabled at the minimum month');
+assert.equal(boundedCalendar.prevBtn.attributes['aria-label'], 'Previous month', 'previous month control keeps an accessible label');
+assert.equal(boundedCalendar.prevBtn.attributes['aria-disabled'], 'true', 'the disabled state is exposed to assistive technology');
+boundedCalendar.prevBtn.listeners.click({ preventDefault() {} });
+assert.equal(boundedCalendar.monthYearDisplay.innerText, 'January 2026', 'disabled previous navigation cannot cross into the prior year');
+boundedCalendar.nextBtn.listeners.click({ preventDefault() {} });
+assert.equal(boundedCalendar.monthYearDisplay.innerText, 'February 2026', 'future month navigation remains enabled');
+assert.equal(boundedCalendar.prevBtn.disabled, false, 'return navigation is enabled while after the current month');
+boundedCalendar.prevBtn.listeners.click({ preventDefault() {} });
+assert.equal(boundedCalendar.monthYearDisplay.innerText, 'January 2026', 'future navigation can return to the current month');
+assert.equal(boundedCalendar.prevBtn.disabled, true, 'previous navigation is disabled again upon returning to current month');
 
 const dstRegression = spawnSync(process.execPath, ['-e', `
   const assert = require('node:assert/strict');

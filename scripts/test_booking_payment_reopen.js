@@ -13,7 +13,7 @@ assert.ok(classStart >= 0 && bootstrapStart > classStart, 'BookingController cla
 const alerts = [];
 const context = {
     document: {},
-    window: {},
+    window: { SevillaPayMongoCheckout: { enabled: () => true, policyVersion: 'terms-v4-paymongo-actual-fee' } },
     console: { error() {} },
     showAlert: (...args) => alerts.push(args),
     clearInterval() {},
@@ -28,13 +28,13 @@ const context = {
 vm.runInNewContext(`${source.slice(classStart, bootstrapStart)}\nthis.BookingController = BookingController;`, context);
 const BookingController = context.BookingController;
 
-const button = { textContent: 'BOOKING RESERVED', disabled: true, style: {} };
+const button = { textContent: 'BOOKING RESERVED', disabled: true, style: {}, dataset: { policyVersion: 'terms-v4-paymongo-actual-fee' } };
 const elements = {
     'btn-proceed': button,
     'timer-box': { classList: { remove() {} } },
     'timer-text': { style: {} },
     'countdown-wrapper': { style: {} },
-    'terms-check': { checked: true },
+    'terms-check': { checked: true, disabled: false, dataset: { policyVersion: 'terms-v4-paymongo-actual-fee' } },
     'check-catering': { checked: true },
     'check-av': { checked: true },
     'check-rooms': { checked: true },
@@ -78,12 +78,12 @@ assert.equal(controller.state.isDatesLocked, false, 'consumed temporary hold is 
 assert.equal(controller.state.lockExpiresAt, null, 'saved booking does not retain an expiring hold timer');
 assert.equal(selectionCleared, true, 'temporary date selection is cleared after reservation');
 assert.equal(summaryRefreshes, 1);
-assert.equal(button.textContent, 'SUBMIT PAYMENT PROOF', 'saved booking remains actionable');
+assert.equal(button.textContent, 'CONTINUE TO PAYMENT', 'saved booking remains actionable');
 assert.equal(button.disabled, false);
 
 controller.state.activeTabId = 'event-hall';
 controller.updateBookingSubmitLabel();
-assert.equal(button.textContent, 'SUBMIT PAYMENT PROOF', 'tab updates cannot replace the saved-payment action');
+assert.equal(button.textContent, 'CONTINUE TO PAYMENT', 'tab updates cannot replace the saved-payment action');
 assert.equal(button.disabled, false, 'tab updates cannot disable the saved-payment action');
 
 (async () => {
@@ -91,6 +91,15 @@ assert.equal(button.disabled, false, 'tab updates cannot disable the saved-payme
     assert.deepEqual(openedBooking, { id: '481', invoker: button }, 'button opens payment for the existing booking');
     assert.equal(paymentRequests, 0, 'reopening never posts another booking');
     assert.equal(alerts.length, 0);
+
+    openedBooking = null;
+    button.dataset.policyVersion = 'terms-v3';
+    elements['terms-check'].checked = false;
+    await controller.submitOnlineBooking();
+    assert.equal(openedBooking, null, 'saved booking checkout remains blocked until terms are accepted');
+    assert.equal(alerts.length, 1, 'missing policy consent gives the customer an in-system prompt');
+    button.dataset.policyVersion = 'terms-v4-paymongo-actual-fee';
+    elements['terms-check'].checked = true;
 
     const invalid = Object.create(BookingController.prototype);
     invalid.state = { savedPaymentBookingId: null };
@@ -104,7 +113,7 @@ assert.equal(button.disabled, false, 'tab updates cannot disable the saved-payme
     noDialog.getEl = () => button;
     await noDialog.submitOnlineBooking();
     assert.equal(paymentRequests, 0, 'missing dialog fallback still cannot create a second reservation');
-    assert.equal(alerts.length, 1, 'missing dialog directs the customer to My Bookings');
+    assert.equal(alerts.length, 2, 'missing dialog directs the customer to My Bookings');
 
     console.log('PASS|saved booking ID re-enables the payment action and clears consumed hold state');
     console.log('PASS|button reopens payment for the existing booking without another booking request');

@@ -1239,8 +1239,7 @@ textarea:focus {
 .booking-date-control .calendar-selection-guide {
   margin: 0 0 0.75rem;
   padding: 0.7rem 0.85rem;
-  border-left: 3px solid var(--color-gold);
-  border-radius: 0 6px 6px 0;
+  border-radius: 6px;
   background: #f8f2e8;
   color: #3d342b;
   font-size: 0.9rem;
@@ -1565,3 +1564,57 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 .booking-account-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 #booking-auth-prompt h4 { margin: 0 0 0.75rem; font-family: var(--font-heading); font-size: 1.3rem; }
 #booking-auth-prompt p, #booking-staff-prompt { line-height: 1.6; margin-bottom: 1.25rem; color: var(--color-dark); }
+
+/* Explain the payment deadline at the payment decision. */
+.booking-payment-window {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 0;
+    margin-bottom: 16px;
+    border-block: 1px solid rgba(139, 96, 43, .24);
+    color: #332b23;
+    text-align: left;
+}
+.booking-payment-window[hidden] { display: none; }
+.booking-payment-window > i { margin-top: 3px; color: #80521f; font-size: 20px; }
+.booking-payment-window strong { display: block; font-size: 17px; line-height: 1.4; font-weight: 600; }
+.booking-payment-window p { margin: 6px 0 0; font-size: 15px; line-height: 1.6; color: #5e5145; }
+
+/* Keep terms readable in a short viewport while the consent action stays visible. */
+#tnc-modal { box-sizing: border-box; height: 100vh; height: 100dvh; padding: 16px; overscroll-behavior: contain; }
+#tnc-modal .modal-content {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 560px);
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    min-height: 0;
+    overflow: hidden;
+    padding: clamp(18px, 4vw, 32px);
+}
+#tnc-modal .modal-title { flex: 0 0 auto; }
+#tnc-modal .terms-content {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: min(300px, 48vh);
+    max-height: min(300px, 48dvh);
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+#tnc-modal .terms-content:focus-visible { outline: 2px solid #80521f; outline-offset: 3px; }
+#tnc-modal .modal-actions-center { flex: 0 0 auto; margin-top: 12px; }
+#tnc-modal .terms-scroll-hint { flex: 0 0 auto; margin: 8px 0 0; color: var(--color-dark-light); font-size: 0.875rem; line-height: 1.45; text-align: center; }
+#tnc-modal #btn-agree:disabled { cursor: not-allowed; opacity: .55; }
+@media (max-height: 640px) {
+    #tnc-modal .terms-content { max-height: min(220px, 36vh); max-height: min(220px, 36dvh); }
+    #tnc-modal .modal-title { margin-bottom: 8px; font-size: 1.5rem; }
+    #tnc-modal .modal-body { margin: 12px 0; }
+}
+@media (max-width: 480px) {
+    #tnc-modal { padding: 12px; }
+    #tnc-modal .modal-content { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
+    #tnc-modal .terms-content { max-height: min(52vh, 360px); max-height: min(52dvh, 360px); font-size: 1rem; }
+    #tnc-modal .modal-actions-center { gap: 8px; }
+}

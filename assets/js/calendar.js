@@ -25,6 +25,22 @@ function calendarNightDifference(start, end) {
   return Math.round((endUtc - startUtc) / 86400000);
 }
 
+function calendarMonthInTimeZone(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric' }).formatToParts(date);
+    const year = Number(parts.find(part => part.type === 'year')?.value);
+    const month = Number(parts.find(part => part.type === 'month')?.value);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) return new Date(year, month - 1, 1);
+  } catch (error) {
+    // Fall back to the browser's month only if the requested timezone is unavailable.
+  }
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function calendarMonthIndex(date) {
+  return date.getFullYear() * 12 + date.getMonth();
+}
+
 class SevillaCalendar {
   constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
@@ -39,6 +55,10 @@ class SevillaCalendar {
 
     this.currentDate = new Date();
     this.currentDate.setDate(1);
+    this.preventPastMonthNavigation = options.preventPastMonthNavigation === true;
+    this.minimumMonthDate = this.preventPastMonthNavigation
+      ? calendarMonthInTimeZone(new Date(), 'Asia/Manila')
+      : null;
 
     this.startDate = null;
     this.endDate = null;
@@ -64,14 +84,20 @@ class SevillaCalendar {
 
   init() {
     this.render();
+    this.prevBtn.setAttribute('aria-label', 'Previous month');
     this.prevBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+      const previousMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() - 1, 1);
+      if (this.minimumMonthDate && calendarMonthIndex(previousMonth) < calendarMonthIndex(this.minimumMonthDate)) {
+        this.currentDate = new Date(this.minimumMonthDate.getFullYear(), this.minimumMonthDate.getMonth(), 1);
+      } else {
+        this.currentDate = previousMonth;
+      }
       this.render();
     });
     this.nextBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+      this.currentDate = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 1);
       this.render();
     });
   }
@@ -214,6 +240,15 @@ class SevillaCalendar {
   }
 
   render() {
+    if (this.minimumMonthDate && calendarMonthIndex(this.currentDate) < calendarMonthIndex(this.minimumMonthDate)) {
+      this.currentDate = new Date(this.minimumMonthDate.getFullYear(), this.minimumMonthDate.getMonth(), 1);
+    }
+    if (this.prevBtn) {
+      const previousMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() - 1, 1);
+      const previousDisabled = !!this.minimumMonthDate && calendarMonthIndex(previousMonth) < calendarMonthIndex(this.minimumMonthDate);
+      this.prevBtn.disabled = previousDisabled;
+      this.prevBtn.setAttribute('aria-disabled', String(previousDisabled));
+    }
     this.grid.innerHTML = "";
     const year = this.currentDate.getFullYear();
     const month = this.currentDate.getMonth();
