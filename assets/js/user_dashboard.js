@@ -1760,11 +1760,25 @@ document.addEventListener("DOMContentLoaded", () => {
     closeBookingActionDisclosure(false);
     Object.values(modals).forEach((modal) => modal?.classList.remove('active'));
     document.getElementById('globalAlertModal')?.classList.remove('active');
-    document.body.replaceChildren();
-    const notice = document.createElement('p');
-    notice.textContent = 'Your customer session changed. Returning to sign in…';
-    document.body.appendChild(notice);
-    window.location.replace('auth.php');
+    const notice = document.createElement('main');
+    notice.className = 'customer-session-expired';
+    notice.setAttribute('role', 'alert');
+    const card = document.createElement('section');
+    card.className = 'customer-session-expired__card';
+    const title = document.createElement('h1');
+    title.textContent = 'Please sign in again';
+    const message = document.createElement('p');
+    message.textContent = 'Your session needs to be refreshed before you can continue.';
+    const signInLink = document.createElement('a');
+    signInLink.className = 'customer-session-expired__link';
+    signInLink.href = new URL('auth.php', window.location.href).href;
+    signInLink.textContent = 'Return to sign in';
+    card.append(title, message, signInLink);
+    notice.append(card);
+    // Build the fallback view before replacing the page so a failed redirect
+    // cannot strand the customer on an empty document.
+    document.body.replaceChildren(notice);
+    window.location.replace(signInLink.href);
   };
 
   const dashboardRefreshStateChanged = (state) => {

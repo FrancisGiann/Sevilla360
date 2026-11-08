@@ -22,6 +22,7 @@ $salesFilters = sales_report_normalize_filters($_GET);
 $salesFilterError = $salesFilters['error'];
 $salesRequestedPage = filter_var($_GET['sales_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100000]]);
 $salesPage = $salesRequestedPage === false ? 1 : (int)$salesRequestedPage;
+$salesPageSize = 50;
 $salesVenues = [];
 $salesReport = [];
 $salesMethods = [];
@@ -37,11 +38,13 @@ try {
             $salesFilters['venue_id'] = $resolvedVenueId;
         }
     }
-    $salesReport = sales_report_build($conn, $salesFilters, $salesPage, 50);
+    $salesReport = sales_report_build($conn, $salesFilters, $salesPage, $salesPageSize);
     if ($salesPage > $salesReport['page_count']) {
         $salesPage = $salesReport['page_count'];
-        $salesReport = sales_report_build($conn, $salesFilters, $salesPage, 50);
+        $salesReport = sales_report_build($conn, $salesFilters, $salesPage, $salesPageSize);
     }
+    $salesFirstRow = $salesReport['total_rows'] > 0 ? (($salesPage - 1) * $salesPageSize) + 1 : 0;
+    $salesLastRow = min($salesPage * $salesPageSize, $salesReport['total_rows']);
     $salesMethods = $salesReport['available_methods'];
     if ($salesFilters['method'] !== '' && !in_array($salesFilters['method'], $salesMethods, true)) {
         $salesMethods[] = $salesFilters['method'];
@@ -224,19 +227,17 @@ $salesNetClass = static fn(?int $cents): string => $cents === null ? '' : ($cent
                 </tbody>
             </table>
         </div>
-        <?php if ($salesReport['page_count'] > 1): ?>
-            <nav class="sales-pagination" aria-label="Transaction pages">
-                <span>Page <?= (int)$salesPage ?> of <?= (int)$salesReport['page_count'] ?></span>
-                <div>
-                    <?php if ($salesPage > 1): ?>
-                        <a href="admin_dashboard.php?<?= $salesEscape(http_build_query($salesPaginationBase + ['sales_page' => $salesPage - 1])) ?>" rel="prev">Previous</a>
-                    <?php else: ?><span aria-disabled="true">Previous</span><?php endif; ?>
-                    <?php if ($salesPage < $salesReport['page_count']): ?>
-                        <a href="admin_dashboard.php?<?= $salesEscape(http_build_query($salesPaginationBase + ['sales_page' => $salesPage + 1])) ?>" rel="next">Next</a>
-                    <?php else: ?><span aria-disabled="true">Next</span><?php endif; ?>
-                </div>
-            </nav>
-        <?php endif; ?>
+        <nav class="sales-pagination" aria-label="Transaction pages">
+            <span>Showing <?= number_format($salesFirstRow) ?>–<?= number_format($salesLastRow) ?> of <?= number_format($salesReport['total_rows']) ?> transactions · Page <?= (int)$salesPage ?> of <?= (int)$salesReport['page_count'] ?></span>
+            <div>
+                <?php if ($salesPage > 1): ?>
+                    <a href="admin_dashboard.php?<?= $salesEscape(http_build_query($salesPaginationBase + ['sales_page' => $salesPage - 1])) ?>" rel="prev">Previous</a>
+                <?php else: ?><span aria-disabled="true">Previous</span><?php endif; ?>
+                <?php if ($salesPage < $salesReport['page_count']): ?>
+                    <a href="admin_dashboard.php?<?= $salesEscape(http_build_query($salesPaginationBase + ['sales_page' => $salesPage + 1])) ?>" rel="next">Next</a>
+                <?php else: ?><span aria-disabled="true">Next</span><?php endif; ?>
+            </div>
+        </nav>
     </section>
     <?php endif; ?>
 </div>

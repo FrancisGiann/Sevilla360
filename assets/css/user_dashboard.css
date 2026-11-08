@@ -2753,6 +2753,43 @@ form[data-session-logout] button { width:100%; text-align:left; background:trans
 }
 #paymongo-return-status button:disabled { opacity: .65; cursor: wait; }
 #paymongo-return-status button[hidden] { display: none; }
+
+.customer-session-expired {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f4f0e8;
+}
+
+.customer-session-expired__card {
+  width: min(100%, 520px);
+  padding: clamp(24px, 5vw, 40px);
+  border: 1px solid rgba(42, 37, 34, .14);
+  border-radius: 8px;
+  background: var(--color-white, #fff);
+  box-shadow: 0 18px 48px rgba(42, 37, 34, .12);
+}
+
+.customer-session-expired__card h1 { margin-bottom: 10px; }
+.customer-session-expired__card p { margin-bottom: 24px; color: var(--color-dark-light, #4a4440); }
+
+.customer-session-expired__link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 20px;
+  border: 1px solid var(--color-dark, #2a2522);
+  background: var(--color-dark, #2a2522);
+  color: var(--color-white, #fff);
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.customer-session-expired__link:hover { background: #4a4440; }
 @media (max-width: 480px) {
   #paymongo-return-status button { flex: 1 1 100%; }
 }
