@@ -335,7 +335,6 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
 <?php endif; ?>
     <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css'); ?>">
-<?php require __DIR__ . '/includes/session_ui.php'; ?>
 </head>
 
 <body class="dashboard-body">
