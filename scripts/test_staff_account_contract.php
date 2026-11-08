@@ -15,6 +15,7 @@ function staff_account_contract_source(string $path): string
 
 $migration = staff_account_contract_source('migrations/017_staff_work_profile.sql');
 $backend = staff_account_contract_source('actions/admin/manage_staff.php');
+$history_backend = staff_account_contract_source('actions/admin/get_customer_history.php');
 $view = staff_account_contract_source('includes/admin-page/admin_usermanagement.php');
 $script = staff_account_contract_source('assets/js/admin-page/admin_usermanagement.js');
 $styles = staff_account_contract_source('assets/css/admin-page/admin_usermanagement.css');
@@ -72,7 +73,7 @@ foreach (['address', 'department', 'job_title', 'hire_date', 'phone'] as $field)
     staff_account_contract_assert(strpos($backend, $field) !== false, "backend handles {$field}");
 }
 
-foreach (['STF-', 'data-status', 'data-staff-filter="active"', 'data-staff-filter="archived"', 'data-staff-filter="all"', 'Account access', 'Archive', 'Restore', 'Promote to admin', 'promoteStaffModal', 'current administrator password', 'Current account', 'Staff Details', 'read-only', 'staff_display_id', 'staff_status', 'aria-controls="staffTable"', 'aria-controls="customerTable"', 'aria-labelledby="staffAccountsTab"', 'aria-labelledby="customerAccountsTab"'] as $marker) {
+foreach (['STF-', 'data-status', 'data-staff-filter="active"', 'data-staff-filter="archived"', 'data-staff-filter="all"', 'Account access', 'Archive', 'Restore', 'Promote to admin', 'promoteStaffModal', 'current administrator password', 'Staff Details', 'read-only', 'staff_display_id', 'staff_status', 'id="staffDetails" hidden', 'data-staff-detail', 'aria-controls="staffTable"', 'aria-controls="customerTable"', 'aria-labelledby="staffAccountsTab"', 'aria-labelledby="customerAccountsTab"'] as $marker) {
     staff_account_contract_assert(strpos($view, $marker) !== false, "view contains {$marker}");
 }
 foreach (['staff_phone', 'staff_address', 'staff_department', 'staff_job_title', 'staff_hire_date', 'Residential address', 'Admin-only staff record.', 'street-address', 'maxlength="20"', 'maxlength="100"', 'maxlength="255"'] as $marker) {
@@ -80,8 +81,16 @@ foreach (['staff_phone', 'staff_address', 'staff_department', 'staff_job_title',
 }
 staff_account_contract_assert((bool)preg_match('/id=["\']staff_status["\'][^>]*readonly/i', $view), 'modal exposes lifecycle status as read-only');
 staff_account_contract_assert((bool)preg_match('/id=["\']staff_display_id["\'][^>]*readonly/i', $view), 'modal exposes staff ID as read-only');
-staff_account_contract_assert(strpos($script, 'field.readOnly = edit') !== false
-    && strpos($script, 'edit ? "Close" : "Cancel"') !== false, 'details fields stay readable and modal action label follows mode');
+$details_start = strpos($view, '<dl class="um-form-grid um-staff-details" id="staffDetails" hidden>');
+$details_end = $details_start === false ? false : strpos($view, '</dl>', $details_start);
+$details_markup = $details_start === false || $details_end === false ? '' : substr($view, $details_start, $details_end - $details_start);
+staff_account_contract_assert($details_markup !== ''
+    && !preg_match('/<(?:input|textarea|select|button)\b/i', $details_markup)
+    && strpos($view, '<form class="um-form" id="staffForm">') !== false
+    && strpos($script, 'if (staffForm) staffForm.hidden = edit;') !== false
+    && strpos($script, 'field.textContent = value?.trim() || "—";') !== false
+    && strpos($script, 'staffDetailsActions?.querySelector(".close-staff-modal")') !== false,
+    'read-only details use labeled text without controls while Add New Staff retains its editable form and correct focus');
 staff_account_contract_assert(!preg_match('/<\?=\s*\$[a-df-zA-DF-Z_]/', $view), 'dynamic view output is escaped');
 
 foreach (['archive', 'restore', 'promote', 'staffFilter', 'aria-pressed', 'replaceChildren', 'textContent', 'Escape', 'lastFocusedElement', 'modalFocusableElements', 'trapModalFocus', 'shiftKey', 'preventDefault', 'focusTarget', 'staff_address', 'address:', 'current_password', 'X-CSRF-Token'] as $marker) {
@@ -93,20 +102,41 @@ staff_account_contract_assert(strpos($script, 'action: "promote"') !== false
 staff_account_contract_assert(str_contains($view, "u.role IN ('admin', 'staff')")
     && str_contains($view, 'Admin &amp; Staff Accounts')
     && str_contains($view, 'LEFT JOIN staff'), 'the directory includes Admin and Staff identities, including missing work profiles');
-staff_account_contract_assert(str_contains($view, 'aria-label="Current account">You')
-    && str_contains($view, 'Edit my profile')
-    && str_contains($view, '<?php if ($is_admin_account): ?>'), 'own-profile navigation and read-only Admin actions remain distinct from Staff management');
+staff_account_contract_assert(str_contains($view, "u.role IN ('admin', 'staff')")
+    && str_contains($view, 'AND u.id <> ?')
+    && str_contains($view, "bind_param('i', \$current_user_id)")
+    && str_contains($view, 'FILTER_VALIDATE_INT')
+    && !str_contains($view, 'data-current=')
+    && !str_contains($view, 'Edit my profile')
+    && !str_contains($view, 'aria-label="Current account">You'), 'staff directory excludes the validated current session user with a bound SQL value and no self-row markup');
 staff_account_contract_assert(str_contains($script, 'isAdminDetails ? "Admin" : "Staff"')
     && str_contains($styles, '#staffModal [hidden] { display: none !important; }'), 'Admin details show the actual role and hidden write controls stay hidden');
 staff_account_contract_assert(str_contains($backend, '$directoryTargetId === (int)($_SESSION[\'user_id\'] ?? 0)')
     && str_contains($backend, 'catch (StaffManagementException $error)'), 'all directory self-actions reject safely, including malformed target IDs');
-staff_account_contract_assert(strpos($script, 'if (!focusableElements.length) return;') !== false, 'modal focus trap is a no-op without focusable controls');
+staff_account_contract_assert(strpos($script, 'if (!focusableElements.length) return;') !== false
+    && strpos($script, '!element.closest("[hidden]")') !== false, 'modal focus trap ignores hidden form descendants and is a no-op without visible controls');
 staff_account_contract_assert(strpos($script, 'innerHTML') === false && strpos($script, 'insertAdjacentHTML') === false, 'script does not inject untrusted HTML');
 staff_account_contract_assert(strpos($styles, '.um-form-grid') !== false
     && strpos($styles, 'grid-template-columns: repeat(2') !== false
     && strpos($styles, '.um-form-group-full') !== false
     && strpos($styles, '.um-address') !== false
     && strpos($styles, '@media (max-width: 768px)') !== false, 'modal has responsive two-to-one column layout');
+staff_account_contract_assert(str_contains($history_backend, 'WHERE b.customer_id = ?')
+    && str_contains($history_backend, '$stmt->bind_param("i", $customer_id)')
+    && str_contains($history_backend, 'b.reference_no')
+    && str_contains($history_backend, 'b.start_date, b.end_date')
+    && str_contains($history_backend, 'b.amount_paid')
+    && str_contains($history_backend, 'b.booking_status')
+    && str_contains($history_backend, 'b.payment_status'), 'customer booking history returns all statuses and truthful booking amounts from a prepared customer-scoped query');
+staff_account_contract_assert(str_contains($view, 'Booking status')
+    && str_contains($view, 'Payment status')
+    && str_contains($script, 'Number.isSafeInteger(bookingId) && bookingId > 0')
+    && str_contains($script, 'admin_dashboard.php?page=bookings&booking_id=')
+    && str_contains($script, 'Actual paid:')
+    && str_contains($script, 'View details'), 'history rows show status and payment details with a validated link to the existing booking details view');
+staff_account_contract_assert(str_contains($styles, '.um-history-modal')
+    && str_contains($styles, 'max-width: 680px')
+    && str_contains($styles, 'data-label'), 'booking history has responsive compact dialog rows');
 staff_account_contract_assert(strpos($styles, 'linear-gradient') === false
     && strpos($styles, 'border-left') === false
     && strpos($styles, '.action-delete') === false, 'staff design avoids prohibited decoration/deletion affordance');

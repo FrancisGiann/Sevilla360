@@ -44,11 +44,12 @@ try {
     if ($output === false) throw new RuntimeException('Unable to create the export.');
 
     if ($exportType === 'transactions') {
-        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer / record', 'Booking / seminar', 'Venue', 'Reference', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
-        sales_report_build($conn, $filters, 1, 50, static function (array $transaction) use ($output): void {
-            $received = $transaction['type'] === 'received' ? $transaction['amount_cents'] / 100 : 0;
-            $refunded = $transaction['type'] === 'refunded' ? $transaction['amount_cents'] / 100 : 0;
-            $net = $received - $refunded;
+        sales_report_csv_line($output, ['Date', 'Type', 'Payment / refund method', 'Customer / record', 'Booking / seminar', 'Venue', 'Reference', 'Gross received (PHP)', 'Customer refund (PHP)', 'PayMongo fee (PHP)', 'Net movement after fees/refunds (PHP)', 'Fee status']);
+        $report = sales_report_build($conn, $filters, 1, 50, static function (array $transaction) use ($output): void {
+            $received = $transaction['gross_received_cents'] / 100;
+            $refunded = $transaction['customer_refund_cents'] / 100;
+            $fee = $transaction['provider_fee_cents'];
+            $net = $transaction['net_after_fees_refunds_cents'];
             sales_report_csv_line($output, [
                 $transaction['date'],
                 $transaction['source'] === 'seminar'
@@ -61,21 +62,41 @@ try {
                 $transaction['reference'],
                 number_format($received, 2, '.', ''),
                 number_format($refunded, 2, '.', ''),
-                number_format($net, 2, '.', ''),
-            ], [7, 8, 9]);
+                $fee === null ? '' : number_format($fee / 100, 2, '.', ''),
+                $net === null ? '' : number_format($net / 100, 2, '.', ''),
+                $transaction['fee_status'],
+            ], [7, 8, 9, 10]);
         });
+        sales_report_csv_line($output, [
+            'PERIOD TOTAL', '', '', '', '', '', '',
+            number_format($report['received_cents'] / 100, 2, '.', ''),
+            number_format($report['refunded_cents'] / 100, 2, '.', ''),
+            number_format($report['provider_fee_cents'] / 100, 2, '.', ''),
+            $report['net_cents'] === null ? '' : number_format($report['net_cents'] / 100, 2, '.', ''),
+            $report['net_cents'] === null ? 'unknown; see report notes' : 'complete',
+        ], [7, 8, 9, 10]);
         $filename = 'sevilla360-sales-transactions-' . $filters['from'] . '-to-' . $filters['to'] . '.csv';
     } else {
         $report = sales_report_build($conn, $filters);
-        sales_report_csv_line($output, ['Venue group', 'Received (PHP)', 'Refunded (PHP)', 'Total (PHP)']);
+        sales_report_csv_line($output, ['Venue group', 'Gross received (PHP)', 'Customer refunds (PHP)', 'PayMongo fees (PHP)', 'Net after fees/refunds (PHP)', 'Fee status']);
         foreach ($report['venue_totals'] as $venueTotal) {
             sales_report_csv_line($output, [
                 $venueTotal['label'],
                 number_format($venueTotal['received_cents'] / 100, 2, '.', ''),
                 number_format($venueTotal['refunded_cents'] / 100, 2, '.', ''),
-                number_format($venueTotal['net_cents'] / 100, 2, '.', ''),
-            ], [1, 2, 3]);
+                number_format($venueTotal['provider_fee_cents'] / 100, 2, '.', ''),
+                $venueTotal['net_cents'] === null ? '' : number_format($venueTotal['net_cents'] / 100, 2, '.', ''),
+                $venueTotal['unknown_fee_rows'] > 0 ? 'unknown fees' : ($venueTotal['net_cents'] === null ? 'unknown net' : 'complete'),
+            ], [1, 2, 3, 4]);
         }
+        sales_report_csv_line($output, [
+            'PERIOD TOTAL',
+            number_format($report['received_cents'] / 100, 2, '.', ''),
+            number_format($report['refunded_cents'] / 100, 2, '.', ''),
+            number_format($report['provider_fee_cents'] / 100, 2, '.', ''),
+            $report['net_cents'] === null ? '' : number_format($report['net_cents'] / 100, 2, '.', ''),
+            $report['net_cents'] === null ? 'unknown; see report notes' : 'complete',
+        ], [1, 2, 3, 4]);
         $filename = 'sevilla360-sales-venues-' . $filters['from'] . '-to-' . $filters['to'] . '.csv';
     }
 

@@ -61,13 +61,13 @@ $salesQuery = [
 $salesRetryQuery = ['page' => 'sales'] + $salesQuery + ['sales_page' => $salesPage];
 $salesExportLink = static fn(string $type): string => 'actions/admin/export_sales_report.php?' . http_build_query($salesQuery + ['type' => $type]);
 $salesPaginationBase = ['page' => 'sales'] + $salesQuery;
-$salesCurrency = static fn(int $cents): string => '₱' . number_format($cents / 100, 2);
-$salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : ($cents > 0 ? 'is-positive' : '');
+$salesCurrency = static fn(?int $cents): string => $cents === null ? 'Unknown' : '₱' . number_format($cents / 100, 2);
+$salesNetClass = static fn(?int $cents): string => $cents === null ? '' : ($cents < 0 ? 'is-negative' : ($cents > 0 ? 'is-positive' : ''));
 ?>
 <div class="sales-report-container">
     <div class="sales-report-heading">
         <div class="sales-report-heading-copy">
-            <p>Recorded successful payments and processed refunds for the selected dates.</p>
+            <p>Gross payments are grouped by payment date; refunds by provider success date (or reconciliation date when no provider timestamp is stored).</p>
         </div>
         <?php if (!$salesReportFailed): ?><div class="sales-report-exports" aria-label="Export report">
             <a class="sales-button sales-button-secondary" href="<?= $salesEscape($salesExportLink('transactions')) ?>">
@@ -126,36 +126,45 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
 
     <div class="sales-summary-grid" aria-label="Sales totals">
         <article class="sales-summary-item sales-summary-received">
-            <h3>Received</h3>
+            <h3>Gross received</h3>
             <p><?= $salesCurrency($salesReport['received_cents']) ?></p>
         </article>
         <article class="sales-summary-item sales-summary-refunded">
-            <h3>Refunded</h3>
+            <h3>Customer refunds</h3>
             <p><?= $salesCurrency($salesReport['refunded_cents']) ?></p>
         </article>
         <article class="sales-summary-item sales-summary-net">
-            <h3>Total</h3>
+            <h3>PayMongo fees</h3>
+            <p><?= $salesCurrency($salesReport['provider_fee_cents']) ?></p>
+            <small class="sales-fee-caption">Verified subtotal</small>
+            <?php if ($salesReport['fee_unknown_rows'] > 0): ?>
+                <small class="sales-fee-status"><?= number_format($salesReport['fee_unknown_rows']) ?><?= $salesReport['fee_unknown_rows'] === 1 ? ' payment fee needs verification' : ' payment fees need verification' ?></small>
+            <?php endif; ?>
+        </article>
+        <article class="sales-summary-item sales-summary-net">
+            <h3>Net after refunds &amp; fees</h3>
             <p class="<?= $salesNetClass($salesReport['net_cents']) ?>"><?= $salesCurrency($salesReport['net_cents']) ?></p>
         </article>
     </div>
 
-    <p class="sales-report-note">Venue shares estimate each payment and refund from the booking’s current pricing and venue assignments. Hotel rooms are grouped by building. Legacy refunds use the date recorded in cancellation history; refunds without a recorded destination method are excluded from totals.</p>
+    <p class="sales-report-note">Fees use verified provider amounts stored with each payment; missing or inconsistent fee records are shown as unknown. Net is selected-period movement after customer refunds and provider fees, not bank settlement. Venue shares estimate each payment and refund from the booking’s current pricing and venue assignments; hotel rooms are grouped by building. Legacy refunds use the date recorded in cancellation history.<?php if (!$salesReport['paymongo_refund_data_complete']): ?> PayMongo refund tables are missing or a processed PayMongo refund does not reconcile to successful provider records, so net totals are unknown.<?php endif; ?><?php if (!$salesReport['paymongo_fee_data_complete']): ?> PayMongo fee columns are unavailable, so PayMongo fees and net totals are unknown.<?php endif; ?></p>
 
     <div class="sales-breakdown-grid">
         <section class="sales-section" aria-labelledby="sales-methods-title">
             <div class="sales-section-heading"><h3 id="sales-methods-title">Method breakdown</h3></div>
             <div class="sales-table-scroll">
-                <table class="sales-table sales-compact-table">
-                    <thead><tr><th scope="col">Method</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Total</th></tr></thead>
+                <table class="sales-table sales-compact-table sales-method-table">
+                    <thead><tr><th scope="col">Method</th><th scope="col">Gross received</th><th scope="col">Customer refunds</th><th scope="col">PayMongo fees</th><th scope="col">Net after fees/refunds</th></tr></thead>
                     <tbody>
                     <?php if (!$salesReport['method_totals']): ?>
-                        <tr><td class="sales-empty-cell" colspan="4">No recorded activity for these filters.</td></tr>
+                        <tr><td class="sales-empty-cell" colspan="5">No recorded activity for these filters.</td></tr>
                     <?php else: foreach ($salesReport['method_totals'] as $methodTotal): ?>
                         <tr>
                             <th scope="row" data-label="Method"><?= $salesEscape($methodTotal['method']) ?></th>
-                            <td data-label="Received"><?= $salesCurrency($methodTotal['received_cents']) ?></td>
-                            <td data-label="Refunded"><?= $salesCurrency($methodTotal['refunded_cents']) ?></td>
-                            <td data-label="Total" class="<?= $salesNetClass($methodTotal['net_cents']) ?>"><?= $salesCurrency($methodTotal['net_cents']) ?></td>
+                            <td data-label="Gross received"><?= $salesCurrency($methodTotal['received_cents']) ?></td>
+                            <td data-label="Customer refunds"><?= $salesCurrency($methodTotal['refunded_cents']) ?></td>
+                            <td data-label="PayMongo fees"><span class="sales-fee-value"><?= $salesCurrency($methodTotal['provider_fee_cents']) ?><?php if ($methodTotal['unknown_fee_rows'] > 0): ?><small class="sales-fee-status"><?= number_format($methodTotal['unknown_fee_rows']) ?> fee<?= $methodTotal['unknown_fee_rows'] === 1 ? '' : 's' ?> unavailable</small><?php endif; ?></span></td>
+                            <td data-label="Net after fees/refunds" class="<?= $salesNetClass($methodTotal['net_cents']) ?>"><?= $salesCurrency($methodTotal['net_cents']) ?></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
@@ -167,16 +176,17 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
             <div class="sales-section-heading"><h3 id="sales-venues-title">Revenue by venue</h3></div>
             <div class="sales-table-scroll">
                 <table class="sales-table sales-compact-table">
-                    <thead><tr><th scope="col">Venue group</th><th scope="col">Received</th><th scope="col">Refunded</th><th scope="col">Total</th></tr></thead>
+                    <thead><tr><th scope="col">Venue group</th><th scope="col">Gross received</th><th scope="col">Customer refunds</th><th scope="col">PayMongo fees</th><th scope="col">Net after fees/refunds</th></tr></thead>
                     <tbody>
                     <?php if (!$salesReport['venue_totals']): ?>
-                        <tr><td class="sales-empty-cell" colspan="4">No venue revenue for these filters.</td></tr>
+                        <tr><td class="sales-empty-cell" colspan="5">No venue revenue for these filters.</td></tr>
                     <?php else: foreach ($salesReport['venue_totals'] as $venueTotal): ?>
                         <tr>
                             <th scope="row" data-label="Venue group"><?= $salesEscape($venueTotal['label']) ?></th>
-                            <td data-label="Received"><?= $salesCurrency($venueTotal['received_cents']) ?></td>
-                            <td data-label="Refunded"><?= $salesCurrency($venueTotal['refunded_cents']) ?></td>
-                            <td data-label="Total" class="<?= $salesNetClass($venueTotal['net_cents']) ?>"><?= $salesCurrency($venueTotal['net_cents']) ?></td>
+                            <td data-label="Gross received"><?= $salesCurrency($venueTotal['received_cents']) ?></td>
+                            <td data-label="Customer refunds"><?= $salesCurrency($venueTotal['refunded_cents']) ?></td>
+                            <td data-label="PayMongo fees"><span class="sales-fee-value"><?= $salesCurrency($venueTotal['provider_fee_cents']) ?><?php if ($venueTotal['unknown_fee_rows'] > 0): ?><small class="sales-fee-status"><?= number_format($venueTotal['unknown_fee_rows']) ?> fee<?= $venueTotal['unknown_fee_rows'] === 1 ? '' : 's' ?> unavailable</small><?php endif; ?></span></td>
+                            <td data-label="Net after fees/refunds" class="<?= $salesNetClass($venueTotal['net_cents']) ?>"><?= $salesCurrency($venueTotal['net_cents']) ?></td>
                         </tr>
                     <?php endforeach; endif; ?>
                     </tbody>
@@ -192,10 +202,10 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
         </div>
         <div class="sales-table-scroll">
             <table class="sales-table sales-ledger-table">
-                <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Method</th><th scope="col">Customer / record</th><th scope="col">Booking / seminar</th><th scope="col">Venue</th><th scope="col">Reference</th><th scope="col" class="sales-amount-cell">Amount</th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Method</th><th scope="col">Customer / record</th><th scope="col">Booking / seminar</th><th scope="col">Venue</th><th scope="col">Reference</th><th scope="col">Gross received</th><th scope="col">Customer refund</th><th scope="col">PayMongo fee</th><th scope="col">Net movement</th></tr></thead>
                 <tbody>
                 <?php if (!$salesReport['transactions']): ?>
-                    <tr><td class="sales-empty-cell" colspan="8">No transactions match this report. Try a wider date range or remove a filter.</td></tr>
+                    <tr><td class="sales-empty-cell" colspan="11">No transactions match this report. Try a wider date range or remove a filter.</td></tr>
                 <?php else: foreach ($salesReport['transactions'] as $transaction): ?>
                     <tr>
                         <td data-label="Date"><?= $salesEscape(date('M j, Y · g:i A', strtotime($transaction['date']))) ?></td>
@@ -205,7 +215,10 @@ $salesNetClass = static fn(int $cents): string => $cents < 0 ? 'is-negative' : (
                         <td data-label="Booking / seminar"><?= $salesEscape($transaction['booking_reference']) ?></td>
                         <td data-label="Venue"><?= $salesEscape($transaction['venue']) ?></td>
                         <td data-label="Reference"><?= $salesEscape($transaction['reference'] !== '' ? $transaction['reference'] : '—') ?></td>
-                        <td data-label="Amount" class="sales-amount-cell <?= $transaction['type'] === 'received' ? 'is-positive' : 'is-negative' ?>"><?= $transaction['type'] === 'received' ? '+' : '−' ?><?= $salesCurrency($transaction['amount_cents']) ?></td>
+                        <td data-label="Gross received" class="sales-amount-cell is-positive"><?= $transaction['gross_received_cents'] > 0 ? '+' . $salesCurrency($transaction['gross_received_cents']) : '—' ?></td>
+                        <td data-label="Customer refund" class="sales-amount-cell is-negative"><?= $transaction['customer_refund_cents'] > 0 ? '−' . $salesCurrency($transaction['customer_refund_cents']) : '—' ?></td>
+                        <td data-label="PayMongo fee"><?= $salesCurrency($transaction['provider_fee_cents']) ?></td>
+                        <td data-label="Net movement" class="sales-amount-cell <?= $salesNetClass($transaction['net_after_fees_refunds_cents']) ?>"><?= $transaction['net_after_fees_refunds_cents'] === null ? 'Unknown' : (($transaction['net_after_fees_refunds_cents'] > 0 ? '+' : ($transaction['net_after_fees_refunds_cents'] < 0 ? '−' : '')) . $salesCurrency(abs($transaction['net_after_fees_refunds_cents']))) ?></td>
                     </tr>
                 <?php endforeach; endif; ?>
                 </tbody>

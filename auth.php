@@ -169,7 +169,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                                 <input data-password-field type="password" id="reg-password" name="password" class="form-control" placeholder="Create a password" autocomplete="new-password" required aria-describedby="reg-password-help err-password" aria-invalid="false">
                                 <button type="button" class="password-toggle" aria-pressed="false">SHOW</button>
                             </div>
-                            <small id="reg-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
+                            <small id="reg-password-help">Use a capital letter, lowercase letter, number, and symbol (like ! or @).</small>
                             <div class="error-msg" id="err-password" role="status" aria-live="polite" style="display: none; color: #ef4444; font-size: 0.8rem; margin-top: 5px;"></div>
                         </div>
 
@@ -200,16 +200,16 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         </div>
                     </div>
                         <?php require_once __DIR__ . '/includes/contact_verification.php'; if (phone_signup_enabled()): ?>
-                        <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" placeholder="0917 123 4567" required></div>
+                        <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" inputmode="tel" aria-describedby="reg-phone-help" placeholder="0917 123 4567" required><small id="reg-phone-help">Use digits with optional +, spaces, parentheses, dots, or hyphens.</small></div>
                         <?php endif; ?>
                     <div class="terms-checkbox-group">
-                        <input type="checkbox" id="agree-checkbox" name="consent" value="1" required>
+                        <input type="checkbox" id="agree-checkbox" name="consent" value="1" aria-describedby="registration-consent-status" required disabled>
                         <label for="agree-checkbox">
                             I agree to the <button type="button" class="terms-link" id="link-goto-terms">Terms
-                                of Service</button> and
-                            Privacy Policy.
+                                of Service</button>.
                         </label>
                     </div>
+                    <p class="registration-next-note" id="registration-consent-status" role="status" aria-live="polite">Open the Terms of Service and scroll to the bottom before agreeing.</p>
 
                     <p class="registration-next-note" id="registration-next-note">Next: enter the 6-digit code sent to your <?php echo phone_signup_enabled() ? 'phone' : 'email'; ?>.</p>
                     <div class="registration-step-actions">
@@ -229,20 +229,20 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                 <h2 class="auth-title">Terms And Condition</h2>
                 <p class="auth-subtitle">Please read before creating an account</p>
 
-                <div class="terms-content">
+                <div class="terms-content" id="registration-terms-content" tabindex="0" role="region" aria-label="Terms of Service">
                     <ol>
-                        <li><strong>Booking & Payments:</strong> Online Hotel Room and Resort Villa bookings have a 24-hour payment window. Submit your transfer reference and receipt image from your dashboard; the window pauses while staff review the proof, and a rejection starts a fresh 24-hour window. An Event Hall inquiry has no payment deadline until the resort finalizes its quotation. A booking is confirmed when the required payment is verified.</li>
+                        <li><strong>Booking & Payments:</strong> <?php if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP): ?>Online Hotel Room and Resort Villa bookings have a 24-hour payment window. Open checkout from your dashboard to pay the displayed amount. Payment confirmation is automatic after verification. An Event Hall inquiry becomes payable after staff finalize its quotation. Opening checkout starts a short inventory hold; payment must complete before it expires.<?php else: ?>Online Hotel Room and Resort Villa bookings have a 24-hour payment window. Submit your transfer reference and receipt image from your dashboard; the window pauses while staff review the proof, and a rejection starts a fresh 24-hour window. An Event Hall inquiry has no payment deadline until the resort finalizes its quotation. A booking is confirmed when the required payment is verified.<?php endif; ?></li>
                         <li><strong>Cancellation & Refunds:</strong> Paid customer cancellation/refund requests return the full amount paid. The refund amount is recorded when the request is submitted; resort-initiated cancellation decisions follow the existing refund workflow.</li>
                         <li><strong>Virtual Showroom Disclaimer:</strong> The Sevilla360 virtual tours are for
                             illustrative purposes. Actual arrangements and lighting may slightly vary.</li>
                         <li><strong>Resort Rules:</strong> Guests are expected to maintain the property. Damages
                             incurred during the stay or event will be billed to the account holder.</li>
-                        <li><strong>Data Privacy:</strong> We collect and process your personal data in accordance with
-                            our Privacy Policy to manage bookings effectively.</li>
+                        <li><strong>Personal Data:</strong> We collect and process the personal data needed to manage bookings effectively.</li>
                     </ol>
                 </div>
 
-                <button type="button" class="btn btn-primary btn-full" id="btn-agree-terms">I AGREE</button>
+                <button type="button" class="btn btn-primary btn-full" id="btn-agree-terms" aria-describedby="registration-terms-hint" disabled>I AGREE</button>
+                <p class="registration-next-note" id="registration-terms-hint" role="status" aria-live="polite">Scroll to the bottom of these terms to enable I Agree.</p>
                 <button type="button" class="auth-text-button auth-back-button" id="btn-back-from-terms">&larr; Back to account details</button>
             </div>
 

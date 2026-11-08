@@ -131,6 +131,11 @@
   font-size: 0.9rem;
 }
 
+#val-beds-row[hidden],
+#info-modal-beds-row[hidden] {
+  display: none;
+}
+
 .d-label {
   text-transform: uppercase;
   opacity: 0.8;

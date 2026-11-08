@@ -46,7 +46,6 @@ if ($statement) $statement->close();
             <?php if ($review['admin_note']): ?><p class="review-admin-note">Admin note: <?= $escapeReview($review['admin_note']) ?></p><?php endif; ?>
             <div class="review-admin-actions">
                 <span class="review-status review-status--<?= strtolower($escapeReview($review['moderation_status'])) ?>"><?= $escapeReview($review['moderation_status']) ?></span>
-                <label class="review-note-field">Note <input type="text" maxlength="500" data-review-note aria-label="Optional moderation note" value="<?= $review['admin_note'] ? $escapeReview($review['admin_note']) : '' ?>"></label>
                 <div class="review-action-buttons">
                     <?php if ($review['moderation_status'] === 'Pending'): ?>
                         <button type="button" data-review-action="approve" data-review-id="<?= (int)$review['id'] ?>">Approve</button>

@@ -8,13 +8,25 @@ require_once 'config/db_connect.php';
 $e = static fn ($value): string => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 
 // Staff lifecycle is stored on staff.status. Customer suspension remains on users.status.
-$staff_query = $conn->query("SELECT u.id AS user_id, COALESCE(NULLIF(s.full_name, ''), u.email) AS full_name, s.phone, s.address, s.department, s.job_title,
+$current_user_id = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$staff_list = [];
+if ($current_user_id !== false) {
+    $staff_query = $conn->prepare("SELECT u.id AS user_id, COALESCE(NULLIF(s.full_name, ''), u.email) AS full_name, s.phone, s.address, s.department, s.job_title,
                                     s.hire_date, s.status, s.archived_at, u.email, u.role
                              FROM users u
                              LEFT JOIN staff s ON s.user_id = u.id
                              WHERE u.role IN ('admin', 'staff')
+                               AND u.id <> ?
                              ORDER BY (s.status = 'active') DESC, full_name ASC");
-$staff_list = $staff_query ? $staff_query->fetch_all(MYSQLI_ASSOC) : [];
+    if ($staff_query) {
+        $staff_query->bind_param('i', $current_user_id);
+        if ($staff_query->execute()) {
+            $staff_result = $staff_query->get_result();
+            $staff_list = $staff_result ? $staff_result->fetch_all(MYSQLI_ASSOC) : [];
+        }
+        $staff_query->close();
+    }
+}
 
 // Fetch customers with status and total booking counts. This path intentionally
 // remains independent from staff lifecycle fields.
@@ -74,7 +86,6 @@ $today = date('Y-m-d');
             <tbody>
                 <?php foreach ($staff_list as $s):
                     $staff_id = (int)$s['user_id'];
-                    $is_current_account = $staff_id === (int)($_SESSION['user_id'] ?? 0);
                     $is_admin_account = $s['role'] === 'admin';
                     $role_label = $is_admin_account ? 'Admin' : 'Staff';
                     $staff_status = (($s['status'] ?? '') === 'active') ? 'active' : (($s['status'] ?? '') === 'inactive' ? 'archived' : 'unknown');
@@ -86,13 +97,12 @@ $today = date('Y-m-d');
                     $email = trim((string)($s['email'] ?? ''));
                     $phone = trim((string)($s['phone'] ?? ''));
                     $address = trim((string)($s['address'] ?? ''));
-                    $search_text = implode(' ', array_filter([$full_name, $email, $phone, $address, $position_title, $department, $role_label, $is_current_account ? 'You' : '', (string)$staff_id]));
+                    $search_text = implode(' ', array_filter([$full_name, $email, $phone, $address, $position_title, $department, $role_label, (string)$staff_id]));
                 ?>
-                <tr class="staff-row" data-role="<?= $e($s['role']) ?>" data-current="<?= $e($is_current_account ? 'true' : 'false') ?>" data-status="<?= $e($staff_status) ?>" data-search="<?= $e($search_text) ?>">
+                <tr class="staff-row" data-role="<?= $e($s['role']) ?>" data-status="<?= $e($staff_status) ?>" data-search="<?= $e($search_text) ?>">
                     <td data-label="Staff ID"><span class="um-staff-id">STF-<?= $e(str_pad((string)$staff_id, 5, '0', STR_PAD_LEFT)) ?></span></td>
                     <td data-label="Name">
                         <div class="um-primary-text"><?= $e($full_name) ?></div>
-                        <?php if ($is_current_account): ?><span class="um-current-account" aria-label="Current account">You</span><?php endif; ?>
                     </td>
                     <td data-label="Work contact">
                         <div class="um-primary-text"><?= $e($email) ?></div>
@@ -108,9 +118,6 @@ $today = date('Y-m-d');
                     <td data-label="Hire date"><span class="um-date-text"><?= $e($s['hire_date'] ?: '—') ?></span></td>
                     <td data-label="Status"><span class="um-status <?= $e($status_class) ?>"><?= $e($status_label) ?></span></td>
                     <td data-label="Actions" class="um-actions">
-                        <?php if ($is_current_account): ?>
-                            <a class="action-view um-profile-link" href="admin_dashboard.php?page=settings#panel-profile">Edit my profile</a>
-                        <?php else: ?>
                         <button type="button" class="action-view btn-staff-modal"
                             data-id="<?= $e($staff_id) ?>"
                             data-name="<?= $e($full_name) ?>"
@@ -129,7 +136,6 @@ $today = date('Y-m-d');
                             <button type="button" class="action-promote btn-staff-promote" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="promote" aria-haspopup="dialog" aria-controls="promoteStaffModal">Promote to admin</button>
                         <?php elseif ($staff_status === 'archived'): ?>
                             <button type="button" class="action-restore btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="restore">Restore</button>
-                        <?php endif; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -219,8 +225,52 @@ $today = date('Y-m-d');
     <div class="um-modal-content um-staff-modal-content" role="dialog" aria-modal="true" aria-labelledby="staffModalTitle" aria-describedby="staffModalDescription">
         <h3 class="um-modal-title" id="staffModalTitle">Staff Details</h3>
         <p class="um-modal-description" id="staffModalDescription">Create a staff login or review a staff member’s immutable work profile.</p>
+        <dl class="um-form-grid um-staff-details" id="staffDetails" hidden>
+            <div class="um-form-group um-staff-detail">
+                <dt>Staff ID</dt>
+                <dd id="staffDetailsId" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Full name</dt>
+                <dd id="staffDetailsName" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Work email</dt>
+                <dd id="staffDetailsEmail" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Work phone</dt>
+                <dd id="staffDetailsPhone" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-form-group-full um-staff-detail">
+                <dt>Residential address</dt>
+                <dd id="staffDetailsAddress" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Department</dt>
+                <dd id="staffDetailsDepartment" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Job title</dt>
+                <dd id="staffDetailsJobTitle" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Hire date</dt>
+                <dd id="staffDetailsHireDate" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Access role</dt>
+                <dd id="staffDetailsRole" data-staff-detail>—</dd>
+            </div>
+            <div class="um-form-group um-staff-detail">
+                <dt>Status</dt>
+                <dd id="staffDetailsStatus" data-staff-detail>—</dd>
+            </div>
+        </dl>
+        <div class="um-modal-actions" id="staffDetailsActions" hidden>
+            <button type="button" class="btn btn-outline close-staff-modal">Close</button>
+        </div>
         <form class="um-form" id="staffForm">
-            <input type="hidden" id="staff_user_id" value="">
             <div class="um-form-grid">
                 <div class="um-form-group">
                     <label for="staff_display_id">Staff ID</label>
@@ -278,7 +328,6 @@ $today = date('Y-m-d');
                     <label for="staff_password">Password</label>
                     <input data-password-field type="password" id="staff_password" name="password" autocomplete="new-password" aria-describedby="staff-password-help" placeholder="Enter a password">
                     <small class="field-help" id="staff-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol.</small>
-                    <small class="field-help" id="pw_hint" hidden>Leave blank to keep the existing password.</small>
                 </div>
             </div>
             <div class="um-form-error" id="staffFormError" role="alert" hidden></div>
@@ -313,12 +362,20 @@ $today = date('Y-m-d');
 
 <!-- Customer History Modal -->
 <div class="um-modal-overlay" id="historyModal" aria-hidden="true">
-    <div class="um-modal-content um-modal-large" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
+    <div class="um-modal-content um-modal-large um-history-modal" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
         <h3 class="um-modal-title" id="historyModalTitle">Booking History</h3>
         <div class="um-history-table-wrapper">
             <table class="um-history-table">
+                <caption class="sr-only">Customer booking history</caption>
                 <thead>
-                    <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Amount Spent</th></tr>
+                    <tr>
+                        <th scope="col">Booking</th>
+                        <th scope="col">Stay</th>
+                        <th scope="col">Venue</th>
+                        <th scope="col">Amount paid</th>
+                        <th scope="col">Booking status</th>
+                        <th scope="col">Payment status</th>
+                    </tr>
                 </thead>
                 <tbody id="historyTbody"></tbody>
             </table>

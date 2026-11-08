@@ -133,7 +133,7 @@
   border-top: 1px solid var(--ui-line-soft, rgba(43, 39, 35, .08));
   display: grid;
   gap: .75rem 1rem;
-  grid-template-areas: "status status" "note note" "buttons buttons";
+  grid-template-areas: "status status" "buttons buttons";
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: auto;
   padding-top: 1rem;
@@ -155,31 +155,6 @@
 .review-status--approved { background: #e4eee6; color: #315c3b; }
 .review-status--rejected { background: #f4e5e2; color: #873d37; }
 
-.review-note-field {
-  align-items: center;
-  color: var(--color-dark-light, #665d54);
-  display: grid;
-  font-size: .84rem;
-  gap: .65rem;
-  grid-area: note;
-  grid-template-columns: auto minmax(0, 1fr);
-  min-width: 0;
-}
-
-.review-note-field input {
-  background: #fffdfa;
-  border: 1px solid #d8cfc2;
-  border-radius: var(--ui-radius-sm, 6px);
-  color: var(--color-dark, #2b2723);
-  font: inherit;
-  min-height: 42px;
-  min-width: 0;
-  padding: .55rem .7rem;
-  transition: border-color var(--ui-fast, 180ms ease), box-shadow var(--ui-fast, 180ms ease);
-  width: 100%;
-}
-
-.review-note-field input:hover,
 .reviews-header select:hover { border-color: #b99a70; }
 
 .review-action-buttons {
@@ -230,7 +205,6 @@
   opacity: .58;
 }
 
-.review-note-field input:focus-visible,
 .reviews-header select:focus-visible,
 .review-action-buttons button:focus-visible {
   outline: 3px solid rgba(140, 96, 45, .35);
@@ -268,7 +242,7 @@
 @container review-card (max-width: 430px) {
   .review-admin-actions {
     align-items: stretch;
-    grid-template-areas: "status" "note" "buttons";
+    grid-template-areas: "status" "buttons";
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -277,7 +251,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .review-admin-row,
-  .review-note-field input,
   .review-action-buttons button { transition: none; }
 
   .review-action-buttons button:hover:not(:disabled) { transform: none; }

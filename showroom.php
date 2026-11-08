@@ -761,7 +761,7 @@ window.userName = <?php echo json_encode(!empty($_SESSION['first_name']) ? $_SES
                     <span class="d-label">MAX CAPACITY</span>
                     <span class="d-value" id="val-capacity">--</span>
                 </div>
-                <div class="detail-row" id="val-beds-row">
+                <div class="detail-row" id="val-beds-row" hidden>
                     <span class="d-label">BEDS</span>
                     <span class="d-value" id="val-beds">--</span>
                 </div>
@@ -912,7 +912,7 @@ window.userName = <?php echo json_encode(!empty($_SESSION['first_name']) ? $_SES
                     <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">CAPACITY</span>
                         <span id="info-modal-cap">--</span>
                     </div>
-                    <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">BEDS</span>
+                    <div id="info-modal-beds-row" hidden><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">BEDS</span>
                         <span id="info-modal-beds">--</span>
                     </div>
                     <div><span style="color: var(--color-gold); display: block; font-size: 0.75rem;">RATE</span> <span

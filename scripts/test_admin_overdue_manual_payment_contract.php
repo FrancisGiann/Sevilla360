@@ -34,6 +34,8 @@ $assert(manual_payment_deadline_has_expired('2026-10-16 12:00:00', $now), 'A dea
 $assert(manual_payment_deadline_has_expired('2026-10-16 11:59:59', $now), 'A deadline in the past is expired.');
 $assert(!manual_payment_deadline_has_expired('not a timestamp', $now), 'Malformed deadlines fail closed instead of expiring a booking.');
 $assert(manual_payment_expiry_candidate($expiredBooking, false, $now), 'An unpaid online Pending booking expires at its deadline.');
+$confirmedEventHall = array_replace($expiredBooking, ['venue_category' => 'Event Hall', 'booking_status' => 'Confirmed']);
+$assert(manual_payment_expiry_candidate($confirmedEventHall, false, $now), 'A finalized, unpaid Event Hall quote expires at its payment deadline.');
 $assert(!manual_payment_expiry_candidate(array_replace($expiredBooking, ['payment_due_at' => '2026-10-16 12:00:01']), false, $now), 'An unpaid booking before its deadline remains open.');
 $assert(!manual_payment_expiry_candidate($expiredBooking, true, $now), 'A pending proof exempts a booking from expiry after the locked recheck.');
 $assert(!manual_payment_expiry_candidate(array_replace($expiredBooking, ['venue_category' => 'Event Hall']), false, $now), 'An unquoted Event Hall inquiry remains exempt from ordinary expiry.');
@@ -67,9 +69,10 @@ $reviewEndpoint = file_get_contents($root . '/actions/admin/review_manual_paymen
 $statusEndpoint = file_get_contents($root . '/actions/admin/update_booking_status.php');
 $bookingsEndpoint = file_get_contents($root . '/actions/admin/get_bookings_page.php');
 $paymentHelpers = file_get_contents($root . '/includes/manual_payment.php');
+$quoteAcceptanceEndpoint = file_get_contents($root . '/actions/user/accept_event_quote.php');
 $bookingsJs = file_get_contents($root . '/assets/js/admin-page/admin_bookings.js');
 $bookingsCss = file_get_contents($root . '/assets/css/admin-page/admin_bookings.css');
-foreach ([$reviewEndpoint, $statusEndpoint, $bookingsEndpoint, $paymentHelpers, $bookingsJs, $bookingsCss] as $source) {
+foreach ([$reviewEndpoint, $statusEndpoint, $bookingsEndpoint, $paymentHelpers, $quoteAcceptanceEndpoint, $bookingsJs, $bookingsCss] as $source) {
     if (!is_string($source)) throw new RuntimeException('Unable to read an overdue-proof contract source file.');
 }
 
@@ -79,10 +82,16 @@ $actionRequiredPosition = strpos($bookingsEndpoint, "EXISTS (SELECT 1 FROM manua
 $completionGatePosition = $actionRequiredPosition === false ? false : strpos($bookingsEndpoint, 'OR (NOT {$bookingCompletionSql} AND', $actionRequiredPosition);
 $assert($actionRequiredPosition !== false && $completionGatePosition !== false, 'Action Required keeps overdue pending proof visible even for Completed bookings.');
 $assert(str_contains($bookingsJs, 'Overdue Verification') && str_contains($bookingsJs, 'Event ended — payment still unverified'), 'The table exposes the overdue badge and explanatory status.');
-$assert(str_contains($bookingsJs, '>Review Proof</button>'), 'Review Proof remains the visible primary action.');
+$assert(str_contains($bookingsJs, 'Overdue Verification') && str_contains($bookingsJs, 'Event ended — payment still unverified')
+    && !str_contains($bookingsJs, 'open-manual-proof') && !str_contains($bookingsJs, 'actions/admin/review_manual_payment.php'), 'Overdue proof context remains visible without the retired review action.');
 $assert(str_contains($bookingsJs, 'booking-action-menu-panel') && str_contains($bookingsJs, "event.key === 'Escape'") && str_contains($bookingsJs, "event.key === 'Home'") && str_contains($bookingsJs, "event.key === 'End'"), 'Secondary actions use a keyboard-operable portal menu.');
 $assert(str_contains($bookingsCss, '.booking-action-menu-panel[hidden]') && str_contains($bookingsCss, 'position: fixed'), 'The portal menu has a hidden state and fixed viewport positioning.');
 $assert(str_contains($bookingsJs, 'Price editing unavailable') && str_contains($bookingsJs, 'disabled>'), 'Unavailable price editing is rendered disabled.');
+$assert(str_contains($bookingsJs, 'btn-action btn-confirm open-edit-price') && str_contains($bookingsJs, 'open-decline') && str_contains($bookingsJs, '>Decline</button>'), 'Pending Event Hall quotation and unpaid decline actions are styled and discoverable.');
+$assert(str_contains($bookingsJs, '!hasPendingProof') && str_contains($bookingsJs, "b.payment_status === 'Unpaid'") && str_contains($bookingsJs, 'rawPaid === 0'), 'Pending Event Hall cancellation requires no proof, Unpaid status, and zero paid amount.');
+$assert(str_contains($bookingsJs, 'resetBookingActionButton') && str_contains($bookingsJs, 'editPriceRequestSequence'), 'Reusable approval, cancellation, and event quotation controls reset state and ignore stale detail responses.');
+$assert(str_contains($statusEndpoint, 'Only unpaid Event Hall inquiries can be cancelled from this action.')
+    && str_contains($statusEndpoint, "SELECT id FROM manual_payment_submissions WHERE booking_id = ? AND status = 'pending' LIMIT 1 FOR UPDATE"), 'Server cancellation rechecks unpaid status and locks out inquiries with pending proof.');
 
 $ackPosition = strpos($reviewEndpoint, 'manual_payment_assert_approval_eligible');
 $amountPosition = strpos($reviewEndpoint, 'if ($currentExpectedCents !== $submittedExpectedCents)');
@@ -92,6 +101,8 @@ $assert(str_contains($reviewEndpoint, 'FOR UPDATE') && str_contains($reviewEndpo
 $assert(str_contains($paymentHelpers, 'function manual_payment_apply_overdue_rejection_locked') && str_contains($paymentHelpers, "booking_status = 'Cancelled', payment_due_at = NULL") && str_contains($reviewEndpoint, 'manual_payment_apply_overdue_rejection_locked($conn, $booking, true)'), 'Overdue rejection cancels only the eligible Pending case and never reopens its deadline.');
 $assert(str_contains($reviewEndpoint, '\'late_verification\' => $eventEnded'), 'The audit record marks late verification.');
 $assert(str_contains($statusEndpoint, 'Bookings cannot be approved after the event has ended.'), 'The ordinary approval endpoint blocks ended events.');
+$assert(str_contains($statusEndpoint, "DATE_ADD(NOW(), INTERVAL 24 HOUR)") && str_contains($statusEndpoint, 'quote_version = quote_version + 1, quote_accepted = 0'), 'Event Hall finalization starts a fixed 24-hour window and invalidates stale PayMongo quote acceptance.');
+$assert(str_contains($quoteAcceptanceEndpoint, "UPDATE bookings SET quote_accepted=1") && str_contains($quoteAcceptanceEndpoint, 'quote_version=?') && str_contains($quoteAcceptanceEndpoint, 'payment_due_at>NOW()') && !str_contains($quoteAcceptanceEndpoint, 'SET payment_due_at'), 'Customer acceptance is versioned, deadline-bound, and does not extend the quote deadline.');
 $assert(str_contains($statusEndpoint, 'cannot be finalized after the event has ended') && str_contains($statusEndpoint, 'A payment cannot approve a Pending booking after the event has ended.'), 'Invoice finalization and direct payment cannot bypass the ended-event approval block.');
 
 $expectedCents = manual_payment_expected_amount_cents(['total_amount' => '1000.00', 'amount_paid' => '250.00', 'payment_scheme' => '20% Reservation']);

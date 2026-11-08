@@ -7,12 +7,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-review-action]').forEach((button) => {
     button.addEventListener('click', async () => {
       const action = button.dataset.reviewAction;
-      const note = button.closest('[data-review-id]')?.querySelector('[data-review-note]')?.value || '';
       button.disabled = true;
       try {
         const response = await fetch('actions/admin/moderate_venue_review.php', {
           method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
-          body: JSON.stringify({ review_id: button.dataset.reviewId, action, admin_note: note })
+          body: JSON.stringify({ review_id: button.dataset.reviewId, action })
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.message || 'Moderation failed.');

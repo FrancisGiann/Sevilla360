@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/includes/paymongo_mode.php';
 if (!defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     $required_role = 'customer';
     require __DIR__ . '/includes/auth_guard.php';
@@ -31,14 +32,27 @@ if ($customer_res->num_rows === 0) {
 }
 $customer = $customer_res->fetch_assoc();
 $customer_id = $customer['id'];
+if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) {
+    require_once __DIR__.'/includes/paymongo_native.php';
+    try { paymongo_native_expire_due($conn,(int)$customer_id,5); }
+    catch (Throwable $e) { error_log('Customer payment expiry deferred: '.get_class($e)); }
+}
+$payment_timer_now = manual_payment_db_now($conn);
 $phone_verification_user = null;
 $phone_verification_stmt = $conn->prepare('SELECT phone_signup_required,recovery_email,recovery_email_verified_at FROM users WHERE id=?');
 $phone_verification_stmt->bind_param('i',$user_id); $phone_verification_stmt->execute();
 $phone_verification_user = $phone_verification_stmt->get_result()->fetch_assoc();
 $phone_verification_stmt->close();
 
+$localPayMongo = defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP;
+$eventQuoteFieldsSql = $localPayMongo ? 'b.quote_version,b.quote_accepted' : '0 AS quote_version,0 AS quote_accepted';
+$proofPendingSql = $localPayMongo ? '0' : "EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending')";
+$proofStatusSql = $localPayMongo ? 'NULL' : "(SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1)";
+$paymentExceptionSql = $localPayMongo ? "(SELECT r.disposition FROM pm_receipts r JOIN pm_attempts a ON a.id=r.attempt_id WHERE a.booking_id=b.id AND r.disposition<>'applied' LIMIT 1)" : 'NULL';
+$checkoutDeadlineSql = $localPayMongo ? '(SELECT MAX(a.expires_at) FROM pm_attempts a WHERE a.booking_id=b.id)' : 'NULL';
+$pendingStatuses = $localPayMongo ? "'Pending','Awaiting Proof'" : "'Pending'";
 // 2. Calculate dashboard-wide booking totals independently of the visible page.
-$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status = 'Pending' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ?");
+$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status IN ({$pendingStatuses}) AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ?");
 $stmt_stats->bind_param("i", $customer_id);
 $stmt_stats->execute();
 $booking_stats = $stmt_stats->get_result()->fetch_assoc() ?: [];
@@ -53,9 +67,10 @@ $stmt_upcoming = $conn->prepare("
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at, b.payment_step_seen_at
+        {$proofPendingSql} AS manual_payment_pending, {$paymentExceptionSql} AS pm_exception,
+        {$proofStatusSql} AS manual_submission_status,
+        b.payment_due_at, b.payment_step_seen_at, b.payment_step_expires_at, {$checkoutDeadlineSql} AS payment_attempt_expires_at,
+        {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
@@ -95,8 +110,9 @@ $stmt_bookings = $conn->prepare("
         cx.status AS cancel_status,
         rr.status AS resched_status,
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
-        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status
+        EXISTS (SELECT 1 FROM payments p WHERE p.booking_id=b.id AND p.status='Success' AND LEFT(p.transaction_id,4)='pay_') AS paymongo_paid,
+        {$proofPendingSql} AS manual_payment_pending, {$paymentExceptionSql} AS pm_exception,
+        {$proofStatusSql} AS manual_submission_status
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
@@ -161,9 +177,10 @@ $stmt_overview_recent = $conn->prepare("
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at, b.payment_step_seen_at
+        {$proofPendingSql} AS manual_payment_pending, {$paymentExceptionSql} AS pm_exception,
+        {$proofStatusSql} AS manual_submission_status,
+        b.payment_due_at, b.payment_step_seen_at, b.payment_step_expires_at, {$checkoutDeadlineSql} AS payment_attempt_expires_at,
+        {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ?
@@ -181,16 +198,17 @@ $stmt_attention = $conn->prepare("
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
-        EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending') AS manual_payment_pending,
-        (SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1) AS manual_submission_status,
-        b.payment_due_at, b.payment_step_seen_at
+        {$proofPendingSql} AS manual_payment_pending, {$paymentExceptionSql} AS pm_exception,
+        {$proofStatusSql} AS manual_submission_status,
+        b.payment_due_at, b.payment_step_seen_at, b.payment_step_expires_at, {$checkoutDeadlineSql} AS payment_attempt_expires_at,
+        {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
     WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
       AND (
-        b.booking_status = 'Pending'
+        b.booking_status IN ({$pendingStatuses})
         OR (b.booking_status = 'Confirmed' AND b.payment_status IN ('Unpaid', 'Partial'))
-        OR EXISTS (SELECT 1 FROM manual_payment_submissions mps_pending WHERE mps_pending.booking_id = b.id AND mps_pending.status = 'pending')
+        OR {$proofPendingSql}
         OR EXISTS (SELECT 1 FROM cancellations cx2 WHERE cx2.booking_id = b.id AND cx2.status = 'Pending')
         OR EXISTS (SELECT 1 FROM reschedule_requests rr2 WHERE rr2.booking_id = b.id AND rr2.status = 'Pending')
       )
@@ -213,7 +231,17 @@ $format_dashboard_date = static function ($start, $end = null): string {
     return $start_date->format('M j') . ' – ' . (new DateTime($end))->format('M j, Y');
 };
 $dashboard_status = 'customer_dashboard_status';
-$can_submit_manual_payment = static function (array $booking): bool {
+$can_submit_manual_payment = static function (array $booking) use ($payment_timer_now): bool {
+    if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) {
+        $venueCategory = (string)($booking['venue_type'] ?? $booking['venue_category'] ?? '');
+        if ($venueCategory === 'Event Hall'
+            && ((int)($booking['quote_version'] ?? 0) < 1 || (int)($booking['quote_accepted'] ?? 0) !== 1)) return false;
+        $deadline=$booking['payment_step_expires_at'] ?: ($booking['payment_attempt_expires_at'] ?? ($booking['payment_due_at'] ?? null));
+        return ((float)$booking['amount_paid']>0 || ($deadline && $deadline>$payment_timer_now)) && empty($booking['pm_exception']) && !booking_is_completed($booking) && ($booking['source'] ?? '') === 'Online'
+            && in_array($booking['booking_status'], ['Awaiting Proof', 'Confirmed'], true)
+            && in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)
+            && ($booking['cancel_status'] ?? '') !== 'Pending' && ($booking['resched_status'] ?? '') !== 'Pending';
+    }
     $hasPendingProof = !empty($booking['manual_payment_pending']);
     $reportAfterCancellation = $booking['booking_status'] === 'Cancelled' && !empty($booking['payment_step_seen_at']) && empty($booking['proof_first_submitted_at']);
     if (booking_is_completed($booking) || ($booking['source'] ?? '') !== 'Online' || ($booking['booking_status'] === 'Cancelled' && !$reportAfterCancellation) || !in_array($booking['booking_status'], ['Awaiting Proof', 'Pending', 'Confirmed', 'Cancelled'], true) || !in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)) return false;
@@ -223,6 +251,7 @@ $can_submit_manual_payment = static function (array $booking): bool {
     return true;
 };
 $manual_payment_action_label = static function (array $booking): string {
+    if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) return 'Pay now';
     if (!empty($booking['manual_payment_pending'])) return 'Replace proof';
     if ($booking['booking_status'] === 'Cancelled' || (!empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time())) return 'Report transfer';
     return ($booking['manual_submission_status'] ?? '') === 'rejected' ? 'Submit new proof' : 'Submit payment';
@@ -274,6 +303,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 <html lang="en">
 
 <head>
+<?php if (paymongo_capstone_enabled()): ?><meta name="sevilla-paymongo-local" content="enabled"><?php endif; ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
@@ -301,8 +331,11 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/user_dashboard.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
+<?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)): ?>
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
+<?php endif; ?>
     <link rel="stylesheet" href="assets/css/receipt_preview.css?v=<?= filemtime(__DIR__ . '/assets/css/receipt_preview.css'); ?>">
+<?php require __DIR__ . '/includes/session_ui.php'; ?>
 </head>
 
 <body class="dashboard-body">
@@ -355,9 +388,9 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                 <a href="support.php" class="nav-link support-link">
                     <i class="fa-regular fa-circle-question" aria-hidden="true"></i><span>Help &amp; Support</span>
                 </a>
-                <a href="actions/auth/logout.php" class="nav-link sign-out">
+                <form method="POST" action="actions/auth/logout.php" data-session-logout style="margin:0"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>"><button type="submit"  class="nav-link sign-out" style="font:inherit;cursor:pointer">
                     <i class="fa-solid fa-arrow-right-from-bracket"></i><span>Sign out</span>
-                </a>
+                </button></form>
             </div>
         </aside>
         <script>
@@ -516,7 +549,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                         </div>
 
                     </div>
-                    <p class="footer-note">Online payment is verified by staff after you submit a transfer reference and receipt image. Pending proof pauses the payment window.</p>
+                    <p class="footer-note"><?php if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP): ?>Payments are confirmed automatically after verification.<?php else: ?>Online payment is verified by staff after you submit a transfer reference and receipt image. Pending proof pauses the payment window.<?php endif; ?></p>
                 </div>
 
                 <!-- ================= TAB: SETTINGS ================= -->
@@ -678,6 +711,8 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 
                     <span class="cancel-label">Payment-processing fee:</span>
                     <span class="cancel-value" id="cancel-fee-label">No fee deducted</span>
+                    <span class="cancel-label" id="cancel-prior-refunded-label" hidden>Previously refunded:</span>
+                    <span class="cancel-value" id="cancel-prior-refunded" hidden>--</span>
                 </div>
             </div>
 
@@ -702,12 +737,14 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                         Amount:</span>
                     <span class="cancel-value text-refund-val" id="cancel-refund-total">₱0</span>
                 </div>
+                <p id="cancel-refund-provider-note" class="cancel-safety-copy" hidden></p>
+                <button type="button" id="cancel-refund-preview-retry" class="btn btn-outline" hidden>Retry fee verification</button>
 
                 <div class="cancel-checkbox-group-ui">
                     <input type="checkbox" id="confirm-fee">
                     <label for="confirm-fee">
                         <span class="check-title">I understand the refund amount shown above.</span>
-                        <span class="check-desc">After staff approval, timing depends on processing and your recipient provider.</span>
+                        <span class="check-desc">Submitting a request does not guarantee a refund. All requests are subject to staff review and approval.</span>
                     </label>
                 </div>
             </div>
@@ -741,6 +778,21 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
             <div class="cancel-modal-actions">
                 <button type="button" class="btn-modal btn-secondary close-modal">Go back</button>
                 <button type="button" class="btn-modal btn-danger btn-cancel-confirm btn-confirm-red">Confirm Cancellation</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="paymongo-policy-ack" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="paymongo-policy-title" hidden>
+        <div class="modal-box cancel-modal-box">
+            <h2 class="cancel-modal-title" id="paymongo-policy-title">Updated PayMongo refund terms</h2>
+            <p>Approved PayMongo refunds return through the original payment method. The actual PayMongo processing fee is confirmed with the payment and deducted once from an approved refund. The fee varies by payment and is not estimated before checkout. Refund timing depends on the provider.</p>
+            <label class="cancel-checkbox-group-ui" for="paymongo-policy-confirm">
+                <input type="checkbox" id="paymongo-policy-confirm">
+                <span>I have read and accept these terms before paying.</span>
+            </label>
+            <div class="cancel-modal-actions">
+                <button type="button" class="btn-modal btn-secondary" id="paymongo-policy-cancel">Cancel</button>
+                <button type="button" class="btn-modal btn-primary" id="paymongo-policy-accept" disabled>Accept and continue</button>
             </div>
         </div>
     </div>
@@ -817,7 +869,9 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                         <span>Status</span><strong id="ud-refund-request-status">--</strong>
                         <span>Request reason</span><strong id="ud-refund-request-reason">--</strong>
                         <span>Resort reply</span><strong id="ud-refund-request-reply">--</strong>
-                        <span>Estimated refund</span><strong id="ud-refund-request-amount">--</strong>
+                        <span>Refund amount</span><strong id="ud-refund-request-amount">--</strong>
+                        <span id="ud-refund-request-fee-label">Processing fee</span><strong id="ud-refund-request-fee">--</strong>
+                        <span id="ud-refund-request-provider-status-label" hidden>PayMongo status</span><strong id="ud-refund-request-provider-status" hidden>--</strong>
                         <span>Destination</span><strong id="ud-refund-request-method">--</strong>
                         <span>Account holder</span><strong id="ud-refund-request-account-name">--</strong>
                         <span>Wallet / account</span><strong id="ud-refund-request-identifier">--</strong>
@@ -860,13 +914,28 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                     <p><span>Amount Paid:</span> <span id="ud-paid-amt" class="text-paid-green">₱0.00</span></p>
                     <p><span>Remaining Balance:</span> <span id="ud-balance-amt" class="text-balance-red">₱0.00</span></p>
                     <div id="ud-payment-history-list" class="payment-history-list" aria-live="polite"></div>
+                    <?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)): ?>
                     <div id="ud-manual-submission-container" class="hidden-element">
                         <p><span>Submitted payment reference:</span> <span id="ud-submitted-payment-reference" class="text-mono-tid">--</span></p>
                         <p><span>Proof review status:</span> <span id="ud-proof-review-status">--</span></p>
                         <p><span>Proof submitted at:</span> <span id="ud-proof-submitted-at">--</span></p>
                         <p id="ud-proof-review-note-row" class="hidden-element"><span>Rejection reason:</span> <span id="ud-proof-review-note">--</span></p>
                     </div>
+                    <?php endif; ?>
                 </div>
+
+                <?php if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP): ?>
+                <section id="ud-event-quote-acceptance" class="booking-detail-section" aria-labelledby="ud-event-quote-title" hidden>
+                    <h3 id="ud-event-quote-title" class="details-section-title">Event Hall quotation</h3>
+                    <p id="ud-event-quote-summary">Review the finalized quote above. Payment is due within 24 hours of staff finalizing it. Unpaid bookings are cancelled automatically after the deadline; uncertain payments are verified before cancellation.</p>
+                    <label for="ud-event-quote-accept-checkbox"><input type="checkbox" id="ud-event-quote-accept-checkbox"> I accept this Event Hall quotation.</label>
+                    <p id="ud-event-quote-accept-status" role="status" aria-live="polite" hidden></p>
+                    <div class="modal-actions center-actions">
+                        <button type="button" class="btn-modal btn-primary" id="ud-event-quote-accept" disabled>Accept quotation</button>
+                        <button type="button" class="btn-modal btn-primary btn-submit-payment" id="ud-event-quote-pay" hidden>Pay now</button>
+                    </div>
+                </section>
+                <?php endif; ?>
             </div>
 
             <div class="modal-actions center-actions details-modal-actions">
@@ -876,7 +945,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
         </div>
     </div>
 
-    <?php include __DIR__ . '/includes/partials/manual_payment_modal.php'; ?>
+    <?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)) include __DIR__ . '/includes/partials/manual_payment_modal.php'; ?>
 
     <!-- Venue Review Modal -->
     <div class="modal-overlay" id="modal-review" role="dialog" aria-modal="true" aria-labelledby="review-modal-title">
@@ -929,7 +998,10 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
     <!-- Specific User Dashboard JS -->
+    <script src="assets/js/paymongo_checkout.js?v=<?= filemtime(__DIR__ . '/assets/js/paymongo_checkout.js'); ?>"></script>
+<?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)): ?>
     <script src="assets/js/manual_payment.js?v=<?= filemtime(__DIR__ . '/assets/js/manual_payment.js'); ?>"></script>
+<?php endif; ?>
     <script src="assets/js/receipt_preview.js?v=<?= filemtime(__DIR__ . '/assets/js/receipt_preview.js'); ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/refund_destination.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/user_dashboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>

@@ -81,7 +81,7 @@
 .um-actions button:focus-visible,
 .um-actions a:focus-visible,
 .customer-filter-select:focus-visible {
-  outline: 3px solid rgba(214, 168, 112, .35);
+  outline: 3px solid rgba(156, 119, 67, .78);
   outline-offset: 2px;
 }
 
@@ -185,36 +185,46 @@
 }
 
 /* --- Action Buttons --- */
-.um-actions button,
-.um-profile-link {
-  background: none;
-  border: none;
+.um-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 7px 10px;
+  background: var(--color-white);
+  border: 1px solid rgba(42, 37, 34, .24);
+  border-radius: 4px;
   font-family: var(--font-body);
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
-  margin-right: 1rem;
+  margin: 0 7px 6px 0;
+  text-decoration: none;
 }
-.um-profile-link { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
 #staffModal [hidden] { display: none !important; }
 
 .um-actions button:hover {
-  opacity: 0.7;
+  background: rgba(253, 242, 226, .55);
+  border-color: currentColor;
 }
 
 .action-edit,
 .action-view {
   color: var(--color-gold);
 }
+.um-actions button.action-view { border-color: rgba(156, 119, 67, .55); }
 
 .action-archive {
   color: #a34e4e;
 }
+.um-actions button.action-archive { border-color: rgba(163, 78, 78, .48); }
 
 .action-restore {
   color: #4a7c59;
 }
+.um-actions button.action-restore { border-color: rgba(74, 124, 89, .48); }
 .action-promote { color: #8c602d; }
+.um-actions button.action-promote { border-color: rgba(140, 96, 45, .55); }
 /* --- Filter Pills (Matches Bookings Design) --- */
 .filter-pills {
   display: flex;
@@ -302,7 +312,8 @@
   margin-bottom: 1.2rem;
 }
 
-.um-form-group label {
+.um-form-group label,
+.um-staff-detail dt {
   display: block;
   font-size: 0.85rem;
   font-weight: 500;
@@ -352,10 +363,18 @@
 
 /* History Modal Table */
 .um-history-table-wrapper {
-  max-height: 300px;
-  overflow-y: auto;
+  max-height: min(62vh, 520px);
+  overflow: auto;
   border: 1px solid rgba(42, 37, 34, 0.1);
   border-radius: 4px;
+}
+
+.um-history-modal {
+  width: min(960px, calc(100vw - 2rem));
+  max-width: 960px;
+  max-height: min(90vh, 760px);
+  overflow: hidden;
+  padding: 1.5rem;
 }
 
 .um-history-table {
@@ -373,9 +392,30 @@
 }
 
 .um-history-table td {
-  padding: 1rem;
-  font-size: 0.9rem;
+  padding: .7rem .8rem;
+  font-size: .85rem;
   border-bottom: 1px solid rgba(42, 37, 34, 0.05);
+  vertical-align: top;
+}
+
+.um-history-booking-link {
+  display: inline-block;
+  color: var(--color-gold);
+  font-weight: 600;
+  text-underline-offset: .15em;
+}
+
+.um-history-link-hint {
+  color: var(--color-dark-light);
+  font-size: .72rem;
+  font-weight: 400;
+}
+
+.um-history-total {
+  display: block;
+  margin-top: .2rem;
+  color: var(--color-dark-light);
+  font-size: .78rem;
 }
 
 /* --- Staff lifecycle, profile form, and responsive layout --- */
@@ -441,7 +481,6 @@
 
 .um-secondary-text,
 .um-muted,
-.um-current-account,
 .um-modal-description,
 .field-help {
   color: var(--color-dark-light);
@@ -512,6 +551,22 @@
 .um-modal-description {
   margin: -.8rem 0 1.35rem;
   line-height: 1.5;
+}
+
+.um-staff-details {
+  margin: 0;
+}
+
+.um-staff-detail {
+  min-width: 0;
+}
+
+.um-staff-detail dd {
+  margin: 0;
+  color: var(--color-dark);
+  font-size: .95rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .um-staff-modal-content {
@@ -750,8 +805,7 @@ body.um-modal-open {
     margin-right: auto;
   }
 
-  .um-actions button,
-  .um-profile-link {
+  .um-actions button {
     margin-right: 0;
     padding: 7px 10px;
   }
@@ -805,5 +859,67 @@ body.um-modal-open {
   .staff-filter-label {
     flex-basis: 100%;
     margin: 0 0 .1rem;
+  }
+}
+
+@media (max-width: 680px) {
+  .um-history-modal {
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 1rem;
+  }
+
+  .um-history-table-wrapper {
+    max-height: min(64vh, 520px);
+  }
+
+  .um-history-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .um-history-table,
+  .um-history-table tbody {
+    display: block;
+  }
+
+  .um-history-table tbody {
+    padding: .5rem;
+  }
+
+  .um-history-table tr:not(.um-history-message) {
+    display: grid;
+    gap: .25rem;
+    padding: .65rem;
+    border: 1px solid rgba(42, 37, 34, .1);
+    border-radius: 5px;
+  }
+
+  .um-history-table td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, .8fr) minmax(0, 1.4fr);
+    gap: .6rem;
+    padding: .35rem .15rem;
+    border-bottom: 0;
+  }
+
+  .um-history-table td::before {
+    content: attr(data-label);
+    color: var(--color-dark-light);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .um-history-table .um-history-message td {
+    display: block;
   }
 }

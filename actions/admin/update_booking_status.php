@@ -27,6 +27,7 @@ require_once __DIR__ . '/../../includes/manual_payment.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
 require_once __DIR__ . '/../../includes/seminars.php';
 require_once __DIR__ . '/../../includes/site_metadata.php';
+require_once __DIR__ . '/../../includes/paymongo_refunds.php';
 
 // Include mailer for notifications
 require_once '../../includes/mailer.php';
@@ -47,6 +48,61 @@ $postCommitActions = [];
 $auditEventType = 'booking.management_action';
 $auditModule = 'Booking Management';
 $auditDetails = [];
+
+// PayMongo work uses a separate claim/network/reconcile/finalize path so no
+// provider request runs while the normal booking mutation transaction is open.
+if (in_array($action, ['refund','reconcile_paymongo_refund','retry_paymongo_refund'], true)) {
+    $isPayMongo = false;
+    try { $isPayMongo = $booking_id > 0 && paymongo_refund_is_booking($conn, $booking_id); }
+    catch (Throwable $ownershipError) {
+        http_response_code(422);
+        echo json_encode(['success'=>false,'message'=>'The PayMongo payment could not be linked safely to this booking. Contact staff to reconcile it.']);
+        $conn->close(); exit;
+    }
+    if (!$isPayMongo && $action !== 'refund') {
+        http_response_code(422);
+        echo json_encode(['success'=>false,'message'=>'This is not a PayMongo refund request.']);
+        $conn->close(); exit;
+    }
+    if (!$isPayMongo) {
+        // The original manual / walk-in refund branch below remains unchanged.
+    } else {
+    try {
+        require_once __DIR__ . '/../../includes/paymongo_native.php';
+        paymongo_native_gate();
+        $allowCreate = $action !== 'reconcile_paymongo_refund';
+        $allowRetry = $action === 'retry_paymongo_refund';
+        $refundResult = paymongo_refund_admin_process($conn, $booking_id, (int)$_SESSION['user_id'], paymongo_native_provider(), $allowCreate, $allowRetry);
+        if ($refundResult['processed']) {
+            $infoStmt = $conn->prepare('SELECT c.email,c.first_name,c.last_name,c.user_id,v.name AS venue_name FROM bookings b JOIN customers c ON c.id=b.customer_id JOIN venues v ON v.id=b.venue_id WHERE b.id=?');
+            if ($infoStmt) {
+                $infoStmt->bind_param('i', $booking_id); $infoStmt->execute(); $info = $infoStmt->get_result()->fetch_assoc();
+                if ($info) {
+                    try { send_booking_cancellation_email($info['email'], trim($info['first_name'].' '.$info['last_name']), $booking_id, 'refund', (float)$refundResult['refund_amount']); }
+                    catch (Throwable $mailError) { error_log('PayMongo refund email failed: '.get_class($mailError).' booking_id='.$booking_id); }
+                    try { create_user_notification($conn, $info['user_id'], 'Refund Processed', 'Your approved PayMongo refund succeeded and will return through your original payment method. Timing depends on the provider.'); }
+                    catch (Throwable $notificationError) { error_log('PayMongo refund notification failed: '.get_class($notificationError).' booking_id='.$booking_id); }
+                }
+            }
+        }
+        $message = $refundResult['processed']
+            ? 'PayMongo confirmed every refund allocation. The booking is now cancelled and refunded.'
+            : match ($refundResult['status']) {
+                'pending','processing' => 'PayMongo is processing the refund. The booking remains active until every allocation succeeds. Reconcile this request before taking another action.',
+                'uncertain' => 'PayMongo’s refund outcome is still uncertain. No new refund was submitted. Reconcile the request before trying again.',
+                'failed' => 'PayMongo declined a refund attempt. Review the provider result, then use the explicit retry action or reject the request.',
+                default => 'The PayMongo refund is being reconciled. The booking remains active until provider success is confirmed.'
+            };
+        echo json_encode(['success'=>true,'message'=>$message,'refund_provider_status'=>$refundResult['status'],'processed'=>$refundResult['processed']]);
+    } catch (Throwable $e) {
+        error_log('PayMongo admin refund failed: '.get_class($e).' booking_id='.$booking_id);
+        http_response_code(422);
+        echo json_encode(['success'=>false,'message'=>$e instanceof InvalidArgumentException?$e->getMessage():$e->getMessage()]);
+    }
+    $conn->close();
+    exit;
+    }
+}
 
 try {
     booking_begin_mutation_transaction($conn);
@@ -196,6 +252,20 @@ try {
     elseif ($action === 'cancel') {
         if (($locked_booking['booking_status'] ?? '') !== 'Pending') {
             throw new Exception('Only Pending bookings can be declined or cancelled.');
+        }
+        if (($b_info['category'] ?? '') === 'Event Hall'
+            && (($locked_booking['payment_status'] ?? '') !== 'Unpaid'
+                || (int)round((float)($locked_booking['amount_paid'] ?? 0) * 100) !== 0)) {
+            throw new Exception('Only unpaid Event Hall inquiries can be cancelled from this action.');
+        }
+        if (($b_info['category'] ?? '') === 'Event Hall') {
+            $pending_proof = $conn->prepare("SELECT id FROM manual_payment_submissions WHERE booking_id = ? AND status = 'pending' LIMIT 1 FOR UPDATE");
+            if (!$pending_proof) throw new Exception('Unable to verify pending Event Hall payment proof.');
+            $pending_proof->bind_param('i', $booking_id);
+            if (!$pending_proof->execute()) throw new Exception('Unable to verify pending Event Hall payment proof.');
+            if ($pending_proof->get_result()->num_rows > 0) {
+                throw new Exception('A customer payment proof is awaiting review. Resolve it before cancelling this Event Hall inquiry.');
+            }
         }
         manual_payment_reject_pending_for_terminal_booking($conn, $booking_id, (int)$_SESSION['user_id'], 'Booking was cancelled or declined before payment proof review.');
         $stmt = $conn->prepare("UPDATE bookings SET booking_status = 'Cancelled', payment_due_at = NULL WHERE id = ?");
@@ -352,12 +422,17 @@ try {
         $new_total = $base_rate + $addons_amount;
 
         // 2. Update Main Bookings Table (SAVES THE SCHEME!)
-        $stmt_b = $conn->prepare("UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, payment_scheme = ?, booking_status = 'Confirmed' WHERE id = ?");
+        $event_quote_version_sql = (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+            ? ', quote_version = quote_version + 1, quote_accepted = 0'
+            : '';
+        $stmt_b = $conn->prepare("UPDATE bookings SET guests_count = ?, base_amount = ?, addons_amount = ?, total_amount = ?, payment_scheme = ?, booking_status = 'Confirmed'{$event_quote_version_sql} WHERE id = ?");
         $stmt_b->bind_param("idddsi", $guests, $base_rate, $addons_amount, $new_total, $scheme, $booking_id);
         $stmt_b->execute();
 
-        $payment_hours = manual_payment_deadline_hours($conn);
-        $payment_due_sql = $new_total > 0 ? "DATE_ADD(NOW(), INTERVAL {$payment_hours} HOUR)" : 'NULL';
+        // Event Hall quotes always start a fixed 24-hour payment window when
+        // staff finalizes them; the configurable stay-booking window does not
+        // change this contract. A zero-value quote has no payment deadline.
+        $payment_due_sql = $new_total > 0 ? 'DATE_ADD(NOW(), INTERVAL 24 HOUR)' : 'NULL';
         $stmt_due = $conn->prepare("UPDATE bookings SET payment_due_at = {$payment_due_sql} WHERE id = ?");
         if (!$stmt_due) throw new Exception('Unable to set the Event Hall payment deadline.');
         $stmt_due->bind_param('i', $booking_id);
@@ -777,11 +852,19 @@ try {
         if ($_SESSION['role'] !== 'admin') throw new Exception('Only administrators may reject refund requests.');
         $admin_reply = trim((string)($data['reason'] ?? ''));
         if ($admin_reply === '' || strlen($admin_reply) > 500 || preg_match('/[\x00-\x1F\x7F]/', $admin_reply)) throw new Exception('A bounded rejection reason is required.');
-        $stmt_refund = $conn->prepare("SELECT id FROM cancellations WHERE booking_id = ? AND status = 'Pending' ORDER BY id DESC LIMIT 1 FOR UPDATE");
+        $stmt_refund = $conn->prepare("SELECT id, refund_provider, refund_snapshot_id, refund_provider_status FROM cancellations WHERE booking_id = ? AND status = 'Pending' ORDER BY id DESC LIMIT 1 FOR UPDATE");
         $stmt_refund->bind_param('i', $booking_id);
         $stmt_refund->execute();
         $refund_row = $stmt_refund->get_result()->fetch_assoc();
         if (!$refund_row) throw new Exception('No pending refund request exists for this booking.');
+        if (($refund_row['refund_provider'] ?? null) === 'paymongo') {
+            $attempt_guard = $conn->prepare("SELECT 1 FROM pm_refund_attempts at JOIN pm_refund_allocations al ON al.id=at.allocation_id WHERE al.snapshot_id=? AND at.status IN ('creating','uncertain','pending','processing','succeeded','review') LIMIT 1");
+            if (!$attempt_guard) throw new Exception('Refund provider state could not be verified.');
+            $attempt_guard->bind_param('s', $refund_row['refund_snapshot_id']); $attempt_guard->execute();
+            if ($attempt_guard->get_result()->fetch_row() || in_array($refund_row['refund_provider_status'], ['creating','uncertain','pending','processing','succeeded','review'], true)) {
+                throw new Exception('A PayMongo refund may already be processing. Reconcile the provider outcome before rejecting this request.');
+            }
+        }
         $stmt_cancel = $conn->prepare("UPDATE cancellations SET status = 'Rejected', admin_reply = ? WHERE id = ? AND status = 'Pending'");
         $stmt_cancel->bind_param('si', $admin_reply, $refund_row['id']);
         if (!$stmt_cancel->execute() || $stmt_cancel->affected_rows !== 1) throw new Exception('Refund request changed before rejection could be saved.');

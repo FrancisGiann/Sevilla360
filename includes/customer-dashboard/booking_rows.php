@@ -56,18 +56,56 @@
                                             <?php echo $display_amount; ?>
                                         </td>
                                         <td data-label="Status">
+                                            <?php
+                                            $paymentTimerRemaining = null;
+                                            $paymentTimerIsEventHall = $b['venue_type'] === 'Event Hall';
+                                            $paymentTimerEligible = !$is_completed && $display_status !== 'Cancelled'
+                                                && $amount_paid == 0 && $b['payment_status'] === 'Unpaid'
+                                                && ((defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+                                                    || ($paymentTimerIsEventHall && $display_status === 'Confirmed' && empty($b['manual_payment_pending'])));
+                                            $paymentTimerDeadline = $paymentTimerEligible
+                                                ? ((defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+                                                    ? ($b['payment_step_expires_at'] ?: ($b['payment_attempt_expires_at'] ?? ($b['payment_due_at'] ?? null)))
+                                                    : ($b['payment_due_at'] ?? null))
+                                                : null;
+                                            $paymentTimerIsEventQuote = $paymentTimerIsEventHall && $paymentTimerDeadline
+                                                && $paymentTimerDeadline === ($b['payment_due_at'] ?? null);
+                                            if ($paymentTimerDeadline) {
+                                                $timerZone = new DateTimeZone('Asia/Manila');
+                                                $paymentTimerRemaining = max(0, (new DateTimeImmutable($paymentTimerDeadline, $timerZone))->getTimestamp() - (new DateTimeImmutable($payment_timer_now, $timerZone))->getTimestamp());
+                                            }
+                                            $paymentTimerHours = $paymentTimerRemaining === null ? 0 : intdiv($paymentTimerRemaining, 3600);
+                                            $paymentTimerDisplay = $paymentTimerHours < 100
+                                                ? sprintf('%02d:%02d:%02d', $paymentTimerHours, intdiv(($paymentTimerRemaining ?? 0) % 3600, 60), ($paymentTimerRemaining ?? 0) % 60)
+                                                : sprintf('%d:%02d:%02d:%02d', intdiv($paymentTimerHours, 24), $paymentTimerHours % 24, intdiv(($paymentTimerRemaining ?? 0) % 3600, 60), ($paymentTimerRemaining ?? 0) % 60);
+                                            ?>
+                                            <div class="booking-status-details">
+                                            <?php if ($paymentTimerRemaining !== null): ?>
+                                            <div class="booking-payment-timer<?php echo ($paymentTimerRemaining > 0 && $paymentTimerRemaining <= 60) ? ' is-urgent' : ($paymentTimerRemaining === 0 ? ' is-expired' : ''); ?>" data-payment-seconds="<?php echo (int)$paymentTimerRemaining; ?>" data-payment-title="<?php echo htmlspecialchars((string)$status_text, ENT_QUOTES, 'UTF-8'); ?>" data-payment-event-quote="<?php echo $paymentTimerIsEventQuote ? '1' : '0'; ?>" data-payment-event-checkout="<?php echo $paymentTimerIsEventHall && !$paymentTimerIsEventQuote ? '1' : '0'; ?>" role="group" aria-label="Payment deadline for <?php echo htmlspecialchars((string)$status_text, ENT_QUOTES, 'UTF-8'); ?>">
+                                                <span class="booking-payment-timer__label" data-payment-label><?php echo $paymentTimerIsEventQuote ? 'Event Hall payment deadline' : ($paymentTimerIsEventHall ? 'Checkout hold' : htmlspecialchars((string)$status_text, ENT_QUOTES, 'UTF-8')); ?></span>
+                                                <span class="booking-payment-timer__value" data-payment-countdown role="timer" aria-live="off" aria-atomic="true"><?php echo $paymentTimerDisplay . ($paymentTimerRemaining > 0 ? ' remaining' : ''); ?></span>
+                                                <span class="booking-payment-timer__note" data-payment-note><?php echo $paymentTimerIsEventQuote
+                                                    ? ((defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+                                                        ? 'Pay within 24 hours after quote finalization. Unpaid bookings are cancelled automatically; uncertain payments are verified first.'
+                                                        : 'Pay within 24 hours after quote finalization. A proof under review pauses the timer; unpaid bookings are cancelled automatically after the deadline.')
+                                                    : ($paymentTimerRemaining > 0 ? 'If time runs out, we’ll verify payment before releasing this hold.' : 'Checking payment before releasing this hold.'); ?></span>
+                                            </div>
+                                            <?php else: ?>
                                             <span class="badge <?php echo $badge_class; ?>">
                                                 <?php echo $status_text; ?>
                                             </span>
+                                            <?php endif; ?>
                                             <?php if (!$is_completed && !empty($b['has_rescheduled']) && $display_status === 'Confirmed' && $b['cancel_status'] !== 'Pending'): ?>
                                             <span class="badge badge-reschedule">Rescheduled &amp; Confirmed</span>
                                             <?php endif; ?>
+                                            </div>
                                         </td>
                                         <td data-label="Actions">
                                             <div class="action-cell<?php echo $has_more_actions ? ' has-more-actions' : ''; ?>">
                                             <?php if (!$is_completed && $can_submit_manual_payment($b)): ?>
                                                 <button type="button" class="btn-action btn-pay btn-submit-payment booking-row-primary"
-                                                    data-id="<?php echo (int)$b['id']; ?>"><?php echo htmlspecialchars($manual_payment_action_label($b), ENT_QUOTES, 'UTF-8'); ?></button>
+                                                    data-id="<?php echo (int)$b['id']; ?>"
+                                                    data-policy-version="<?php echo htmlspecialchars((string)($b['policy_version'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($manual_payment_action_label($b), ENT_QUOTES, 'UTF-8'); ?></button>
                                                 <?php endif; ?>
                                                 <?php if (!$payment_action): ?>
                                                 <button type="button" class="btn-action btn-outline-action btn-details booking-row-primary"
@@ -115,7 +153,8 @@
                                                             data-id="<?php echo (int)$b['id']; ?>"
                                                             data-venue="<?php echo htmlspecialchars($b['venue_name'], ENT_QUOTES, 'UTF-8'); ?>"
                                                             data-date="<?php echo htmlspecialchars($date_str, ENT_QUOTES, 'UTF-8'); ?>"
-                                                            data-paid="<?php echo htmlspecialchars((string)$amount_paid, ENT_QUOTES, 'UTF-8'); ?>">
+                                                            data-paid="<?php echo htmlspecialchars((string)$amount_paid, ENT_QUOTES, 'UTF-8'); ?>"
+                                                            data-paymongo="<?php echo !empty($b['paymongo_paid']) ? '1' : '0'; ?>">
                                                             <i class="fa-solid <?php echo ($amount_paid > 0) ? 'fa-arrow-rotate-left' : 'fa-ban'; ?>" aria-hidden="true"></i>
                                                             <span><?php echo ($amount_paid > 0) ? 'Request refund' : 'Cancel booking'; ?></span>
                                                         </button>

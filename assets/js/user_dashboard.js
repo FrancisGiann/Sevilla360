@@ -5,6 +5,26 @@
 
 document.addEventListener("DOMContentLoaded", () => {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  if (window.SevillaPayMongoCheckout?.enabled()) {
+    window.SevillaPayMongoCheckout.create({csrfToken, requirePolicyConsent: () => new Promise(resolve => {
+      const modal=document.getElementById('paymongo-policy-ack');
+      const checkbox=document.getElementById('paymongo-policy-confirm');
+      const accept=document.getElementById('paymongo-policy-accept');
+      const cancel=document.getElementById('paymongo-policy-cancel');
+      if (!modal || !checkbox || !accept || !cancel) { resolve(false); return; }
+      const update=()=>{ accept.disabled=!checkbox.checked; };
+      const finish=value=>{
+        modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); modal.hidden=true;
+        checkbox.checked=false; accept.disabled=true;
+        checkbox.removeEventListener('change',update); accept.removeEventListener('click',acceptTerms); cancel.removeEventListener('click',cancelTerms);
+        resolve(value);
+      };
+      const acceptTerms=()=>{ if (checkbox.checked) finish(true); };
+      const cancelTerms=()=>finish(false);
+      checkbox.addEventListener('change',update); accept.addEventListener('click',acceptTerms); cancel.addEventListener('click',cancelTerms);
+      modal.hidden=false; modal.classList.add('active'); modal.setAttribute('aria-hidden','false'); checkbox.focus({preventScroll:true});
+    })});
+  }
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
@@ -800,6 +820,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- 4. ACTION BUTTONS ---
 
   // A. Cancel Button
+  let activePayMongoRefundPreview = null;
+  let payMongoPreviewGeneration = 0;
   document.addEventListener("click", (event) => {
       const btn = event.target.closest('.btn-cancel');
       if (!btn) return;
@@ -808,6 +830,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const date = btn.getAttribute("data-date");
       const paidStr = btn.getAttribute("data-paid");
       const amountPaid = parseFloat(paidStr) || 0;
+      const isPayMongo = btn.dataset.paymongo === '1';
+      ++payMongoPreviewGeneration;
+      activePayMongoRefundPreview = null;
 
       const cancelVenueEl = document.getElementById("cancel-venue");
       const cancelDateEl = document.getElementById("cancel-date");
@@ -826,6 +851,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const destinationBank = document.getElementById('cancel-refund-bank-name');
       const destinationError = document.getElementById('cancel-refund-destination-error');
       const cancelTitle = document.getElementById('cancel-modal-title');
+      const providerNote = document.getElementById('cancel-refund-provider-note');
+      const retryPreviewBtn = document.getElementById('cancel-refund-preview-retry');
+      const priorLabel = document.getElementById('cancel-prior-refunded-label');
+      const priorValue = document.getElementById('cancel-prior-refunded');
+      const confirmFee = document.getElementById('confirm-fee');
+
+      if (retryPreviewBtn) { retryPreviewBtn.hidden = true; retryPreviewBtn.disabled = true; retryPreviewBtn.onclick = null; }
 
       if (amountPaid === 0) {
           if (refundInfoTop) refundInfoTop.style.display = "none";
@@ -834,36 +866,102 @@ document.addEventListener("DOMContentLoaded", () => {
           if (destinationFields) destinationFields.hidden = true;
           [destinationMethod, destinationName, destinationIdentifier, destinationBank].forEach((field) => { if (field) field.required = false; });
           if (destinationBankField) destinationBankField.hidden = true;
+          if (providerNote) providerNote.hidden = true;
+          if (priorLabel) priorLabel.hidden = true;
+          if (priorValue) priorValue.hidden = true;
+          if (confirmFee) confirmFee.checked = false;
           if (cancelTitle) cancelTitle.textContent = 'Cancel Reservation?';
-          if (confirmBtn) confirmBtn.textContent = 'Confirm Cancellation';
+          if (confirmBtn) { confirmBtn.textContent = 'Confirm Cancellation'; confirmBtn.disabled = false; }
       } else {
           const refundAmt = Math.max(0, Math.round(amountPaid * 100) / 100);
 
           const cancelPaidEl = document.getElementById("cancel-paid");
           const cancelRefundTotalEl = document.getElementById("cancel-refund-total");
-          if(cancelPaidEl) cancelPaidEl.textContent = `₱${amountPaid.toLocaleString()}`;
+          if(cancelPaidEl) cancelPaidEl.textContent = `₱${amountPaid.toLocaleString('en-PH', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
           const cancelFeeLabel = document.getElementById("cancel-fee-label");
-          if(cancelFeeLabel) cancelFeeLabel.textContent = 'No fee deducted';
-          if(cancelRefundTotalEl) cancelRefundTotalEl.textContent = `₱${refundAmt.toLocaleString()}`;
+          if(cancelFeeLabel) cancelFeeLabel.textContent = isPayMongo ? 'Verifying actual PayMongo fee…' : 'No fee deducted';
+          if(cancelRefundTotalEl) cancelRefundTotalEl.textContent = isPayMongo ? 'Loading…' : `₱${refundAmt.toLocaleString('en-PH', {minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
           if (refundInfoTop) refundInfoTop.style.display = "block";
           if (refundInfoBottom) refundInfoBottom.style.display = "block";
           if (unpaidInfo) unpaidInfo.style.display = "none";
-          if (destinationFields) destinationFields.hidden = false;
-          [destinationMethod, destinationName, destinationIdentifier].forEach((field) => { if (field) field.required = true; });
+          if (destinationFields) destinationFields.hidden = isPayMongo;
+          [destinationMethod, destinationName, destinationIdentifier].forEach((field) => { if (field) field.required = !isPayMongo; });
           if (destinationMethod) destinationMethod.value = '';
           if (destinationName) destinationName.value = '';
           if (destinationIdentifier) destinationIdentifier.value = '';
           if (destinationBank) { destinationBank.value = ''; destinationBank.required = false; }
           if (destinationBankField) destinationBankField.hidden = true;
           if (destinationError) { destinationError.hidden = true; destinationError.textContent = ''; }
+          if (priorLabel) priorLabel.hidden = true;
+          if (priorValue) priorValue.hidden = true;
+          if (confirmFee) confirmFee.checked = false;
+          if (providerNote) {
+            providerNote.hidden = !isPayMongo;
+            providerNote.textContent = isPayMongo ? 'Approved refunds return to the original payment method. Timing depends on the provider.' : '';
+          }
           if (cancelTitle) cancelTitle.textContent = 'Request Cancellation & Refund';
-          if (confirmBtn) confirmBtn.textContent = 'Submit Refund Request';
+          if (confirmBtn) { confirmBtn.textContent = 'Submit Refund Request'; confirmBtn.disabled = isPayMongo; }
+          if (isPayMongo) {
+            const loadPayMongoRefundPreview = async () => {
+              const requestGeneration = ++payMongoPreviewGeneration;
+              const controller = new AbortController();
+              const timeoutId = window.setTimeout(() => controller.abort(), 20000);
+              activePayMongoRefundPreview = null;
+              if (confirmBtn) confirmBtn.disabled = true;
+              if (retryPreviewBtn) { retryPreviewBtn.hidden = true; retryPreviewBtn.disabled = true; }
+              if (cancelFeeLabel) cancelFeeLabel.textContent = 'Verifying actual PayMongo fee…';
+              if (cancelRefundTotalEl) cancelRefundTotalEl.textContent = 'Loading…';
+              if (providerNote) { providerNote.hidden = false; providerNote.textContent = 'Checking the actual fee with PayMongo…'; }
+              try {
+                const response = await fetch('actions/user/paymongo_refund_preview.php', {
+                  method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
+                  body:JSON.stringify({booking_id:bookingId}), signal:controller.signal
+                });
+                let data;
+                try { data=await response.json(); }
+                catch (parseError) { data={success:false,message:'The refund preview returned an unreadable response.'}; }
+                if (requestGeneration !== payMongoPreviewGeneration || confirmBtn?.dataset.id !== String(bookingId)) return;
+                if (!response.ok || !data.success || data.provider!=='paymongo' || typeof data.fingerprint!=='string' || !/^[a-f0-9]{64}$/.test(data.fingerprint)) {
+                  const failure=new Error(data.message || 'The actual PayMongo fee could not be verified.');
+                  if (typeof data.support_reference==='string' && /^[a-f0-9]{16}$/.test(data.support_reference)) failure.supportReference=data.support_reference;
+                  throw failure;
+                }
+                activePayMongoRefundPreview={bookingId:String(bookingId),fingerprint:data.fingerprint};
+                if (cancelPaidEl) cancelPaidEl.textContent=`₱${Number(data.paid).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+                if (cancelFeeLabel) cancelFeeLabel.textContent=`₱${Number(data.fee).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+                if (cancelRefundTotalEl) cancelRefundTotalEl.textContent=`₱${Number(data.refund).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+                const prior=Number(data.prior_refund||0);
+                if (priorLabel) priorLabel.hidden=prior<=0;
+                if (priorValue) { priorValue.hidden=prior<=0; priorValue.textContent=`₱${prior.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+                if (providerNote) providerNote.textContent=data.message+' No estimated fee is used.';
+                if (confirmBtn) confirmBtn.disabled=false;
+              } catch (error) {
+                if (requestGeneration !== payMongoPreviewGeneration || confirmBtn?.dataset.id !== String(bookingId)) return;
+                activePayMongoRefundPreview=null;
+                if (cancelFeeLabel) cancelFeeLabel.textContent = 'Fee verification failed';
+                if (cancelRefundTotalEl) cancelRefundTotalEl.textContent = 'Unavailable';
+                if (providerNote) {
+                  providerNote.hidden=false;
+                  providerNote.textContent = error?.name === 'AbortError'
+                    ? 'PayMongo did not respond in time. Retry the fee verification before submitting.'
+                    : `${error?.message || 'The actual PayMongo fee could not be verified.'}${error?.supportReference ? ` Support reference: ${error.supportReference}.` : ''} Retry the fee verification before submitting.`;
+                }
+                if (retryPreviewBtn) { retryPreviewBtn.hidden = false; retryPreviewBtn.disabled = false; }
+                if (confirmBtn) confirmBtn.disabled=true;
+              } finally {
+                window.clearTimeout(timeoutId);
+              }
+            };
+            if (retryPreviewBtn) retryPreviewBtn.onclick = () => { void loadPayMongoRefundPreview(); };
+            void loadPayMongoRefundPreview();
+          }
       }
 
       refundDestinationControls?.sync();
 
       if (confirmBtn) confirmBtn.setAttribute("data-id", bookingId);
+      if (confirmBtn) { confirmBtn.dataset.paymongo=isPayMongo?'1':'0'; confirmBtn.dataset.paid=String(amountPaid); }
       openModal("cancel");
   });
 
@@ -892,18 +990,23 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const confirmFee = document.getElementById("confirm-fee");
       const isChecked = confirmFee ? confirmFee.checked : false;
+      const isPayMongo = this.dataset.paymongo === '1';
       const destinationFields = document.getElementById('cancel-refund-destination');
       const destinationError = document.getElementById('cancel-refund-destination-error');
-      const isRefundable = Boolean(destinationFields && !destinationFields.hidden);
+      const isRefundable = Number(this.dataset.paid || 0) > 0;
+      const needsDestination = isRefundable && !isPayMongo;
 
       if (reason === "") return showAlert("Missing Info", "Please provide a reason for the cancellation.", "error");
       if (isRefundable && !isChecked) return showAlert("Required", "Please acknowledge the refund amount shown above.", "error");
+      if (isPayMongo && (!activePayMongoRefundPreview || activePayMongoRefundPreview.bookingId !== String(bookingId))) {
+        return showAlert("Refund amount unavailable", "The actual PayMongo fee could not be verified. Refresh the preview before submitting.", "error");
+      }
 
       const destinationMethod = document.getElementById('cancel-refund-method');
       const destinationName = document.getElementById('cancel-refund-account-name');
       const destinationIdentifier = document.getElementById('cancel-refund-account-identifier');
       const destinationBank = document.getElementById('cancel-refund-bank-name');
-      if (isRefundable) {
+      if (needsDestination) {
         refundDestinationControls?.validate();
         const requiredDestinationFields = [destinationMethod, destinationName, destinationIdentifier, ...(destinationBank?.required ? [destinationBank] : [])].filter(Boolean);
         const invalidDestinationField = requiredDestinationFields.find((field) => !field.checkValidity());
@@ -928,7 +1031,10 @@ document.addEventListener("DOMContentLoaded", () => {
           body: JSON.stringify({
             booking_id: bookingId,
             reason: reason,
-            ...(isRefundable ? {
+            ...(isPayMongo ? {
+              refund_acknowledged: true,
+              refund_preview_fingerprint: activePayMongoRefundPreview.fingerprint
+            } : needsDestination ? {
               refund_destination: {
                 method: destinationMethod.value,
                 account_name: destinationName.value.trim(),
@@ -1061,6 +1167,51 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // C. View Details Button
+  const eventQuotePanel = document.getElementById('ud-event-quote-acceptance');
+  const eventQuoteCheckbox = document.getElementById('ud-event-quote-accept-checkbox');
+  const eventQuoteAcceptButton = document.getElementById('ud-event-quote-accept');
+  const eventQuotePayButton = document.getElementById('ud-event-quote-pay');
+  const eventQuoteStatus = document.getElementById('ud-event-quote-accept-status');
+  eventQuoteCheckbox?.addEventListener('change', () => {
+    if (eventQuoteAcceptButton && !eventQuoteAcceptButton.dataset.submitting) {
+      eventQuoteAcceptButton.disabled = !eventQuoteCheckbox.checked;
+    }
+  });
+  eventQuoteAcceptButton?.addEventListener('click', async () => {
+    const bookingId = eventQuoteAcceptButton.dataset.bookingId;
+    const quoteVersion = Number(eventQuoteAcceptButton.dataset.quoteVersion);
+    if (!eventQuoteCheckbox?.checked || !bookingId || !Number.isInteger(quoteVersion) || quoteVersion < 1) return;
+    eventQuoteAcceptButton.dataset.submitting = '1';
+    eventQuoteAcceptButton.disabled = true;
+    if (eventQuoteStatus) { eventQuoteStatus.hidden = true; eventQuoteStatus.textContent = ''; }
+    try {
+      const response = await fetch('actions/user/accept_event_quote.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+        body: JSON.stringify({ booking_id: Number(bookingId), quote_version: quoteVersion })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || Number(data.data?.quote_version) !== quoteVersion) {
+        throw new Error(data.message || 'The quotation could not be accepted. Refresh the booking details and try again.');
+      }
+      eventQuoteCheckbox.checked = false;
+      eventQuoteAcceptButton.hidden = true;
+      if (eventQuotePayButton) eventQuotePayButton.hidden = false;
+      if (eventQuoteStatus) {
+        eventQuoteStatus.textContent = 'Quotation accepted. The original 24-hour payment deadline has not changed.';
+        eventQuoteStatus.hidden = false;
+      }
+    } catch (error) {
+      if (eventQuoteStatus) {
+        eventQuoteStatus.textContent = error?.message || 'The quotation could not be accepted. Check your connection and try again.';
+        eventQuoteStatus.hidden = false;
+      }
+      eventQuoteAcceptButton.disabled = !eventQuoteCheckbox.checked;
+    } finally {
+      delete eventQuoteAcceptButton.dataset.submitting;
+    }
+  });
+
   document.addEventListener("click", function(event) {
     const detailsTrigger = event.target.closest(".btn-details");
     if (!detailsTrigger) return;
@@ -1153,6 +1304,37 @@ document.addEventListener("DOMContentLoaded", () => {
                 cancelRow.style.display = 'none';
             }
 
+            if (eventQuotePanel) {
+                const eventHallQuote = data.venue_category === 'Event Hall'
+                    && displayStatus === 'Confirmed'
+                    && ['Unpaid', 'Partial'].includes(String(data.payment_status || ''))
+                    && Number(data.quote_version) >= 1;
+                const dueAt = String(data.payment_due_at || '').trim();
+                const dueEpoch = dueAt ? Date.parse(`${dueAt.replace(' ', 'T')}+08:00`) : NaN;
+                const deadlineOpen = Number.isFinite(dueEpoch) && dueEpoch > Date.now();
+                const accepted = Number(data.quote_accepted) === 1;
+                const canShowQuoteControls = window.SevillaPayMongoCheckout?.enabled() === true
+                    && eventHallQuote && deadlineOpen
+                    && !data.cancel_pending && !data.resched_pending;
+                eventQuotePanel.hidden = !canShowQuoteControls;
+                if (eventQuoteCheckbox) {
+                    eventQuoteCheckbox.checked = false;
+                    eventQuoteCheckbox.disabled = accepted;
+                }
+                if (eventQuoteAcceptButton) {
+                    eventQuoteAcceptButton.dataset.bookingId = String(data.id);
+                    eventQuoteAcceptButton.dataset.quoteVersion = String(data.quote_version);
+                    delete eventQuoteAcceptButton.dataset.submitting;
+                    eventQuoteAcceptButton.hidden = accepted;
+                    eventQuoteAcceptButton.disabled = accepted || !canShowQuoteControls || !eventQuoteCheckbox?.checked;
+                }
+                if (eventQuotePayButton) {
+                    eventQuotePayButton.dataset.id = String(data.id);
+                    eventQuotePayButton.hidden = !accepted || !canShowQuoteControls;
+                }
+                if (eventQuoteStatus) { eventQuoteStatus.hidden = true; eventQuoteStatus.textContent = ''; }
+            }
+
             const refundSection = document.getElementById('ud-refund-request-section');
             const showRefundRequest = Number(data.amount_paid) > 0 && cancellation && ['Pending', 'Rejected', 'Processed'].includes(cancellation.status);
             if (refundSection) {
@@ -1166,7 +1348,23 @@ document.addEventListener("DOMContentLoaded", () => {
                     setRefundText('ud-refund-request-status', cancellation.status);
                     setRefundText('ud-refund-request-reason', cancellation.reason);
                     setRefundText('ud-refund-request-reply', cancellation.admin_reply);
-                    setRefundText('ud-refund-request-amount', `₱${Number(cancellation.refund_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    const isPayMongoRefund = cancellation.refund_provider === 'paymongo';
+                    const needsFreshPreview = isPayMongoRefund && cancellation.refund_provider_status === 'preview_required';
+                    setRefundText('ud-refund-request-amount', needsFreshPreview
+                        ? 'Unavailable — staff must reject this older request before a new fee preview can be submitted'
+                        : `₱${Number(cancellation.refund_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    const feeLabel = document.getElementById('ud-refund-request-fee-label');
+                    if (feeLabel) feeLabel.textContent = isPayMongoRefund ? 'Actual PayMongo fee deducted once' : 'Fee deducted';
+                    setRefundText('ud-refund-request-fee', needsFreshPreview
+                        ? 'Unavailable — refresh required'
+                        : `₱${Number(cancellation.fee_deducted || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    const providerStatusLabel = document.getElementById('ud-refund-request-provider-status-label');
+                    const providerStatus = document.getElementById('ud-refund-request-provider-status');
+                    if (providerStatusLabel) providerStatusLabel.hidden = !isPayMongoRefund;
+                    if (providerStatus) {
+                        providerStatus.hidden = !isPayMongoRefund;
+                        providerStatus.textContent = isPayMongoRefund ? String(cancellation.refund_provider_status || 'pending') : '--';
+                    }
                     setRefundText('ud-refund-request-method', destination.method);
                     setRefundText('ud-refund-request-account-name', destination.account_name);
                     setRefundText('ud-refund-request-identifier', destination.masked_identifier);

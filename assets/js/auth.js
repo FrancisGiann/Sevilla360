@@ -15,6 +15,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const linkGotoTerms = document.getElementById("link-goto-terms");
   const btnAgreeTerms = document.getElementById("btn-agree-terms");
   const agreeCheckbox = document.getElementById("agree-checkbox");
+  const registrationTermsContent = document.getElementById('registration-terms-content');
+  const registrationTermsHint = document.getElementById('registration-terms-hint');
+  const registrationConsentStatus = document.getElementById('registration-consent-status');
+  const registrationConsentGroup = agreeCheckbox?.closest('.terms-checkbox-group');
+  let registrationTermsRead = false;
   
   const linkBackLoginForgot = document.getElementById("link-back-login-from-forgot");
   const forgotTriggers = document.querySelectorAll("[data-forgot-password]");
@@ -177,11 +182,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const confPass = document.getElementById('reg-confirm-password');
       const errPass = document.getElementById('err-password');
       const errConf = document.getElementById('err-confirm-password');
+      const passwordResult = window.SevillaPasswordPolicy?.validate(pass.value);
       const passwordIssue = !pass.value
           ? 'Password is required.'
-          : window.SevillaPasswordPolicy?.validate(pass.value).valid
+          : passwordResult?.valid
               ? ''
-              : window.SevillaPasswordPolicy?.validate(pass.value).message || 'Password does not meet the required policy.';
+              : 'Use a capital letter, lowercase letter, number, and symbol (like ! or @).';
       const confirmationIssue = !confPass.value
           ? 'Please confirm your password.'
           : pass.value !== confPass.value ? 'Passwords do not match.' : '';
@@ -247,14 +253,27 @@ document.addEventListener("DOMContentLoaded", () => {
       if (checkedRegistrationEmail !== submittedEmail) { showRegistrationStep(1, { focus: true }); return; }
       const nameFields = ['reg-first-name', 'reg-last-name'].map(id => document.getElementById(id));
       nameFields.forEach(field => {
+          filterAndValidateRegistrationName(field);
           field.value = field.value.trim();
-          field.setCustomValidity(field.value ? '' : 'Please enter your name.');
+          field.setCustomValidity(!field.value ? 'Please enter your name.' : registrationNameIssue(field.value));
       });
       const invalidName = nameFields.find(field => !field.checkValidity());
+      const registrationPhone = document.getElementById('reg-phone');
+      if (registrationPhone) filterAndValidateRegistrationPhone(registrationPhone);
       if (invalidName || !registrationForm.checkValidity()) {
           showRegistrationStep(2);
           if (invalidName) invalidName.reportValidity();
+          else if (registrationPhone && !registrationPhone.checkValidity()) registrationPhone.reportValidity();
           else registrationForm.reportValidity();
+          return;
+      }
+      if (!agreeCheckbox?.checked || !registrationTermsRead) {
+          showRegistrationStep(2);
+          setRegistrationTermsMessage(!registrationTermsRead
+              ? 'Please read the Terms of Service to the bottom before agreeing.'
+              : 'Select the consent checkbox to continue.');
+          if (!registrationTermsRead) linkGotoTerms?.focus();
+          else agreeCheckbox?.focus();
           return;
       }
       registrationSubmit.disabled = true;
@@ -295,9 +314,88 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!redirecting) registrationForm.removeAttribute('aria-busy');
       }
   });
+  function registrationNameIssue(value) {
+      return /^[\p{L}][\p{L}\p{M}]*(?:[ '\u2019\u2010-\u2015-][\p{L}][\p{L}\p{M}]*)*$/u.test(value)
+          ? ''
+          : 'Use letters, spaces, apostrophes, or hyphens in your name.';
+  }
+
+  function setRegistrationTermsMessage(message) {
+      if (registrationTermsHint) registrationTermsHint.textContent = message;
+      if (registrationConsentStatus) registrationConsentStatus.textContent = message;
+  }
+
+  function updateRegistrationTermsReadState() {
+      if (!viewTerms?.classList.contains('active') || !registrationTermsContent) return;
+      const atBottom = registrationTermsContent.scrollHeight <= registrationTermsContent.clientHeight + 2
+          || registrationTermsContent.scrollTop + registrationTermsContent.clientHeight >= registrationTermsContent.scrollHeight - 2;
+      if (atBottom) registrationTermsRead = true;
+      if (btnAgreeTerms) btnAgreeTerms.disabled = !registrationTermsRead;
+      if (agreeCheckbox) agreeCheckbox.disabled = !registrationTermsRead;
+      setRegistrationTermsMessage(registrationTermsRead
+          ? 'You have reached the end of the Terms of Service. Choose I Agree to enable consent.'
+          : 'Scroll to the bottom of these terms to enable I Agree.');
+  }
+
+  function openRegistrationTerms() {
+      registrationTermsRead = false;
+      if (agreeCheckbox) {
+          agreeCheckbox.checked = false;
+          agreeCheckbox.disabled = true;
+      }
+      if (btnAgreeTerms) btnAgreeTerms.disabled = true;
+      if (registrationTermsContent) registrationTermsContent.scrollTop = 0;
+      setRegistrationTermsMessage('Scroll to the bottom of these terms to enable I Agree.');
+      switchView(viewTerms);
+      registrationTermsContent?.focus({ preventScroll: true });
+      updateRegistrationTermsReadState();
+  }
+
+  function registrationPhoneIssue(value) {
+      return /^[0-9+(). \-]*$/u.test(value)
+          ? ''
+          : 'Use digits with optional +, spaces, parentheses, dots, or hyphens.';
+  }
+  function filterRegistrationInput(input, disallowedCharacters) {
+      const originalValue = input.value;
+      const selectionStart = input.selectionStart;
+      const selectionEnd = input.selectionEnd;
+      const filter = value => value.replace(disallowedCharacters, '');
+      const filteredValue = filter(originalValue);
+      if (filteredValue === originalValue) return;
+      const start = Number.isInteger(selectionStart) ? filter(originalValue.slice(0, selectionStart)).length : filteredValue.length;
+      const end = Number.isInteger(selectionEnd) ? filter(originalValue.slice(0, selectionEnd)).length : start;
+      input.value = filteredValue;
+      try { input.setSelectionRange(start, end); } catch (_) { /* Some autofill controls do not expose a text selection. */ }
+  }
+  function filterAndValidateRegistrationName(input) {
+      filterRegistrationInput(input, /[^\p{L}\p{M} '\u2019\u2010-\u2015-]/gu);
+      const value = input.value.trim();
+      input.setCustomValidity(value ? registrationNameIssue(value) : '');
+  }
+  function filterAndValidateRegistrationPhone(input) {
+      filterRegistrationInput(input, /[^0-9+(). \-]/gu);
+      input.setCustomValidity(registrationPhoneIssue(input.value));
+  }
   ['reg-first-name', 'reg-last-name'].forEach(id => {
-      document.getElementById(id)?.addEventListener('input', event => event.target.setCustomValidity(''));
+      const field = document.getElementById(id);
+      if (!field) return;
+      const filter = event => {
+          if (event.isComposing) return;
+          filterAndValidateRegistrationName(field);
+      };
+      field.addEventListener('input', filter);
+      field.addEventListener('change', () => filterAndValidateRegistrationName(field));
+      field.addEventListener('compositionend', () => filterAndValidateRegistrationName(field));
   });
+  const registrationPhone = document.getElementById('reg-phone');
+  if (registrationPhone) {
+      registrationPhone.addEventListener('input', event => {
+          if (!event.isComposing) filterAndValidateRegistrationPhone(registrationPhone);
+      });
+      registrationPhone.addEventListener('change', () => filterAndValidateRegistrationPhone(registrationPhone));
+      registrationPhone.addEventListener('compositionend', () => filterAndValidateRegistrationPhone(registrationPhone));
+  }
   ['reg-password', 'reg-confirm-password'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', () => {
           if (document.getElementById('err-password').textContent || document.getElementById('err-confirm-password').textContent) {
@@ -309,7 +407,30 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Event Listeners for Navigation ---
   if(linkGotoRegister) linkGotoRegister.addEventListener("click", () => switchView(viewRegister));
   if(linkGotoLogin) linkGotoLogin.addEventListener("click", () => switchView(viewLogin));
-  if(linkGotoTerms) linkGotoTerms.addEventListener("click", () => switchView(viewTerms));
+  linkGotoTerms?.addEventListener("click", openRegistrationTerms);
+  registrationTermsContent?.addEventListener('scroll', updateRegistrationTermsReadState);
+  window.addEventListener('resize', updateRegistrationTermsReadState);
+  viewTerms?.addEventListener('pointerdown', event => {
+      if (!registrationTermsRead && (event.target === btnAgreeTerms || btnAgreeTerms?.contains(event.target))) {
+          setRegistrationTermsMessage('Please scroll to the bottom of the Terms of Service before agreeing.');
+      }
+  });
+  registrationConsentGroup?.addEventListener('pointerdown', event => {
+      if (!registrationTermsRead && !linkGotoTerms?.contains(event.target)) {
+          setRegistrationTermsMessage('Please read the Terms of Service to the bottom before agreeing.');
+      }
+  });
+  agreeCheckbox?.addEventListener('change', () => {
+      if (!registrationTermsRead) {
+          agreeCheckbox.checked = false;
+          agreeCheckbox.disabled = true;
+          setRegistrationTermsMessage('Please read the Terms of Service to the bottom before agreeing.');
+          return;
+      }
+      setRegistrationTermsMessage(agreeCheckbox.checked
+          ? 'Terms of Service accepted.'
+          : 'Select the consent checkbox to continue.');
+  });
   const openForgotPassword = (event) => {
       event.preventDefault();
       forgotOrigin = event.currentTarget?.dataset.origin === 'admin' ? 'admin' : 'customer';
@@ -321,13 +442,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if(btnAgreeTerms) {
       btnAgreeTerms.addEventListener("click", () => {
+        if (!registrationTermsRead) {
+          setRegistrationTermsMessage('Please scroll to the bottom of the Terms of Service before agreeing.');
+          return;
+        }
         switchView(viewRegister);
-        if(agreeCheckbox) { agreeCheckbox.checked = true; agreeCheckbox.focus(); }
+        if(agreeCheckbox) {
+          agreeCheckbox.disabled = false;
+          agreeCheckbox.checked = true;
+          agreeCheckbox.focus();
+          setRegistrationTermsMessage('Terms of Service accepted.');
+        }
       });
   }
 
   document.getElementById('btn-back-from-terms')?.addEventListener('click', () => {
       switchView(viewRegister);
+      setRegistrationTermsMessage(registrationTermsRead
+          ? 'You have reached the end of the Terms of Service. Choose I Agree to enable consent.'
+          : 'Open the Terms of Service and scroll to the bottom before agreeing.');
       linkGotoTerms?.focus();
   });
 

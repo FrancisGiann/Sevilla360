@@ -25,12 +25,7 @@ $status = match ($action) {
     'reject', 'hide' => 'Rejected',
     default => null,
 };
-$note = $payload['admin_note'] ?? '';
-if (!$reviewId || $status === null || !is_string($note)) moderate_review_error(422, 'Choose a valid moderation action.');
-$note = trim($note);
-$noteLength = function_exists('mb_strlen') ? mb_strlen($note, 'UTF-8') : strlen($note);
-if ($noteLength > 500) moderate_review_error(422, 'Admin note must be 500 characters or fewer.');
-$note = $note === '' ? null : $note;
+if (!$reviewId || $status === null) moderate_review_error(422, 'Choose a valid moderation action.');
 
 try {
     $conn->begin_transaction();
@@ -42,9 +37,9 @@ try {
         throw new RuntimeException('Review not found.');
     }
     $check->close();
-    $stmt = $conn->prepare('UPDATE venue_reviews SET moderation_status = ?, admin_note = ?, moderated_by = ?, moderated_at = NOW() WHERE id = ?');
+    $stmt = $conn->prepare('UPDATE venue_reviews SET moderation_status = ?, moderated_by = ?, moderated_at = NOW() WHERE id = ?');
     $adminId = (int)$_SESSION['user_id'];
-    $stmt->bind_param('ssii', $status, $note, $adminId, $reviewId);
+    $stmt->bind_param('sii', $status, $adminId, $reviewId);
     if (!$stmt->execute()) throw new RuntimeException('Unable to moderate the review.');
     $stmt->close();
     $audit = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, 'Venue Reviews', ?, ?)");

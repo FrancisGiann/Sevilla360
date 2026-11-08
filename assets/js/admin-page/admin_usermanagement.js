@@ -20,10 +20,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const promoteError = document.getElementById("promoteStaffError");
     const promoteButton = document.getElementById("confirmPromoteStaff");
     const staffForm = document.getElementById("staffForm");
+    const staffDetails = document.getElementById("staffDetails");
+    const staffDetailsActions = document.getElementById("staffDetailsActions");
     const formError = document.getElementById("staffFormError");
     const saveButton = document.getElementById("btnSaveStaff");
     const passwordInput = document.getElementById("staff_password");
-    const passwordHint = document.getElementById("pw_hint");
     const historyBody = document.getElementById("historyTbody");
     const today = document.getElementById("staff_hire_date")?.getAttribute("max") || "";
     let activeTab = "staffTable";
@@ -33,6 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastFocusedElement = null;
     let staffSubmitting = false;
     let promotionSubmitting = false;
+    let historyRequestSequence = 0;
 
     const notify = (title, message, type = "info") => {
         if (typeof window.showAlert === "function") window.showAlert(title, message, type);
@@ -162,10 +164,15 @@ document.addEventListener("DOMContentLoaded", () => {
     function closeStaffModal() {
         closeModal(staffModal);
         staffForm?.reset();
+        if (staffForm) staffForm.hidden = false;
+        setHidden(staffDetails, true);
+        setHidden(staffDetailsActions, true);
+        staffDetails?.querySelectorAll("[data-staff-detail]").forEach((field) => { field.textContent = "—"; });
         clearFormError();
     }
 
     function closeHistoryModal() {
+        historyRequestSequence += 1;
         closeModal(historyModal);
         if (historyBody) historyBody.replaceChildren();
     }
@@ -180,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!modal) return [];
         return [...modal.querySelectorAll(
             'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )].filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+        )].filter((element) => !element.closest("[hidden]") && element.getAttribute("aria-hidden") !== "true");
     }
 
     function trapModalFocus(event) {
@@ -220,43 +227,42 @@ document.addEventListener("DOMContentLoaded", () => {
     function populateStaffForm(trigger, edit) {
         staffForm?.reset();
         clearFormError();
-        document.getElementById("staff_user_id").value = edit ? (trigger.dataset.id || "") : "";
-        document.getElementById("staff_display_id").value = edit ? `STF-${String(trigger.dataset.id || "").padStart(5, "0")}` : "Assigned after creation";
-        document.getElementById("staff_name").value = edit ? (trigger.dataset.name || "") : "";
-        document.getElementById("staff_email").value = edit ? (trigger.dataset.email || "") : "";
-        document.getElementById("staff_phone").value = edit ? (trigger.dataset.phone || "") : "";
-        document.getElementById("staff_address").value = edit ? (trigger.dataset.address || "") : "";
-        document.getElementById("staff_department").value = edit ? (trigger.dataset.department || "") : "";
-        document.getElementById("staff_job_title").value = edit ? (trigger.dataset.jobTitle || "") : "";
-        document.getElementById("staff_hire_date").value = edit ? (trigger.dataset.hireDate || "") : "";
+        if (staffForm) staffForm.hidden = edit;
+        setHidden(staffDetails, !edit);
+        setHidden(staffDetailsActions, !edit);
         const isAdminDetails = edit && trigger.dataset.role === "admin";
-        document.getElementById("staff_role").value = isAdminDetails ? "Admin" : "Staff";
-        document.getElementById("staff_status").value = edit ? (trigger.dataset.status || "Unknown") : "Active after creation";
-        const profileFields = ["staff_name", "staff_email", "staff_phone", "staff_address", "staff_department", "staff_job_title", "staff_hire_date"];
-        profileFields.forEach((id) => {
-            const field = document.getElementById(id);
-            if (field) {
-                field.readOnly = edit;
-                field.disabled = false;
-            }
-        });
+        if (edit) {
+            const details = {
+                staffDetailsId: `STF-${String(trigger.dataset.id || "").padStart(5, "0")}`,
+                staffDetailsName: trigger.dataset.name,
+                staffDetailsEmail: trigger.dataset.email,
+                staffDetailsPhone: trigger.dataset.phone,
+                staffDetailsAddress: trigger.dataset.address,
+                staffDetailsDepartment: trigger.dataset.department,
+                staffDetailsJobTitle: trigger.dataset.jobTitle,
+                staffDetailsHireDate: trigger.dataset.hireDate,
+                staffDetailsRole: isAdminDetails ? "Admin" : "Staff",
+                staffDetailsStatus: trigger.dataset.status
+            };
+            Object.entries(details).forEach(([id, value]) => {
+                const field = document.getElementById(id);
+                if (field) field.textContent = value?.trim() || "—";
+            });
+        } else {
+            staffDetails?.querySelectorAll("[data-staff-detail]").forEach((field) => { field.textContent = "—"; });
+        }
         const saveVisible = !edit;
         if (saveButton) {
             saveButton.hidden = !saveVisible;
             saveButton.textContent = "Create Staff Account";
         }
-        document.querySelector(".close-staff-modal")?.replaceChildren(document.createTextNode(edit ? "Close" : "Cancel"));
         document.getElementById("staffModalTitle").textContent = edit ? (isAdminDetails ? "Admin Details" : "Staff Details") : "Add New Staff";
         document.getElementById("staffModalDescription").textContent = edit
             ? (isAdminDetails ? "Administrator details are read-only here. Administrator access cannot be changed from this directory." : "Staff details are read-only here. Staff can change only their own name, phone, and password from Settings.")
             : "Create an active staff login. Administrator accounts cannot be created from User Management.";
-        if (passwordInput) passwordInput.closest('.um-form-group')?.toggleAttribute('hidden', edit);
-        passwordInput.value = "";
-        passwordInput.required = !edit;
-        passwordInput.placeholder = edit ? "Leave blank to keep current password" : "Enter a password";
-        setHidden(passwordHint, !edit);
+        if (passwordInput) passwordInput.value = "";
         openModal(staffModal, trigger);
-        window.setTimeout(() => document.getElementById("staff_name")?.focus(), 0);
+        window.setTimeout(() => (edit ? staffDetailsActions?.querySelector(".close-staff-modal") : document.getElementById("staff_name"))?.focus(), 0);
     }
 
     document.getElementById("openAddStaffBtn")?.addEventListener("click", (event) => populateStaffForm(event.currentTarget, false));
@@ -323,14 +329,11 @@ document.addEventListener("DOMContentLoaded", () => {
             showFormError(validationMessage);
             return;
         }
-        const userId = document.getElementById("staff_user_id").value;
-        if (userId) return;
         staffSubmitting = true;
         saveButton.disabled = true;
         saveButton.textContent = "Saving…";
         const payload = {
             action: "add",
-            user_id: userId,
             name: document.getElementById("staff_name").value.trim(),
             email: document.getElementById("staff_email").value.trim(),
             phone: document.getElementById("staff_phone").value.trim(),
@@ -420,11 +423,88 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    function historyRow(values, className = "") {
+    function historyMessageRow(message, className = "") {
         const row = document.createElement("tr");
         if (className) row.className = className;
-        values.forEach((value) => {
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.textContent = message;
+        row.appendChild(cell);
+        return row;
+    }
+
+    function formatHistoryDate(value) {
+        if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return "—";
+        const parsedDate = new Date(`${value}T00:00:00`);
+        return Number.isNaN(parsedDate.getTime())
+            ? value
+            : parsedDate.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+    }
+
+    function formatHistoryAmount(value) {
+        if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value))) return "To be arranged";
+        return `₱${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function createHistoryBookingRow(booking) {
+        const row = document.createElement("tr");
+        const bookingCell = document.createElement("td");
+        bookingCell.dataset.label = "Booking";
+        const bookingId = Number(booking.id);
+        const reference = String(booking.reference_no || (Number.isSafeInteger(bookingId) ? `#${bookingId}` : "Booking"));
+        if (Number.isSafeInteger(bookingId) && bookingId > 0) {
+            const link = document.createElement("a");
+            link.className = "um-history-booking-link";
+            link.href = `admin_dashboard.php?page=bookings&booking_id=${bookingId}`;
+            link.appendChild(document.createTextNode(reference));
+            const hint = document.createElement("small");
+            hint.className = "um-history-link-hint";
+            hint.textContent = "View details";
+            link.append(document.createElement("br"), hint);
+            link.setAttribute("aria-label", `View details for booking ${reference}`);
+            bookingCell.appendChild(link);
+        } else {
+            bookingCell.textContent = reference;
+        }
+        row.appendChild(bookingCell);
+
+        const startDate = formatHistoryDate(booking.start_date);
+        const endDate = formatHistoryDate(booking.end_date);
+        const stay = startDate === endDate ? startDate : `${startDate} – ${endDate}`;
+        const cells = [
+            ["Stay", stay],
+            ["Venue", String(booking.venue_name || "—")]
+        ];
+        cells.forEach(([label, value]) => {
             const cell = document.createElement("td");
+            cell.dataset.label = label;
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+
+        const amountCell = document.createElement("td");
+        amountCell.dataset.label = "Amount paid";
+        const paid = document.createElement("span");
+        paid.textContent = `Actual paid: ${formatHistoryAmount(booking.amount_paid)}`;
+        amountCell.appendChild(paid);
+        const total = document.createElement("small");
+        total.className = "um-history-total";
+        const bookingStatus = String(booking.booking_status || "");
+        const isUnpricedEvent = booking.venue_category === "Event Hall" && bookingStatus === "Pending";
+        const hasTotalAmount = booking.total_amount !== null && booking.total_amount !== undefined && booking.total_amount !== "" && Number.isFinite(Number(booking.total_amount));
+        const totalAmountLabel = !hasTotalAmount || (Number(booking.total_amount) === 0 && isUnpricedEvent)
+            ? "To be arranged"
+            : formatHistoryAmount(booking.total_amount);
+        total.textContent = `Total: ${totalAmountLabel}`;
+        amountCell.appendChild(total);
+        row.appendChild(amountCell);
+
+        [
+            ["Booking status", String(booking.display_booking_status || booking.booking_status || "Unknown")],
+            ["Payment status", String(booking.payment_status || "Unknown")]
+        ].forEach(([label, value]) => {
+            const cell = document.createElement("td");
+            cell.dataset.label = label;
             cell.textContent = value;
             row.appendChild(cell);
         });
@@ -433,7 +513,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function openCustomerHistory(button) {
         if (!historyBody) return;
-        historyBody.replaceChildren(historyRow(["Loading booking history…", "", ""], "um-history-message"));
+        const requestSequence = ++historyRequestSequence;
+        historyBody.replaceChildren(historyMessageRow("Loading booking history…", "um-history-message"));
         openModal(historyModal, button);
         const customerId = button.dataset.id || "";
         try {
@@ -444,25 +525,18 @@ document.addEventListener("DOMContentLoaded", () => {
             let data;
             try { data = JSON.parse(body); } catch (error) { throw new Error("The server returned an invalid response."); }
             if (!response.ok || !data?.success) throw new Error(data?.message || "Booking history could not be loaded.");
+            if (requestSequence !== historyRequestSequence) return;
             historyBody.replaceChildren();
             if (!Array.isArray(data.data) || data.data.length === 0) {
-                historyBody.appendChild(historyRow(["No completed bookings found.", "", ""], "um-history-message"));
+                historyBody.appendChild(historyMessageRow("No bookings found.", "um-history-message"));
                 return;
             }
             data.data.forEach((booking) => {
-                const rawDate = typeof booking.start_date === "string" ? booking.start_date : "";
-                const parsedDate = new Date(`${rawDate}T00:00:00`);
-                const date = Number.isNaN(parsedDate.getTime())
-                    ? rawDate
-                    : parsedDate.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-                const amountNumber = Number(booking.total_amount);
-                const amount = Number.isFinite(amountNumber)
-                    ? `₱${amountNumber.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                    : "—";
-                historyBody.appendChild(historyRow([date, String(booking.venue_name || "—"), amount]));
+                historyBody.appendChild(createHistoryBookingRow(booking));
             });
         } catch (error) {
-            historyBody.replaceChildren(historyRow([error.message || "Booking history could not be loaded.", "", ""], "um-history-message um-history-error"));
+            if (requestSequence !== historyRequestSequence) return;
+            historyBody.replaceChildren(historyMessageRow(error.message || "Booking history could not be loaded.", "um-history-message um-history-error"));
         }
     }
 

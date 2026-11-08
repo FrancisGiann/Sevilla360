@@ -2398,6 +2398,37 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 .cancel-modal-header { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(42, 37, 34, .12); }
 .cancel-modal-title { margin: 0 !important; text-align: left; font-size: 1.65rem !important; line-height: 1.2; }
 .cancel-modal-subtitle { margin: 0 0 10px; font-size: 1.12rem; }
+#modal-cancel .cancel-summary-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 8px 16px;
+  align-items: start;
+}
+#modal-cancel .cancel-summary-grid .cancel-label { min-width: 0; line-height: 1.4; overflow-wrap: anywhere; }
+#modal-cancel .cancel-summary-grid .cancel-value {
+  min-width: 0;
+  text-align: right;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+#modal-cancel .refund-total-grid { margin-bottom: 14px; }
+#modal-cancel .cancel-safety-copy { max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+#modal-cancel #cancel-refund-preview-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(230px, 100%);
+  max-width: 100%;
+  min-height: 44px;
+  margin: 0 0 16px;
+  white-space: normal;
+}
+#modal-cancel #cancel-refund-preview-retry[hidden] { display: none !important; }
+#modal-cancel .cancel-checkbox-group-ui { align-items: flex-start; gap: 12px; margin: 0 0 18px; text-align: left; }
+#modal-cancel .cancel-checkbox-group-ui input { flex: 0 0 auto; width: 18px; height: 18px; margin: 3px 0 0; }
 .cancel-destination-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(42, 37, 34, .14); }
 .cancel-destination-section[hidden] { display: none !important; }
 .cancel-safety-copy { margin: 0 0 14px; color: #62584f; font-size: .86rem; line-height: 1.45; }
@@ -2503,6 +2534,9 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   .cancel-modal-box { padding: 22px 18px !important; }
   .cancel-modal-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cancel-modal-actions .btn-modal { width: 100%; }
+  #modal-cancel .cancel-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+  #modal-cancel .cancel-modal-actions { align-items: stretch; }
+  #modal-cancel .cancel-modal-actions .btn-modal { min-width: 0; max-width: none; overflow-wrap: anywhere; }
   .details-modal-header { align-items: flex-start; flex-direction: column; }
   .booking-detail-grid { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .booking-detail-grid > strong { margin-bottom: 8px; }
@@ -2513,6 +2547,10 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 @media (max-width: 480px) {
   .cancel-destination-fields { grid-template-columns: minmax(0, 1fr); }
   .cancel-modal-actions { grid-template-columns: minmax(0, 1fr); }
+  #modal-cancel .cancel-summary-grid { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  #modal-cancel .cancel-summary-grid .cancel-value { margin-bottom: 7px; text-align: left; }
+  #modal-cancel .cancel-modal-actions { grid-template-columns: minmax(0, 1fr); }
+  #modal-cancel .refund-total-grid .cancel-value { font-weight: 700; }
   .cancel-modal-title { font-size: 1.4rem !important; }
   .details-modal-header .modal-title { font-size: 1.35rem; }
 }
@@ -2561,6 +2599,34 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
   .history-table th:last-child,
   .history-table td[data-label="Actions"] { min-width: 190px; }
 }
+
+/* Payment deadline: keep the unpaid hold legible in desktop and compact booking rows. */
+.booking-status-details { display: grid; justify-items: start; gap: 2px; min-width: 0; }
+.booking-payment-timer {
+  display: grid; justify-items: start; gap: 1px;
+  box-sizing: border-box; width: fit-content; max-width: min(100%, 220px); min-width: 0;
+  margin-top: 4px; padding: 5px 8px;
+  border: 1px solid rgba(128, 82, 31, .32); border-radius: 4px;
+  background: #fff7ec; color: #4a3525; text-align: left;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum";
+}
+.booking-payment-timer__label { color: #5d4938; font-size: 12px; font-weight: 600; line-height: 1.25; }
+.booking-payment-timer__value { display: block; color: #3e2d20; font-size: 18px; font-weight: 700; line-height: 1.15; letter-spacing: .01em; }
+.booking-payment-timer__note { display: none; grid-column: 1 / -1; color: #66564a; font-size: 12px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
+.booking-payment-timer[data-payment-event-hall="1"] .booking-payment-timer__note { display: block; }
+.booking-payment-timer.is-urgent { border-color: rgba(128, 72, 23, .55); }
+.booking-payment-timer.is-urgent .booking-payment-timer__value { color: #713f14; }
+.booking-payment-timer.is-expired .booking-payment-timer__note { display: block; }
+.booking-payment-timer.is-expired .booking-payment-timer__value { color: #62584f; }
+@media (max-width: 992px) {
+  .history-table td[data-label="Status"] { display: flex; align-items: flex-start; }
+  .booking-status-details { flex: 1 1 auto; justify-items: stretch; }
+  .booking-payment-timer { width: fit-content; max-width: min(100%, 220px); }
+}
+@media (max-width: 480px) {
+  .booking-payment-timer__value { font-size: 16px; white-space: nowrap; }
+}
+
 
 /* Overview cards need the full mobile column, especially when attention items
    and long payment labels are present. Keep the desktop layout unchanged. */
@@ -2649,4 +2715,44 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
     min-height: 44px;
     justify-content: center;
   }
+}
+
+form[data-session-logout] button { width:100%; text-align:left; background:transparent; border:0; }
+
+/* Keep native checkout recovery within the dashboard content and touch-accessible. */
+#paymongo-return-status {
+  padding: 20px;
+  margin-bottom: 24px;
+  background: var(--color-white, #fffdf9);
+  border: 1px solid #cdbca5;
+  border-radius: 12px;
+  color: var(--color-text-dark, #2a2522);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+#paymongo-return-status p {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 70ch;
+  line-height: 1.6;
+}
+#paymongo-return-status button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #75654f;
+  border-radius: 6px;
+  color: #2a2522;
+  background: #fffdf9;
+  font: inherit;
+  cursor: pointer;
+}
+#paymongo-return-status button:focus-visible {
+  outline: 2px solid #2a2522;
+  outline-offset: 3px;
+}
+#paymongo-return-status button:disabled { opacity: .65; cursor: wait; }
+#paymongo-return-status button[hidden] { display: none; }
+@media (max-width: 480px) {
+  #paymongo-return-status button { flex: 1 1 100%; }
 }

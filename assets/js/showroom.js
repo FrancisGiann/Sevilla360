@@ -153,6 +153,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const valCategory = document.getElementById("val-category");
   const valCapacity = document.getElementById("val-capacity");
   const valBeds = document.getElementById("val-beds");
+  const valBedsRow = document.getElementById("val-beds-row");
+  const infoModalBedsRow = document.getElementById("info-modal-beds-row");
   const valStatus = document.getElementById("val-status");
   const valRate = document.getElementById("val-rate");
   const hotelVariantWrapper = document.getElementById('showroom-hotel-variant');
@@ -775,6 +777,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("info-modal-title").textContent = room.title;
       document.getElementById("info-modal-desc").textContent = room.description;
       document.getElementById("info-modal-cap").textContent = room.capacity;
+      updateBedsVisibility(room);
       document.getElementById("info-modal-beds").textContent = room.beds || 'Not applicable';
       document.getElementById("info-modal-rate").textContent = room.rate;
       setReviewsLoading();
@@ -947,6 +950,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return item;
   }
 
+  function updateBedsVisibility(room) {
+    const isHotelRoom = room?.category === 'Hotel Room';
+    if (valBedsRow) valBedsRow.hidden = !isHotelRoom;
+    if (infoModalBedsRow) infoModalBedsRow.hidden = !isHotelRoom;
+  }
+
   function updateHotelVariantDetails(room) {
     if (!room || room.category !== 'Hotel Room') return;
     const variant = activeHotelVariant;
@@ -1039,6 +1048,7 @@ document.addEventListener("DOMContentLoaded", () => {
     valTitle.textContent = room.title;
     valCategory.textContent = room.category;
     valCapacity.textContent = room.capacity || 'N/A';
+    updateBedsVisibility(room);
     if (valBeds) valBeds.textContent = room.beds || 'Not applicable';
     valStatus.textContent = room.status;
     valRate.textContent = room.rate;
