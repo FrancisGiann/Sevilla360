@@ -200,7 +200,7 @@ function get_cms_image($slot_name, $default_url, $cms_images) {
                         </div>
                     </div>
                         <?php require_once __DIR__ . '/includes/contact_verification.php'; if (phone_signup_enabled()): ?>
-                        <div class="form-group"><label for="reg-phone">PHILIPPINE MOBILE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" inputmode="tel" aria-describedby="reg-phone-help" placeholder="0917 123 4567" required><small id="reg-phone-help">Use digits with optional +, spaces, parentheses, dots, or hyphens.</small></div>
+                        <div class="form-group"><label for="reg-phone">PHONE NUMBER</label><input type="tel" id="reg-phone" name="phone" class="form-control" autocomplete="tel" inputmode="tel" aria-describedby="reg-phone-help" placeholder="0917 123 4567" required><small id="reg-phone-help">Use digits with optional +, spaces, parentheses, dots, or hyphens.</small></div>
                         <?php endif; ?>
                     <div class="terms-checkbox-group">
                         <input type="checkbox" id="agree-checkbox" name="consent" value="1" aria-describedby="registration-consent-status" required disabled>
