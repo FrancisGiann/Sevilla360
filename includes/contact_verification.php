@@ -5,9 +5,12 @@ require_once __DIR__ . '/request_context.php';
 
 function phone_signup_enabled(): bool { return ($_ENV['PHONE_SIGNUP_ENABLED'] ?? '0') === '1'; }
 function sms_ready(): bool {
+    $sender = (string)($_ENV['UNISMS_SENDER_ID'] ?? '');
     return phone_signup_enabled() && ($_ENV['UNISMS_SMS_ENABLED'] ?? '0') === '1'
         && (int)($_ENV['UNISMS_DAILY_SMS_LIMIT'] ?? 0) > 0
-        && (string)($_ENV['UNISMS_SECRET_KEY'] ?? '') !== '';
+        && (string)($_ENV['UNISMS_SECRET_KEY'] ?? '') !== ''
+        && strlen((string)($_ENV['APP_KEY'] ?? '')) >= 32
+        && preg_match('/\A[A-Za-z0-9 ]{2,20}\z/D', $sender) === 1;
 }
 function contact_reset_destination(array $user): ?string {
     if ((int)($user['phone_signup_required'] ?? 0) !== 1) return (string)($user['email'] ?? '');

@@ -101,6 +101,9 @@ $nav = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?php echo htmlspecialchars($_SESSION['csrf_token'] ?? ''); ?>">
+    <?php if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP): ?>
+    <meta name="sevilla-paymongo-local" content="enabled">
+    <?php endif; ?>
     <title><?php echo htmlspecialchars($page_title); ?></title>
     <?php if ($seo_description !== ''): ?>
     <meta name="description" content="<?php echo htmlspecialchars($seo_description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>">
@@ -408,3 +411,4 @@ $nav = [
         }
     })();
     </script>
+    <?php require_once __DIR__ . '/session_watch_script.php'; ?>

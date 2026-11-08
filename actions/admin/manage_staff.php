@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/request_context.php';
 require_once __DIR__ . '/../../includes/password_policy.php';
 require_once __DIR__ . '/../../includes/rate_limit.php';
+require_once __DIR__ . '/../../includes/staff_invitation.php';
 
 final class StaffManagementException extends RuntimeException
 {
@@ -110,7 +111,7 @@ function staff_management_validate_profile(array $data): array
 
     return [
         'name' => $name,
-        'email' => $email,
+        'email' => strtolower($email),
         // User Management can create staff accounts only; administrator
         // accounts are provisioned outside this endpoint.
         'role' => 'staff',
@@ -126,7 +127,7 @@ function staff_management_find_target(mysqli $conn, int $userId, bool $forUpdate
 {
     // Every lifecycle/promotion target must still be Staff. This excludes all
     // Admins, including the only active Admin; directory visibility grants no access.
-    $sql = "SELECT u.email, u.role, s.full_name, s.status
+    $sql = "SELECT u.email, u.role, u.is_verified, s.full_name, s.status
             FROM users u
             INNER JOIN staff s ON s.user_id = u.id
             WHERE u.id = ? AND u.role = 'staff'
@@ -191,7 +192,7 @@ if ($action === 'delete') {
 if ($action === 'edit') {
     staff_management_error(422, 'Staff profiles are read-only in User Management. Staff may update their own name, phone, and password from Settings.');
 }
-if (!in_array($action, ['add', 'archive', 'restore', 'promote'], true)) {
+if (!in_array($action, ['add', 'archive', 'restore', 'promote', 'resend_invite'], true)) {
     staff_management_error(422, 'Invalid staff action.');
 }
 if ($action !== 'add') {
@@ -203,6 +204,9 @@ if ($action !== 'add') {
     if ($directoryTargetId === (int)($_SESSION['user_id'] ?? 0)) {
         staff_management_error(409, 'Your current account cannot be changed from this directory. Use Settings to edit your profile.');
     }
+}
+if ($action === 'add' && array_key_exists('password', $data)) {
+    staff_management_error(422, 'Staff members set their own password from the invitation email.');
 }
 if ($action === 'add' && array_key_exists('role', $data)) {
     $requestedRole = $data['role'];
@@ -225,21 +229,22 @@ if ($action === 'promote') {
     }
 }
 
+if (in_array($action, ['add', 'resend_invite'], true)
+    && !check_rate_limit($conn, 'staff_invitation_send', 5, 15)) {
+    staff_management_error(429, 'Too many staff invitation emails have been requested. Please try again in 15 minutes.');
+}
+
 $transactionStarted = false;
+$inviteEmail = null;
+$inviteName = null;
+$inviteToken = null;
+$inviteUserId = 0;
 try {
     $conn->begin_transaction();
     $transactionStarted = true;
 
     if ($action === 'add') {
         $profile = staff_management_validate_profile($data);
-        $passwordValue = $data['password'] ?? '';
-        if ($passwordValue === null) $password = '';
-        elseif (is_string($passwordValue)) $password = $passwordValue;
-        else throw new StaffManagementException('Invalid staff account data.');
-        if ($action === 'add' || $password !== '') {
-            $passwordPolicy = password_policy_validate($password);
-            if (!$passwordPolicy['valid']) throw new StaffManagementException($passwordPolicy['message']);
-        }
 
         $duplicateStatement = staff_management_prepare($conn, 'SELECT id FROM users WHERE email = ? LIMIT 1');
         $duplicateStatement->bind_param('s', $profile['email']);
@@ -249,20 +254,60 @@ try {
         }
         $duplicateStatement->close();
 
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $userStatement = staff_management_prepare($conn, 'INSERT INTO users (email, password_hash, role, is_verified, status) VALUES (?, ?, \'staff\', 1, \'active\')');
-        $userStatement->bind_param('ss', $profile['email'], $hash);
+        // This random verifier is never disclosed. Both account status fields
+        // remain inactive and email verification stays false until invite setup.
+        $unusablePasswordHash = password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT);
+        if (!is_string($unusablePasswordHash)) throw new RuntimeException('Unable to prepare the staff account credential.');
+        $userStatement = staff_management_prepare($conn, 'INSERT INTO users (email, password_hash, role, is_verified) VALUES (?, ?, \'staff\', 0)');
+        $userStatement->bind_param('ss', $profile['email'], $unusablePasswordHash);
         if (!$userStatement->execute()) throw new RuntimeException('Unable to create the staff login.');
         $newUserId = $conn->insert_id;
         $userStatement->close();
 
-        $staffStatement = staff_management_prepare($conn, 'INSERT INTO staff (user_id, full_name, phone, address, department, job_title, hire_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, \'active\')');
+        $staffStatement = staff_management_prepare($conn, 'INSERT INTO staff (user_id, full_name, phone, address, department, job_title, hire_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, \'inactive\')');
         $staffStatement->bind_param('issssss', $newUserId, $profile['name'], $profile['phone'], $profile['address'], $profile['department'], $profile['job_title'], $profile['hire_date']);
         if (!$staffStatement->execute()) throw new RuntimeException('Unable to create the staff profile.');
         $staffStatement->close();
 
-        staff_management_audit($conn, "Created staff account {$profile['email']}");
-        $message = 'Staff account added successfully.';
+        [$inviteToken, $inviteTokenHash] = staff_invitation_new_token();
+        $inviteStatement = staff_management_prepare($conn, 'INSERT INTO staff_invitations (user_id, purpose, token_hash, expires_at, last_sent_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW())');
+        $invitePurpose = STAFF_INVITATION_PURPOSE;
+        $inviteStatement->bind_param('iss', $newUserId, $invitePurpose, $inviteTokenHash);
+        if (!$inviteStatement->execute()) throw new RuntimeException('Unable to create the staff invitation.');
+        $inviteStatement->close();
+
+        staff_management_audit($conn, "Created staff account {$profile['email']} with pending invitation");
+        $inviteEmail = $profile['email'];
+        $inviteName = $profile['name'];
+        $inviteUserId = (int)$newUserId;
+        $message = 'Staff account created. The account remains inactive until the invitee sets a password.';
+    } elseif ($action === 'resend_invite') {
+        $userId = staff_management_user_id($data);
+        $inviteLookup = staff_management_prepare($conn, "SELECT u.email, s.full_name, i.id AS invitation_id
+                                                          FROM users u
+                                                          INNER JOIN staff s ON s.user_id = u.id
+                                                          INNER JOIN staff_invitations i ON i.user_id = u.id AND i.purpose = 'staff_setup'
+                                                          WHERE u.id = ? AND u.role = 'staff' AND u.is_verified = 0
+                                                            AND s.status = 'inactive'
+                                                            AND i.consumed_at IS NULL
+                                                          LIMIT 1 FOR UPDATE");
+        $inviteLookup->bind_param('i', $userId);
+        if (!$inviteLookup->execute()) throw new RuntimeException('Unable to load the pending staff invitation.');
+        $pendingInvite = $inviteLookup->get_result()->fetch_assoc();
+        $inviteLookup->close();
+        if (!$pendingInvite) throw new StaffManagementException('That staff account has no pending invitation.', 409);
+
+        [$inviteToken, $inviteTokenHash] = staff_invitation_new_token();
+        $inviteId = (int)$pendingInvite['invitation_id'];
+        $replaceInvite = staff_management_prepare($conn, 'UPDATE staff_invitations SET token_hash = ?, expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR), consumed_at = NULL, last_sent_at = NOW() WHERE id = ? AND consumed_at IS NULL');
+        $replaceInvite->bind_param('si', $inviteTokenHash, $inviteId);
+        if (!$replaceInvite->execute() || $replaceInvite->affected_rows !== 1) throw new StaffManagementException('That invitation has already been completed or changed.', 409);
+        $replaceInvite->close();
+        staff_management_audit($conn, "Renewed staff invitation for {$pendingInvite['email']} (target user ID {$userId})");
+        $inviteEmail = (string)$pendingInvite['email'];
+        $inviteName = (string)$pendingInvite['full_name'];
+        $inviteUserId = $userId;
+        $message = 'A new staff invitation was generated. The account remains inactive until setup is complete.';
     } elseif ($action === 'promote') {
         $userId = staff_management_user_id($data);
         $target = staff_management_find_target($conn, $userId);
@@ -295,6 +340,9 @@ try {
             $message = 'Staff account archived. Sign-in access is disabled and records are retained.';
         } else {
             if ($target['status'] === 'active') throw new StaffManagementException('That staff account is already active.', 409);
+            if ((int)($target['is_verified'] ?? 0) !== 1) {
+                throw new StaffManagementException('An unverified staff account can only be activated by completing its invitation.', 409);
+            }
             $staffStatement = staff_management_prepare($conn, "UPDATE staff SET status = 'active', archived_at = NULL WHERE user_id = ? AND status = 'inactive'");
             $staffStatement->bind_param('i', $userId);
             if (!$staffStatement->execute() || $staffStatement->affected_rows !== 1) throw new RuntimeException('Unable to restore the staff account.');
@@ -305,12 +353,34 @@ try {
     }
 
     $conn->commit();
-    echo json_encode(['success' => true, 'message' => $message], JSON_UNESCAPED_SLASHES);
+    $transactionStarted = false;
+    $deliverySucceeded = false;
+    $deliveryMessage = '';
+    if ($inviteEmail !== null && $inviteName !== null && $inviteToken !== null) {
+        try {
+            $inviteLink = staff_invitation_link($inviteToken);
+            if ($inviteLink === null) throw new RuntimeException('APP_BASE_URL is missing or invalid.');
+            staff_invitation_send_email($inviteEmail, $inviteName, $inviteLink);
+            $deliverySucceeded = true;
+            $deliveryMessage = ' Invitation email sent.';
+            try { staff_management_audit($conn, "Sent staff invitation to {$inviteEmail} (target user ID {$inviteUserId})"); }
+            catch (Throwable $auditError) { error_log('Staff invitation delivery audit failed: ' . get_class($auditError)); }
+        } catch (Throwable $mailError) {
+            error_log('Staff invitation email delivery failed: ' . get_class($mailError));
+            $deliveryMessage = ' The account is safely blocked, but the email could not be sent. Check mail configuration and use Resend invite.';
+            try { staff_management_audit($conn, "Staff invitation email delivery failed for {$inviteEmail} (target user ID {$inviteUserId})"); }
+            catch (Throwable $auditError) { error_log('Staff invitation failure audit failed: ' . get_class($auditError)); }
+        }
+    }
+    echo json_encode(['success' => true, 'message' => $message . $deliveryMessage, 'delivery_success' => $deliverySucceeded], JSON_UNESCAPED_SLASHES);
 } catch (StaffManagementException $e) {
     if ($transactionStarted) $conn->rollback();
     staff_management_error($e->statusCode(), $e->getMessage());
 } catch (Throwable $e) {
     if ($transactionStarted) $conn->rollback();
+    if ($e instanceof mysqli_sql_exception && (int)$e->getCode() === 1062) {
+        staff_management_error(409, 'That work email address is already in use.');
+    }
     error_log('Staff management action failed: ' . get_class($e) . ': ' . $e->getMessage());
     staff_management_error(500, 'The staff account could not be saved. Please try again.');
 }

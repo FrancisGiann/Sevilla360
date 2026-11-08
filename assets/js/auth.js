@@ -428,7 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
       }
       setRegistrationTermsMessage(agreeCheckbox.checked
-          ? 'Terms of Service accepted.'
+          ? ''
           : 'Select the consent checkbox to continue.');
   });
   const openForgotPassword = (event) => {
@@ -451,7 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
           agreeCheckbox.disabled = false;
           agreeCheckbox.checked = true;
           agreeCheckbox.focus();
-          setRegistrationTermsMessage('Terms of Service accepted.');
+          setRegistrationTermsMessage('');
         }
       });
   }

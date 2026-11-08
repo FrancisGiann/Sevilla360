@@ -72,9 +72,14 @@ try {
     }
     $back($e instanceof RuntimeException?$e->getMessage():'Could not create the account. Check your details and try again.');
 }
-session_policy_rotate_id();
+if (!session_regenerate_id(true)) {
+    error_log('Signup session rotation failed.');
+    $back('Account saved, but verification could not continue. Please sign in to request another code.');
+}
 $_SESSION['pending_phone_user_id']=$id;
-if (!contact_send_sms($conn,$id,$phone,'signup_phone')) $back('Account saved, but the code could not be sent. Check the number, use another eligible number if SMS is unsupported, or contact support. Sign in to request another code.',$email);
+try { $smsSent=contact_send_sms($conn,$id,$phone,'signup_phone'); }
+catch(Throwable $e) { error_log('Signup SMS setup failed: '.get_class($e)); $smsSent=false; }
+if (!$smsSent) $back('Account saved, but the code could not be sent. Check the number, use another eligible number if SMS is unsupported, or contact support. Sign in to request another code.',$email);
 // Code entry is the next screen; delivery acceptance needs no blocking alert.
 unset($_SESSION['auth_alert']);
 $url = '../../auth.php?verify_email=' . rawurlencode($email);

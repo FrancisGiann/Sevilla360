@@ -12,9 +12,12 @@ $current_user_id = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT,
 $staff_list = [];
 if ($current_user_id !== false) {
     $staff_query = $conn->prepare("SELECT u.id AS user_id, COALESCE(NULLIF(s.full_name, ''), u.email) AS full_name, s.phone, s.address, s.department, s.job_title,
-                                    s.hire_date, s.status, s.archived_at, u.email, u.role
+                                    s.hire_date, s.status, s.archived_at, u.email, u.role, u.is_verified,
+                                    i.expires_at AS invitation_expires_at, (i.expires_at <= NOW()) AS invitation_expired,
+                                    i.consumed_at AS invitation_consumed_at
                              FROM users u
                              LEFT JOIN staff s ON s.user_id = u.id
+                             LEFT JOIN staff_invitations i ON i.user_id = u.id AND i.purpose = 'staff_setup'
                              WHERE u.role IN ('admin', 'staff')
                                AND u.id <> ?
                              ORDER BY (s.status = 'active') DESC, full_name ASC");
@@ -65,6 +68,7 @@ $today = date('Y-m-d');
         <div class="staff-filter-controls" id="staffFilterControls" role="group" aria-label="Admin and staff account status">
             <span class="staff-filter-label">Account access</span>
             <button type="button" class="staff-filter-btn active" data-staff-filter="active" aria-pressed="true">Active</button>
+            <button type="button" class="staff-filter-btn" data-staff-filter="pending" aria-pressed="false">Invited</button>
             <button type="button" class="staff-filter-btn" data-staff-filter="archived" aria-pressed="false">Archived</button>
             <button type="button" class="staff-filter-btn" data-staff-filter="all" aria-pressed="false">All</button>
         </div>
@@ -88,9 +92,13 @@ $today = date('Y-m-d');
                     $staff_id = (int)$s['user_id'];
                     $is_admin_account = $s['role'] === 'admin';
                     $role_label = $is_admin_account ? 'Admin' : 'Staff';
-                    $staff_status = (($s['status'] ?? '') === 'active') ? 'active' : (($s['status'] ?? '') === 'inactive' ? 'archived' : 'unknown');
-                    $status_label = $staff_status === 'active' ? 'Active' : ($staff_status === 'archived' ? 'Archived' : 'Unavailable');
-                    $status_class = $staff_status === 'active' ? 'status-active' : 'status-archived';
+                    $invite_pending = !$is_admin_account && (int)($s['is_verified'] ?? 0) === 0
+                        && ($s['status'] ?? '') === 'inactive' && ($s['invitation_consumed_at'] ?? null) === null
+                        && !empty($s['invitation_expires_at']);
+                    $invite_expired = $invite_pending && (int)($s['invitation_expired'] ?? 0) === 1;
+                    $staff_status = $invite_pending ? 'pending' : ((($s['status'] ?? '') === 'active') ? 'active' : (($s['status'] ?? '') === 'inactive' ? 'archived' : 'unknown'));
+                    $status_label = $invite_pending ? ($invite_expired ? 'Invitation expired' : 'Invitation pending') : ($staff_status === 'active' ? 'Active' : ($staff_status === 'archived' ? 'Archived' : 'Unavailable'));
+                    $status_class = $invite_pending ? 'status-pending' : ($staff_status === 'active' ? 'status-active' : 'status-archived');
                     $position_title = trim((string)($s['job_title'] ?? ''));
                     $department = trim((string)($s['department'] ?? ''));
                     $full_name = trim((string)($s['full_name'] ?? ''));
@@ -131,6 +139,8 @@ $today = date('Y-m-d');
                             data-role="<?= $e($s['role']) ?>">View details</button>
                         <?php if ($is_admin_account): ?>
                             <span class="um-secondary-text">Read-only access</span>
+                        <?php elseif ($staff_status === 'pending'): ?>
+                            <button type="button" class="action-restore btn-staff-invite-resend" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>">Resend invite</button>
                         <?php elseif ($staff_status === 'active'): ?>
                             <button type="button" class="action-archive btn-staff-lifecycle" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="archive">Archive</button>
                             <button type="button" class="action-promote btn-staff-promote" data-id="<?= $e($staff_id) ?>" data-name="<?= $e($full_name) ?>" data-action="promote" aria-haspopup="dialog" aria-controls="promoteStaffModal">Promote to admin</button>
@@ -224,7 +234,7 @@ $today = date('Y-m-d');
 <div class="um-modal-overlay" id="staffModal" aria-hidden="true">
     <div class="um-modal-content um-staff-modal-content" role="dialog" aria-modal="true" aria-labelledby="staffModalTitle" aria-describedby="staffModalDescription">
         <h3 class="um-modal-title" id="staffModalTitle">Staff Details</h3>
-        <p class="um-modal-description" id="staffModalDescription">Create a staff login or review a staff member’s immutable work profile.</p>
+        <p class="um-modal-description" id="staffModalDescription">Create a staff profile and email a single-use setup link, or review an existing staff profile.</p>
         <dl class="um-form-grid um-staff-details" id="staffDetails" hidden>
             <div class="um-form-group um-staff-detail">
                 <dt>Staff ID</dt>
@@ -322,18 +332,13 @@ $today = date('Y-m-d');
                 </div>
                 <div class="um-form-group">
                     <label for="staff_status">Status</label>
-                    <input type="text" id="staff_status" value="Active after creation" readonly>
-                </div>
-                <div class="um-form-group um-password-group">
-                    <label for="staff_password">Password</label>
-                    <input data-password-field type="password" id="staff_password" name="password" autocomplete="new-password" aria-describedby="staff-password-help" placeholder="Enter a password">
-                    <small class="field-help" id="staff-password-help">Use 8–72 characters with a capital letter, lowercase letter, number, and symbol.</small>
+                    <input type="text" id="staff_status" value="Inactive until invitee sets a password" readonly>
                 </div>
             </div>
             <div class="um-form-error" id="staffFormError" role="alert" hidden></div>
             <div class="um-modal-actions">
                 <button type="button" class="btn btn-outline close-staff-modal">Cancel</button>
-                <button type="submit" class="btn btn-primary" id="btnSaveStaff">Create Staff Account</button>
+                <button type="submit" class="btn btn-primary" id="btnSaveStaff">Create &amp; Send Invite</button>
             </div>
         </form>
     </div>

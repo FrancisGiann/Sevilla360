@@ -522,6 +522,11 @@
   color: #397149;
 }
 
+.status-pending {
+  background: rgba(214, 168, 112, .2);
+  color: #765221;
+}
+
 .status-archived {
   background: rgba(42, 37, 34, .09);
   color: var(--color-dark-light);

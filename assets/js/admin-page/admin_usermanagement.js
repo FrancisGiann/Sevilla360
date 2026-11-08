@@ -24,7 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const staffDetailsActions = document.getElementById("staffDetailsActions");
     const formError = document.getElementById("staffFormError");
     const saveButton = document.getElementById("btnSaveStaff");
-    const passwordInput = document.getElementById("staff_password");
     const historyBody = document.getElementById("historyTbody");
     const today = document.getElementById("staff_hire_date")?.getAttribute("max") || "";
     let activeTab = "staffTable";
@@ -260,7 +259,6 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("staffModalDescription").textContent = edit
             ? (isAdminDetails ? "Administrator details are read-only here. Administrator access cannot be changed from this directory." : "Staff details are read-only here. Staff can change only their own name, phone, and password from Settings.")
             : "Create an active staff login. Administrator accounts cannot be created from User Management.";
-        if (passwordInput) passwordInput.value = "";
         openModal(staffModal, trigger);
         window.setTimeout(() => (edit ? staffDetailsActions?.querySelector(".close-staff-modal") : document.getElementById("staff_name"))?.focus(), 0);
     }
@@ -290,10 +288,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (address.length > 255) return "Residential address must be 255 characters or fewer.";
         if (department.length > 100 || jobTitle.length > 100) return "Department and job title must be 100 characters or fewer.";
         if (!validHireDate(hireDate)) return "Hire date must be a valid date that is not in the future.";
-        if (passwordInput.value !== "" && window.SevillaPasswordPolicy?.validate) {
-            const passwordPolicy = window.SevillaPasswordPolicy.validate(passwordInput.value);
-            if (!passwordPolicy.valid) return passwordPolicy.message || "Password does not meet the required policy.";
-        }
         return "";
     }
 
@@ -331,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         staffSubmitting = true;
         saveButton.disabled = true;
-        saveButton.textContent = "Saving…";
+        saveButton.textContent = "Creating invite…";
         const payload = {
             action: "add",
             name: document.getElementById("staff_name").value.trim(),
@@ -341,12 +335,11 @@ document.addEventListener("DOMContentLoaded", () => {
             department: document.getElementById("staff_department").value.trim(),
             job_title: document.getElementById("staff_job_title").value.trim(),
             hire_date: document.getElementById("staff_hire_date").value,
-            role: document.getElementById("staff_role").value,
-            password: passwordInput.value
+            role: document.getElementById("staff_role").value
         };
         try {
             const data = await requestJson("actions/admin/manage_staff.php", payload);
-            notify("Staff account saved", data.message, "success");
+            notify(data.delivery_success ? "Staff invitation sent" : "Staff account created", data.message, data.delivery_success ? "success" : "warning");
             window.location.reload();
         } catch (error) {
             showFormError(error.message || "The staff account could not be saved.");
@@ -354,8 +347,27 @@ document.addEventListener("DOMContentLoaded", () => {
         } finally {
             staffSubmitting = false;
             saveButton.disabled = false;
-            saveButton.textContent = "Save Account";
+            saveButton.textContent = "Create & Send Invite";
         }
+    });
+
+    async function resendStaffInvite(button) {
+        if (button.disabled) return;
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "Sending…";
+        try {
+            const data = await requestJson("actions/admin/manage_staff.php", { action: "resend_invite", user_id: button.dataset.id });
+            notify(data.delivery_success ? "Staff invitation sent" : "Invitation remains pending", data.message, data.delivery_success ? "success" : "warning");
+            window.location.reload();
+        } catch (error) {
+            notify("Unable to send invitation", error.message || "Please try again.", "error");
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+    document.querySelectorAll(".btn-staff-invite-resend").forEach((button) => {
+        button.addEventListener("click", () => resendStaffInvite(button));
     });
 
     async function handleStaffLifecycle(button) {
