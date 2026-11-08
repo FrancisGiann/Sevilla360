@@ -1,6 +1,7 @@
 <?php
 // Start the session so we can remember the user after they log in
 require_once __DIR__ . '/../../includes/session_init.php';
+require_once __DIR__ . '/../../includes/session_auth.php';
 
 // Connect to the database
 require '../../config/db_connect.php';
@@ -65,7 +66,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // portal. Staff availability lives in `staff.status`; customer suspension
     // lives in `users.status`.
     $stmt = $conn->prepare("
-        SELECT u.id, u.password_hash, u.role, u.is_verified, u.phone_signup_required, u.auth_version, u.status AS user_status,
+        SELECT u.id, u.password_hash, u.role, u.is_verified, u.phone_signup_required, u.status AS user_status,
                s.status AS staff_status
         FROM users u
         LEFT JOIN staff s ON s.user_id = u.id
@@ -131,7 +132,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // SECURITY FIX: SESSION FIXATION PREVENTION
             // Destroy the old, unauthenticated session ID and issue a brand new one
             // =========================================================================
-            session_regenerate_id(true);
+            try {
+                if (!session_regenerate_id(true)) throw new RuntimeException('Unable to rotate session ID.');
+                $auth_version = session_auth_issue_version($conn, (int)$user['id'], (string)$user['role']);
+            } catch (Throwable $session_error) {
+                error_log('Login session issuance failed: ' . get_class($session_error));
+                $_SESSION['auth_alert'] = ['title' => 'Error', 'message' => 'Sign in could not be completed. Please try again.', 'type' => 'error'];
+                header("Location: ../../auth.php");
+                exit();
+            }
             unset($_SESSION['recovery_user_id'], $_SESSION['recovery_auth_version'], $_SESSION['recovery_expires_at'], $_SESSION['reset_user_id'], $_SESSION['reset_origin']);
             
             // Clear rate limits on successful login
@@ -141,7 +150,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['role'] = $user['role'];
             $_SESSION['logged_in'] = true;
-            $_SESSION['auth_version'] = (int)$user['auth_version'];
+            $_SESSION['auth_version'] = $auth_version;
             session_policy_mark_authenticated();
 
             $display_name = 'Account'; 

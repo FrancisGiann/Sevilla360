@@ -232,7 +232,111 @@ function paymongo_refund_mark_resource(mysqli $conn,string $attemptId,array $res
         paymongo_refund_mark_attempt($conn,$attemptId,'review',null,'invalid_provider_resource');
         return;
     }
-    paymongo_refund_mark_attempt($conn,$attemptId,$status,$refundId,null,$updatedAt);
+    paymongo_refund_mark_attempt($conn,$attemptId,$status,$refundId,$status==='failed'?'provider_refund_failed':null,$updatedAt);
+}
+
+function paymongo_refund_failure_diagnostic(?string $errorCode): array {
+    $providerCodes=[
+        'provider_rejected','provider_refund_failed','payment_not_found','refund_amount_exceeds_payment','payment_not_refundable',
+        'insufficient_balance','insufficient_payout_balance','insufficient_available_balance',
+        'payout_balance_insufficient','balance_insufficient','insufficient_funds',
+        'provider_processing_error','resource_processing_state','resource_processing_error',
+        'refund_not_allowed','parameter_invalid','resource_not_found','livemode_mismatched',
+        'resource_failed_state','resource_disputed_state','resource_pending_state',
+        'allowed_date_exceeded','available_balance_insufficient','parameter_above_maximum','parameter_above_maximum_full_only',
+        'payment_method_not_allowed','same_day_partial_refund_not_allowed','maya_same_day_partial_refund_window','provider_full_refund_only',
+    ];
+    $fields=['payment_id','amount','reason','notes'];
+    $code=is_string($errorCode)?strtolower(trim($errorCode)):'';
+    $status=null; $providerCode=null; $field=null;
+    if (preg_match('/\Ahttp_([45][0-9]{2})_(.+)\z/D',$code,$match)) {
+        $diagnostic=$match[2];
+        foreach ($fields as $allowedField) {
+            $suffix='_field_'.$allowedField;
+            if (str_ends_with($diagnostic,$suffix)) {
+                $field=$allowedField;
+                $diagnostic=substr($diagnostic,0,-strlen($suffix));
+                break;
+            }
+        }
+        if (in_array($diagnostic,$providerCodes,true)) {
+            $status=(int)$match[1]; $providerCode=$diagnostic;
+        } else {
+            $field=null;
+        }
+    } elseif (in_array($code,$providerCodes,true)) {
+        // Older attempts stored the provider code directly before HTTP status
+        // and field diagnostics were added.
+        $providerCode=$code;
+    }
+    return ['status'=>$status,'provider_code'=>$providerCode,'field'=>$field];
+}
+
+function paymongo_refund_failure_code_is_specific(?string $errorCode): bool {
+    $diagnostic=paymongo_refund_failure_diagnostic($errorCode);
+    return is_string($diagnostic['provider_code']??null)
+        && !in_array($diagnostic['provider_code'],['provider_rejected','provider_refund_failed','same_day_partial_refund_not_allowed'],true);
+}
+
+/** Return staff guidance for a failed provider attempt without exposing raw API response data. */
+function paymongo_refund_failure_explanation(?string $errorCode): string {
+    $diagnostic=paymongo_refund_failure_diagnostic($errorCode);
+    $status=$diagnostic['status'];
+    $providerCode=is_string($diagnostic['provider_code']??null)?$diagnostic['provider_code']:'';
+    $field=$diagnostic['field'];
+    $message=match ($providerCode) {
+        'payment_not_found','resource_not_found' => 'PayMongo could not find the original payment. Verify the payment belongs to the configured PayMongo account and mode before retrying; contact PayMongo support if it still cannot be found.',
+        'livemode_mismatched' => 'The PayMongo payment mode does not match the configured API key. Check the account mode and payment before retrying.',
+        'refund_amount_exceeds_payment','parameter_above_maximum','same_day_partial_refund_not_allowed' => 'PayMongo says this amount is above the remaining refundable amount. Reconcile the payment’s refunds in PayMongo, then have staff review the amount before retrying.',
+        'provider_full_refund_only','parameter_above_maximum_full_only' => 'PayMongo indicates that only a full refund is currently allowed for this request. For a Maya payment made today, retry the same approved partial amount after 12:00 AM Philippine time the next day. Keep the approved amount unchanged and do not submit a full refund.',
+        'payment_not_refundable','resource_failed_state','resource_pending_state','resource_disputed_state' => 'PayMongo says the original payment is not in a refundable state. Check its status in PayMongo before retrying.',
+        'resource_processing_state' => 'PayMongo reports that a refund for this payment is already processing. Reconcile that refund before retrying.',
+        'allowed_date_exceeded' => 'PayMongo no longer allows refunds for this payment because its refund window has passed. Contact PayMongo support for the available next step.',
+        'insufficient_balance','insufficient_payout_balance','insufficient_available_balance','payout_balance_insufficient','balance_insufficient','insufficient_funds','available_balance_insufficient' => 'PayMongo did not have enough available payout balance to process the refund. Check the PayMongo dashboard balance and payout status, then retry the failed allocation when the provider permits it.',
+        'refund_not_allowed','payment_method_not_allowed' => 'PayMongo does not allow an API refund for this payment method. Check the payment in PayMongo and follow the provider’s supported refund process.',
+        'parameter_invalid' => 'PayMongo does not allow an API refund for this payment source. Check the payment method in PayMongo and contact support if the source should be refundable.',
+        'maya_same_day_partial_refund_window' => 'PayMongo rejected this same-day Maya partial refund. Retry the failed allocation after 12:00 AM Philippine time the day after the payment, keeping the approved refund amount unchanged. Do not submit a full refund.',
+        'provider_processing_error','resource_processing_error' => 'PayMongo could not process the refund. Check its status in the PayMongo dashboard and resolve the issue with PayMongo support before retrying.',
+        'provider_refund_failed' => 'PayMongo returned a failed refund status without a reason. Check the refund in the PayMongo dashboard and resolve the cause with PayMongo support before retrying the failed allocation.',
+        '' => 'PayMongo reported a failed refund, but its reason was not recorded. Check the refund in the PayMongo dashboard and resolve the cause with PayMongo support before retrying the failed allocation.',
+        default => 'PayMongo rejected the refund request. Review the original payment and refund in the PayMongo dashboard, and contact PayMongo support for the API rejection reason before retrying.',
+    };
+    if ($status===null) return $providerCode!=='' && !in_array($providerCode,['provider_rejected','same_day_partial_refund_not_allowed'],true)
+        ? $message.' (PayMongo code '.$providerCode.').' : $message;
+    $details=['HTTP '.$status];
+    if (!in_array($providerCode,['provider_rejected','same_day_partial_refund_not_allowed'],true)) $details[]='PayMongo code '.$providerCode;
+    if ($field!==null) $details[]='field '.$field;
+    return $message.' ('.implode('; ',$details).').';
+}
+
+/** Select one error per still-failed allocation, preferring a prior specific code to a newer generic one. */
+function paymongo_refund_failure_messages(mysqli $conn,string $snapshotId): array {
+    $stmt=$conn->prepare("SELECT al.id AS allocation_id,at.error_code FROM pm_refund_allocations al JOIN pm_refund_attempts at ON at.allocation_id=al.id WHERE BINARY al.snapshot_id=BINARY ? AND at.status='failed' AND NOT EXISTS (SELECT 1 FROM pm_refund_attempts blocked WHERE blocked.allocation_id=al.id AND blocked.status IN ('creating','uncertain','pending','processing','succeeded','review')) AND NOT EXISTS (SELECT 1 FROM pm_refund_attempts newer WHERE newer.allocation_id=al.id AND newer.status<>'failed' AND (newer.created_at>at.created_at OR (newer.created_at=at.created_at AND newer.id>at.id))) ORDER BY al.id,at.created_at DESC,at.id DESC");
+    if (!$stmt) throw new RuntimeException('Refund failure details could not be loaded.');
+    $stmt->bind_param('s',$snapshotId);
+    if (!$stmt->execute()) throw new RuntimeException('Refund failure details could not be loaded.');
+    $byAllocation=[];
+    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
+        $allocationId=(string)$row['allocation_id'];
+        $errorCode=is_string($row['error_code']??null)?$row['error_code']:null;
+        if (!isset($byAllocation[$allocationId])) {
+            $byAllocation[$allocationId]=['latest'=>$errorCode,'selected'=>$errorCode,'fallback'=>false];
+        } elseif (!$byAllocation[$allocationId]['fallback']
+            && !paymongo_refund_failure_code_is_specific($byAllocation[$allocationId]['latest'])
+            && paymongo_refund_failure_code_is_specific($errorCode)) {
+            $byAllocation[$allocationId]['selected']=$errorCode;
+            $byAllocation[$allocationId]['fallback']=true;
+        }
+    }
+    $messages=[];
+    foreach ($byAllocation as $failure) {
+        if ($failure['fallback']) {
+            $messages[]='An earlier failed attempt for this allocation recorded: '.paymongo_refund_failure_explanation($failure['selected']).' The newest attempt recorded only a generic rejection; the earlier reason is documented history, not a confirmed explanation for that latest rejection.';
+        } else {
+            $messages[]=paymongo_refund_failure_explanation($failure['selected']);
+        }
+    }
+    return array_values(array_unique($messages));
 }
 
 /** Claim each provider create once, then perform every PayMongo request after commit. */
@@ -399,6 +503,12 @@ function paymongo_refund_admin_process(mysqli $conn,int $bookingId,int $actorId,
         $summary=$conn->prepare("SELECT SUM(status='succeeded') AS succeeded,SUM(status IN ('pending','processing')) AS in_flight,SUM(status IN ('uncertain','creating','review')) AS unresolved,SUM(status='failed') AS failed FROM pm_refund_attempts at JOIN pm_refund_allocations al ON al.id=at.allocation_id WHERE al.snapshot_id=?");
         if (!$summary) throw new RuntimeException('Refund status could not be reconciled.');
         $summary->bind_param('s',$snapshotId); $summary->execute(); $counts=$summary->get_result()->fetch_assoc();
+        $failureMessage=null;
+        if ((int)($counts['failed']??0)>0) {
+            $failureMessages=paymongo_refund_failure_messages($conn,$snapshotId);
+            if (!$failureMessages) $failureMessages[]=paymongo_refund_failure_explanation(null);
+            $failureMessage=implode(' ',$failureMessages);
+        }
         $allocCountStmt=$conn->prepare("SELECT COUNT(*) AS total,SUM((SELECT COUNT(*) FROM pm_refund_attempts sa WHERE sa.allocation_id=al.id AND sa.status='succeeded')=1) AS exact_success,SUM((SELECT COUNT(*) FROM pm_refund_attempts da WHERE da.allocation_id=al.id AND da.status='succeeded')>1) AS duplicates FROM pm_refund_allocations al WHERE snapshot_id=? AND refund_cents>=100");
         if (!$allocCountStmt) throw new RuntimeException('Refund allocations could not be checked.');
         $allocCountStmt->bind_param('s',$snapshotId); $allocCountStmt->execute(); $allocCounts=$allocCountStmt->get_result()->fetch_assoc();
@@ -435,6 +545,6 @@ function paymongo_refund_admin_process(mysqli $conn,int $bookingId,int $actorId,
             $processed=true;
         }
         if (!$conn->commit()) throw new RuntimeException('Refund reconciliation could not be committed.');
-        return ['processed'=>$processed,'status'=>$providerStatus,'cancellation_id'=>$cancellationId,'refund_amount'=>(float)$current['refund_amount'],'fee_deducted'=>(float)$current['fee_deducted']];
+        return ['processed'=>$processed,'status'=>$providerStatus,'failure_message'=>$failureMessage,'cancellation_id'=>$cancellationId,'refund_amount'=>(float)$current['refund_amount'],'fee_deducted'=>(float)$current['fee_deducted']];
     } catch (Throwable $e) { try { $conn->rollback(); } catch (Throwable) {} throw $e; }
 }

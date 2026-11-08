@@ -36,6 +36,7 @@ function session_policy_is_passive_request(): bool
         '/actions/user/refresh_dashboard.php',
         '/actions/admin/get_dashboard_stats.php',
         '/actions/realtime/token.php',
+        '/actions/auth/session_check.php',
     ];
     foreach ($passive_routes as $route) {
         if ($request_path === $route || str_ends_with($request_path, $route)) return true;

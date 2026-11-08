@@ -33,6 +33,8 @@ if (($argv[1] ?? '') !== '--fixture') {
             || $result['message'] !== $expectedMessage || $result['limiter_calls'] !== $expectedCalls
             || $result['commits'] !== ($valid ? 1 : 0) || $result['mail_stub_calls'] !== ($valid ? 1 : 0)
             || $result['notification_stub_calls'] !== ($valid ? 1 : 0)
+            || $result['session_version_issues'] !== ($valid ? 1 : 0)
+            || $result['auth_version'] !== ($valid ? 1 : null)
             || $result['phone_dispatched'] !== ($case === 'phone-dispatch')
             || $result['csrf_rotated'] !== $valid || $result['session_rotated'] !== $valid
             || $result['marked_authenticated'] !== $valid) throw new RuntimeException("Unexpected {$case}: {$output}");
@@ -56,12 +58,14 @@ $_POST = ['email' => 'synthetic@example.invalid', 'csrf_token' => $case === 'inv
     'verification_code' => in_array($case, ['fifth-wrong', 'capped-wrong'], true) ? '000000' : '123456'];
 $state = ['attempts' => str_starts_with($case, 'capped-') ? 5 : (str_starts_with($case, 'fifth-') ? 4 : 0),
     'verified' => false, 'limiter_calls' => 0, 'reserved_ordinal' => null, 'commits' => 0,
-    'mail_stub_calls' => 0, 'notification_stub_calls' => 0, 'phone_dispatched' => false, 'marked_authenticated' => false];
+    'mail_stub_calls' => 0, 'notification_stub_calls' => 0, 'session_version_issues' => 0,
+    'phone_dispatched' => false, 'marked_authenticated' => false];
 function request_client_ip(): string { return '192.0.2.10'; }
 function create_user_notification(...$unused): bool { $GLOBALS['state']['notification_stub_calls']++; return true; }
 function send_welcome_email(...$unused): void { $GLOBALS['state']['mail_stub_calls']++; }
 function booking_auth_consume_destination(...$unused): ?string { return null; }
 function session_policy_mark_authenticated(): void { $GLOBALS['state']['marked_authenticated'] = true; }
+function session_auth_issue_version(...$unused): int { $GLOBALS['state']['session_version_issues']++; return 1; }
 function email_cap_phone_dispatch(): never { $GLOBALS['state']['phone_dispatched'] = true; exit; }
 class EmailCapResult {
     public int $num_rows;
@@ -109,6 +113,7 @@ $conn = new EmailCapConnection();
 register_shutdown_function(static function () use ($sessionDirectory, $originalSessionId): void {
     $result = $GLOBALS['state'] + ['authenticated' => $_SESSION['logged_in'] ?? false,
         'message' => $_SESSION['auth_alert']['message'] ?? null,
+        'auth_version' => $_SESSION['auth_version'] ?? null,
         'csrf_rotated' => ($_SESSION['csrf_token'] ?? '') !== 'synthetic-csrf',
         'session_rotated' => session_id() !== $originalSessionId];
     session_write_close();

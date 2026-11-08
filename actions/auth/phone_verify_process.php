@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/contact_verification.php';
+require_once __DIR__ . '/../../includes/session_auth.php';
 require_once __DIR__ . '/../../includes/customer_login_recovery.php';
 require_once __DIR__ . '/../../includes/booking_intent.php';
 $email=trim((string)($_POST['email']??''));
@@ -20,7 +21,7 @@ catch(Throwable $e) { error_log('Phone verification failed: '.get_class($e)); $b
 // contact_verify has committed the single-use OTP and phone/account transition.
 // Re-read the account before issuing the same session used by normal login.
 try {
-    $session_stmt = $conn->prepare("SELECT u.id, u.auth_version, c.first_name FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id=? AND u.role='customer' AND u.status='active' AND u.is_verified=1 AND u.phone_signup_required=1 LIMIT 1");
+    $session_stmt = $conn->prepare("SELECT u.id, c.first_name FROM users u LEFT JOIN customers c ON c.user_id=u.id WHERE u.id=? AND u.role='customer' AND u.status='active' AND u.is_verified=1 AND u.phone_signup_required=1 LIMIT 1");
     $session_stmt->bind_param('i', $user['id']);
     $session_stmt->execute();
     $authenticated_user = $session_stmt->get_result()->fetch_assoc();
@@ -30,13 +31,22 @@ try {
     $back('Your account could not be signed in. Please try signing in again.');
 }
 
-session_regenerate_id(true);
+try {
+    if (!session_regenerate_id(true)) throw new RuntimeException('Unable to rotate session ID.');
+    $auth_version = session_auth_issue_version($conn, (int)$authenticated_user['id'], 'customer');
+} catch (Throwable $session_error) {
+    error_log('Phone signup session issuance failed: ' . get_class($session_error));
+    unset($_SESSION['pending_phone_user_id']);
+    $_SESSION['auth_alert'] = ['title'=>'Error','message'=>'Your account is active, but sign in could not be completed. Please sign in again.','type'=>'error'];
+    header('Location: ../../auth.php');
+    exit;
+}
 unset($_SESSION['pending_phone_user_id'], $_SESSION['recovery_user_id'], $_SESSION['recovery_auth_version'], $_SESSION['recovery_expires_at'], $_SESSION['reset_user_id'], $_SESSION['reset_origin'], $_SESSION['auth_alert']);
 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $_SESSION['user_id'] = (int)$authenticated_user['id'];
 $_SESSION['role'] = 'customer';
 $_SESSION['logged_in'] = true;
-$_SESSION['auth_version'] = (int)$authenticated_user['auth_version'];
+$_SESSION['auth_version'] = $auth_version;
 $_SESSION['first_name'] = trim((string)($authenticated_user['first_name'] ?? '')) ?: 'Customer';
 session_policy_mark_authenticated();
 customer_login_recovery_clear();

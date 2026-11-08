@@ -3,27 +3,35 @@ declare(strict_types=1);
 if (PHP_SAPI!=='cli' || $argc!==2 || !str_starts_with($argv[1],'/tmp/sevilla360-phone-db/')) exit(2);
 $_ENV['APP_KEY']=str_repeat('synthetic-integration-key-',3);
 $_ENV['PHONE_SIGNUP_ENABLED']='0'; $_ENV['UNISMS_SMS_ENABLED']='0'; $_ENV['PASSWORD_SMS_RECOVERY_ENABLED']='0';
+require_once __DIR__.'/../config/env.php';
 require_once __DIR__.'/../includes/recovery_security.php';
 require_once __DIR__.'/../includes/session_account_guard.php';
+require_once __DIR__.'/../includes/session_auth.php';
 mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
-$db=new mysqli('localhost','root','',null,0,$argv[1]);
+$dbUser=(string)($_ENV['DB_USER']??'root'); $dbPassword=(string)($_ENV['DB_PASS']??'');
+$db=new mysqli('localhost',$dbUser,$dbPassword,null,0,$argv[1]);
 $name='dual_test_'.bin2hex(random_bytes(5)); $db->query("CREATE DATABASE `$name`"); $db->select_db($name);
 $count=0;
 $check=static function(bool $value,string $label) use (&$count): void { if (!$value) throw new RuntimeException($label); $count++; echo "PASS $label\n"; };
-$race=static function(string $operation,string $codeOrHash,array $grant=[]) use ($argv,$name): array {
+$race=static function(string $operation,string $codeOrHash,array $grant=[]) use ($argv,$name,$dbUser,$dbPassword): array {
     $paths=[]; $pids=[];
     for($i=0;$i<2;$i++) {
         $path='/tmp/sevilla360-dual-race-'.bin2hex(random_bytes(8)); $paths[]=$path;
         $pid=pcntl_fork();
         if($pid===0) {
-            $child=new mysqli('localhost','root','',$name,0,$argv[1]); usleep(100000);
+            $child=new mysqli('localhost',$dbUser,$dbPassword,$name,0,$argv[1]); usleep(100000);
             try {
-                $ok=$operation==='verify'
-                    ? recovery_consume_code($child,'new@example.test',$codeOrHash)!==null
-                    : ($operation==='budget'
-                        ? contact_allow($child,$codeOrHash,1,86400)
-                        : recovery_reset_password($child,$grant,$codeOrHash));
-                file_put_contents($path,$ok?'1':'0');
+                if ($operation==='session') {
+                    $result=session_auth_issue_version($child,1,'customer');
+                    file_put_contents($path,(string)$result);
+                } else {
+                    $ok=$operation==='verify'
+                        ? recovery_consume_code($child,'new@example.test',$codeOrHash)!==null
+                        : ($operation==='budget'
+                            ? contact_allow($child,$codeOrHash,1,86400)
+                            : recovery_reset_password($child,$grant,$codeOrHash));
+                    file_put_contents($path,$ok?'1':'0');
+                }
             } catch(Throwable $error) { file_put_contents($path,'error'); }
             exit(0);
         }
@@ -42,9 +50,9 @@ try {
         foreach(explode(';',$sql) as $part) if(trim($part)!=='') $db->query(trim($part));
     }
     $check((int)$db->query("SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$name' AND TABLE_NAME='users' AND COLUMN_NAME IN ('phone_signup_required','recovery_email','auth_version')")->fetch_assoc()['n']===3,'migrations 034 and 035 apply in order');
-    $db->query("INSERT INTO users VALUES (1,'new@example.test','old-hash','customer','active',1,NULL,NULL,NULL,1,NULL,NULL,NULL,0),(2,'legacy@example.test','legacy-hash','customer','active',1,NULL,NULL,NULL,0,NULL,NULL,NULL,0),(3,'staff@example.test','staff-hash','staff','active',1,NULL,NULL,NULL,0,NULL,NULL,NULL,0)");
+    $db->query("INSERT INTO users VALUES (1,'new@example.test','old-hash','customer','active',1,NULL,NULL,NULL,1,NULL,NULL,NULL,0),(2,'legacy@example.test','legacy-hash','customer','active',1,NULL,NULL,NULL,0,NULL,NULL,NULL,0),(3,'staff@example.test','staff-hash','staff','active',1,NULL,NULL,NULL,0,NULL,NULL,NULL,0),(4,'admin@example.test','admin-hash','admin','active',1,NULL,NULL,NULL,0,NULL,NULL,NULL,0)");
     $db->query("INSERT INTO customers(user_id,phone) VALUES(1,'+639171111111')");
-    $db->query("INSERT INTO staff(user_id,status) VALUES(3,'active')");
+    $db->query("INSERT INTO staff(user_id,status) VALUES(3,'active'),(4,'active')");
     $_SESSION=['logged_in'=>true,'user_id'=>2,'role'=>'customer'];
     $check(session_account_revalidation_state($db)==='active' && ($_SESSION['auth_version']??null)===0,'existing customer session adopts version zero');
     $_SESSION=['logged_in'=>true,'user_id'=>3,'role'=>'staff'];
@@ -73,12 +81,12 @@ try {
     $stmt=$db->prepare("INSERT INTO recovery_sms_challenges(user_id,phone_e164,code_hash,expires_at,provider_status) VALUES (1,'+639171111111',?,DATE_ADD(NOW(),INTERVAL 5 MINUTE),'pending')"); $stmt->bind_param('s',$hash); $stmt->execute();
     $db->close();
     $check($race('verify','123456')===['0','1'],'concurrent code submissions yield one grant');
-    $db=new mysqli('localhost','root','',$name,0,$argv[1]);
+    $db=new mysqli('localhost',$dbUser,$dbPassword,$name,0,$argv[1]);
     $grant=['recovery_user_id'=>1,'recovery_auth_version'=>0,'recovery_phone_e164'=>'+639171111111','recovery_expires_at'=>time()+600];
     $check(recovery_grant_valid($grant,$db->query('SELECT u.*,p.phone_e164,p.verified_at FROM users u JOIN customer_verified_phones p ON p.user_id=u.id WHERE u.id=1')->fetch_assoc()),'reset-only grant valid for verified phone');
     $db->close();
     $check($race('reset','new-hash',$grant)===['0','1'],'concurrent reset commits once');
-    $db=new mysqli('localhost','root','',$name,0,$argv[1]);
+    $db=new mysqli('localhost',$dbUser,$dbPassword,$name,0,$argv[1]);
     $row=$db->query('SELECT password_hash,auth_version FROM users WHERE id=1')->fetch_assoc();
     $check($row['password_hash']==='new-hash' && (int)$row['auth_version']===1,'reset updates password and revokes old sessions');
     $_SESSION=['logged_in'=>true,'user_id'=>1,'role'=>'customer'];
@@ -97,7 +105,7 @@ try {
     $check(contact_allow($db,'sms-global-synthetic',1,86400) && !contact_allow($db,'sms-global-synthetic',1,86400),'shared daily budget reservation is atomic');
     $db->close();
     $check($race('budget','sms-global-concurrent')===['0','1'],'concurrent shared spend budget admits one request');
-    $db=new mysqli('localhost','root','',$name,0,$argv[1]);
+    $db=new mysqli('localhost',$dbUser,$dbPassword,$name,0,$argv[1]);
     $db->query("UPDATE users SET reset_token_hash='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',reset_expires_at=DATE_ADD(NOW(),INTERVAL 1 HOUR) WHERE id=1");
     $changeId=contact_issue($db,1,'change_phone','+639189999999','333333');
     $db->query("UPDATE contact_challenges SET provider_status='pending' WHERE id=$changeId");
@@ -136,6 +144,24 @@ try {
     $check(!recovery_sms_reserve($db,2,'+639172222222'),'later duplicate remains blocked');
     $db->query("UPDATE contact_throttles SET window_start=DATE_SUB(NOW(),INTERVAL 61 SECOND) WHERE scope_key='$signupCooldown'");
     $check(!recovery_sms_reserve($db,2,'+639172222222'),'hourly account limit remains effective after cooldown expiry');
+
+    foreach ([[2,'customer'],[3,'staff'],[4,'admin']] as [$sessionUserId,$sessionRole]) {
+        $firstVersion=session_auth_issue_version($db,$sessionUserId,$sessionRole);
+        $_SESSION=['logged_in'=>true,'user_id'=>$sessionUserId,'role'=>$sessionRole,'auth_version'=>$firstVersion];
+        $check(session_account_revalidation_state($db)==='active',"{$sessionRole} session is active at its issued version");
+        $secondVersion=session_auth_issue_version($db,$sessionUserId,$sessionRole);
+        $check($secondVersion===$firstVersion+1 && session_account_revalidation_state($db)==='invalid',"new {$sessionRole} sign-in invalidates the previous session");
+        $_SESSION=['logged_in'=>true,'user_id'=>$sessionUserId,'role'=>$sessionRole,'auth_version'=>$secondVersion];
+        $check(session_account_revalidation_state($db)==='active',"new {$sessionRole} session remains active");
+    }
+
+    $versionBeforeRace=(int)$db->query('SELECT auth_version FROM users WHERE id=1')->fetch_assoc()['auth_version'];
+    $sessionRace=$race('session',''); sort($sessionRace,SORT_NUMERIC);
+    $check($sessionRace===[(string)($versionBeforeRace+1),(string)($versionBeforeRace+2)],'concurrent sign-ins receive distinct serialized versions');
+    $_SESSION=['logged_in'=>true,'user_id'=>1,'role'=>'customer','auth_version'=>$versionBeforeRace+1];
+    $check(session_account_revalidation_state($db)==='invalid','only the latest concurrent customer sign-in remains active');
+    $_SESSION=['logged_in'=>true,'user_id'=>1,'role'=>'customer','auth_version'=>$versionBeforeRace+2];
+    $check(session_account_revalidation_state($db)==='active','latest concurrent customer sign-in passes the session guard');
 
     echo "Combined disposable recovery database: $count checks passed.\n";
 } finally { $db->query("DROP DATABASE `$name`"); }

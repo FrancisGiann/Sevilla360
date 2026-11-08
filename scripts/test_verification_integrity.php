@@ -14,7 +14,7 @@ foreach ($required_fragments as $fragment) {
 }
 
 $commit_position = strpos($source, "if (!\$conn->commit())");
-$session_position = strpos($source, 'session_regenerate_id(true);');
+$session_position = strpos($source, 'session_regenerate_id(true)');
 $auth_position = strpos($source, "\$_SESSION['user_id'] =");
 if ($commit_position === false || $session_position === false || $auth_position === false || $session_position < $commit_position || $auth_position < $commit_position) {
     exit("Authentication session assignment must follow a successful verification commit.\n");

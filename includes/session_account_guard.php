@@ -8,8 +8,9 @@
  * callers do not create a second connection, and anonymous requests can be
  * rejected before querying account state.
  */
-function session_account_revalidation_state(mysqli $conn, array $allowedRoles = []): string
+function session_account_revalidation_state(mysqli $conn, array $allowedRoles = [], ?string &$reason = null): string
 {
+    $reason = 'invalid';
     $userId = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $sessionRole = $_SESSION['role'] ?? null;
     if (($_SESSION['logged_in'] ?? false) !== true
@@ -28,15 +29,20 @@ function session_account_revalidation_state(mysqli $conn, array $allowedRoles = 
              WHERE u.id = ?
              LIMIT 1'
         );
-        if (!$statement) return 'unavailable';
+        if (!$statement) {
+            $reason = 'unavailable';
+            return 'unavailable';
+        }
         $statement->bind_param('i', $userId);
         if (!$statement->execute()) {
             $statement->close();
+            $reason = 'unavailable';
             return 'unavailable';
         }
         $account = $statement->get_result()->fetch_assoc();
         $statement->close();
     } catch (Throwable $error) {
+        $reason = 'unavailable';
         return 'unavailable';
     }
 
@@ -47,18 +53,40 @@ function session_account_revalidation_state(mysqli $conn, array $allowedRoles = 
     if (!is_array($account)
         || !is_string($account['role'] ?? null)
         || !hash_equals($sessionRole, $account['role'])
-        || !in_array($account['role'], ['customer', 'staff', 'admin'], true)
-        || !isset($_SESSION['auth_version'])
-        || (int)$_SESSION['auth_version'] !== (int)$account['auth_version']) {
+        || !in_array($account['role'], ['customer', 'staff', 'admin'], true)) {
         return 'invalid';
     }
 
     $status = in_array($account['role'], ['admin', 'staff'], true)
         ? ($account['staff_status'] ?? '')
         : ($account['user_status'] ?? '');
-    return is_string($status) && strcasecmp($status, 'active') === 0
-        ? 'active'
-        : 'invalid';
+    if (!is_string($status) || strcasecmp($status, 'active') !== 0) return 'invalid';
+
+    if (!isset($_SESSION['auth_version']) || (int)$_SESSION['auth_version'] !== (int)$account['auth_version']) {
+        $reason = 'version_changed';
+        return 'invalid';
+    }
+
+    $reason = 'active';
+    return 'active';
+}
+
+/** Return the shared alert shown after an authenticated session is rejected. */
+function session_account_invalid_alert(string $reason): array
+{
+    if ($reason === 'version_changed') {
+        return [
+            'title' => 'Session ended',
+            'message' => 'This session was ended because a newer sign-in or account security change invalidated it. Please sign in again.',
+            'type' => 'warning',
+        ];
+    }
+
+    return [
+        'title' => 'Account unavailable',
+        'message' => 'Your account is inactive or no longer authorized. Please sign in again.',
+        'type' => 'error',
+    ];
 }
 
 /**
@@ -73,15 +101,13 @@ function session_account_require_active(
     int $unavailableStatus = 503
 ): bool
 {
-    $state = session_account_revalidation_state($conn, $allowedRoles);
+    $reason = null;
+    $state = session_account_revalidation_state($conn, $allowedRoles, $reason);
     if ($state === 'active') return true;
 
     if ($state === 'invalid') {
-        session_policy_expire(
-            'Your account is inactive or no longer authorized. Please sign in again.',
-            'Account unavailable',
-            'error'
-        );
+        $alert = session_account_invalid_alert((string)$reason);
+        session_policy_expire($alert['message'], $alert['title'], $alert['type']);
         http_response_code($invalidStatus);
     } else {
         http_response_code($unavailableStatus);

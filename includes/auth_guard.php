@@ -13,13 +13,15 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 require_once __DIR__ . '/../config/db_connect.php';
 
 require_once __DIR__ . '/session_account_guard.php';
-$account_state = session_account_revalidation_state($conn);
+$account_reason = null;
+$account_state = session_account_revalidation_state($conn, [], $account_reason);
 if ($account_state === 'unavailable') {
     http_response_code(503);
     exit('Account status could not be verified. Please try again.');
 }
 if ($account_state !== 'active') {
-    session_policy_expire('Your account is suspended, inactive, or no longer authorized. Please sign in again.', 'Account unavailable', 'error');
+    $alert = session_account_invalid_alert((string)$account_reason);
+    session_policy_expire($alert['message'], $alert['title'], $alert['type']);
     header("Location: auth.php");
     exit();
 }

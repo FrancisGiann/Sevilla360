@@ -137,16 +137,76 @@ final class PayMongoTestProvider {
         $response=$this->rawRequest($method,$path,$body);
         $status=(int)($response['status']??0);
         if ($status>=400 && $status<500) {
-            $code='request_rejected';
+            $providerCode='provider_rejected'; $field=null;
             try {
-                $errors=json_decode((string)($response['body']??''),true,16,JSON_THROW_ON_ERROR)['errors']??[];
-                $candidate=$errors[0]['code']??null;
-                if (is_string($candidate) && preg_match('/\A[a-zA-Z0-9_-]{1,100}\z/D',$candidate)) $code=$candidate;
+                $error=json_decode((string)($response['body']??''),true,16,JSON_THROW_ON_ERROR)['errors'][0]??null;
+                if (!is_array($error)) $error=[];
+                $knownCodes=[
+                    'payment_not_found','refund_amount_exceeds_payment','payment_not_refundable',
+                    'insufficient_balance','insufficient_payout_balance','insufficient_available_balance',
+                    'payout_balance_insufficient','balance_insufficient','insufficient_funds',
+                    'provider_processing_error','resource_processing_state','resource_processing_error',
+                    'refund_not_allowed','parameter_invalid','resource_not_found','livemode_mismatched',
+                    'resource_failed_state','resource_disputed_state','resource_pending_state',
+                    'allowed_date_exceeded','available_balance_insufficient','parameter_above_maximum',
+                    'payment_method_not_allowed','same_day_partial_refund_not_allowed',
+                ];
+                $candidate=$error['code']??null;
+                if (is_string($candidate) && in_array(strtolower($candidate),$knownCodes,true)) $providerCode=strtolower($candidate);
+                if (in_array($providerCode,['parameter_above_maximum','same_day_partial_refund_not_allowed'],true)) {
+                    $providerCode=$this->refundAmountRestrictionClassification($providerCode,$error);
+                }
+                $field=$this->refundRequestErrorField($error['source']??null);
             } catch (Throwable $ignored) {}
-            throw new PayMongoRefundRejected($code);
+            throw new PayMongoRefundRejected('http_'.$status.'_'.$providerCode.($field===null?'':'_field_'.$field));
         }
         if (!in_array($status,[200,201],true)) throw new PayMongoRefundOutcomeUnknown('PayMongo request outcome is uncertain; reconcile before another create.');
         return $this->decodedData($response,'refund');
+    }
+    /** Classify only exact allowlisted restriction phrases; never retain provider text. */
+    private function refundAmountRestrictionClassification(string $providerCode,array $error): string {
+        $sameDayPhrases=[
+            'same day partial refund is not allowed',
+            'same day partial refunds are not allowed',
+            'partial refunds are not allowed on the same day',
+            'only a full refund is allowed on the same day',
+            'only full refunds are allowed on the same day',
+            'partial refunds can only be filed starting 12 00 am the following day',
+            'partial refunds are only allowed starting 12 00 am the following day',
+        ];
+        $fullRefundOnlyPhrases=[
+            'only full amounts are allowed to be refunded for the payment',
+            'only a full amount is allowed to be refunded for the payment',
+            'only full amounts are allowed to be refunded for this payment',
+            'only a full amount is allowed to be refunded for this payment',
+        ];
+        foreach (['detail','message'] as $field) {
+            $text=$error[$field]??null;
+            if (!is_string($text) || strlen($text)>512) continue;
+            $normalized=strtolower(trim((string)preg_replace('/[^a-z0-9]+/i',' ',$text)));
+            if (in_array($normalized,$sameDayPhrases,true)) return 'maya_same_day_partial_refund_window';
+            if (in_array($normalized,$fullRefundOnlyPhrases,true)) return 'provider_full_refund_only';
+        }
+        if ($providerCode==='same_day_partial_refund_not_allowed') return 'parameter_above_maximum';
+        // Preserve only an allowlisted code. Provider text is never included in
+        // the exception or persisted to the refund attempt.
+        return $providerCode;
+    }
+    /** Return only fields used by the Refund request; never retain a raw provider pointer. */
+    private function refundRequestErrorField(mixed $source): ?string {
+        if (!is_array($source)) return null;
+        $fields=[
+            'payment_id'=>['payment_id','data.attributes.payment_id','data/attributes/payment_id','/data/attributes/payment_id','data[attributes][payment_id]'],
+            'amount'=>['amount','data.attributes.amount','data/attributes/amount','/data/attributes/amount','data[attributes][amount]'],
+            'reason'=>['reason','data.attributes.reason','data/attributes/reason','/data/attributes/reason','data[attributes][reason]'],
+            'notes'=>['notes','data.attributes.notes','data/attributes/notes','/data/attributes/notes','data[attributes][notes]'],
+        ];
+        foreach (['pointer','parameter'] as $sourceKey) {
+            $value=$source[$sourceKey]??null;
+            if (!is_string($value) || strlen($value)>64) continue;
+            foreach ($fields as $field=>$aliases) if (in_array($value,$aliases,true)) return $field;
+        }
+        return null;
     }
     private function validateRefund(array $resource,?string $paymentId=null,?int $amount=null,?string $notes=null): array {
         $a=$resource['attributes'];
