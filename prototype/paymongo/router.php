@@ -17,7 +17,7 @@ if (in_array($path,['/app.css','/app.js'],true)) {
 require __DIR__.'/bootstrap.php';
 require __DIR__.'/simulator.php';
 require __DIR__.'/hosted_flow.php';
-$routes=['/actions/user/pay_existing.php'=>'checkout','/actions/user/sync_payment.php'=>'recover','/actions/user/close_paymongo_checkout.php'=>'cancel'];
+$routes=['/actions/user/pay_existing.php'=>'checkout','/actions/user/sync_payment.php'=>'recover'];
 $routeAction=$routes[$path]??null;
 if($path==='/actions/bookings/paymongo_webhook.php')$path='/webhook';
 session_start(['cookie_httponly'=>true,'cookie_samesite'=>'Strict','use_strict_mode'=>true]);
@@ -43,9 +43,9 @@ try {
             if (!$a) throw new RuntimeException('Unknown attempt.');
             $store->atomic(fn()=>$store->booking((int)$a['booking_id'],$customer));
         }
-        if($flow && in_array($action,['checkout','recover','cancel'],true)) {
+        if($flow && in_array($action,['checkout','recover'],true)) {
             $response=$action==='checkout' ? $flow->start((int)($input['booking']??0),$customer)
-                : ['message'=>$flow->recover($attempt,$customer,$action==='cancel')];
+                : ['message'=>$flow->recover($attempt,$customer)];
             if($driver==='adapter_fixture' && isset($response['checkout_url'])) $response['checkout_url']='/?hosted='.$response['attempt'];
             echo json_encode($response);exit;
         }
@@ -65,11 +65,6 @@ try {
             case 'pay': $message=$sim->deliver($sim->settle($attempt)); break;
             case 'delay': $sim->settle($attempt); $message='Simulated payment received, webhook withheld. Recover to reconcile it.'; break;
             case 'recover': $message=$sim->recover($attempt,$customer); break;
-            case 'cancel':
-                $r=$sim->expire($attempt);
-                if ($r['attributes']['payments']) $message=$sim->deliver($r);
-                else { $store->close($attempt,$customer,$r); $message='Checkout expired and hold released.'; }
-                break;
             case 'expire':
                 // Laboratory clock shortcut, does not change real system time.
                 $store->atomic(function () use ($store,$a,$customer) {

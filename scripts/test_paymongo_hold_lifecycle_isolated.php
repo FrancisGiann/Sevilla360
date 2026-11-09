@@ -96,13 +96,18 @@ try {
     try { $flow->start(2, 2, true); $competingCheckout = true; } catch (Throwable $e) { $competingCheckout = false; }
     $assert(!$competingCheckout && $createCount === 1, 'competing checkout cannot create a second hold or provider session');
 
-    $assert($flow->recover($first['attempt'], 1, true) === 'expired', 'explicit cancel releases only after provider expiry is confirmed unpaid');
+    $firstSessionId = substr($first['checkout_url'], strrpos($first['checkout_url'], '/') + 1);
+    $sessions[$firstSessionId]['attributes']['status'] = 'expired';
+    $assert($flow->recover($first['attempt'], 1) === 'expired', 'an early provider expiry retires the checkout attempt');
+    $earlyBooking = $db->query('SELECT booking_status,payment_step_token,payment_step_expires_at FROM bookings WHERE id=1')->fetch_assoc();
+    $earlyLockCount = (int)$db->query("SELECT COUNT(*) n FROM booking_locks WHERE session_id='pay:{$firstRow['hold_token']}' AND expires_at>NOW()")->fetch_assoc()['n'];
+    $assert($earlyBooking['booking_status'] === 'Awaiting Proof' && !empty($earlyBooking['payment_step_token']) && $earlyBooking['payment_step_expires_at'] === $firstRow['expires_at'] && $earlyLockCount === 1, 'early provider expiry keeps the pending booking and original inventory hold through its 15-minute deadline');
     $seenBeforeRetry = $db->query('SELECT payment_step_seen_at FROM bookings WHERE id=1')->fetch_assoc()['payment_step_seen_at'];
     $second = $flow->start(1, 1, true);
     $secondAttempt = $db->real_escape_string($second['attempt']);
     $secondExpiry = $db->query("SELECT expires_at FROM pm_attempts WHERE id='{$secondAttempt}'")->fetch_assoc()['expires_at'];
     $assert($second['attempt'] !== $first['attempt'] && $secondExpiry === $firstRow['expires_at'], 'a safe retry keeps the original countdown instead of resetting 15 minutes');
-    $assert($seenBeforeRetry === $timer['payment_step_seen_at'], 'releasing a checkout preserves the original payment-step start');
+    $assert($seenBeforeRetry === $timer['payment_step_seen_at'], 'retrying an expired checkout preserves the original payment-step start');
 
     $db->query("UPDATE bookings SET payment_step_seen_at=DATE_SUB(NOW(),INTERVAL 16 MINUTE),payment_step_expires_at=DATE_SUB(NOW(),INTERVAL 1 SECOND) WHERE id=1");
     $db->query("UPDATE pm_attempts SET expires_at=DATE_SUB(NOW(),INTERVAL 1 SECOND) WHERE id='{$secondAttempt}'");

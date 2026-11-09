@@ -109,7 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Customers may select a concrete hotel unit, but the posted ID is only
     // an input to this authoritative lookup. Never allow an Event Hall,
     // villa, unavailable unit, or mismatched room type/name to be locked.
-    if (!$is_staff_booking && $explicit_venue_id !== null) {
+    if (!$is_staff_booking && $is_hotel_request && $explicit_venue_id !== null) {
         if ($room_group_id !== null) {
             if ($requested_guests === false) {
                 http_response_code(422);
@@ -168,11 +168,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if (!$is_hotel) {
-            $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1 FOR UPDATE");
-            $stmt->bind_param("ss", $room_type, $room_name);
+            if (!$is_staff_booking && $room_type === 'Resort Villa') {
+                if ($explicit_venue_id === null) throw new Exception('The selected villa is invalid or unavailable.');
+                $stmt = $conn->prepare("SELECT id FROM venues WHERE id = ? AND category = ? AND name = ? AND status = 'Available' LIMIT 1 FOR UPDATE");
+                $stmt->bind_param("iss", $explicit_venue_id, $room_type, $room_name);
+            } else {
+                $stmt = $conn->prepare("SELECT id FROM venues WHERE category = ? AND name = ? LIMIT 1 FOR UPDATE");
+                $stmt->bind_param("ss", $room_type, $room_name);
+            }
             $stmt->execute();
             $result = $stmt->get_result();
-            if ($result->num_rows === 0) throw new Exception("Venue not found.");
+            if ($result->num_rows === 0) {
+                if (!$is_staff_booking && $room_type === 'Resort Villa') throw new Exception('The selected villa is invalid or unavailable.');
+                throw new Exception("Venue not found.");
+            }
             $venue_id = $result->fetch_assoc()['id'];
 
             if (seminar_has_resource_conflict($conn, (int)$venue_id, $start_date, $end_date, null, false)) {
@@ -196,6 +205,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($room_type !== 'Event Hall') {
                 $chk_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND session_id != ? AND expires_at > NOW() AND " . booking_overlap_sql($room_type));
                 $chk_lock->bind_param("isss", $venue_id, $session_id, $end_date, $start_date);
+                $chk_lock->execute();
+                if ($chk_lock->get_result()->num_rows > 0) throw new Exception("Another user is currently booking these dates.");
+            } elseif ($is_staff_booking) {
+                // Event Halls permit multiple staff inquiry holds, but an
+                // accepted online quote may already own a checkout inventory hold.
+                $chk_lock = $conn->prepare("SELECT id FROM booking_locks WHERE venue_id = ? AND source = 'online' AND expires_at > NOW() AND " . booking_overlap_sql($room_type));
+                $chk_lock->bind_param("iss", $venue_id, $end_date, $start_date);
                 $chk_lock->execute();
                 if ($chk_lock->get_result()->num_rows > 0) throw new Exception("Another user is currently booking these dates.");
             }

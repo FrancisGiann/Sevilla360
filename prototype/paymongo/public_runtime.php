@@ -43,7 +43,7 @@ function pm_public_demo(PayMongoPrototype $store,string $base,bool $secure,strin
     }
     if ($action!=='') {
         if ($_SERVER['REQUEST_METHOD']!=='POST' || !hash_equals($_SESSION['pm_csrf'],$_SERVER['HTTP_X_CSRF_TOKEN']??'')) {http_response_code(403);$json(['error'=>'Session validation failed.']);return;}
-        if (!in_array($action,['checkout','recover','cancel','simulate'],true) || ($action==='simulate' && $driver!=='simulator')) {http_response_code(404);$json(['error'=>'Unavailable demo action.']);return;}
+        if (!in_array($action,['checkout','recover','simulate'],true) || ($action==='simulate' && $driver!=='simulator')) {http_response_code(404);$json(['error'=>'Unavailable demo action.']);return;}
         try {
             // Fixed daily global cap also bounds credential-bearing API actions if enabled later.
             $store->atomic(function()use($store){
@@ -65,16 +65,15 @@ function pm_public_demo(PayMongoPrototype $store,string $base,bool $secure,strin
                 if (!$a)throw new RuntimeException('Checkout is not owned by this demo session.');
             }
             if ($flow) {
-                $result=$action==='checkout'?$flow->start($booking,$customer):['message'=>$flow->recover($attempt,$customer,$action==='cancel')];
+                $result=$action==='checkout'?$flow->start($booking,$customer):['message'=>$flow->recover($attempt,$customer)];
             } elseif ($action==='checkout') {
                 $a=$store->begin($booking,$customer);$a=$store->attach($a['id'],$sim->create($a));$result=['attempt'=>$a['id'],'message'=>'Local simulation ready. No provider request.'];
             } elseif ($action==='simulate') $result=['message'=>$sim->deliver($sim->settle($attempt))];
-            elseif ($action==='recover') $result=['message'=>$sim->recover($attempt,$customer)];
-            else {$store->close($attempt,$customer,$sim->expire($attempt));$result=['message'=>'expired'];}
+            else $result=['message'=>$sim->recover($attempt,$customer)];
             $json($result);
         }catch(Throwable $e){http_response_code(422);$json(['error'=>'Demo action could not complete. Recover the existing checkout before trying another payment.']);}return;
     }
     header('Content-Type: text/html; charset=utf-8');
     $csrf=htmlspecialchars($_SESSION['pm_csrf'],ENT_QUOTES);$mode=$driver==='simulator'?'Local simulation: no PayMongo request.':'PayMongo TEST mode: use test payment details only.';
-    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="'.$csrf.'"><title>TEST ONLY · Sevilla360 checkout demo</title><script defer src="?action=script"></script></head><body><main><h1>TEST PAYMENTS ONLY</h1><h2>No real money. No real reservation.</h2><p>This is a separate fictional demo. A test payment never reserves a real room or changes your real booking. Do not enter real card, billing or personal details.</p><p>'.$mode.'</p><p>Fictional room total: PHP 6,000. Test deposit: PHP 3,000; test balance: PHP 3,000.</p><pre id="state" aria-live="polite"></pre><p id="message" role="status"></p><button data-action="checkout">Open test checkout</button><button data-action="recover">Check test payment</button><button data-action="cancel">Close test checkout</button>'.($driver==='simulator'?'<button data-action="simulate">Simulate successful test payment</button>':'').'<p id="link"></p></main></body></html>';
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="'.$csrf.'"><title>TEST ONLY · Sevilla360 checkout demo</title><script defer src="?action=script"></script></head><body><main><h1>TEST PAYMENTS ONLY</h1><h2>No real money. No real reservation.</h2><p>This is a separate fictional demo. A test payment never reserves a real room or changes your real booking. Do not enter real card, billing or personal details.</p><p>'.$mode.'</p><p>Fictional room total: PHP 6,000. Test deposit: PHP 3,000; test balance: PHP 3,000.</p><pre id="state" aria-live="polite"></pre><p id="message" role="status"></p><button data-action="checkout">Open test checkout</button><button data-action="recover">Check test payment</button>'.($driver==='simulator'?'<button data-action="simulate">Simulate successful test payment</button>':'').'<p id="link"></p></main></body></html>';
 }

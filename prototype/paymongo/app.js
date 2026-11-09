@@ -46,7 +46,6 @@ async function refresh() {
       info.append(el('h3', `Booking ${a.booking_id} · ${money(Number(a.amount_cents))}`), el('p', `Status: ${a.status} · Expires ${a.expires_at} (Manila)`), el('code', a.id));
       if (state.driver !== 'paymongo_test' && a.status === 'open') actions.append(button('Simulate payment', 'pay', { attempt: a.id }));
       actions.append(button('Recover / refresh', 'recover', { attempt: a.id }, true));
-      if (['open', 'uncertain', 'creating'].includes(a.status)) actions.append(button('Close checkout', 'cancel', { attempt: a.id }, true));
       row.append(info, actions);
       const lab = el('details'), labActions = el('div', '', 'actions'); lab.append(el('summary', 'Simulation controls'));
       labActions.append(button('Withhold webhook', 'delay', { attempt: a.id }, true), button('Expire 15-minute hold', 'expire', { attempt: a.id }, true), button('Deliver late payment', 'late', { attempt: a.id }, true));

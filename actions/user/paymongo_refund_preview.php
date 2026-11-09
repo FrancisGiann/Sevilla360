@@ -16,6 +16,27 @@ if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'],$csrf
 if (!session_account_require_active_json($conn,['customer'],['success'=>false,'message'=>'Sign in again.'],['success'=>false,'message'=>'Account unavailable.'])) exit;
 
 $failureStage='request_validation';
+function paymongo_refund_preview_failure_message(Throwable $error): string {
+    if ($error instanceof PayMongoRefundVerificationFailure) {
+        if ($error->diagnosticCode === 'payment_request_transport') {
+            return 'PayMongo could not be reached to verify the original payment. No refund request was submitted. Retry the fee check later.';
+        }
+        if (str_starts_with($error->diagnosticCode, 'refund_history_')) {
+            return 'PayMongo could not confirm existing refunds on this payment. No refund request was submitted. Retry verification later or contact staff.';
+        }
+        return 'PayMongo could not verify this original payment. No refund request was submitted. Retry verification or contact staff.';
+    }
+
+    return match ($error->getMessage()) {
+        'A PayMongo payment is not authoritatively linked to this booking. Contact staff to reconcile it.' => 'This payment could not be safely linked to the booking. No refund request was submitted. Contact staff to reconcile it.',
+        'A PayMongo payment needs staff reconciliation before refunding.' => 'A payment exception needs staff review before a refund can be requested. No refund request was submitted.',
+        'This booking has mixed payment methods and needs staff review before a refund.' => 'This booking has more than one payment method and needs staff review before a refund can be requested.',
+        'The PayMongo payment history does not match the booking total. Contact staff to reconcile the payments.' => 'The recorded PayMongo payments do not match the booking total. No refund request was submitted. Contact staff to reconcile the booking.',
+        'A PayMongo refund is still in progress and must be reconciled before another request.' => 'A refund is already in progress with PayMongo. Wait for staff to reconcile it before submitting another request.',
+        'No PayMongo refund amount remains after the actual fees and prior refunds.' => 'No refundable balance remains after PayMongo fees and prior refunds. Contact staff if you think this is incorrect.',
+        default => 'PayMongo could not verify this refund preview. No refund request was submitted. Retry verification or contact staff with the support reference.',
+    };
+}
 try {
     $raw=file_get_contents('php://input',false,null,0,4097);
     if (!is_string($raw) || strlen($raw)>4096) throw new InvalidArgumentException('Invalid request.');
@@ -54,11 +75,19 @@ try {
         exit;
     }
     $reference=bin2hex(random_bytes(8));
-    $category=$e instanceof PayMongoRefundVerificationFailure?$e->diagnosticCode:'unclassified';
+    $category=$e instanceof PayMongoRefundVerificationFailure?$e->diagnosticCode:match ($e->getMessage()) {
+        'A PayMongo payment is not authoritatively linked to this booking. Contact staff to reconcile it.' => 'payment_receipt_unlinked',
+        'A PayMongo payment needs staff reconciliation before refunding.' => 'payment_receipt_exception',
+        'This booking has mixed payment methods and needs staff review before a refund.' => 'mixed_payment_methods',
+        'The PayMongo payment history does not match the booking total. Contact staff to reconcile the payments.' => 'booking_payment_total_mismatch',
+        'A PayMongo refund is still in progress and must be reconciled before another request.' => 'refund_in_progress',
+        'No PayMongo refund amount remains after the actual fees and prior refunds.' => 'no_refundable_balance',
+        default => 'unclassified',
+    };
     error_log('PayMongo refund preview failure: reference='.$reference.' stage='.$failureStage.' category='.$category.' exception='.get_class($e));
     echo json_encode([
         'success'=>false,
-        'message'=>'PayMongo could not verify this refund preview. Retry verification or contact staff with the support reference.',
+        'message'=>paymongo_refund_preview_failure_message($e),
         'support_reference'=>$reference,
         'diagnostic_code'=>$failureStage.':'.$category,
     ]);

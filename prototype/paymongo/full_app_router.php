@@ -19,7 +19,7 @@ if ($path==='/test-session') {
     if (empty($_SESSION['logged_in'])) {http_response_code(401);exit('{}');}
     header('Content-Type: application/json');echo json_encode(['csrf'=>$_SESSION['csrf_token']]);exit;
 }
-$routes=['/actions/user/pay_existing.php'=>'checkout','/actions/user/sync_payment.php'=>'recover','/actions/user/close_paymongo_checkout.php'=>'cancel'];
+$routes=['/actions/user/pay_existing.php'=>'checkout','/actions/user/sync_payment.php'=>'recover'];
 if($path==='/actions/bookings/paymongo_webhook.php'){require $root.$path;exit;}
 if(isset($routes[$path])) {
     require_once $root.'/config/db_connect.php';
@@ -49,7 +49,7 @@ if(isset($routes[$path]) || $path==='/test-settle' || $path==='/test-state' || $
             echo json_encode(['message'=>!empty($input['withhold'])?'withheld':$sim->deliver($r)]);exit;
         }
         $action=$routes[$path]??'recover';
-        $response=$action==='checkout'?$flow->start((int)($input['booking']??0),$customer):['message'=>$flow->recover($attempt,$customer,$action==='cancel')];
+        $response=$action==='checkout'?$flow->start((int)($input['booking']??0),$customer):['message'=>$flow->recover($attempt,$customer)];
         if(isset($response['checkout_url']))$response['checkout_url']='/local-hosted.php?attempt='.$response['attempt'];
         echo json_encode($response);
     }catch(Throwable $e){http_response_code(422);echo json_encode(['error'=>$e->getMessage()]);}

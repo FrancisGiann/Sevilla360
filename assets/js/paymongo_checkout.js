@@ -6,7 +6,6 @@
   const currentBookingPolicy = 'terms-v4-paymongo-actual-fee';
   let dashboardClient = null;
   let activeAttempt = null;
-  const uncertainBookings = new Set();
   let recoveryModal = null;
   let focusCheckAt = 0;
 
@@ -60,8 +59,9 @@
     const actions = document.createElement('div'); actions.className = 'paymongo-recovery-actions';
     const primary = document.createElement('button'); primary.type = 'button'; primary.className = 'paymongo-recovery-button paymongo-recovery-button--primary';
     const secondary = document.createElement('button'); secondary.type = 'button'; secondary.className = 'paymongo-recovery-button paymongo-recovery-button--secondary';
+    const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'paymongo-recovery-button paymongo-recovery-button--secondary';
     const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'paymongo-recovery-button paymongo-recovery-button--primary'; ok.textContent = 'OK';
-    actions.append(primary, secondary, ok); box.append(icon, title, message, actions); overlay.append(box); document.body.append(overlay);
+    actions.append(primary, secondary, cancel, ok); box.append(icon, title, message, actions); overlay.append(box); document.body.append(overlay);
 
     const siblings = Array.from(document.body.children).filter(node => node !== overlay).map(node => ({node, inert: node.inert}));
     siblings.forEach(({node}) => { node.inert = true; });
@@ -97,7 +97,7 @@
       else button.onclick = null;
     };
     recoveryModal = {
-      overlay, message, title, icon, primary, secondary, ok, dismiss,
+      overlay, message, title, icon, primary, secondary, cancel, ok, dismiss,
       set(text, config = {}) {
         title.textContent = config.title || 'Payment not confirmed';
         icon.className = 'fa-solid ' + (config.icon || 'fa-circle-info') + ' paymongo-recovery-icon';
@@ -105,7 +105,8 @@
         message.textContent = text;
         this.dismissible = !!config.dismissible;
         setAction(primary, config.primaryLabel || 'Check payment status', config.onPrimary);
-        setAction(secondary, config.secondaryLabel || 'Cancel checkout', config.onSecondary);
+        setAction(secondary, config.secondaryLabel || 'Check payment status', config.onSecondary);
+        setAction(cancel, config.cancelLabel || 'Cancel checkout', config.onCancel);
         setAction(ok, 'OK', config.hideOk ? null : config.onDismiss || (() => dismissRecovery(activeAttempt)));
         ok.className = 'paymongo-recovery-button paymongo-recovery-button--' + (config.onPrimary || config.onSecondary ? 'secondary' : 'primary');
         const first = focusable()[0]; if (first) first.focus({preventScroll: true}); else overlay.focus({preventScroll: true});
@@ -118,10 +119,12 @@
   function renderAttemptOutcome(record, data) {
     const modal = ensureRecoveryModal();
     if (data?.message === 'open') {
-      modal.set('Payment is not confirmed yet. Check its status or cancel the checkout securely before taking another payment action.', {
+      const canResume = /^[1-9][0-9]*$/.test(String(record?.bookingId || ''));
+      modal.set('This checkout is still active. Resume the same payment page or check its status to continue.', {
         title: 'Payment not confirmed', dismissible: true,
-        primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
-        secondaryLabel: 'Cancel checkout', onSecondary: () => checkAttempt(record, true)
+        primaryLabel: canResume ? 'Resume payment' : 'Check payment status', onPrimary: canResume ? () => resumeWithBookingContext(record) : () => checkAttempt(record),
+        secondaryLabel: 'Check payment status', onSecondary: () => checkAttempt(record),
+        onCancel: () => cancelCheckout(record)
       });
       return;
     }
@@ -130,7 +133,7 @@
       if (activeAttempt === record) activeAttempt = null;
       record.onResolved?.(data);
       modal.set('This checkout expired. Review your booking status before making another payment.', {
-        title: 'Checkout expired', dismissible: true
+        title: 'Checkout expired', dismissible: true, onCancel: () => cancelCheckout(record)
       });
       return;
     }
@@ -150,17 +153,68 @@
     }
     modal.set('We could not verify the payment outcome. Do not pay again while the result is uncertain. Check the status before taking another payment action.', {
       title: 'Payment not confirmed', dismissible: true,
-      primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record)
+      primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
+      onCancel: () => cancelCheckout(record)
     });
   }
 
-  async function checkAttempt(record, close = false) {
+  async function cancelCheckout(record, confirmed = false) {
+    if (!record || record.cancelling) return;
+    const modal = ensureRecoveryModal();
+    if (!confirmed) {
+      modal.set('Cancel this checkout and booking? The date will be released only after PayMongo confirms the checkout expired without a successful payment. Until then, the booking remains reserved.', {
+        title: 'Confirm checkout cancellation', dismissible: true, hideOk: true,
+        primaryLabel: 'Keep booking',
+        onPrimary: () => modal.set('The booking and dates remain reserved. Check the payment status before taking another payment action.', {
+          title: 'Payment not confirmed', dismissible: true,
+          primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
+          onCancel: () => cancelCheckout(record)
+        }),
+        secondaryLabel: 'Cancel checkout', onSecondary: () => cancelCheckout(record, true)
+      });
+      return;
+    }
+    record.cancelling = true;
+    modal.set('Verifying the PayMongo checkout before cancelling the booking…', {title: 'Checking payment status', hideOk: true});
+    try {
+      const response = await fetch('/actions/user/close_paymongo_checkout.php', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': record.csrfToken || ''},
+        body: JSON.stringify({attempt: record.attempt})
+      });
+      const data = await response.json();
+      if (!response.ok || !data || typeof data.message !== 'string') throw new Error('unverified');
+      if (data.message === 'cancelled') {
+        record.settled = true; record.retrySafe = true; forgetBooking(record.attempt);
+        if (activeAttempt === record) activeAttempt = null;
+        record.onResolved?.(data);
+        modal.set('The booking was cancelled after PayMongo confirmed the checkout expired unpaid. The date is now released.', {
+          title: 'Booking cancelled', dismissible: true
+        });
+      } else if (data.message === 'applied' || paidOutcomes.has(data.message)) {
+        renderAttemptOutcome(record, data);
+      } else {
+        modal.set('PayMongo has not confirmed that this checkout can be cancelled. The booking and date remain reserved. Check payment status before trying again.', {
+          title: 'Booking still reserved', dismissible: true,
+          primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
+          onCancel: () => cancelCheckout(record)
+        });
+      }
+    } catch (_) {
+      modal.set('We could not confirm the checkout result. The booking and date remain reserved. Check payment status before trying again.', {
+        title: 'Booking still reserved', dismissible: true,
+        primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
+        onCancel: () => cancelCheckout(record)
+      });
+    } finally { record.cancelling = false; record.onChecked?.(); }
+  }
+
+  async function checkAttempt(record) {
     if (!record || record.checking) return;
     record.checking = true;
     const modal = ensureRecoveryModal();
     modal.set('Checking payment status with PayMongo…', {title: 'Checking payment status', hideOk: true});
     try {
-      const response = await fetch(close ? '/actions/user/close_paymongo_checkout.php' : '/actions/user/sync_payment.php', {
+      const response = await fetch('/actions/user/sync_payment.php', {
         method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': record.csrfToken || ''},
         body: JSON.stringify({attempt: record.attempt})
       });
@@ -170,9 +224,69 @@
     } catch (_) {
       modal.set('We could not verify the payment outcome. Do not pay again while the result is uncertain. Check the status before taking another payment action.', {
         title: 'Payment not confirmed', dismissible: true,
-        primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record)
+        primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(record),
+        onCancel: () => cancelCheckout(record)
       });
-    } finally { record.checking = false; }
+    } finally { record.checking = false; record.onChecked?.(); }
+  }
+
+  async function resumeAttempt(record, policyConsent = false) {
+    if (!record || record.resuming || !/^[1-9][0-9]*$/.test(String(record.bookingId || ''))) return;
+    record.resuming = true;
+    const modal = ensureRecoveryModal();
+    modal.set('Verifying the existing checkout before reopening it…', {title: 'Resuming checkout', hideOk: true});
+    try {
+      const response = await fetch('/actions/user/pay_existing.php', {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': record.csrfToken || ''},
+        body: JSON.stringify({booking: Number(record.bookingId), policy_consent: policyConsent})
+      });
+      const data = await response.json();
+      if (response.status === 409 && data?.code === 'dates_unavailable') {
+        record.retrySafe = true;
+        record.settled = true;
+        forgetBooking(record.attempt);
+        if (activeAttempt === record) activeAttempt = null;
+        record.onResolved?.(data);
+        modal.set(data.error || 'These dates are no longer available. Start a new booking with a different room or dates.', {
+          title: 'Dates unavailable', dismissible: true
+        });
+        return;
+      }
+      if (!response.ok) throw new Error('unverified');
+      if (data?.checkout_url) {
+        if (!attemptPattern.test(data.attempt || '')) throw new Error('unverified');
+        const url = new URL(data.checkout_url, window.location.origin);
+        if (!(url.origin === window.location.origin || (url.protocol === 'https:' && url.hostname === 'checkout.paymongo.com' && !url.username && !url.password && !url.port))) throw new Error('unverified');
+        if (record.attempt !== data.attempt) {
+          forgetBooking(record.attempt);
+          record.attempt = data.attempt;
+        }
+        record.retrySafe = false; record.settled = false; record.dismissed = false;
+        rememberBooking(record.attempt, record.bookingId);
+        activeAttempt = record;
+        installFocusRecovery();
+        window.location.assign(url.href);
+        return;
+      }
+      renderAttemptOutcome(record, data);
+    } catch (_) {
+      modal.set('We could not verify the checkout. Do not pay again while its outcome is uncertain. Check the payment status or retry resuming this same booking.', {
+        title: 'Payment not confirmed', dismissible: true,
+        primaryLabel: 'Resume payment', onPrimary: () => resumeWithBookingContext(record),
+        secondaryLabel: 'Check payment status', onSecondary: () => checkAttempt(record),
+        onCancel: () => cancelCheckout(record)
+      });
+    } finally { record.resuming = false; }
+  }
+
+  function resumeWithBookingContext(record) {
+    if (!record || !/^[1-9][0-9]*$/.test(String(record.bookingId || ''))) return checkAttempt(record);
+    if (dashboardClient?.openBooking) {
+      const invoker = Array.from(document.querySelectorAll('.btn-submit-payment'))
+        .find(button => String(button.dataset.id || '') === String(record.bookingId)) || null;
+      return dashboardClient.openBooking(String(record.bookingId), invoker);
+    }
+    return resumeAttempt(record, record.policyConsent === true);
   }
 
   function installFocusRecovery() {
@@ -190,12 +304,41 @@
   window.SevillaPayMongoCheckout = {
     enabled,
     policyVersion: currentBookingPolicy,
+    recoverAttempt(options = {}) {
+      const attempt = String(options.attempt || '');
+      const bookingId = Number(options.bookingId);
+      if (!enabled() || !attemptPattern.test(attempt) || !Number.isSafeInteger(bookingId) || bookingId < 1) return false;
+      const record = {
+        attempt, bookingId, csrfToken: options.csrfToken || '', onResolved: options.onResolved, onChecked: options.onChecked,
+        checking: false, resuming: false, settled: false, retrySafe: false, dismissed: false
+      };
+      activeAttempt = record;
+      installFocusRecovery();
+      ensureRecoveryModal(options.invoker).set('Checking payment status with PayMongo…', {title: 'Checking payment status', hideOk: true});
+      checkAttempt(record);
+      return true;
+    },
+    cancelAttempt(options = {}) {
+      const attempt = String(options.attempt || '');
+      const bookingId = Number(options.bookingId);
+      if (!enabled() || !attemptPattern.test(attempt) || !Number.isSafeInteger(bookingId) || bookingId < 1) return false;
+      const record = {
+        attempt, bookingId, csrfToken: options.csrfToken || '', onResolved: options.onResolved, onChecked: options.onChecked,
+        checking: false, resuming: false, cancelling: false, settled: false, retrySafe: false
+      };
+      activeAttempt = record;
+      ensureRecoveryModal(options.invoker);
+      cancelCheckout(record);
+      return true;
+    },
     reconcileReturn(options = {}) {
       if (!enabled()) return;
       const id = new URLSearchParams(window.location.search).get('attempt');
       if (!attemptPattern.test(id || '')) return;
       const start = () => {
         if (recoveryModal) return;
+        // A browser Back or provider cancel redirect does not prove the hosted
+        // session expired. Always retrieve provider status before releasing a hold.
         const record = {attempt: id, bookingId: rememberedBooking(id), csrfToken: options.csrfToken || '', onResolved: options.onResolved, checking: false};
         activeAttempt = record; installFocusRecovery();
         ensureRecoveryModal().set('Checking payment status with PayMongo…', {title: 'Checking payment status', hideOk: true});
@@ -237,18 +380,19 @@
           }
           if (activeAttempt && !activeAttempt.settled && !activeAttempt.retrySafe) {
             activeAttempt.dismissed = false;
-            ensureRecoveryModal(invoker).set('There is already an unresolved checkout. Check its status or cancel it securely before starting another payment.', {
+            if (activeAttempt.bookingId === bookingId) {
+              activeAttempt.policyConsent = policyConsent;
+              void resumeAttempt(activeAttempt, policyConsent);
+              return;
+            }
+            const unresolvedAttempt = activeAttempt;
+            ensureRecoveryModal(invoker).set('Another booking has an unresolved checkout. Check its status before opening another payment.', {
               title: 'Payment not confirmed', dismissible: true,
-              primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(activeAttempt),
-              secondaryLabel: 'Cancel checkout', onSecondary: () => checkAttempt(activeAttempt, true)
+              primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(unresolvedAttempt),
+              secondaryLabel: 'Resume payment', onSecondary: () => resumeWithBookingContext(unresolvedAttempt),
+              onCancel: () => cancelCheckout(unresolvedAttempt)
             });
-            checkAttempt(activeAttempt);
-            return;
-          }
-          if (uncertainBookings.has(bookingId)) {
-            ensureRecoveryModal(invoker).set('We could not verify whether checkout was created. Do not pay again while the result is uncertain.', {
-              title: 'Payment not confirmed', dismissible: true
-            });
+            checkAttempt(unresolvedAttempt);
             return;
           }
           pending = true;
@@ -263,8 +407,15 @@
               body: JSON.stringify({ booking: Number(id), policy_consent: policyConsent }) });
             const data = await response.json();
             if (!response.ok) {
-              const error = new Error(checkoutFailureMessage(response.status));
+              const error = new Error(typeof data?.error === 'string' ? data.error : checkoutFailureMessage(response.status));
               error.checkoutStatus = response.status;
+              error.checkoutCode = data?.code;
+              if (typeof data?.support_reference === 'string' && /^[a-f0-9]{16}$/.test(data.support_reference)) {
+                error.supportReference = data.support_reference;
+              }
+              if (typeof data?.diagnostic_code === 'string' && /^[a-z0-9_:-]{1,80}$/i.test(data.diagnostic_code)) {
+                error.diagnosticCode = data.diagnostic_code;
+              }
               throw error;
             }
             // A consent prompt is acknowledged client-side only after the
@@ -280,7 +431,6 @@
               if (!(url.origin === window.location.origin || (url.protocol === 'https:' && url.hostname === 'checkout.paymongo.com' && !url.username && !url.password && !url.port))) throw new Error('Invalid checkout destination.');
               if (options.onReady) options.onReady(data);
               else {
-                uncertainBookings.delete(bookingId);
                 installFocusRecovery();
                 window.location.assign(url.href);
               }
@@ -288,27 +438,25 @@
             else if (attemptPattern.test(data.attempt || '')) {
               rememberBooking(data.attempt, bookingId);
               activeAttempt = {attempt: data.attempt, bookingId, csrfToken: options.csrfToken || '', onResolved: options.onResolved, checking: false};
-              modal.set('Checkout was created, but its payment page did not open. Check its status before taking another payment action.', {
-                title: 'Payment not confirmed', dismissible: true,
-                primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(activeAttempt),
-                secondaryLabel: 'Cancel checkout', onSecondary: () => checkAttempt(activeAttempt, true)
-              });
-              checkAttempt(activeAttempt);
+              renderAttemptOutcome(activeAttempt, data);
+              if (data.message === 'uncertain') checkAttempt(activeAttempt);
             } else throw new Error('Checkout response was incomplete.');
             return data;
           } catch (error) {
-            if (options.onError) options.onError(error);
+            if (error?.checkoutCode === 'dates_unavailable') {
+              options.onUnavailable?.(error);
+              modal?.set(error.message, {title: 'Dates unavailable', dismissible: true});
+            } else if (options.onError) options.onError(error);
             else if (requestStarted && activeAttempt?.bookingId === bookingId) {
               modal?.set('Checkout could not be opened safely. Checking its payment status before another payment action.', {
                 title: 'Payment not confirmed', dismissible: true,
                 primaryLabel: 'Check payment status', onPrimary: () => checkAttempt(activeAttempt),
-                secondaryLabel: 'Cancel checkout', onSecondary: () => checkAttempt(activeAttempt, true)
+                secondaryLabel: 'Resume payment', onSecondary: () => resumeWithBookingContext(activeAttempt)
               });
               checkAttempt(activeAttempt);
             } else {
-              if (requestStarted) uncertainBookings.add(bookingId);
               const message = Number.isInteger(error?.checkoutStatus)
-                ? checkoutFailureMessage(error.checkoutStatus)
+                ? `${typeof error?.message === 'string' && error.message ? error.message : checkoutFailureMessage(error.checkoutStatus)}${error?.supportReference ? ` Support reference: ${error.supportReference}.` : ''}${error?.diagnosticCode ? ` Failure code: ${error.diagnosticCode}.` : ''}`
                 : 'Checkout could not be verified. Do not pay again while the outcome is uncertain. Review your booking and check the status before another payment action.';
               modal?.set(message, {title: 'Payment not confirmed', dismissible: true});
             }
@@ -338,6 +486,7 @@
       const paymentTitle = timer.dataset.paymentTitle || 'Payment Due';
       const isEventQuoteDeadline = timer.dataset.paymentEventQuote === '1';
       const isEventCheckoutHold = timer.dataset.paymentEventCheckout === '1';
+      const isCheckoutHold = timer.dataset.paymentCheckoutHold === '1' || isEventCheckoutHold;
       const label = timer.querySelector('[data-payment-label]');
       const display = timer.querySelector('[data-payment-countdown]');
       const note = timer.querySelector('[data-payment-note]');
@@ -352,19 +501,19 @@
           : `${Math.floor(hours / 24)}:${String(hours % 24).padStart(2, '0')}:${mm}:${ss}`;
       };
       if (seconds > 0) {
-        if (label) label.textContent = isEventQuoteDeadline ? 'Event Hall payment deadline' : (isEventCheckoutHold ? 'Checkout hold' : paymentTitle);
+        if (label) label.textContent = isEventQuoteDeadline ? 'Event Hall payment deadline' : (isCheckoutHold ? 'Checkout hold' : paymentTitle);
         if (display) display.textContent = `${formatRemaining(seconds)} remaining`;
         if (note) note.textContent = isEventQuoteDeadline
           ? 'Pay within 24 hours after quote finalization. Unpaid bookings are cancelled automatically; uncertain payments are verified first.'
-          : 'If time runs out, we’ll verify payment before releasing this hold.';
+          : (isCheckoutHold ? 'If time runs out, we’ll verify payment before releasing this hold.' : 'Check this payment status before proceeding.');
         timer.classList.toggle('is-urgent', seconds <= 60);
         timer.classList.remove('is-expired');
       } else {
-        if (label) label.textContent = isEventQuoteDeadline ? 'Payment deadline passed' : (isEventCheckoutHold ? 'Checkout hold ended' : 'Payment window ended');
+        if (label) label.textContent = isEventQuoteDeadline ? 'Payment deadline passed' : (isCheckoutHold ? 'Checkout hold ended' : 'Payment window ended');
         if (display) display.textContent = '00:00:00';
         if (note) note.textContent = isEventQuoteDeadline
           ? 'Checking payment status before cancelling the unpaid booking.'
-          : 'Checking payment before releasing this hold.';
+          : (isCheckoutHold ? 'Checking payment before releasing this hold.' : 'Check your booking status before proceeding.');
         timer.classList.remove('is-urgent');
         timer.classList.add('is-expired');
         timer.closest('tr')?.querySelectorAll('.btn-submit-payment').forEach(button => { button.disabled=true; });

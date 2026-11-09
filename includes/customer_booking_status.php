@@ -11,6 +11,7 @@ function customer_dashboard_status(array $booking): array
     if (booking_is_completed($booking)) return ['Completed', 'badge-completed'];
     if (!empty($booking['cancel_pending']) || ($booking['cancel_status'] ?? '') === 'Pending') return ['Pending refund', 'badge-cancelled'];
     if (!empty($booking['resched_pending']) || ($booking['resched_status'] ?? '') === 'Pending') return ['Reschedule requested', 'badge-reschedule'];
+    if ($bookingStatus === 'Cancelled' && !empty($booking['checkout_unavailable_at'])) return ['Dates unavailable', 'badge-reschedule'];
     if ($bookingStatus === 'Cancelled') {
         $expiredPayment = ($booking['source'] ?? '') === 'Online'
             && (string)($booking['payment_status'] ?? '') === 'Unpaid'

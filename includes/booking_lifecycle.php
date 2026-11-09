@@ -24,3 +24,14 @@ function booking_is_completed(array $booking): bool
     return (string)($booking['display_booking_status'] ?? $booking['booking_status'] ?? '') === 'Completed'
         || (int)($booking['is_completed'] ?? 0) === 1;
 }
+
+/** Check the optional marker column before building queries that reference it. */
+function booking_checkout_unavailable_marker_available(mysqli $conn): bool
+{
+    try {
+        $result = $conn->query("SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'bookings' AND column_name = 'checkout_unavailable_at' LIMIT 1");
+        return $result instanceof mysqli_result && $result->num_rows > 0;
+    } catch (Throwable $error) {
+        return false;
+    }
+}

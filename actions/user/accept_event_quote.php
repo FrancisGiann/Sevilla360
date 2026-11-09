@@ -56,10 +56,19 @@ try {
             || !in_array(($booking['payment_status'] ?? ''), ['Unpaid', 'Partial'], true)) {
             throw new RuntimeException('This Event Hall quotation is no longer available for acceptance.');
         }
-        if ((int)($booking['quote_version'] ?? 0) !== (int)$quoteVersion || (int)($booking['quote_version'] ?? 0) < 1) {
+        $now = manual_payment_db_now($store->db);
+        $storedQuoteVersion = (int)($booking['quote_version'] ?? 0);
+        $legacyFinalizedQuote = $storedQuoteVersion === 0
+            && (int)$quoteVersion === 1
+            && (int)($booking['quote_accepted'] ?? 0) === 0
+            && (float)($booking['total_amount'] ?? 0) > 0
+            && (float)($booking['amount_paid'] ?? 0) < (float)($booking['total_amount'] ?? 0)
+            && !empty($booking['payment_due_at']) && $booking['payment_due_at'] > $now
+            && (string)$booking['start_date'] >= substr($now, 0, 10);
+        if (($storedQuoteVersion !== (int)$quoteVersion && !$legacyFinalizedQuote)
+            || ($storedQuoteVersion < 1 && !$legacyFinalizedQuote)) {
             throw new RuntimeException('This quotation has changed. Refresh the booking details and review the latest version.');
         }
-        $now = manual_payment_db_now($store->db);
         if (empty($booking['payment_due_at']) || $booking['payment_due_at'] <= $now
             || (string)$booking['start_date'] < substr($now, 0, 10)) {
             throw new RuntimeException('The Event Hall payment deadline has passed.');
@@ -72,8 +81,26 @@ try {
             throw new RuntimeException('A payment outcome needs reconciliation before accepting this quotation.');
         }
         if ((int)$booking['quote_accepted'] !== 1) {
-            $store->query("UPDATE bookings SET quote_accepted=1 WHERE id=? AND quote_version=? AND quote_accepted=0 AND payment_due_at>NOW() AND booking_status='Confirmed' AND payment_status IN ('Unpaid','Partial')", [(int)$bookingId, (int)$quoteVersion]);
-            if ($store->db->affected_rows !== 1) throw new RuntimeException('The quotation changed before it could be accepted. Refresh the booking details and try again.');
+            if ($legacyFinalizedQuote) {
+                $updateSql = "UPDATE bookings SET quote_version=1,quote_accepted=1 WHERE id=? AND quote_version=0 AND quote_accepted=0 AND total_amount>0 AND amount_paid<total_amount AND payment_due_at>NOW() AND start_date>=CURDATE() AND booking_status='Confirmed' AND payment_status IN ('Unpaid','Partial')";
+            } else {
+                $updateSql = "UPDATE bookings SET quote_accepted=1 WHERE id=? AND quote_version=? AND quote_accepted=0 AND payment_due_at>NOW() AND booking_status='Confirmed' AND payment_status IN ('Unpaid','Partial')";
+            }
+            $statement = $store->db->prepare($updateSql);
+            $updateBookingId = (int)$bookingId;
+            if ($legacyFinalizedQuote) {
+                $statement->bind_param('i', $updateBookingId);
+            } else {
+                $updateVersion = (int)$quoteVersion;
+                $statement->bind_param('ii', $updateBookingId, $updateVersion);
+            }
+            try {
+                if (!$statement->execute()) throw new RuntimeException('The quotation could not be updated. Refresh the booking details and try again.');
+                $updatedRows = (int)$statement->affected_rows;
+            } finally {
+                $statement->close();
+            }
+            if ($updatedRows !== 1) throw new RuntimeException('The quotation changed before it could be accepted. Refresh the booking details and try again.');
         }
         // Acceptance never changes payment_due_at: the staff-finalized quote
         // keeps its original 24-hour deadline, including safe checkout retries.

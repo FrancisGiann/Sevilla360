@@ -10,6 +10,7 @@ require_once '../../includes/seminars.php';
 require_once '../../includes/realtime.php';
 require_once '../../includes/notifications.php';
 require_once '../../includes/manual_payment.php';
+require_once __DIR__ . '/../../includes/paymongo_mode.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
     http_response_code(401);
@@ -229,7 +230,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $dueHours = manual_payment_deadline_hours($conn);
-        $dueExpression = $venue_category === 'Event Hall' ? 'NULL' : "DATE_ADD(NOW(), INTERVAL {$dueHours} HOUR)";
+        $dueExpression = $venue_category === 'Event Hall' || (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+            ? 'NULL'
+            : "DATE_ADD(NOW(), INTERVAL {$dueHours} HOUR)";
         $stmt_book = $conn->prepare("
             INSERT INTO bookings (reference_no, customer_id, venue_id, start_date, end_date, guests_count, contact_phone, base_amount, total_amount, payment_scheme, booking_status, payment_status, payment_due_at, source, policy_accepted_at, policy_version)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Unpaid', {$dueExpression}, 'Online', NOW(), ?)
@@ -485,7 +488,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $db_committed = true;
         try {
             require_once '../../includes/mailer.php';
-            $email_status = $amount_due > 0 ? 'Payment proof required within ' . $dueHours . ' hours' : 'Inquiry Sent (Pending)';
+            $email_status = $amount_due > 0
+                ? ((defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
+                    ? 'Payment required; a 15-minute checkout hold starts when you choose Pay now'
+                    : 'Payment proof required within ' . $dueHours . ' hours')
+                : 'Inquiry Sent (Pending)';
             send_booking_receipt($customer_email, $customer_name, $ref_no, $_POST['room_name'] ?? $venue_category, 0, $email_status);
         } catch (Throwable $mail_e) {
             error_log('Online booking email delivery failed: ' . get_class($mail_e));

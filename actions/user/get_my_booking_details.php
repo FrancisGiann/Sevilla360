@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/session_init.php';
+require_once __DIR__ . '/../../includes/paymongo_mode.php';
 header('Content-Type: application/json');
 require_once '../../config/db_connect.php';
 require_once __DIR__ . '/../../includes/session_account_guard.php';
@@ -27,10 +28,13 @@ $user_id = $_SESSION['user_id'];
 $response = ['success' => true, 'data' => []];
 
 try {
+    $legacyEventQuoteVersionSql = defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP
+        ? "CASE WHEN b.quote_version=0 AND v.category='Event Hall' AND b.source='Online' AND b.booking_status='Confirmed' AND b.payment_status IN ('Unpaid','Partial') AND b.total_amount>0 AND b.payment_due_at>NOW() AND b.start_date>=CURDATE() THEN 1 ELSE b.quote_version END AS display_quote_version"
+        : '0 AS display_quote_version';
     // 2. SECURITY: Fetch the booking, ensuring it belongs to THIS user_id!
     $stmt = $conn->prepare("
         SELECT
-            b.*, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+            b.*, {$legacyEventQuoteVersionSql}, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
             c.first_name, c.last_name, c.email, COALESCE(b.contact_phone, c.phone) AS phone,
             v.name AS venue_name, v.category AS venue_category,
             hr.room_type, hr.room_number,

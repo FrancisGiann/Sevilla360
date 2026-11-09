@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/includes/manual_payment.php';
 
+final class PayMongoCheckoutConflictException extends RuntimeException {}
+
 function paymongo_verified_payment_method_label(array $attributes): string {
     // Read the successful payment's actual source, never the allowed-method list.
     $source = $attributes['source'] ?? null;
@@ -16,6 +18,8 @@ function paymongo_verified_payment_method_label(array $attributes): string {
 
 /** Local prototype: caller injects ONLY a disposable fixture connection. */
 final class PayMongoPrototype {
+    private ?bool $checkoutUnavailableMarkerAvailable = null;
+
     public function __construct(public readonly mysqli $db, private readonly bool $applicationSchema=false) {}
     public function query(string $sql, array $args = []): mysqli_result|bool {
         $s = $this->db->prepare($sql);
@@ -25,6 +29,18 @@ final class PayMongoPrototype {
     }
     public function row(string $sql, array $args = []): ?array {
         $r = $this->query($sql, $args); return $r instanceof mysqli_result ? $r->fetch_assoc() : null;
+    }
+    private function checkoutUnavailableMarkerAvailable(): bool {
+        if ($this->checkoutUnavailableMarkerAvailable !== null) return $this->checkoutUnavailableMarkerAvailable;
+        try {
+            $column = $this->row("SELECT 1 AS present FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='bookings' AND column_name='checkout_unavailable_at' LIMIT 1");
+            return $this->checkoutUnavailableMarkerAvailable = $column !== null;
+        } catch (Throwable $e) {
+            // Older or restricted schemas must still close the losing booking
+            // and release its inventory even when the optional display marker
+            // cannot be checked. The migration enables the durable label.
+            return $this->checkoutUnavailableMarkerAvailable = false;
+        }
     }
     public function atomic(callable $fn): mixed {
         $this->db->begin_transaction();
@@ -62,15 +78,23 @@ final class PayMongoPrototype {
         return hash('sha256', json_encode($fields, JSON_THROW_ON_ERROR));
     }
     private function eligible(array $b): void {
+        if (!empty($b['checkout_unavailable_at'])) throw new PayMongoCheckoutConflictException('These dates are unavailable because they are currently held or booked by another guest. Choose another date or room.');
         if ($b['source'] !== 'Online' || !in_array($b['booking_status'], ['Awaiting Proof','Confirmed'], true)
             || (int)$b['pending_change'] || in_array($b['payment_status'], ['Paid','Refunded'], true)
             || $b['start_date'] < substr(manual_payment_db_now($this->db), 0, 10)) throw new RuntimeException('This booking cannot accept checkout.');
-        if ($b['venue_category'] === 'Event Hall' && (!(int)$b['quote_accepted'] || (int)$b['quote_version'] < 1)) throw new RuntimeException('An accepted Event Hall quote is required.');
-        if (self::cents($b['amount_paid']) === 0 && (!$b['payment_due_at'] || $b['payment_due_at'] <= manual_payment_db_now($this->db))) throw new RuntimeException('Booking payment deadline expired.');
+        if ($b['venue_category'] === 'Event Hall') {
+            if ($b['booking_status'] !== 'Confirmed' || !(int)($b['quote_accepted'] ?? 0) || (int)($b['quote_version'] ?? 0) < 1) {
+                throw new RuntimeException('An accepted, confirmed Event Hall quote is required.');
+            }
+            if (self::cents((string)$b['amount_paid']) === 0
+                && (empty($b['payment_due_at']) || $b['payment_due_at'] <= manual_payment_db_now($this->db))) {
+                throw new RuntimeException('The Event Hall 24-hour payment deadline expired.');
+            }
+        }
     }
     /** Commit the local attempt BEFORE any provider creation; reopening never extends it. */
     public function begin(int $id, int $customer, bool $policyConsent=false): array {
-        return $this->atomic(function () use ($id, $customer, $policyConsent) {
+        $result = $this->atomic(function () use ($id, $customer, $policyConsent) {
             $b = $this->booking($id, $customer); $this->eligible($b);
             $currentPolicy='terms-v4-paymongo-actual-fee';
             if (($b['policy_version']??'')!==$currentPolicy) {
@@ -79,22 +103,86 @@ final class PayMongoPrototype {
                 $b['policy_version']=$currentPolicy;
             }
             if ($this->row("SELECT r.payment_id FROM pm_receipts r JOIN pm_attempts a ON a.id=r.attempt_id WHERE a.booking_id=? AND r.disposition<>'applied' LIMIT 1", [$id])) throw new RuntimeException('A received payment needs resolution. Do not pay again.');
-            $a = $this->row("SELECT * FROM pm_attempts WHERE booking_id=? AND status IN ('creating','open','uncertain') ORDER BY created_at DESC LIMIT 1 FOR UPDATE", [$id]);
+            $a = $this->row("SELECT * FROM pm_attempts WHERE booking_id=? AND status IN ('creating','open','uncertain','review') ORDER BY FIELD(status,'review','creating','uncertain','open'),created_at DESC LIMIT 1 FOR UPDATE", [$id]);
             if ($a && $this->applicationSchema && !hash_equals($this->currentEpoch(), (string)($a['restore_epoch'] ?? '0'))) throw new RuntimeException('Checkout predates a restore. Recover or close it before paying again.');
             if ($a) return $a; // Includes expired/uncertain attempts: reconcile before replacement.
             $amount = self::due($b);
             if ($amount < 100) throw new RuntimeException('Amount is below the prototype minimum of PHP 1.');
-            $token = bin2hex(random_bytes(16));
-            $expiry = self::cents($b['amount_paid']) === 0
-                ? manual_payment_acquire_step_hold_locked($this->db, $b, $token, true)
-                : $this->row('SELECT DATE_ADD(NOW(), INTERVAL 15 MINUTE) expiry')['expiry'];
-            if (!$expiry) throw new RuntimeException('Dates are no longer available. No payment was started.');
+            $basePaidCents=self::cents((string)$b['amount_paid']);
+            $hasCurrentHold=!empty($b['payment_step_token']) && !empty($b['payment_step_expires_at'])
+                && (string)$b['payment_step_expires_at']>manual_payment_db_now($this->db);
+            // Reuse the persisted hold token while it is live. The hold helper
+            // returns its original deadline, so a confirmed expired provider
+            // session can be retried without extending the 15-minute hold.
+            // Event Hall quotes have a separate 24-hour payment deadline. Once
+            // a prior 15-minute checkout hold ends, a new checkout may start a
+            // fresh 15-minute hold while that quote deadline remains open.
+            if ($b['venue_category'] === 'Event Hall' && !$hasCurrentHold) {
+                $this->query('UPDATE bookings SET payment_step_seen_at=NOW() WHERE id=?', [$id]);
+            }
+            $token=$basePaidCents===0 && $hasCurrentHold
+                ? (string)$b['payment_step_token']
+                : bin2hex(random_bytes(16));
+            if ($basePaidCents===0) {
+                $expiry=manual_payment_acquire_step_hold_locked($this->db,$b,$token,true);
+            } else {
+                // A balance checkout is a separate payment step. Reuse the
+                // original deadline across hotel retries. An Event Hall
+                // balance checkout may start a fresh 15-minute step while
+                // its quote's independent 24-hour deadline remains open.
+                $priorStep=$this->row('SELECT MIN(expires_at) AS expiry FROM pm_attempts WHERE booking_id=? AND base_paid_cents=?',[$id,$basePaidCents]);
+                $priorExpiry=(string)($priorStep['expiry']??'');
+                $now=manual_payment_db_now($this->db);
+                if ($b['venue_category'] === 'Event Hall' && ($priorExpiry==='' || $priorExpiry<=$now)) {
+                    $expiry=(string)$this->row('SELECT DATE_ADD(NOW(), INTERVAL 15 MINUTE) expiry')['expiry'];
+                } else {
+                    $expiry=$priorExpiry!==''
+                        ? $priorExpiry
+                        : (string)$this->row('SELECT DATE_ADD(NOW(), INTERVAL 15 MINUTE) expiry')['expiry'];
+                    if ($expiry<=$now) throw new RuntimeException('The original checkout hold expired. No new payment session was started.');
+                }
+            }
+            if (!$expiry) {
+                if ($basePaidCents === 0) {
+                    // Drop only this booking's expired/failed hold before the
+                    // final inventory check. Other customers' locks stay intact.
+                    manual_payment_clear_step_hold_locked($this->db, $b);
+                    if (!manual_payment_claim_inventory_locked($this->db, $b)) {
+                        $unavailableMarker = $this->checkoutUnavailableMarkerAvailable() ? ', checkout_unavailable_at=NOW()' : '';
+                        $this->query("UPDATE bookings SET booking_status='Cancelled', payment_due_at=DATE_SUB(NOW(), INTERVAL 1 SECOND), payment_step_token=NULL, payment_step_expires_at=NULL{$unavailableMarker}, updated_at=NOW() WHERE id=? AND source='Online' AND booking_status IN ('Awaiting Proof','Confirmed') AND payment_status='Unpaid' AND amount_paid=0", [$id]);
+                        $state = $this->row('SELECT booking_status FROM bookings WHERE id=?', [$id]);
+                        if (($state['booking_status'] ?? '') !== 'Cancelled') throw new RuntimeException('Unable to close the unavailable booking.');
+                        $reference = (string)($b['reference_no'] ?? $id);
+                        $this->query("INSERT INTO audit_logs (user_id,module,action,ip_address) VALUES (NULL,'Payment Availability',?,'System')", ['Closed unpaid booking ' . $reference . ' because selected dates were no longer available']);
+                        return ['availability_conflict' => true];
+                    }
+                }
+                throw new RuntimeException('The original checkout hold expired. No new payment session was started.');
+            }
             $idAttempt = bin2hex(random_bytes(16));
             $this->query('INSERT INTO pm_attempts (id,booking_id,snapshot,amount_cents,base_paid_cents,hold_token,expires_at) VALUES (?,?,?,?,?,?,?)',
-                [$idAttempt,$id,$this->snapshot($b),$amount,self::cents($b['amount_paid']),$token,$expiry]);
+                [$idAttempt,$id,$this->snapshot($b),$amount,$basePaidCents,$token,$expiry]);
             if ($this->applicationSchema) $this->query('UPDATE pm_attempts SET restore_epoch=? WHERE id=?', [$this->currentEpoch(), $idAttempt]);
             return $this->row('SELECT * FROM pm_attempts WHERE id=?', [$idAttempt]);
         });
+        if (!empty($result['availability_conflict'])) {
+            if ($this->applicationSchema) {
+                try {
+                    require_once dirname(__DIR__, 2) . '/includes/notifications.php';
+                    require_once dirname(__DIR__, 2) . '/includes/realtime.php';
+                    $owner = $this->row('SELECT user_id FROM customers WHERE id=?', [$customer]);
+                    $userId = (int)($owner['user_id'] ?? 0);
+                    if ($userId > 0) {
+                        create_user_notification($this->db, $userId, 'Dates unavailable', 'Another guest currently holds or booked one or more selected dates. This unpaid booking was closed; choose another date or room.');
+                        realtime_enqueue_event($this->db, 'customer:' . $userId, 'booking.expired', ['booking_id' => $id, 'reason' => 'dates_unavailable']);
+                    }
+                } catch (Throwable $notificationError) {
+                    error_log('Booking availability notification deferred: booking=' . $id . ' type=' . get_class($notificationError));
+                }
+            }
+            throw new PayMongoCheckoutConflictException('These dates are unavailable because they are currently held or booked by another guest. This unpaid booking was closed. Choose another date or room.');
+        }
+        return $result;
     }
     public function attach(string $attempt, array $resource): array {
         return $this->atomic(function () use ($attempt, $resource) {
@@ -240,8 +328,13 @@ final class PayMongoPrototype {
         return $this->atomic(function () use ($id,$customer,$checkoutDeadline) {
             $b=$this->booking($id,$customer);
             $now=manual_payment_db_now($this->db);
-            $lastAttempt=$this->row('SELECT expires_at FROM pm_attempts WHERE booking_id=? ORDER BY created_at DESC,id DESC LIMIT 1',[$id]);
-            $deadline=$b['payment_step_expires_at'] ?: ($checkoutDeadline ?: ($lastAttempt['expires_at'] ?? ($b['payment_due_at'] ?? null)));
+            $basePaidCents=self::cents((string)$b['amount_paid']);
+            $firstAttempt=$this->row('SELECT MIN(expires_at) AS expires_at FROM pm_attempts WHERE booking_id=? AND base_paid_cents=?',[$id,$basePaidCents]);
+            // Event Hall reservations remain payable through the quote's full
+            // 24-hour window; their checkout attempt hold is a separate 15-minute step.
+            $deadline=$b['venue_category']==='Event Hall'
+                ? ($b['payment_due_at']??null)
+                : ($b['payment_step_expires_at'] ?: ($checkoutDeadline ?: ($firstAttempt['expires_at'] ?? null)));
             if (!$deadline || $deadline>$now || $b['source']!=='Online'
                 || !in_array($b['booking_status'],['Awaiting Proof','Confirmed'],true)
                 || $b['payment_status']!=='Unpaid' || self::cents((string)$b['amount_paid'])!==0
@@ -252,15 +345,18 @@ final class PayMongoPrototype {
             // Keep a past deadline as the durable distinction between an
             // expired unpaid reservation and a customer/admin cancellation.
             $this->query("UPDATE bookings SET booking_status='Cancelled',payment_due_at=DATE_SUB(NOW(),INTERVAL 1 SECOND),updated_at=NOW() WHERE id=?",[$id]);
-            $this->query("INSERT INTO audit_logs (user_id,module,action,ip_address) VALUES (NULL,'Payment Expiry',?,'System scheduler')",['Expired unpaid booking '.$b['reference_no'].' after its payment hold ended']);
+            $this->query("INSERT INTO audit_logs (user_id,module,action,ip_address) VALUES (NULL,'Payment Expiry',?,'System scheduler')",['Expired unpaid booking '.$b['reference_no'].' after its payment deadline']);
             if($this->applicationSchema){
                 try {
                     require_once dirname(__DIR__,2).'/includes/notifications.php';
                     require_once dirname(__DIR__,2).'/includes/realtime.php';
                     $owner=$this->row('SELECT user_id FROM customers WHERE id=?',[$customer]);
                     $userId=(int)($owner['user_id']??0);
+                    $message=$b['venue_category']==='Event Hall'
+                        ? 'Your Event Hall quote expired because its 24-hour payment deadline passed.'
+                        : 'Your unpaid booking expired after its 15-minute payment hold. Start a new booking if you would like to try again.';
                     if($userId>0){
-                        create_user_notification($this->db,$userId,'Booking Expired','Your unpaid booking '.$b['reference_no'].' expired after its 15-minute payment hold. Start a new booking if you would like to try again.');
+                        create_user_notification($this->db,$userId,'Booking Expired',$message);
                         realtime_enqueue_event($this->db,'customer:'.$userId,'booking.expired',['booking_id'=>$id,'reference_no'=>(string)$b['reference_no']]);
                     }
                     realtime_enqueue_event($this->db,'admin','booking.expired',['booking_id'=>$id,'reference_no'=>(string)$b['reference_no']]);
@@ -271,7 +367,7 @@ final class PayMongoPrototype {
             return true;
         });
     }
-    /** Only after authoritative simulator expiry/no paid payment; never from a redirect. */
+    /** Retire a verified expired attempt; retain its booking hold through the original deadline. */
     public function close(string $attempt, int $customer, array $session): void {
         $this->atomic(function () use ($attempt,$customer,$session) {
             $ref=$this->row('SELECT booking_id FROM pm_attempts WHERE id=?', [$attempt]);
@@ -285,9 +381,58 @@ final class PayMongoPrototype {
             if (in_array($a['status'],['paid','review'],true)) return;
             $this->query("UPDATE pm_attempts SET status='expired' WHERE id=?", [$attempt]);
             if ($b['payment_step_token']===$a['hold_token']) {
+                $holdDeadline=(string)($b['payment_step_expires_at']??'') ?: (string)$a['expires_at'];
+                if ($holdDeadline>manual_payment_db_now($this->db)) return;
                 $this->query('INSERT IGNORE INTO payment_step_exits (token,booking_id) VALUES (?,?)',[$a['hold_token'],$b['id']]);
                 manual_payment_clear_step_hold_locked($this->db,$b);
             }
+        });
+    }
+    /** Cancel the unpaid booking only after provider expiry and no successful payment are verified. */
+    public function cancelUnpaidAfterProviderExpiry(string $attempt, int $customer, array $session): bool {
+        return $this->atomic(function () use ($attempt,$customer,$session) {
+            $ref=$this->row('SELECT booking_id FROM pm_attempts WHERE id=?',[$attempt]);
+            if (!$ref) throw new RuntimeException('Attempt not found.');
+            $b=$this->booking((int)$ref['booking_id'],$customer);
+            $a=$this->row('SELECT * FROM pm_attempts WHERE id=? FOR UPDATE',[$attempt]);
+            $attributes=$session['attributes']??null;
+            if (!is_array($attributes) || ($attributes['livemode']??null)!==false
+                || ($session['id']??null)!==($a['provider_session_id']??null)
+                || ($attributes['reference_number']??null)!==$attempt
+                || ($attributes['status']??null)!=='expired'
+                || !is_array($attributes['payments']??null)
+                || array_filter($attributes['payments'],static fn($payment)=>($payment['attributes']['status']??'')!=='failed')) {
+                throw new RuntimeException('Provider expiry is not confirmed; keep the booking hold and recover payment first.');
+            }
+
+            if (in_array($a['status'],['paid','review'],true)
+                || (string)$b['source']!=='Online'
+                || !in_array($b['booking_status'],['Awaiting Proof','Confirmed','Cancelled'],true)
+                || $b['payment_status']!=='Unpaid'
+                || self::cents((string)$b['amount_paid'])!==0
+                || (int)($b['pending_change']??0)===1) return false;
+
+            $otherAttempt=$this->row("SELECT id FROM pm_attempts WHERE booking_id=? AND id<>? AND status IN ('creating','open','uncertain','review') LIMIT 1 FOR UPDATE",[$b['id'],$attempt]);
+            if ($otherAttempt) return false;
+            $receipt=$this->row('SELECT r.payment_id FROM pm_receipts r JOIN pm_attempts a ON a.id=r.attempt_id WHERE a.booking_id=? LIMIT 1 FOR UPDATE',[$b['id']]);
+            if ($receipt) return false;
+            if ($this->applicationSchema && $this->row("SELECT id FROM payments WHERE booking_id=? AND status='Success' LIMIT 1 FOR UPDATE",[$b['id']])) return false;
+            $currentToken=(string)($b['payment_step_token']??'');
+            if ($currentToken!=='' && !hash_equals($currentToken,(string)$a['hold_token'])) return false;
+
+            $this->query("UPDATE pm_attempts SET status='expired' WHERE id=?",[$attempt]);
+            if ($b['booking_status']==='Cancelled') {
+                if ($currentToken!=='') manual_payment_clear_step_hold_locked($this->db,$b);
+                return true;
+            }
+            if ($currentToken!=='') manual_payment_clear_step_hold_locked($this->db,$b);
+            $this->query("UPDATE bookings SET booking_status='Cancelled',payment_due_at=NULL,updated_at=NOW() WHERE id=? AND source='Online' AND booking_status IN ('Awaiting Proof','Confirmed') AND payment_status='Unpaid' AND amount_paid=0",[$b['id']]);
+            $state=$this->row('SELECT booking_status,payment_status,amount_paid FROM bookings WHERE id=?',[$b['id']]);
+            if (($state['booking_status']??'')!=='Cancelled' || ($state['payment_status']??'')!=='Unpaid' || self::cents((string)($state['amount_paid']??'0'))!==0) {
+                throw new RuntimeException('Unpaid booking could not be cancelled safely.');
+            }
+            $this->query("INSERT INTO audit_logs (user_id,module,action,ip_address) VALUES (NULL,'Checkout Cancellation',?,'Customer')",['Cancelled unpaid booking '.$b['reference_no'].' after PayMongo confirmed the checkout expired']);
+            return true;
         });
     }
 }

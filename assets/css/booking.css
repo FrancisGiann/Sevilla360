@@ -1582,7 +1582,7 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
 .booking-payment-window p { margin: 6px 0 0; font-size: 15px; line-height: 1.6; color: #5e5145; }
 
 /* Keep terms readable in a short viewport while the consent action stays visible. */
-#tnc-modal { box-sizing: border-box; height: 100vh; height: 100dvh; padding: 16px; overscroll-behavior: contain; }
+#tnc-modal { box-sizing: border-box; height: 100vh; height: 100dvh; padding: 16px; overflow: hidden; overscroll-behavior: contain; }
 #tnc-modal .modal-content {
     box-sizing: border-box;
     display: flex;
@@ -1600,7 +1600,9 @@ body:has(.booking-section) { overflow-x: clip; overflow-y: visible; }
     min-height: 0;
     max-height: min(300px, 48vh);
     max-height: min(300px, 48dvh);
-    overscroll-behavior: contain;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     scrollbar-gutter: stable;
 }
 #tnc-modal .terms-content:focus-visible { outline: 2px solid #80521f; outline-offset: 3px; }

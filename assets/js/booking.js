@@ -560,9 +560,9 @@ class BookingController {
                 // date confirmation carries through without a second prompt.
                 calendar.updateDateDisplay();
             } else if (this.auth.isCustomer) {
-                // The availability check above is advisory. The lock endpoint
-                // remains authoritative and is called once on resume.
-                await this.lockSelectedDates(calendar.startDate, calendar.endDate, calendar);
+                // The endpoint rechecks availability and records the venue
+                // selection; payment entry creates the temporary hold.
+                await this.checkAndConfirmSelectedDates(calendar.startDate, calendar.endDate, calendar);
             }
         } else {
             // Legacy drafts and drafts whose venue/category/dates changed must
@@ -923,7 +923,7 @@ class BookingController {
             return { valid: false, issue: { step: 2, message: 'Confirm these dates for the selected room or venue before continuing.', target: calendar.container } };
         }
         if (this.state.activeTabId !== 'event-hall' && this.auth.isCustomer && !this.state.isDatesLocked) {
-            return { valid: false, issue: { step: 2, message: 'Your date hold has expired. Confirm the dates again to continue.', target: calendar.container } };
+            return { valid: false, issue: { step: 2, message: 'Confirm these dates to check availability before continuing.', target: calendar.container } };
         }
         const guestIssue = this.getGuestCountIssue({ checkEventStyle: false });
         return guestIssue
@@ -1435,8 +1435,7 @@ class BookingController {
         const agreeButton = this.getEl('btn-agree');
         if (agreeButton) agreeButton.disabled = true;
         this.termsDialogTrigger = document.activeElement;
-        this.termsDialogPreviousOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
+        this.lockTermsPageScroll();
         modal.classList.add('active');
         modal.setAttribute('aria-hidden', 'false');
         this.updateTermsDialogReadState();
@@ -1453,13 +1452,39 @@ class BookingController {
     closeTermsDialog() {
         this.getEl('tnc-modal')?.classList.remove('active');
         this.getEl('tnc-modal')?.setAttribute('aria-hidden', 'true');
-        if (this.termsDialogPreviousOverflow !== undefined) {
-            document.body.style.overflow = this.termsDialogPreviousOverflow;
-            this.termsDialogPreviousOverflow = undefined;
-        }
+        this.restoreTermsPageScroll();
         const trigger = this.termsDialogTrigger;
         this.termsDialogTrigger = null;
         if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    }
+
+    lockTermsPageScroll() {
+        const root = document.documentElement;
+        const body = document.body;
+        if (!root || !body || this.termsDialogScrollState) return;
+
+        const properties = ['overflow', 'overscrollBehavior', 'position', 'top', 'left', 'right', 'width'];
+        const saveStyles = element => Object.fromEntries(properties.map(property => [property, element.style[property] || '']));
+        const scrollX = Number(window.scrollX ?? window.pageXOffset ?? 0);
+        const scrollY = Number(window.scrollY ?? window.pageYOffset ?? 0);
+        this.termsDialogScrollState = { root, body, rootStyles: saveStyles(root), bodyStyles: saveStyles(body), scrollX, scrollY };
+
+        root.style.overflow = 'hidden';
+        root.style.overscrollBehavior = 'none';
+        body.style.overflow = 'hidden';
+        body.style.position = 'fixed';
+        body.style.top = `-${scrollY}px`;
+        body.style.left = `-${scrollX}px`;
+        body.style.width = '100%';
+    }
+
+    restoreTermsPageScroll() {
+        const state = this.termsDialogScrollState;
+        if (!state) return;
+        Object.entries(state.rootStyles).forEach(([property, value]) => { state.root.style[property] = value; });
+        Object.entries(state.bodyStyles).forEach(([property, value]) => { state.body.style[property] = value; });
+        this.termsDialogScrollState = null;
+        window.scrollTo(state.scrollX, state.scrollY);
     }
 
     currentTermsPolicyVersion() {
@@ -1536,7 +1561,7 @@ class BookingController {
                 this.state.activeCalendar = null;
                 this.showBookingStepIssue({ step: 2, message: 'Those dates are no longer available. Choose new dates; your other details have been kept.', target: calendar.container });
             } else {
-                // Retry is advisory; explicit confirmation still owns any hold.
+                // Retry only refreshes availability; payment entry owns the hold.
                 this.requestDateConfirmation(calendar.startDate, calendar.endDate, calendar);
             }
             this.saveDraft();
@@ -2489,7 +2514,7 @@ class BookingController {
         }
     }
 
-    async lockSelectedDates(startDate, endDate, calendarInstance, { dateModal = null, confirmBtn = null } = {}) {
+    async checkAndConfirmSelectedDates(startDate, endDate, calendarInstance, { dateModal = null, confirmBtn = null } = {}) {
         const isEventInquiry = this.state.activeTabId === 'event-hall';
         if (!this.auth.isCustomer || isEventInquiry || !calendarInstance?.startDate) return false;
 
@@ -2541,23 +2566,25 @@ class BookingController {
                 throw new Error(response[1] || 'The selected dates could not be confirmed.');
             }
             serverLockCreated = response[1] === 'Dates locked';
-            const expiresAt = Number(response[2] || 0);
-            if (serverLockCreated && (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000))) {
-                throw new Error('The server did not return a valid hold expiry.');
+            if (serverLockCreated) {
+                throw new Error('Date confirmation must not start a payment hold. Choose Pay now to begin checkout.');
             }
-
+            if (response[1] !== 'Dates selected') {
+                throw new Error('Availability could not be confirmed. Please check the dates again.');
+            }
             this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
+            // Legacy gate state: this selection was checked, not held. The
+            // 15-minute payment hold begins only in the Pay now server flow.
             this.state.isDatesLocked = true;
             window.isDatesLocked = true;
-            this.state.lockExpiresAt = serverLockCreated ? expiresAt : null;
+            this.state.lockExpiresAt = null;
             const proceed = this.getEl('btn-proceed');
             if (proceed) { proceed.disabled = false; proceed.style.opacity = ''; }
             this.checkSelectedInventory();
             calendarInstance.updateDateDisplay();
             this.calculateSummary();
             this.saveDraft();
-            if (serverLockCreated) this.startTimer(expiresAt);
-            else this.updateHoldTimerVisibility();
+            this.updateHoldTimerVisibility();
             serverLockCreated = false;
             return true;
         } catch (err) {
@@ -2592,7 +2619,7 @@ class BookingController {
             if (err.sessionExpired || err.status === 403) {
                 showAlert('Session Expired', err.message, 'error', true);
             } else {
-                showAlert('Hold unavailable', `Error: ${err.message}`, 'error');
+                showAlert('Availability check failed', err.message || 'The selected dates could not be checked. Please try again.', 'error');
                 const refreshData = this.getTabContextData();
                 calendarInstance.fetchBookedDates(refreshData.roomType, refreshData.roomName, refreshData.venueId, false, refreshData.roomGroupId);
             }
@@ -2602,6 +2629,25 @@ class BookingController {
             if (confirmBtn) confirmBtn.disabled = false;
             return false;
         }
+    }
+
+    selectedRangeAvailabilityIssue(calendar) {
+        const start = calendar?.startDate;
+        const end = calendar?.endDate;
+        if (!start || !end) return 'Choose a valid date range.';
+        const sameDay = start.getTime() === end.getTime();
+        const stayType = document.querySelector('input[name="villa-stay"]:checked')?.value;
+        const invalidVillaRange = this.state.activeTabId === 'resort-villa'
+            && ((stayType === 'Overnight' && sameDay)
+                || (stayType !== 'Overnight' && !sameDay)
+                || calendar.hasUnavailableDatesInclusive(start, end));
+        const unavailable = invalidVillaRange
+            || calendar.isDateUnavailable(start)
+            || calendar.hasInvalidDaysBetween(start, end)
+            || (this.state.activeTabId !== 'hotel-rooms' && calendar.isDateUnavailable(end));
+        return unavailable
+            ? 'Those dates are no longer available. Choose new dates and check again.'
+            : null;
     }
 
     requestDateConfirmation(startDate, endDate, calendarInstance) {
@@ -2619,11 +2665,12 @@ class BookingController {
 
         const title = dateModal?.querySelector('.modal-title');
         const subtext = dateModal?.querySelector('.modal-subtext');
-        const canHold = this.auth.isCustomer && !isEventInquiry;
         if (title) title.textContent = isEventInquiry ? 'Confirm Event Dates' : 'Confirm your dates';
         if (subtext) subtext.textContent = isEventInquiry
             ? 'Checking availability only; your event quote remains subject to resort review.'
-            : 'These dates are available now. Continue to review your reservation.';
+            : (this.auth.isCustomer
+                ? 'Availability is checked now. Your 15-minute payment hold starts only when you choose Pay now.'
+                : 'These dates are available now. Confirm them to continue.');
         const dateLabel = endDate && endDate.getTime() !== startDate.getTime()
             ? `${startStr} — ${endStr}${this.state.activeTabId === 'resort-villa' && document.querySelector('input[name="villa-stay"]:checked')?.value === 'Overnight' ? ` (${calendarInstance.totalNights} nights; checkout date included)` : ''}`
             : (this.state.activeTabId === 'resort-villa' ? `${startStr} (one calendar date)` : startStr);
@@ -2645,26 +2692,50 @@ class BookingController {
                 return;
             }
 
-            // Event Hall inquiries and guests only confirm a local selection.
-            // Guest actions never call a lock endpoint or create booking_locks.
-            if (!canHold) {
-                dateModal.classList.remove("active");
-                this.state.isDatesLocked = false;
-                this.state.lockExpiresAt = null;
-                this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
-                window.isDatesLocked = false;
-                calendarInstance.updateDateDisplay();
-                this.saveDraft();
-                this.calculateSummary();
+            // Event inquiries and guests confirm a local selection. Customer
+            // hotel/villa confirmation is an availability preflight only; the
+            // endpoint records the venue selection without creating a hold.
+            const requiresAvailabilityPreflight = this.auth.isCustomer && !isEventInquiry;
+            if (!requiresAvailabilityPreflight) {
+                confirmBtn.innerText = "Checking availability...";
+                confirmBtn.disabled = true;
+                try {
+                    const availabilityReady = await calendarInstance.fetchBookedDates(
+                        lockData.roomType, lockData.roomName, lockData.venueId, false, lockData.roomGroupId
+                    );
+                    if (availabilityReady !== true) throw new Error('Availability could not be checked. Please try again.');
+                    const availabilityIssue = this.selectedRangeAvailabilityIssue(calendarInstance);
+                    if (availabilityIssue) {
+                        this.state.confirmedSelectionKey = '';
+                        this.state.isDatesLocked = false;
+                        window.isDatesLocked = false;
+                        dateModal.classList.remove("active");
+                        showAlert('Dates unavailable', availabilityIssue, 'info');
+                        return;
+                    }
+                    this.state.isDatesLocked = false;
+                    this.state.lockExpiresAt = null;
+                    this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
+                    window.isDatesLocked = false;
+                    calendarInstance.updateDateDisplay();
+                    this.saveDraft();
+                    this.calculateSummary();
+                    dateModal.classList.remove("active");
+                } catch (error) {
+                    showAlert('Availability check failed', error.message || 'Please try again.', 'error');
+                } finally {
+                    confirmBtn.innerText = "Confirm";
+                    confirmBtn.disabled = false;
+                }
                 return;
             }
 
             this.state.confirmedSelectionKey = this.buildSelectionKey(calendarInstance);
-            confirmBtn.innerText = "Locking...";
+            confirmBtn.innerText = "Checking availability...";
             confirmBtn.disabled = true;
             try {
-                const locked = await this.lockSelectedDates(startDate, endDate, calendarInstance, { dateModal, confirmBtn });
-                if (locked) dateModal.classList.remove("active");
+                const checked = await this.checkAndConfirmSelectedDates(startDate, endDate, calendarInstance, { dateModal, confirmBtn });
+                if (checked) dateModal.classList.remove("active");
             } catch (err) {
                 dateModal.classList.remove("active");
                 showAlert("Dates unavailable", err.message || "The selected dates could not be confirmed.", "error");
@@ -3447,7 +3518,7 @@ class BookingController {
                 this.clearDraft();
                 btn.innerText = context.roomType === 'Event Hall' ? "INQUIRY SENT" : "REQUEST SAVED";
                 if (context.roomType === 'Event Hall') {
-                    showAlert("Inquiry submitted", "Your Event Hall inquiry is on its way. We will send the finalized quotation to your dashboard.", 'success');
+                    window.location.assign('user_dashboard.php?section=bookings');
                 } else {
                     const bookingId = String(response[2] || '');
                     if (window.SevillaPayMongoCheckout?.enabled() && termsCheck.checked && btn?.dataset) {

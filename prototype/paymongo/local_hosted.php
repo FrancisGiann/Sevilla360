@@ -11,10 +11,10 @@ if(!$checkout){http_response_code(403);exit('Checkout unavailable.');}
 <main><h1>Sevilla360 checkout</h1><p>Local simulation of hosted checkout. This preview does not contact PayMongo.</p>
 <p>Booking <?= htmlspecialchars($checkout['reference_no'],ENT_QUOTES) ?> · Test amount: PHP <?= number_format((int)$checkout['amount_cents']/100,2) ?></p>
 <p id="status" role="status">Complete the simulated payment to verify your booking automatically.</p>
-<button id="pay">Complete simulated payment</button><button id="cancel">Cancel checkout</button><p><a href="/user_dashboard.php">Return to dashboard</a></p></main>
+<button id="pay">Complete simulated payment</button><p><a href="/user_dashboard.php">Return to dashboard</a></p></main>
 <script>
 const attempt=<?= json_encode($attempt) ?>,csrf=<?= json_encode($_SESSION['csrf_token']) ?>;
 async function send(path){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({attempt})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Request failed');return data;}
-async function act(cancel){document.querySelectorAll('button').forEach(b=>b.disabled=true);try{if(cancel)await send('/actions/user/close_paymongo_checkout.php');else{await send('/test-settle');await send('/actions/user/sync_payment.php');}location.assign('/user_dashboard.php');}catch(e){document.getElementById('status').textContent=e.message;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
-document.getElementById('pay').onclick=()=>act(false);document.getElementById('cancel').onclick=()=>act(true);
+async function pay(){document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await send('/test-settle');await send('/actions/user/sync_payment.php');location.assign('/user_dashboard.php');}catch(e){document.getElementById('status').textContent=e.message;document.querySelectorAll('button').forEach(b=>b.disabled=false);}}
+document.getElementById('pay').onclick=pay;
 </script></body></html>
