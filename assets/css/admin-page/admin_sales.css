@@ -1,9 +1,12 @@
 .sales-report-container {
   width: min(100%, 1440px);
+  min-width: 0;
   margin: 32px auto 48px;
   padding: 0 24px 48px;
   color: var(--color-dark);
 }
+
+.main-content:has(.sales-report-container) { min-width: 0; }
 
 .sales-report-heading,
 .sales-section-heading,
@@ -258,7 +261,14 @@
   font-weight: 600;
 }
 
-.sales-table-scroll { max-width: 100%; overflow-x: auto; }
+.sales-table-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
 
 .sales-table {
   width: 100%;
@@ -299,13 +309,51 @@
 .sales-ledger-heading { padding-bottom: 16px; }
 .sales-ledger-heading p { margin-top: 4px; font-size: .8rem; }
 .sales-ledger-export { min-height: 44px; display: inline-flex; align-items: center; color: #76572f; font-size: .8rem; text-underline-offset: 3px; white-space: nowrap; }
-.sales-ledger-table { min-width: 1040px; }
-.sales-ledger-table th,
-.sales-ledger-table td { padding: 12px 11px; }
-.sales-ledger-table tbody td { font-size: .79rem; }
-.sales-ledger-table td:nth-child(5),
-.sales-ledger-table td:nth-child(7) { white-space: nowrap; }
-.sales-amount-cell { text-align: right !important; white-space: nowrap; font-weight: 600; }
+.sales-transaction-list { margin: 0; padding: 0 16px; list-style: none; }
+.sales-transaction-card { min-width: 0; padding: 17px 2px; }
+.sales-transaction-card + .sales-transaction-card { border-top: 1px solid rgba(42, 37, 34, .1); }
+.sales-transaction-grid,
+.sales-transaction-money-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+.sales-transaction-money-grid {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(42, 37, 34, .07);
+}
+.sales-transaction-field { min-width: 0; }
+.sales-transaction-field dt {
+  color: var(--color-dark-light);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+.sales-transaction-field dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  color: var(--color-dark);
+  font-size: .83rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.sales-transaction-field dd .sales-type-badge { max-width: 100%; white-space: normal; }
+.sales-transaction-amount dd { font-size: .86rem; font-weight: 600; }
+.sales-ledger-section .sales-transaction-field.is-positive dd { color: #557567; }
+.sales-ledger-section .sales-transaction-field.is-negative dd { color: #a85454; }
+.sales-ledger-empty {
+  margin: 0;
+  padding: 24px 18px;
+  color: var(--color-dark-light);
+  font-size: .88rem;
+  line-height: 1.5;
+  text-align: center;
+}
 
 .sales-type-badge {
   display: inline-flex;
@@ -382,8 +430,22 @@
 }
 
 @media (max-width: 1100px) {
-  .sales-ledger-table { min-width: 0; }
-  .sales-ledger-table thead,
+  .sales-transaction-grid,
+  .sales-transaction-money-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .sales-transaction-list { padding: 0 14px; }
+  .sales-transaction-grid,
+  .sales-transaction-money-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+}
+
+@media (max-width: 480px) {
+  .sales-transaction-grid,
+  .sales-transaction-money-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 1100px) {
   .sales-compact-table thead {
     position: absolute;
     width: 1px;
@@ -396,51 +458,43 @@
     border: 0;
   }
 
-  .sales-ledger-table,
-  .sales-ledger-table tbody,
-  .sales-ledger-table tr,
-  .sales-ledger-table td,
   .sales-compact-table,
   .sales-compact-table tbody,
   .sales-compact-table tr,
   .sales-compact-table th,
   .sales-compact-table td { display: block; width: 100%; }
 
-  .sales-ledger-table tbody tr,
   .sales-compact-table tbody tr {
     padding: 10px 14px;
     border-bottom: 1px solid rgba(42, 37, 34, .1);
   }
 
-  .sales-ledger-table tbody tr:last-child,
   .sales-compact-table tbody tr:last-child { border-bottom: 0; }
 
-  .sales-ledger-table tbody td,
   .sales-compact-table tbody td {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(6.25rem, 34%) minmax(0, 1fr);
+    align-items: start;
     gap: 14px;
     padding: 5px 0;
     border: 0;
     text-align: right;
     overflow-wrap: anywhere;
     white-space: normal;
+    min-width: 0;
   }
 
-  .sales-ledger-table tbody td:nth-child(5),
-  .sales-ledger-table tbody td:nth-child(7),
   .sales-compact-table tbody td:not(:first-child) { white-space: normal; }
 
-  .sales-ledger-table tbody td::before,
   .sales-compact-table tbody td::before {
     content: attr(data-label);
-    flex: 0 0 102px;
     color: var(--color-dark-light);
     font-size: .72rem;
     font-weight: 600;
     text-align: left;
   }
+
+  .sales-compact-table tbody td > * { min-width: 0; }
 
   .sales-compact-table { min-width: 0; }
   .sales-compact-table tbody th {
@@ -453,16 +507,13 @@
     text-align: left;
   }
 
-  .sales-ledger-table tbody .sales-empty-cell,
   .sales-compact-table tbody .sales-empty-cell {
     display: block;
     padding: 16px 12px !important;
     text-align: center;
   }
 
-  .sales-ledger-table tbody .sales-empty-cell::before,
   .sales-compact-table tbody .sales-empty-cell::before { content: none; }
-  .sales-ledger-table tbody .sales-amount-cell { justify-content: space-between; }
 }
 
 /* Method totals stay legible in the narrow desktop card created by the admin shell. */
@@ -497,9 +548,9 @@
   text-align: left;
 }
 .sales-method-table tbody td {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(6.25rem, 40%) minmax(0, 1fr);
+  align-items: start;
   gap: 14px;
   padding: 5px 0;
   border: 0;
@@ -509,7 +560,6 @@
 .sales-method-table tbody td:not(:first-child) { white-space: normal; }
 .sales-method-table tbody td::before {
   content: attr(data-label);
-  flex: 0 0 min(40%, 150px);
   color: var(--color-dark-light);
   font-size: .72rem;
   font-weight: 600;

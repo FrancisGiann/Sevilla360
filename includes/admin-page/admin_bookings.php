@@ -237,6 +237,12 @@
                 <span class="value hidden-element" id="vd-specific-value">--</span>
             </div>
 
+            <section id="vd-event-conflicts" class="admin-event-conflicts" aria-labelledby="vd-event-conflicts-title" hidden>
+                <h4 class="modal-subtitle vd-section-title" id="vd-event-conflicts-title">Other Event Hall bookings on these dates</h4>
+                <p>These overlapping inquiries and bookings are informational. Review each record and choose which inquiry to finalize or decline.</p>
+                <ul id="vd-event-conflict-list"></ul>
+            </section>
+
             <section id="vd-refund-section" class="booking-detail-section" aria-labelledby="vd-refund-title" hidden>
                 <h4 class="modal-subtitle vd-section-title" id="vd-refund-title">Refund request</h4>
                 <div class="booking-detail-grid">
@@ -445,7 +451,7 @@
 
             <div class="ep-base-rate-group">
                 <label class="ep-label">Venue Base Rate (₱)</label>
-                <input type="number" id="ep-base-rate" step="0.01" class="ep-calc-trigger ep-input-lg">
+                <input type="number" id="ep-base-rate" min="0" step="0.01" required class="ep-calc-trigger ep-input-lg">
             </div>
 
             <div class="ep-line-items-header">
@@ -457,7 +463,7 @@
 
             <div class="ep-field-group">
                 <label class="ep-label">Required Payment Scheme</label>
-                <select id="ep-payment-scheme" class="ep-select">
+                <select id="ep-payment-scheme" class="ep-select" required>
                     <option value="100% Full">100% Full Payment</option>
                     <option value="50% Downpayment">50% Downpayment</option>
                     <option value="20% Reservation" selected>20% Reservation Fee</option>

@@ -203,30 +203,64 @@ $salesNetClass = static fn(?int $cents): string => $cents === null ? '' : ($cent
             <div><h3 id="sales-ledger-title">Transaction ledger</h3><p><?= number_format($salesReport['total_rows']) ?> transactions</p></div>
             <a class="sales-ledger-export" href="<?= $salesEscape($salesExportLink('transactions')) ?>">Download filtered transactions</a>
         </div>
-        <div class="sales-table-scroll">
-            <table class="sales-table sales-ledger-table">
-                <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Method</th><th scope="col">Customer / record</th><th scope="col">Booking / seminar</th><th scope="col">Venue</th><th scope="col">Reference</th><th scope="col">Gross received</th><th scope="col">Customer refund</th><th scope="col">PayMongo fee</th><th scope="col">Net movement</th></tr></thead>
-                <tbody>
-                <?php if (!$salesReport['transactions']): ?>
-                    <tr><td class="sales-empty-cell" colspan="11">No transactions match this report. Try a wider date range or remove a filter.</td></tr>
-                <?php else: foreach ($salesReport['transactions'] as $transaction): ?>
-                    <tr>
-                        <td data-label="Date"><?= $salesEscape(date('M j, Y · g:i A', strtotime($transaction['date']))) ?></td>
-                        <td data-label="Type"><span class="sales-type-badge sales-type-<?= $salesEscape($transaction['type']) ?>"><?= $salesEscape($transaction['source'] === 'seminar' ? ($transaction['type'] === 'received' ? 'Seminar received' : 'Seminar refunded') : ($transaction['type'] === 'received' ? 'Received' : 'Refunded')) ?></span></td>
-                        <td data-label="Method"><?= $salesEscape($transaction['method']) ?></td>
-                        <td data-label="Customer / record"><?= $salesEscape($transaction['customer_name']) ?></td>
-                        <td data-label="Booking / seminar"><?= $salesEscape($transaction['booking_reference']) ?></td>
-                        <td data-label="Venue"><?= $salesEscape($transaction['venue']) ?></td>
-                        <td data-label="Reference"><?= $salesEscape($transaction['reference'] !== '' ? $transaction['reference'] : '—') ?></td>
-                        <td data-label="Gross received" class="sales-amount-cell is-positive"><?= $transaction['gross_received_cents'] > 0 ? '+' . $salesCurrency($transaction['gross_received_cents']) : '—' ?></td>
-                        <td data-label="Customer refund" class="sales-amount-cell is-negative"><?= $transaction['customer_refund_cents'] > 0 ? '−' . $salesCurrency($transaction['customer_refund_cents']) : '—' ?></td>
-                        <td data-label="PayMongo fee"><?= $salesCurrency($transaction['provider_fee_cents']) ?></td>
-                        <td data-label="Net movement" class="sales-amount-cell <?= $salesNetClass($transaction['net_after_fees_refunds_cents']) ?>"><?= $transaction['net_after_fees_refunds_cents'] === null ? 'Unknown' : (($transaction['net_after_fees_refunds_cents'] > 0 ? '+' : ($transaction['net_after_fees_refunds_cents'] < 0 ? '−' : '')) . $salesCurrency(abs($transaction['net_after_fees_refunds_cents']))) ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-                </tbody>
-            </table>
-        </div>
+        <?php if (!$salesReport['transactions']): ?>
+            <p class="sales-ledger-empty" role="status">No transactions match this report. Try a wider date range or remove a filter.</p>
+        <?php else: ?>
+            <ol class="sales-transaction-list" aria-label="Transactions">
+                <?php foreach ($salesReport['transactions'] as $transaction): ?>
+                    <li class="sales-transaction-card">
+                        <dl class="sales-transaction-grid">
+                            <div class="sales-transaction-field">
+                                <dt>Date</dt>
+                                <dd><?= $salesEscape(date('M j, Y · g:i A', strtotime($transaction['date']))) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Type</dt>
+                                <dd><span class="sales-type-badge sales-type-<?= $salesEscape($transaction['type']) ?>"><?= $salesEscape($transaction['source'] === 'seminar' ? ($transaction['type'] === 'received' ? 'Seminar received' : 'Seminar refunded') : ($transaction['type'] === 'received' ? 'Received' : 'Refunded')) ?></span></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Method</dt>
+                                <dd><?= $salesEscape($transaction['method']) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Customer / record</dt>
+                                <dd><?= $salesEscape($transaction['customer_name']) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Booking / seminar</dt>
+                                <dd><?= $salesEscape($transaction['booking_reference']) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Venue</dt>
+                                <dd><?= $salesEscape($transaction['venue']) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field">
+                                <dt>Reference</dt>
+                                <dd><?= $salesEscape($transaction['reference'] !== '' ? $transaction['reference'] : '—') ?></dd>
+                            </div>
+                        </dl>
+                        <dl class="sales-transaction-money-grid" aria-label="Transaction amounts">
+                            <div class="sales-transaction-field sales-transaction-amount is-positive">
+                                <dt>Gross received</dt>
+                                <dd><?= $transaction['gross_received_cents'] > 0 ? '+' . $salesCurrency($transaction['gross_received_cents']) : '—' ?></dd>
+                            </div>
+                            <div class="sales-transaction-field sales-transaction-amount is-negative">
+                                <dt>Customer refund</dt>
+                                <dd><?= $transaction['customer_refund_cents'] > 0 ? '−' . $salesCurrency($transaction['customer_refund_cents']) : '—' ?></dd>
+                            </div>
+                            <div class="sales-transaction-field sales-transaction-amount">
+                                <dt>PayMongo fee</dt>
+                                <dd><?= $salesCurrency($transaction['provider_fee_cents']) ?></dd>
+                            </div>
+                            <div class="sales-transaction-field sales-transaction-amount <?= $salesNetClass($transaction['net_after_fees_refunds_cents']) ?>">
+                                <dt>Net movement</dt>
+                                <dd><?= $transaction['net_after_fees_refunds_cents'] === null ? 'Unknown' : (($transaction['net_after_fees_refunds_cents'] > 0 ? '+' : ($transaction['net_after_fees_refunds_cents'] < 0 ? '−' : '')) . $salesCurrency(abs($transaction['net_after_fees_refunds_cents']))) ?></dd>
+                            </div>
+                        </dl>
+                    </li>
+                <?php endforeach; ?>
+            </ol>
+        <?php endif; ?>
         <nav class="sales-pagination" aria-label="Transaction pages">
             <span>Showing <?= number_format($salesFirstRow) ?>–<?= number_format($salesLastRow) ?> of <?= number_format($salesReport['total_rows']) ?> transactions · Page <?= (int)$salesPage ?> of <?= (int)$salesReport['page_count'] ?></span>
             <div>

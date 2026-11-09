@@ -86,6 +86,7 @@ if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $cl
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $responseSent = false;
     try {
         // Revalidate before creating directories, moving files, or decoding
         // image data. Close this short-lived connection immediately so a
@@ -120,6 +121,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $media_type = isset($_POST['media_type']) && is_string($_POST['media_type']) ? trim($_POST['media_type']) : '';
         $website_slot = isset($_POST['website_slot']) && is_string($_POST['website_slot']) ? trim($_POST['website_slot']) : '';
+        $upload_id = isset($_POST['upload_id']) && is_string($_POST['upload_id']) ? strtolower(trim($_POST['upload_id'])) : '';
+
+        if (!preg_match('/\A[a-f0-9]{32}\z/D', $upload_id)) {
+            throw new MediaUploadException('The upload could not be identified. Refresh the CMS and try again.', 400);
+        }
 
         if ($media_type === '' || $website_slot === '') {
             throw new MediaUploadException('Missing media type or slot assignment.', 400);
@@ -252,13 +258,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // candidates ready at upload time. Panorama card previews are not
             // required by the public tour; the authenticated CMS preview route
             // creates those candidates lazily when an editor opens the gallery.
-            // Avoid decoding each large equirectangular source three extra times
-            // inside the upload request.
+            // Keep the largest responsive conversion out of the upload request.
+            // Public cards have 480/800px sources immediately; the 1320px source
+            // is generated lazily by the CMS preview route when needed.
             if ($media_type === 'standard') {
-                foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+                foreach (MEDIA_CMS_UPLOAD_CARD_DERIVATIVE_WIDTHS as $width) {
                     $new_files[] = media_cms_card_derivative_file_path($file['db_path'], $width);
                 }
-                media_cms_ensure_card_derivatives($file['db_path']);
+                media_cms_ensure_card_derivatives($file['db_path'], MEDIA_CMS_UPLOAD_CARD_DERIVATIVE_WIDTHS);
             }
         }
 
@@ -333,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $enableOverride->close();
         }
         if (isset($_SESSION['user_id'])) {
-            $log_user = (int)$_SESSION['user_id']; $log_module = 'Media CMS'; $log_action = "Uploaded $successful_uploads file(s) to slot: $website_slot"; $log_ip = request_client_ip();
+            $log_user = (int)$_SESSION['user_id']; $log_module = 'Media CMS'; $log_action = "Uploaded $successful_uploads file(s) to slot: $website_slot [cms-upload:$upload_id]"; $log_ip = request_client_ip();
             $audit_stmt = $conn->prepare("INSERT INTO audit_logs (user_id, module, action, ip_address) VALUES (?, ?, ?, ?)");
             if (!$audit_stmt) throw new Exception('Could not record media audit entry.');
             $audit_stmt->bind_param('isss', $log_user, $log_module, $log_action, $log_ip); if (!$audit_stmt->execute()) throw new Exception('Could not record media audit entry.');
@@ -341,6 +348,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $commit_attempted = true;
         if (!$conn->commit()) throw new Exception('Could not commit uploaded media.');
         $committed = true; $transaction_started = false;
+        $conn->close();
+        unset($conn);
+        echo json_encode(['success' => true, 'upload_id' => $upload_id, 'message' => "Successfully uploaded $successful_uploads file(s)!"], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+        $responseSent = true;
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            if (ob_get_level() > 0) @ob_flush();
+            flush();
+        }
         $cleanup_failures = [];
         $upload_root = media_cms_upload_root();
         foreach ($old_files as $old) {
@@ -350,7 +367,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($cleanup_failures) error_log('Media replacement committed but old-file cleanup failed: ' . implode(', ', $cleanup_failures));
-        echo json_encode(['success' => true, 'message' => "Successfully uploaded $successful_uploads file(s)!", 'cleanup_warning' => $cleanup_failures ? 'Old media files were retained because physical cleanup failed.' : null]);
     } catch (Throwable $e) {
         if ($transaction_started && !$committed) {
             try {
@@ -374,6 +390,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         throw $e;
     }
     } catch (Throwable $e) {
+        if ($responseSent) {
+            error_log('CMS media upload post-response cleanup failed: ' . $e->getMessage());
+            return;
+        }
         http_response_code($e instanceof MediaUploadException ? $e->statusCode() : 500);
         $message = $e instanceof MediaUploadException ? $e->getMessage() : 'Upload could not be completed. Please try again.';
         if (!$e instanceof MediaUploadException) {

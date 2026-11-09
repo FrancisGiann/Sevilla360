@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../includes/session_account_guard.php';
 require_once __DIR__ . '/../../includes/booking_lifecycle.php';
 require_once __DIR__ . '/../../includes/booking_rules.php';
 require_once __DIR__ . '/../../includes/manual_payment.php';
+require_once __DIR__ . '/../../includes/paymongo_refunds.php';
 $booking_completion_sql = booking_completion_sql('b');
 
 if (!isset($_SESSION['user_id']) || !in_array(($_SESSION['role'] ?? ''), ['staff', 'admin'], true)) {
@@ -45,7 +46,28 @@ try {
     // 2. Fetch Specifics
     $specifics = null;
     $event_style_capacities = null;
+    $event_conflicts = [];
     if ($booking['venue_category'] === 'Event Hall') {
+        $eventOverlap = booking_overlap_sql('Event Hall', 'b.start_date', 'b.end_date');
+        $checkoutUnavailableFilter = booking_checkout_unavailable_marker_available($conn)
+            ? 'b.checkout_unavailable_at IS NULL'
+            : '1=1';
+        $conflictStmt = $conn->prepare("SELECT b.id,b.reference_no,b.start_date,b.end_date,b.booking_status,
+                c.first_name,c.last_name
+            FROM bookings b
+            JOIN venues v ON v.id=b.venue_id
+            JOIN customers c ON c.id=b.customer_id
+            WHERE b.venue_id=? AND b.id<>? AND v.category='Event Hall'
+              AND b.booking_status IN ('Pending','Confirmed')
+              AND b.end_date>=CURDATE() AND {$checkoutUnavailableFilter}
+              AND COALESCE(b.source,'')<>'Maintenance' AND {$eventOverlap}
+            ORDER BY b.start_date,b.id");
+        if (!$conflictStmt) throw new RuntimeException('Unable to load overlapping Event Hall bookings.');
+        $conflictStmt->bind_param('iiss', $booking['venue_id'], $booking_id, $booking['end_date'], $booking['start_date']);
+        if (!$conflictStmt->execute()) throw new RuntimeException('Unable to load overlapping Event Hall bookings.');
+        $event_conflicts = $conflictStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $conflictStmt->close();
+
         $st = $conn->prepare("SELECT event_style, event_type, custom_notes, admin_notes FROM booking_event_details WHERE booking_id = ?");
         $st->bind_param("i", $booking_id);
         $st->execute();
@@ -134,11 +156,19 @@ try {
     $st_cx->bind_param("i", $booking_id);
     $st_cx->execute();
     $cx_res = $st_cx->get_result()->fetch_assoc();
+    if ($cx_res) {
+        $failureMessages=in_array((string)($cx_res['refund_provider_status'] ?? ''), ['failed', 'partially_refunded'], true)
+            && is_string($cx_res['refund_snapshot_id']??null)
+            ? paymongo_refund_failure_messages($conn,(string)$cx_res['refund_snapshot_id'])
+            : [];
+        $cx_res['refund_provider_failure']=$failureMessages?implode(' ',$failureMessages):null;
+    }
 
     echo json_encode(['success' => true, 'data' => [
         'booking' => $booking,
         'specifics' => $specifics,
         'event_style_capacities' => $event_style_capacities,
+        'event_conflicts' => $event_conflicts,
         'addons' => $addons,
         'line_items' => $line_items,
         'room_allocations' => $room_allocations,

@@ -139,6 +139,25 @@
   padding-top: 1rem;
 }
 
+.review-admin-feedback {
+  border-radius: var(--ui-radius-sm, 6px);
+  color: var(--color-dark-light, #665d54);
+  font-size: .82rem;
+  line-height: 1.45;
+  min-height: calc(2 * 1.45em);
+  max-height: calc(2 * 1.45em);
+  margin: .75rem 0 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.review-admin-feedback[data-error="true"] {
+  color: #873d37;
+}
+
 .review-status {
   align-self: center;
   border-radius: 4px;

@@ -466,6 +466,18 @@ document.addEventListener('DOMContentLoaded', () => {
               formData.append("fileInput[]", fileInputEl.files[i]);
           }
 
+          let uploadId;
+          try {
+              if (typeof window.crypto?.getRandomValues !== 'function') throw new Error('Secure random values are unavailable.');
+              const randomBytes = new Uint8Array(16);
+              window.crypto.getRandomValues(randomBytes);
+              uploadId = Array.from(randomBytes, value => value.toString(16).padStart(2, '0')).join('');
+              formData.append('upload_id', uploadId);
+          } catch (error) {
+              showAlert('Upload unavailable', 'This browser could not create a secure upload reference. Refresh the CMS and try again.', 'error', false);
+              return;
+          }
+
           const submitBtn = this.querySelector('button[type="submit"]');
           if (!submitBtn) {
               showAlert("Error", "The upload form is unavailable. Please refresh and try again.", "error", false);
@@ -484,12 +496,41 @@ document.addEventListener('DOMContentLoaded', () => {
               }
               if (progText) progText.innerText = '0% sent';
           };
-          const showUploadError = (title, message) => {
+          const showUploadError = (title, message, refreshGalleryOnClose = false, type = "error") => {
               resetUploadUi();
-              showAlert(title, message, "error", false);
+              showAlert(title, message, type, refreshGalleryOnClose);
           };
-          const uploadOutcomeUnknown = 'Wait a moment, then check the gallery before retrying; the images may already be saved.';
+          const uploadOutcomeUnknown = 'The upload result is not confirmed yet. The CMS gallery will refresh when you close this message. Check which photos were saved before retrying, and upload only photos that are still missing.';
           let uploadBodySent = false;
+
+          const reconcileUploadOutcome = async (title) => {
+              if (progLabel) progLabel.innerText = 'Checking whether the server saved these images…';
+              if (progText) progText.innerText = 'Checking saved upload';
+              if (progBar) progBar.setAttribute('aria-valuetext', 'Checking the saved upload result.');
+              for (let check = 0; check < 12; check++) {
+                  try {
+                      const response = await fetch('actions/admin/upload_media_status.php', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                          body: JSON.stringify({ upload_id: uploadId }),
+                          cache: 'no-store'
+                      });
+                      const data = await response.json();
+                      if (response.ok && data?.success === true && data?.state === 'completed') {
+                          resetUploadUi();
+                          closeUploadModal();
+                          persistCMSFilterState();
+                          showAlert('Success', 'The server confirmed that the selected images were saved.', 'success', true);
+                          return;
+                      }
+                  } catch (error) {
+                      // Keep checking: the original upload may have committed
+                      // even when either gateway response was interrupted.
+                  }
+                  if (check < 11) await new Promise(resolve => window.setTimeout(resolve, 1000));
+              }
+              showUploadError(title, uploadOutcomeUnknown, true, 'info');
+          };
 
           const uploadDescription = fileInputEl.files.length === 1
               ? '1 image'
@@ -559,32 +600,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
                   const serverMessage = data && typeof data.message === 'string' ? data.message.trim() : '';
                   if (xhr.status === 504 || xhr.status >= 500) {
-                      showUploadError("Upload result unconfirmed", uploadOutcomeUnknown);
+                      void reconcileUploadOutcome(xhr.status === 504 ? "Upload response timed out" : "Upload result unconfirmed");
                       return;
                   }
-                  if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true) {
+                  if (xhr.status >= 200 && xhr.status < 300 && data && data.success === true && data.upload_id === uploadId) {
                       resetUploadUi();
                       closeUploadModal();
                       persistCMSFilterState();
                       showAlert("Success", serverMessage || "Media uploaded successfully.", "success", true);
+                  } else if (xhr.status >= 200 && xhr.status < 300 && data?.success === true) {
+                      void reconcileUploadOutcome('Upload result unconfirmed');
                   } else {
                       showUploadError("Error", serverMessage || "Server Error: " + xhr.status);
                   }
               };
 
               xhr.onerror = function() {
-                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Network Error",
-                      uploadBodySent ? uploadOutcomeUnknown : "A network error occurred during upload.");
+                  if (uploadBodySent) void reconcileUploadOutcome('Upload result unconfirmed');
+                  else showUploadError("Network Error", "A network error occurred during upload.");
               };
 
               xhr.onabort = function() {
-                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Upload Cancelled",
-                      uploadBodySent ? uploadOutcomeUnknown : "The upload was cancelled before it finished.");
+                  if (uploadBodySent) void reconcileUploadOutcome('Upload result unconfirmed');
+                  else showUploadError("Upload Cancelled", "The upload was cancelled before it finished.");
               };
 
               xhr.ontimeout = function() {
-                  showUploadError(uploadBodySent ? "Upload result unconfirmed" : "Network Error",
-                      uploadBodySent ? uploadOutcomeUnknown : "The upload timed out before all files were sent. Please try again.");
+                  if (uploadBodySent) void reconcileUploadOutcome('Upload response timed out');
+                  else showUploadError("Network Error", "The upload timed out before all files were sent. Please try again.");
               };
 
               xhr.send(formData);

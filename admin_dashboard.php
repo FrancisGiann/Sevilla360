@@ -181,6 +181,12 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
                             class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
                                 class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
                     </li>
+                    <?php else: ?>
+                    <li class="nav-item">
+                        <a href="admin_dashboard.php?page=settings"
+                            class="nav-link <?php echo $page === 'settings' ? 'active' : ''; ?>" <?= $page === 'settings' ? 'aria-current="page"' : ''; ?>><i
+                                class="fa-solid fa-gear" aria-hidden="true"></i><span class="nav-link-label">Settings</span></a>
+                    </li>
                     <?php endif; ?>
                 </ul>
             </nav>
@@ -308,6 +314,7 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_notifications.js') ?>"></script>
     <!-- Global Custom Modals -->
     <script src="<?= $admin_asset_url('assets/js/global_modals.js') ?>"></script>
+    <?php require_once __DIR__ . '/includes/session_watch_script.php'; ?>
     <script src="<?= $admin_asset_url('assets/js/password_clipboard.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/password_policy.js') ?>"></script>
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_navigation.js') ?>"></script>
@@ -332,8 +339,10 @@ $account_role_html = htmlspecialchars(ucfirst((string)($_SESSION['role'] ?? 'adm
     <?php elseif ($page === 'reviews' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <link rel="stylesheet" href="<?= $admin_asset_url('assets/css/admin-page/admin_reviews.css') ?>">
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_reviews.js') ?>"></script>
-    <?php elseif ($page === 'settings'): ?>
+    <?php elseif ($page === 'settings' && $is_admin_user): ?>
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_settings.js') ?>"></script>
+    <?php elseif ($page === 'settings'): ?>
+    <script src="<?= $admin_asset_url('assets/js/admin-page/staff_settings.js') ?>"></script>
     <?php elseif ($page === 'auditlog' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
     <script src="<?= $admin_asset_url('assets/js/admin-page/admin_auditlog.js') ?>"></script>
     <?php elseif ($page === 'usermanagement' && isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>

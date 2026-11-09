@@ -7,6 +7,7 @@ $read = static fn(string $path): string => (string)file_get_contents($root . '/'
 $cms = $read('includes/admin-page/admin_cms.php');
 $dashboard = $read('admin_dashboard.php');
 $upload = $read('actions/admin/upload_media.php');
+$uploadStatus = $read('actions/admin/upload_media_status.php');
 $previewEndpoint = $read('actions/admin/media_preview.php');
 $delete = $read('actions/admin/delete_media.php');
 $helper = $read('includes/media_helper.php');
@@ -67,7 +68,7 @@ $checks = [
         && str_contains($upload, "'thumbnail_path' => media_cms_thumbnail_file_path")
         && str_contains($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])')
         && str_contains($upload, "'hero_path' => \$website_slot === 'home-hero'")
-        && str_contains($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])')
+        && str_contains($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'], MEDIA_CMS_UPLOAD_CARD_DERIVATIVE_WIDTHS)')
         && str_contains($upload, "if (\$media_type === 'standard') {")
         && str_contains($upload, "'card_paths' => array_values(array_filter(array_map(")
         && strpos($upload, '$new_files[] = media_cms_thumbnail_file_path') < strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])')
@@ -83,7 +84,7 @@ $checks = [
         $release = strpos($upload, 'unset($conn);');
         $thumbnail = strpos($upload, 'media_cms_ensure_admin_thumbnail($file[\'db_path\'])');
         $hero = strpos($upload, 'media_cms_ensure_hero_derivative($file[\'db_path\'])');
-        $cards = strpos($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'])');
+        $cards = strpos($upload, 'media_cms_ensure_card_derivatives($file[\'db_path\'], MEDIA_CMS_UPLOAD_CARD_DERIVATIVE_WIDTHS)');
         $reconnect = strpos($upload, "require __DIR__ . '/../../config/db_connect.php';");
         $transaction = strpos($upload, '$conn->begin_transaction()');
         if (in_array(false, [$preflight, $close, $release, $thumbnail, $hero, $cards, $reconnect, $transaction], true)) return false;
@@ -102,8 +103,14 @@ $checks = [
         && str_contains($cmsJs, 'Upload received. Processing ${uploadDescription} on the server')
         && str_contains($cmsJs, "progText.innerText = 'Sent'")
         && str_contains($cmsJs, 'server is processing images.'),
-    'ambiguous gateway and post-transfer failures instruct editors to reconcile before retrying' => str_contains($cmsJs, 'xhr.status === 504 || xhr.status >= 500')
-        && str_contains($cmsJs, 'check the gallery before retrying; the images may already be saved.'),
+    'ambiguous CMS upload outcomes check a committed receipt without resending the upload' => str_contains($cmsJs, 'xhr.status === 504 || xhr.status >= 500')
+        && str_contains($cmsJs, 'actions/admin/upload_media_status.php')
+        && str_contains($cmsJs, 'The server confirmed that the selected images were saved.')
+        && substr_count($cmsJs, 'xhr.send(formData)') === 1
+        && str_contains($upload, '[cms-upload:$upload_id]')
+        && str_contains($upload, 'fastcgi_finish_request')
+        && str_contains($uploadStatus, "LOCATE(?, action)>0")
+        && str_contains($uploadStatus, "'state' => \$completed ? 'completed' : 'pending'"),
     'CMS upload preserves the original failure when rollback fails and retains staged files after an uncertain commit' => str_contains($upload, 'catch (Throwable $rollback_error)')
         && str_contains($upload, 'if (!$commit_attempted) {')
         && strpos($upload, 'if (!$commit_attempted) {') < strpos($upload, 'throw $e;')

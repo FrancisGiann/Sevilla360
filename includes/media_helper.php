@@ -21,6 +21,9 @@ require_once __DIR__ . '/hotel_rooms.php';
 const MEDIA_CMS_THUMBNAIL_WIDTH = 480;
 const MEDIA_CMS_THUMBNAIL_HEIGHT = 270;
 const MEDIA_CMS_CARD_DERIVATIVE_WIDTHS = [480, 800, 1320];
+// Keep initial uploads within a bounded image-processing budget. The CMS
+// preview endpoint lazily adds the largest responsive candidate when needed.
+const MEDIA_CMS_UPLOAD_CARD_DERIVATIVE_WIDTHS = [480, 800];
 const MEDIA_CMS_CARD_DERIVATIVE_MAX_HEIGHT = 1600;
 
 /** Return the canonical assets/uploads root used by CMS media. */
@@ -409,8 +412,17 @@ function media_cms_existing_card_derivative(string $sourcePath, int $width): ?ar
 }
 
 /** Create or reuse bounded, source-ratio-preserving public card derivatives. */
-function media_cms_ensure_card_derivatives(string $sourcePath): array
+function media_cms_ensure_card_derivatives(string $sourcePath, ?array $requestedWidths = null): array
 {
+    $widths = $requestedWidths ?? MEDIA_CMS_CARD_DERIVATIVE_WIDTHS;
+    if (!$widths) throw new InvalidArgumentException('At least one CMS card derivative width is required.');
+    foreach ($widths as $width) {
+        if (!is_int($width) || !in_array($width, MEDIA_CMS_CARD_DERIVATIVE_WIDTHS, true)) {
+            throw new InvalidArgumentException('CMS card derivative width is invalid.');
+        }
+    }
+    $widths = array_values(array_unique($widths));
+
     $normalized = media_cms_upload_relative_path($sourcePath);
     $source = media_cms_upload_file_path($normalized, true);
     $sourceInfo = @getimagesize($source);
@@ -430,7 +442,7 @@ function media_cms_ensure_card_derivatives(string $sourcePath): array
     }
     $derivatives = [];
     try {
-        foreach (MEDIA_CMS_CARD_DERIVATIVE_WIDTHS as $width) {
+        foreach ($widths as $width) {
             $destination = media_cms_card_derivative_file_path($normalized, $width);
             $temporaryPath = $destination . '.tmp-' . bin2hex(random_bytes(8)) . '.webp';
             try {

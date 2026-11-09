@@ -2192,27 +2192,25 @@ class AdminWalkinController {
                          .replace(/'/g, "&#039;");
                 };
                 
-                // Construct a rich success modal HTML
+                // The shared success modal already provides the icon and heading.
                 const modalHtml = `
-                    <div style="text-align:center; padding: 20px 0;">
-                        <i class="fa-solid fa-circle-check" style="font-size: 3.5rem; color: #10b981; margin-bottom: 15px;"></i>
-                        <h3 style="margin-bottom: 5px; color: #1f2937;">Booking Confirmed!</h3>
-                        <p style="color: #6b7280; font-size: 0.95rem; margin-bottom: 25px;">The walk-in booking has been successfully recorded.</p>
+                    <div style="text-align:center; padding: 4px 0 0;">
+                        <p style="color: #6b7280; font-size: 0.95rem; margin: 0 0 12px;">The walk-in booking has been recorded.</p>
                         
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 20px;">
-                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: left; margin-bottom: 0;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 6px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Reference No.</span>
                                 <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(refNo)}</strong>
                             </div>
-                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 6px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Guest Name</span>
                                 <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(guest)}</strong>
                             </div>
-                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 6px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Venue</span>
                                 <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(venue)}</strong>
                             </div>
-                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 8px;">
+                            <div style="display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:12px; align-items:start; margin-bottom: 6px;">
                                 <span style="color:#64748b; font-size: 0.85rem;">Dates</span>
                                 <strong style="color:#0f172a; font-size: 0.95rem; min-width:0; overflow-wrap:anywhere; text-align:right;">${escapeHtml(dates)}</strong>
                             </div>

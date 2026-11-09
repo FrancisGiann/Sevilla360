@@ -27,6 +27,7 @@ require_once __DIR__ . '/../../includes/manual_payment.php';
 require_once __DIR__ . '/../../includes/event_bundle.php';
 require_once __DIR__ . '/../../includes/seminars.php';
 require_once __DIR__ . '/../../includes/site_metadata.php';
+require_once __DIR__ . '/../../includes/paymongo_mode.php';
 require_once __DIR__ . '/../../includes/paymongo_refunds.php';
 
 // Include mailer for notifications
@@ -90,10 +91,11 @@ if (in_array($action, ['refund','reconcile_paymongo_refund','retry_paymongo_refu
             : match ($refundResult['status']) {
                 'pending','processing' => 'PayMongo is processing the refund. The booking remains active until every allocation succeeds. Reconcile this request before taking another action.',
                 'uncertain' => 'PayMongo’s refund outcome is still uncertain. No new refund was submitted. Reconcile the request before trying again.',
-                'failed' => 'PayMongo declined a refund attempt. Review the provider result, then use the explicit retry action or reject the request.',
+                'failed' => 'The PayMongo refund was not completed. '.$refundResult['failure_message'].' Resolve the provider issue, then retry the failed allocation or reject the request.',
+                'partially_refunded' => 'PayMongo completed only part of this refund. Do not repeat the successful allocation. '.$refundResult['failure_message'].' Resolve the provider issue, then retry the failed allocation or contact PayMongo support.',
                 default => 'The PayMongo refund is being reconciled. The booking remains active until provider success is confirmed.'
             };
-        echo json_encode(['success'=>true,'message'=>$message,'refund_provider_status'=>$refundResult['status'],'processed'=>$refundResult['processed']]);
+        echo json_encode(['success'=>true,'message'=>$message,'refund_provider_status'=>$refundResult['status'],'refund_provider_failure'=>$refundResult['failure_message'],'processed'=>$refundResult['processed']]);
     } catch (Throwable $e) {
         error_log('PayMongo admin refund failed: '.get_class($e).' booking_id='.$booking_id);
         http_response_code(422);
@@ -381,7 +383,10 @@ try {
         if ($guests > $style_capacity) {
             throw new Exception("Guest count exceeds the selected seating style capacity of {$style_capacity}.");
         }
-        $scheme = $data['payment_scheme'] ?? '100% Full'; // <--- GRABS IT FROM JS
+        $scheme = $data['payment_scheme'] ?? null;
+        if (!is_string($scheme) || !in_array($scheme, ['100% Full', '50% Downpayment', '20% Reservation'], true)) {
+            throw new Exception('Select a supported, nonzero Event Hall payment scheme.');
+        }
         $line_items = $data['line_items'] ?? [];
 
         // Pending Event Hall add-ons are provisional requests. Reallocate them
@@ -420,6 +425,22 @@ try {
             }
         }
         $new_total = $base_rate + $addons_amount;
+        if (!is_finite($new_total) || $new_total > 9999999999.99) {
+            throw new Exception('The Event Hall quotation total is outside the supported payment range.');
+        }
+        $total_cents = (int)round($new_total * 100);
+        $paid_cents = (int)round((float)$locked_booking['amount_paid'] * 100);
+        $scheme_percent = match ($scheme) {
+            '100% Full' => 100,
+            '50% Downpayment' => 50,
+            '20% Reservation' => 20,
+        };
+        $amount_due_cents = $paid_cents > 0
+            ? $total_cents - $paid_cents
+            : min($total_cents, intdiv($total_cents * $scheme_percent + 50, 100));
+        if ($total_cents < 1 || $amount_due_cents < 1) {
+            throw new Exception('The Event Hall quotation must require a positive payment under the selected scheme.');
+        }
 
         // 2. Update Main Bookings Table (SAVES THE SCHEME!)
         $event_quote_version_sql = (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)
@@ -431,8 +452,8 @@ try {
 
         // Event Hall quotes always start a fixed 24-hour payment window when
         // staff finalizes them; the configurable stay-booking window does not
-        // change this contract. A zero-value quote has no payment deadline.
-        $payment_due_sql = $new_total > 0 ? 'DATE_ADD(NOW(), INTERVAL 24 HOUR)' : 'NULL';
+        // change this contract.
+        $payment_due_sql = 'DATE_ADD(NOW(), INTERVAL 24 HOUR)';
         $stmt_due = $conn->prepare("UPDATE bookings SET payment_due_at = {$payment_due_sql} WHERE id = ?");
         if (!$stmt_due) throw new Exception('Unable to set the Event Hall payment deadline.');
         $stmt_due->bind_param('i', $booking_id);

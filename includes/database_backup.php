@@ -16,6 +16,23 @@ function database_backup_env(string $key, string $default = ''): string
     return is_string($value) ? $value : $default;
 }
 
+/** Repair only the exact private mode when this PHP process owns the path. */
+function database_backup_private_mode(string $path, int $mode): bool
+{
+    clearstatcache(true, $path);
+    $permissions = @fileperms($path);
+    if ($permissions === false) return false;
+    if (($permissions & 0777) === $mode) return true;
+
+    if (!function_exists('posix_geteuid')) return false;
+    $ownerUid = @fileowner($path);
+    if (!is_int($ownerUid) || $ownerUid !== posix_geteuid() || !@chmod($path, $mode)) return false;
+
+    clearstatcache(true, $path);
+    $permissions = @fileperms($path);
+    return $permissions !== false && ($permissions & 0777) === $mode;
+}
+
 function database_backup_max_bytes(): int
 {
     $value = database_backup_env('BACKUP_MAX_BYTES', (string)DATABASE_BACKUP_DEFAULT_MAX_BYTES);
@@ -92,8 +109,7 @@ function database_backup_directory(bool $create = false): string
     if ($realDirectory === false || !is_dir($realDirectory) || $realDirectory !== $resolvedCandidate || is_link($candidate) || !is_readable($realDirectory)) {
         throw new RuntimeException('Private database backup storage is unavailable or unsafe.');
     }
-    $permissions = fileperms($realDirectory);
-    if ($permissions === false || ($permissions & 0077) !== 0) throw new RuntimeException('Private database backup storage must not be accessible to group or other users.');
+    if (!database_backup_private_mode($realDirectory, 0700)) throw new RuntimeException('Private database backup storage must be owned by the service account and restricted to mode 0700.');
     if ($create && !is_writable($realDirectory)) throw new RuntimeException('Private database backup storage is not writable.');
     return $realDirectory;
 }
@@ -957,9 +973,15 @@ function database_backup_web_request_uses_gate(): bool
 function database_backup_authentication_epoch(): string
 {
     if (database_backup_env('BACKUP_DIR') === '') return '0';
-    $path = database_backup_directory(false) . '/auth-epoch.json';
+    $directory = database_backup_directory(false);
+    $path = $directory . '/auth-epoch.json';
     if (is_link($path)) throw new RuntimeException('Authentication generation is invalid.');
     if (!file_exists($path)) throw new RuntimeException('Authentication generation is missing; explicit initialization is required.');
+    $realPath = realpath($path);
+    if ($realPath === false || dirname($realPath) !== $directory || !is_file($realPath)
+        || !database_backup_private_mode($realPath, 0600)) {
+        throw new RuntimeException('Authentication generation must be a service-owned regular file restricted to mode 0600.');
+    }
     $raw = file_get_contents($path);
     if (!is_string($raw) || strlen($raw) > 256) throw new RuntimeException('Authentication generation is unreadable.');
     $value = json_decode($raw, true);

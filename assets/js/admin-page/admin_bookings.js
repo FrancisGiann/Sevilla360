@@ -24,6 +24,29 @@ function buildAdminEventDetailsMarkup(specifics) {
     return markup;
 }
 
+function renderAdminEventConflicts(conflicts) {
+    const section = document.getElementById('vd-event-conflicts');
+    const list = document.getElementById('vd-event-conflict-list');
+    if (!section || !list) return;
+    list.replaceChildren();
+    const rows = Array.isArray(conflicts) ? conflicts : [];
+    rows.forEach(conflict => {
+        const item = document.createElement('li');
+        const title = document.createElement('strong');
+        const detail = document.createElement('span');
+        const reference = String(conflict?.reference_no || `#${conflict?.id || ''}`);
+        const customer = [conflict?.first_name, conflict?.last_name].filter(Boolean).join(' ').trim();
+        const dateRange = conflict?.start_date === conflict?.end_date
+            ? String(conflict?.start_date || 'Date unavailable')
+            : `${conflict?.start_date || 'Date unavailable'} to ${conflict?.end_date || 'Date unavailable'}`;
+        title.textContent = `Booking ${reference}`;
+        detail.textContent = ` — ${conflict?.booking_status === 'Pending' ? 'Pending inquiry' : 'Confirmed booking'}${customer ? ` · ${customer}` : ''} · ${dateRange}`;
+        item.append(title, detail);
+        list.appendChild(item);
+    });
+    section.hidden = rows.length === 0;
+}
+
 function buildAdminBookingExtrasMarkup(addons, lineItems, roomAllocations) {
     let html = '';
     let hasExtras = false;
@@ -1192,7 +1215,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================
     // 3. Shared AJAX Function
     // =========================================================
-    const processBookingAction = (bookingId, action, buttonElement, extraData = {}) => {
+    const processBookingAction = (bookingId, action, buttonElement, extraData = {}, onPayMongoResult = null) => {
       const originalText = buttonElement.innerText;
       buttonElement.innerText = "Processing...";
       buttonElement.disabled = true;
@@ -1215,12 +1238,27 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(response => response.json())
       .then(data => {
         if (typeof window.hideGlobalLoader === "function") window.hideGlobalLoader();
+
+        const isPayMongoRefundAction = ['refund', 'retry_paymongo_refund', 'reconcile_paymongo_refund'].includes(action)
+          && Object.prototype.hasOwnProperty.call(data, 'refund_provider_status');
+        if (data.success && isPayMongoRefundAction && typeof onPayMongoResult === 'function') {
+          onPayMongoResult(data);
+        }
+
+        if (data.success && isPayMongoRefundAction && data.processed !== true) {
+          const failed = ['failed', 'partially_refunded'].includes(String(data.refund_provider_status || ''));
+          const heading = failed ? 'PayMongo refund not completed' : 'PayMongo refund status';
+          showAlert(heading, data.message || 'The booking remains active until PayMongo confirms every refund allocation.', failed ? 'error' : 'info', false);
+          loadBookings({ suppressUrlSearchAction: true });
+          return;
+        }
         
         if (data.success) {
           buttonElement.innerText = "Success!";
           buttonElement.style.backgroundColor = "#4ade80"; 
           buttonElement.style.borderColor = "#4ade80";
-          if (['confirm', 'cancel', 'reschedule', 'reject_reschedule', 'refund', 'reject_refund', 'finalize_event_invoice'].includes(action)) {
+          if (['confirm', 'cancel', 'reschedule', 'reject_reschedule', 'refund', 'reject_refund', 'finalize_event_invoice'].includes(action)
+            || (isPayMongoRefundAction && data.processed === true)) {
             const viewInvoker = findBookingViewButton(bookingId);
             closeModal();
             showBookingSuccessAlert("Success!", data.message, bookingId, viewInvoker);
@@ -1457,6 +1495,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const totalPaid = parseFloat(this.getAttribute('data-paid')) || 0;
             let paymongoAction = null;
             let isPayMongoRefund = this.getAttribute('data-provider') === 'paymongo';
+            let paymongoProviderState = 'ready';
+            let requestIsPending = false;
+            let needsFreshPreview = false;
             const feePercentRaw = this.getAttribute('data-fee-percent');
             const parsedFeePercent = feePercentRaw !== null && feePercentRaw !== '' ? Number(feePercentRaw) : 0;
             const feePercent = Number.isFinite(parsedFeePercent) && parsedFeePercent >= 0 ? parsedFeePercent : 0;
@@ -1529,7 +1570,26 @@ document.addEventListener("DOMContentLoaded", () => {
                   : paymongoAction === 'retry_paymongo_refund'
                     ? 'PayMongo reported a failed refund attempt. Submit a new attempt now? This creates a new provider request for failed allocations only.'
                     : 'Check the existing PayMongo refund with the provider. No new refund request will be created.';
-                showConfirmModal(confirmation, () => processBookingAction(this.getAttribute('data-id'), paymongoAction, this), 'refundModal');
+                showConfirmModal(confirmation, () => processBookingAction(this.getAttribute('data-id'), paymongoAction, this, {}, data => {
+                  paymongoProviderState = String(data.refund_provider_status || 'pending');
+                  paymongoAction = paymongoProviderState === 'failed' || paymongoProviderState === 'partially_refunded'
+                    ? 'retry_paymongo_refund'
+                    : ['processing','pending','uncertain','creating','succeeded'].includes(paymongoProviderState)
+                      ? 'reconcile_paymongo_refund' : 'refund';
+                  this.textContent = paymongoAction === 'retry_paymongo_refund' ? 'Retry failed allocation'
+                    : paymongoAction === 'reconcile_paymongo_refund' ? 'Check PayMongo status' : 'Issue PayMongo refund';
+                  this.disabled = !requestIsPending || needsFreshPreview;
+                  this.style.opacity = '1';
+                  this.style.backgroundColor = '';
+                  this.style.borderColor = '';
+                  const failed = ['failed', 'partially_refunded'].includes(paymongoProviderState);
+                  if (providerStatus) {
+                    providerStatus.hidden = false;
+                    providerStatus.dataset.error = String(failed);
+                    const explanation = data.refund_provider_failure || data.message || '';
+                    providerStatus.textContent = `Original PayMongo payment method · ${paymongoProviderState.replaceAll('_',' ')}${explanation ? `. ${explanation}` : ''}`;
+                  }
+                }), 'refundModal');
                 return;
               }
               if (transactionInput) { transactionInput.required = true; transactionInput.reportValidity(); }
@@ -1585,6 +1645,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const cancellation = result?.success ? result.data?.cancellation : null;
                 isPayMongoRefund = cancellation?.refund_provider === 'paymongo';
                 const providerState = String(cancellation?.refund_provider_status || 'ready');
+                paymongoProviderState = providerState;
                 const destination = cancellation ? {
                   method: String(cancellation.refund_destination_method || ''),
                   accountName: String(cancellation.refund_destination_account_name || ''),
@@ -1595,8 +1656,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 const hasRequiredDetails = methodAllowed && destination.accountName.trim().length >= 2
                   && (destination.method === 'Cash' || destination.accountIdentifier.trim().length >= 4)
                   && (destination.method !== 'Bank Transfer' || destination.bankName.trim().length >= 2);
-                const requestIsPending = cancellation?.status === 'Pending';
-                const needsFreshPreview = isPayMongoRefund && providerState === 'preview_required';
+                requestIsPending = cancellation?.status === 'Pending';
+                needsFreshPreview = isPayMongoRefund && providerState === 'preview_required';
                 const instructions = document.querySelector('#refundModal .refund-manual-instructions');
                 if (feeLabel) feeLabel.textContent = isPayMongoRefund ? 'Actual PayMongo processing fee:' : 'Payment-processing fee:';
                 if (isPayMongoRefund && spans.length >= 5) {
@@ -1643,8 +1704,9 @@ document.addEventListener("DOMContentLoaded", () => {
                   providerStatus.textContent = isPayMongoRefund
                     ? (needsFreshPreview
                       ? 'Older request has no verified actual-fee snapshot. Reject it so the customer can submit a new preview.'
-                      : `Original PayMongo payment method · ${providerState.replaceAll('_',' ')}`)
+                      : `Original PayMongo payment method · ${providerState.replaceAll('_',' ')}${cancellation?.refund_provider_failure ? `. ${String(cancellation.refund_provider_failure)}` : ''}`)
                     : '';
+                  providerStatus.dataset.error = String(['failed','partially_refunded'].includes(providerState));
                 }
                 if (isPayMongoRefund) {
                   paymongoAction = needsFreshPreview ? null : providerState === 'failed' || providerState === 'partially_refunded'
@@ -1867,6 +1929,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   const specifics = res.data.specifics;
                   const addons = res.data.addons;
                   const lineItems = res.data.line_items; 
+                  renderAdminEventConflicts(data.venue_category === 'Event Hall' ? res.data.event_conflicts : []);
                   
                   window.currentAdminBookingId = data.id;
       
@@ -2103,7 +2166,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     baseRateInput.value = parseFloat(data.base_amount).toFixed(2);
                     const paymentSchemeSelect = document.getElementById('ep-payment-scheme');
-                    if (paymentSchemeSelect) paymentSchemeSelect.value = data.payment_scheme || '20% Reservation';
+                    if (paymentSchemeSelect) {
+                        const supportedSchemes = ['100% Full', '50% Downpayment', '20% Reservation'];
+                        const savedScheme = String(data.payment_scheme || '');
+                        paymentSchemeSelect.value = supportedSchemes.includes(savedScheme) ? savedScheme : '20% Reservation';
+                    }
                     
                     lineItemsContainer.innerHTML = ""; 
       
@@ -2139,6 +2206,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
                         if (!eventStyleKey) {
                             showAlert("Seating Style Required", "Select Theater, Classroom, or Banquet before finalizing this Event Hall invoice.", "error", false);
+                            return;
+                        }
+                        if (!['100% Full', '50% Downpayment', '20% Reservation'].includes(scheme)) {
+                            showAlert("Payment Scheme Required", "Select 100% Full Payment, 50% Downpayment, or 20% Reservation Fee.", "error", false);
+                            return;
+                        }
+                        if (!Number.isFinite(Number(baseRate)) || Number(baseRate) < 0) {
+                            showAlert("Invalid Base Rate", "Enter a valid nonnegative Event Hall base rate.", "error", false);
                             return;
                         }
                   

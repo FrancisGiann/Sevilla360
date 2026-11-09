@@ -1,4 +1,15 @@
 <?php
+require_once __DIR__ . '/../auth_guard.php';
+if (!in_array(($_SESSION['role'] ?? ''), ['admin', 'staff'], true)) {
+    http_response_code(403);
+    exit('Unauthorized access.');
+}
+
+if (($_SESSION['role'] ?? '') === 'staff') {
+    require __DIR__ . '/staff_settings.php';
+    return;
+}
+
 require_once 'config/db_connect.php';
 require_once __DIR__ . '/../google_maps.php';
 require_once __DIR__ . '/../hotel_rooms.php';
