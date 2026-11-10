@@ -5,26 +5,78 @@
 
 document.addEventListener("DOMContentLoaded", () => {
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  let customerPayMongoCheckout = null;
   if (window.SevillaPayMongoCheckout?.enabled()) {
-    window.SevillaPayMongoCheckout.create({csrfToken, requirePolicyConsent: () => new Promise(resolve => {
+    customerPayMongoCheckout = window.SevillaPayMongoCheckout.create({csrfToken, requirePolicyConsent: invoker => new Promise(resolve => {
       const modal=document.getElementById('paymongo-policy-ack');
       const checkbox=document.getElementById('paymongo-policy-confirm');
       const accept=document.getElementById('paymongo-policy-accept');
       const cancel=document.getElementById('paymongo-policy-cancel');
       if (!modal || !checkbox || !accept || !cancel) { resolve(false); return; }
+      const previousZIndex=modal.style.zIndex;
+      const priorOverflow=document.body.style.overflow;
+      const priorFocus=invoker || document.activeElement;
+      const siblings=Array.from(document.body.children).filter(node=>node!==modal).map(node=>({node,inert:node.inert}));
+      siblings.forEach(({node})=>{ node.inert=true; });
+      document.body.style.overflow='hidden';
       const update=()=>{ accept.disabled=!checkbox.checked; };
+      const onKeydown=event=>{
+        if (event.key==='Escape') { event.preventDefault(); event.stopPropagation(); finish(false); return; }
+        if (event.key!=='Tab') return;
+        event.stopPropagation();
+        const controls=Array.from(modal.querySelectorAll('input:not(:disabled),button:not(:disabled):not([hidden])'));
+        if (!controls.length) { event.preventDefault(); return; }
+        const first=controls[0], last=controls[controls.length-1];
+        if (event.shiftKey && document.activeElement===first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement===last) { event.preventDefault(); first.focus(); }
+      };
       const finish=value=>{
         modal.classList.remove('active'); modal.setAttribute('aria-hidden','true'); modal.hidden=true;
+        modal.style.zIndex=previousZIndex;
+        document.body.style.overflow=priorOverflow;
+        siblings.forEach(({node,inert})=>{ node.inert=inert; });
         checkbox.checked=false; accept.disabled=true;
         checkbox.removeEventListener('change',update); accept.removeEventListener('click',acceptTerms); cancel.removeEventListener('click',cancelTerms);
+        modal.removeEventListener('keydown',onKeydown);
         resolve(value);
+        if (priorFocus?.isConnected) { try { priorFocus.focus({preventScroll:true}); } catch (_) { priorFocus.focus(); } }
       };
       const acceptTerms=()=>{ if (checkbox.checked) finish(true); };
       const cancelTerms=()=>finish(false);
       checkbox.addEventListener('change',update); accept.addEventListener('click',acceptTerms); cancel.addEventListener('click',cancelTerms);
+      modal.addEventListener('keydown',onKeydown);
+      modal.style.zIndex='2001';
       modal.hidden=false; modal.classList.add('active'); modal.setAttribute('aria-hidden','false'); checkbox.focus({preventScroll:true});
-    })});
+    }), onUnavailable: () => refreshCustomerDashboard()});
   }
+  document.addEventListener('click', event => {
+    const cancelButton = event.target.closest?.('.btn-cancel-checkout');
+    if (cancelButton && window.SevillaPayMongoCheckout?.cancelAttempt) {
+      cancelButton.disabled = true;
+      const started = window.SevillaPayMongoCheckout.cancelAttempt({
+        attempt: cancelButton.dataset.attempt,
+        bookingId: cancelButton.dataset.id,
+        csrfToken,
+        invoker: cancelButton,
+        onChecked: () => { if (cancelButton.isConnected) cancelButton.disabled = false; },
+        onResolved: () => refreshCustomerDashboard()
+      });
+      if (!started) cancelButton.disabled = false;
+      return;
+    }
+    const button = event.target.closest?.('.btn-check-payment-status');
+    if (!button || !window.SevillaPayMongoCheckout?.recoverAttempt) return;
+    button.disabled = true;
+    const started = window.SevillaPayMongoCheckout.recoverAttempt({
+      attempt: button.dataset.attempt,
+      bookingId: button.dataset.id,
+      csrfToken,
+      invoker: button,
+      onChecked: () => { if (button.isConnected) button.disabled = false; },
+      onResolved: () => refreshCustomerDashboard()
+    });
+    if (!started) button.disabled = false;
+  });
   // =========================================================
   // 1. MODAL BRIDGES to Global Modals
   // =========================================================
@@ -583,16 +635,6 @@ document.addEventListener("DOMContentLoaded", () => {
         else input.value = "";
     });
     document.querySelectorAll(".modal-box select").forEach((select) => { select.selectedIndex = 0; });
-    const destinationFields = document.getElementById('cancel-refund-destination');
-    const destinationError = document.getElementById('cancel-refund-destination-error');
-    if (destinationFields) destinationFields.hidden = true;
-    if (destinationError) { destinationError.hidden = true; destinationError.textContent = ''; }
-    ['cancel-refund-method', 'cancel-refund-account-name', 'cancel-refund-account-identifier', 'cancel-refund-bank-name'].forEach((id) => {
-      const field = document.getElementById(id);
-      if (field) { field.required = false; field.setCustomValidity(''); }
-    });
-    const bankField = document.getElementById('cancel-refund-bank-field');
-    if (bankField) bankField.hidden = true;
     if (wasReviewModal) {
       reviewBookingId = null;
       reviewRating = 0;
@@ -662,6 +704,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }, true);
 
   document.addEventListener('keydown', (event) => {
+    const policyConsentModal = document.getElementById('paymongo-policy-ack');
+    if ((policyConsentModal && !policyConsentModal.hidden) || document.querySelector('.paymongo-recovery-overlay')) return;
     const modal = activeModal || (isVisible(globalAlertModal) ? globalAlertModal : null);
     if (!modal) return;
     if (event.key === 'Escape') {
@@ -886,7 +930,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (refundInfoBottom) refundInfoBottom.style.display = "block";
           if (unpaidInfo) unpaidInfo.style.display = "none";
           if (destinationFields) destinationFields.hidden = isPayMongo;
-          [destinationMethod, destinationName, destinationIdentifier].forEach((field) => { if (field) field.required = !isPayMongo; });
+          if (destinationMethod) destinationMethod.required = !isPayMongo;
+          if (destinationName) destinationName.required = !isPayMongo;
+          if (destinationIdentifier) destinationIdentifier.required = !isPayMongo;
           if (destinationMethod) destinationMethod.value = '';
           if (destinationName) destinationName.value = '';
           if (destinationIdentifier) destinationIdentifier.value = '';
@@ -1021,6 +1067,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+
       const originalText = this.innerText;
       this.innerText = "Processing...";
       this.disabled = true;
@@ -1048,17 +1095,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .then((data) => {
         if (data.success) showAlert("Success", data.message, "success", true);
         else {
-          const serverMessage = String(data.message || 'Unable to submit the refund request.');
-          if (isRefundable && destinationError && /destination|mobile number|account holder|bank name|wallet|account number/i.test(serverMessage)) {
-            destinationError.textContent = serverMessage;
-            destinationError.hidden = false;
-            const lowerMessage = serverMessage.toLowerCase();
-            const invalidField = lowerMessage.includes('bank name') ? destinationBank
-              : lowerMessage.includes('account holder') ? destinationName
-                : lowerMessage.includes('number') || lowerMessage.includes('mobile') || lowerMessage.includes('wallet') ? destinationIdentifier
-                  : destinationMethod;
-            invalidField?.focus();
-          }
           showAlert("Error", data.message, "error");
           this.innerText = originalText;
           this.disabled = false;
@@ -1169,20 +1205,32 @@ document.addEventListener("DOMContentLoaded", () => {
   // C. View Details Button
   const eventQuotePanel = document.getElementById('ud-event-quote-acceptance');
   const eventQuoteCheckbox = document.getElementById('ud-event-quote-accept-checkbox');
-  const eventQuoteAcceptButton = document.getElementById('ud-event-quote-accept');
   const eventQuotePayButton = document.getElementById('ud-event-quote-pay');
   const eventQuoteStatus = document.getElementById('ud-event-quote-accept-status');
   eventQuoteCheckbox?.addEventListener('change', () => {
-    if (eventQuoteAcceptButton && !eventQuoteAcceptButton.dataset.submitting) {
-      eventQuoteAcceptButton.disabled = !eventQuoteCheckbox.checked;
+    if (eventQuotePayButton && !eventQuotePayButton.dataset.submitting
+      && eventQuotePayButton.dataset.quoteAccepted !== '1') {
+      eventQuotePayButton.disabled = !eventQuoteCheckbox.checked;
     }
   });
-  eventQuoteAcceptButton?.addEventListener('click', async () => {
-    const bookingId = eventQuoteAcceptButton.dataset.bookingId;
-    const quoteVersion = Number(eventQuoteAcceptButton.dataset.quoteVersion);
-    if (!eventQuoteCheckbox?.checked || !bookingId || !Number.isInteger(quoteVersion) || quoteVersion < 1) return;
-    eventQuoteAcceptButton.dataset.submitting = '1';
-    eventQuoteAcceptButton.disabled = true;
+  eventQuotePayButton?.addEventListener('click', async event => {
+    if (eventQuotePayButton.dataset.quoteAccepted === '1') return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (eventQuotePayButton.dataset.submitting) return;
+    const bookingId = eventQuotePayButton.dataset.bookingId;
+    const quoteVersion = Number(eventQuotePayButton.dataset.quoteVersion);
+    if (!eventQuoteCheckbox?.checked || !bookingId || !Number.isInteger(quoteVersion) || quoteVersion < 1) {
+      if (eventQuoteStatus) {
+        eventQuoteStatus.textContent = 'Check the box to accept the quotation before paying.';
+        eventQuoteStatus.hidden = false;
+      }
+      eventQuoteCheckbox?.focus();
+      return;
+    }
+    eventQuotePayButton.dataset.submitting = '1';
+    eventQuotePayButton.disabled = true;
+    eventQuoteCheckbox.disabled = true;
     if (eventQuoteStatus) { eventQuoteStatus.hidden = true; eventQuoteStatus.textContent = ''; }
     try {
       const response = await fetch('actions/user/accept_event_quote.php', {
@@ -1194,21 +1242,32 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!response.ok || !data.success || Number(data.data?.quote_version) !== quoteVersion) {
         throw new Error(data.message || 'The quotation could not be accepted. Refresh the booking details and try again.');
       }
-      eventQuoteCheckbox.checked = false;
-      eventQuoteAcceptButton.hidden = true;
-      if (eventQuotePayButton) eventQuotePayButton.hidden = false;
+      eventQuotePayButton.dataset.quoteAccepted = '1';
+      eventQuoteCheckbox.checked = true;
+      eventQuoteCheckbox.disabled = true;
+      eventQuotePayButton.disabled = false;
       if (eventQuoteStatus) {
-        eventQuoteStatus.textContent = 'Quotation accepted. The original 24-hour payment deadline has not changed.';
+        eventQuoteStatus.textContent = 'Quotation accepted. Continuing to secure checkout; the original payment deadline has not changed.';
         eventQuoteStatus.hidden = false;
       }
+      if (!customerPayMongoCheckout?.openBooking) {
+        if (eventQuoteStatus) eventQuoteStatus.textContent = 'Quotation accepted. Checkout is unavailable right now; use Pay now to try again later.';
+        return;
+      }
+      await customerPayMongoCheckout.openBooking(String(bookingId), eventQuotePayButton);
+      if (eventQuoteStatus) eventQuoteStatus.textContent = 'Quotation accepted. If checkout did not open, use Pay now to retry; the quote deadline is unchanged.';
     } catch (error) {
       if (eventQuoteStatus) {
-        eventQuoteStatus.textContent = error?.message || 'The quotation could not be accepted. Check your connection and try again.';
+        eventQuoteStatus.textContent = eventQuotePayButton.dataset.quoteAccepted === '1'
+          ? 'Quotation accepted. Checkout could not be confirmed; check its status before trying again.'
+          : (error?.message || 'The quotation could not be accepted. Check your connection and try again.');
         eventQuoteStatus.hidden = false;
       }
-      eventQuoteAcceptButton.disabled = !eventQuoteCheckbox.checked;
+      if (eventQuotePayButton.dataset.quoteAccepted !== '1') eventQuoteCheckbox.disabled = false;
     } finally {
-      delete eventQuoteAcceptButton.dataset.submitting;
+      delete eventQuotePayButton.dataset.submitting;
+      if (eventQuotePayButton.dataset.quoteAccepted === '1') eventQuotePayButton.disabled = false;
+      else eventQuotePayButton.disabled = !eventQuoteCheckbox?.checked;
     }
   });
 
@@ -1275,16 +1334,20 @@ document.addEventListener("DOMContentLoaded", () => {
             if (specifics && specRow) {
                 specRow.style.display = 'flex';
                 if (data.venue_category === 'Event Hall') {
-                    specLabel.textContent = "Event Details:";
-                    specValue.textContent = '';
-                    const eventSummary = document.createElement('strong');
-                    eventSummary.textContent = `${String(specifics.event_type ?? '')} (${String(specifics.event_style ?? '')})`;
-                    const notes = document.createElement('span');
-                    notes.style.cssText = 'color:#666; font-size:0.85rem; display:block; margin-top:5px;';
-                    const notesLabel = document.createElement('strong');
-                    notesLabel.textContent = 'Your Notes: ';
-                    notes.append(notesLabel, document.createTextNode(String(specifics.custom_notes || 'None')));
-                    specValue.append(eventSummary, document.createElement('br'), notes);
+                    specLabel.textContent = "Event details";
+                    specValue.replaceChildren();
+                    const addDetail = (label, value) => {
+                        const item = document.createElement('p');
+                        const itemLabel = document.createElement('span');
+                        const itemValue = document.createElement('strong');
+                        itemLabel.textContent = label;
+                        itemValue.textContent = String(value || 'Not provided');
+                        item.append(itemLabel, itemValue);
+                        specValue.append(item);
+                    };
+                    addDetail('Event type', specifics.event_type);
+                    addDetail('Setup', specifics.event_style);
+                    addDetail('Notes', specifics.custom_notes);
                 } else if (data.venue_category === 'Resort Villa') {
                     specLabel.textContent = "Villa stay:";
                     specValue.textContent = String(specifics.summary || specifics.stay_type || '');
@@ -1305,32 +1368,33 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (eventQuotePanel) {
+                const quoteVersion = Number(data.display_quote_version ?? data.quote_version);
                 const eventHallQuote = data.venue_category === 'Event Hall'
                     && displayStatus === 'Confirmed'
                     && ['Unpaid', 'Partial'].includes(String(data.payment_status || ''))
-                    && Number(data.quote_version) >= 1;
+                    && Number.isInteger(quoteVersion) && quoteVersion >= 1;
                 const dueAt = String(data.payment_due_at || '').trim();
                 const dueEpoch = dueAt ? Date.parse(`${dueAt.replace(' ', 'T')}+08:00`) : NaN;
-                const deadlineOpen = Number.isFinite(dueEpoch) && dueEpoch > Date.now();
+                const firstPaymentRecorded = String(data.payment_status || '') === 'Partial' && Number(data.amount_paid) > 0;
+                const deadlineOpen = firstPaymentRecorded || (Number.isFinite(dueEpoch) && dueEpoch > Date.now());
                 const accepted = Number(data.quote_accepted) === 1;
                 const canShowQuoteControls = window.SevillaPayMongoCheckout?.enabled() === true
                     && eventHallQuote && deadlineOpen
                     && !data.cancel_pending && !data.resched_pending;
                 eventQuotePanel.hidden = !canShowQuoteControls;
                 if (eventQuoteCheckbox) {
-                    eventQuoteCheckbox.checked = false;
+                    eventQuoteCheckbox.checked = accepted;
                     eventQuoteCheckbox.disabled = accepted;
                 }
-                if (eventQuoteAcceptButton) {
-                    eventQuoteAcceptButton.dataset.bookingId = String(data.id);
-                    eventQuoteAcceptButton.dataset.quoteVersion = String(data.quote_version);
-                    delete eventQuoteAcceptButton.dataset.submitting;
-                    eventQuoteAcceptButton.hidden = accepted;
-                    eventQuoteAcceptButton.disabled = accepted || !canShowQuoteControls || !eventQuoteCheckbox?.checked;
-                }
                 if (eventQuotePayButton) {
+                    eventQuotePayButton.dataset.bookingId = String(data.id);
+                    eventQuotePayButton.dataset.quoteVersion = String(quoteVersion);
+                    eventQuotePayButton.dataset.quoteAccepted = accepted ? '1' : '0';
+                    delete eventQuotePayButton.dataset.submitting;
                     eventQuotePayButton.dataset.id = String(data.id);
-                    eventQuotePayButton.hidden = !accepted || !canShowQuoteControls;
+                    eventQuotePayButton.textContent = 'Pay now';
+                    eventQuotePayButton.hidden = !canShowQuoteControls;
+                    eventQuotePayButton.disabled = !accepted && !eventQuoteCheckbox?.checked;
                 }
                 if (eventQuoteStatus) { eventQuoteStatus.hidden = true; eventQuoteStatus.textContent = ''; }
             }
@@ -2003,5 +2067,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (channel.startsWith('customer:')) refreshCustomerDashboard();
   });
   scheduleDashboardRefresh();
+
+  if (window.SevillaPayMongoCheckout?.enabled()) {
+    window.SevillaPayMongoCheckout.reconcileReturn({
+      csrfToken,
+      onResolved: () => refreshCustomerDashboard()
+    });
+  }
 
 });

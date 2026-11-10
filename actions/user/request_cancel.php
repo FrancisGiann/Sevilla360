@@ -85,7 +85,7 @@ try {
         $pmStore=paymongo_native_store($conn);
         $pmFlow=new PayMongoHostedFlow($pmStore,paymongo_native_provider());
         $attempts=$pmStore->query("SELECT id FROM pm_attempts WHERE booking_id=? AND status IN ('creating','open','uncertain') ORDER BY created_at",[$booking_id]);
-        while ($attempt=$attempts->fetch_assoc()) $pmFlow->recover($attempt['id'],(int)$booking['customer_id'],true);
+        while ($attempt=$attempts->fetch_assoc()) $pmFlow->recover($attempt['id'],(int)$booking['customer_id']);
         $current=$pmStore->row('SELECT booking_status FROM bookings WHERE id=?',[$booking_id]);
         if (($current['booking_status'] ?? '')==='Cancelled') {
             echo json_encode(['success'=>true,'message'=>'The unpaid booking has expired and was cancelled.']);
@@ -117,6 +117,9 @@ try {
     }
     $amount_paid = (float)$locked_booking['amount_paid'];
     $destination = null;
+    if (isset($pmStore) && $amount_paid <= 0 && $pmStore->row('SELECT id FROM pm_attempts WHERE booking_id=? LIMIT 1 FOR UPDATE',[$booking_id])) {
+        throw new RuntimeException('Use Cancel checkout to resolve the PayMongo session before releasing this booking.');
+    }
     if ($amount_paid > 0) {
         if ($pmRefundSnapshot !== null) {
             if (paymongo_refund_money_to_cents((string)$locked_booking['amount_paid']) !== (int)$pmRefundSnapshot['gross_cents']
@@ -157,7 +160,7 @@ try {
                 $stmt_cx->bind_param('sdddsi', $reason, $refund_amount, $fee, $gross, $policy, $existing['id']);
             } else {
                 $stmt_cx = $conn->prepare("UPDATE cancellations SET reason = ?, refund_amount = ?, fee_deducted = ?, fee_percent = ?, refund_destination_method = ?, refund_destination_account_name = ?, refund_destination_account_identifier = ?, refund_destination_bank_name = ?, refund_transaction_id = NULL, status = 'Pending', admin_reply = NULL WHERE id = ? AND status = 'Rejected'");
-                $stmt_cx->bind_param("sdddssssi", $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
+                $stmt_cx->bind_param('sdddssssi', $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name'], $existing['id']);
             }
             if (!$stmt_cx->execute() || $stmt_cx->affected_rows !== 1) throw new Exception('The prior refund request changed before it could be reopened.');
             $cancellation_id = (int)$existing['id'];
@@ -170,7 +173,7 @@ try {
                 $stmt_cx->bind_param('isddds', $booking_id, $reason, $refund_amount, $fee, $gross, $policy);
             } else {
                 $stmt_cx = $conn->prepare("INSERT INTO cancellations (booking_id, reason, refund_amount, fee_deducted, fee_percent, refund_destination_method, refund_destination_account_name, refund_destination_account_identifier, refund_destination_bank_name, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')");
-                $stmt_cx->bind_param("isdddssss", $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
+                $stmt_cx->bind_param('isdddssss', $booking_id, $reason, $refund_amount, $fee, $fee_percent, $destination['method'], $destination['account_name'], $destination['account_identifier'], $destination['bank_name']);
             }
             if (!$stmt_cx->execute()) throw new Exception('Unable to submit the refund request.');
             $cancellation_id = (int)$conn->insert_id;

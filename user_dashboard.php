@@ -45,14 +45,22 @@ $phone_verification_user = $phone_verification_stmt->get_result()->fetch_assoc()
 $phone_verification_stmt->close();
 
 $localPayMongo = defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP;
-$eventQuoteFieldsSql = $localPayMongo ? 'b.quote_version,b.quote_accepted' : '0 AS quote_version,0 AS quote_accepted';
+$eventQuoteFieldsSql = $localPayMongo
+    ? "b.quote_version,b.quote_accepted,CASE WHEN b.quote_version=0 AND v.category='Event Hall' AND b.source='Online' AND b.booking_status='Confirmed' AND b.payment_status IN ('Unpaid','Partial') AND b.total_amount>0 AND b.payment_due_at>NOW() AND b.start_date>=CURDATE() THEN 1 ELSE b.quote_version END AS display_quote_version"
+    : '0 AS quote_version,0 AS quote_accepted,0 AS display_quote_version';
 $proofPendingSql = $localPayMongo ? '0' : "EXISTS (SELECT 1 FROM manual_payment_submissions mps WHERE mps.booking_id = b.id AND mps.status = 'pending')";
 $proofStatusSql = $localPayMongo ? 'NULL' : "(SELECT mps.status FROM manual_payment_submissions mps WHERE mps.booking_id = b.id ORDER BY mps.submitted_at DESC, mps.id DESC LIMIT 1)";
 $paymentExceptionSql = $localPayMongo ? "(SELECT r.disposition FROM pm_receipts r JOIN pm_attempts a ON a.id=r.attempt_id WHERE a.booking_id=b.id AND r.disposition<>'applied' LIMIT 1)" : 'NULL';
-$checkoutDeadlineSql = $localPayMongo ? '(SELECT MAX(a.expires_at) FROM pm_attempts a WHERE a.booking_id=b.id)' : 'NULL';
+$checkoutAttemptSql = $localPayMongo ? "(SELECT a.id FROM pm_attempts a WHERE a.booking_id=b.id AND a.base_paid_cents=CAST(ROUND(b.amount_paid*100) AS UNSIGNED) AND a.status IN ('creating','open','uncertain','review','expired') ORDER BY FIELD(a.status,'review','creating','uncertain','open','expired'),a.created_at DESC LIMIT 1)" : 'NULL';
+$checkoutAttemptStatusSql = $localPayMongo ? "(SELECT a.status FROM pm_attempts a WHERE a.booking_id=b.id AND a.base_paid_cents=CAST(ROUND(b.amount_paid*100) AS UNSIGNED) AND a.status IN ('creating','open','uncertain','review','expired') ORDER BY FIELD(a.status,'review','creating','uncertain','open','expired'),a.created_at DESC LIMIT 1)" : 'NULL';
+$checkoutDeadlineSql = $localPayMongo ? "(SELECT a.expires_at FROM pm_attempts a WHERE a.booking_id=b.id AND a.base_paid_cents=CAST(ROUND(b.amount_paid*100) AS UNSIGNED) AND a.status IN ('creating','open','uncertain','review','expired') ORDER BY FIELD(a.status,'review','creating','uncertain','open','expired'),a.created_at DESC LIMIT 1)" : 'NULL';
 $pendingStatuses = $localPayMongo ? "'Pending','Awaiting Proof'" : "'Pending'";
+$checkoutUnavailableMarkerAvailable = booking_checkout_unavailable_marker_available($conn);
+$checkoutUnavailableSelectSql = $checkoutUnavailableMarkerAvailable ? 'b.checkout_unavailable_at' : 'NULL';
+$checkoutUnavailableFilterSql = $checkoutUnavailableMarkerAvailable ? 'b.checkout_unavailable_at IS NULL' : '1=1';
+$checkoutUnavailableOptionalSelectSql = $checkoutUnavailableMarkerAvailable ? '' : ', NULL AS checkout_unavailable_at';
 // 2. Calculate dashboard-wide booking totals independently of the visible page.
-$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status IN ({$pendingStatuses}) AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ?");
+$stmt_stats = $conn->prepare("SELECT COUNT(*) AS total, SUM(CASE WHEN b.booking_status IN ({$pendingStatuses}) AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN b.booking_status = 'Confirmed' AND NOT $booking_completion_sql THEN 1 ELSE 0 END) AS confirmed FROM bookings b WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql}");
 $stmt_stats->bind_param("i", $customer_id);
 $stmt_stats->execute();
 $booking_stats = $stmt_stats->get_result()->fetch_assoc() ?: [];
@@ -63,7 +71,7 @@ $stmt_stats->close();
 
 $stmt_upcoming = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.booking_status, {$checkoutUnavailableSelectSql} AS checkout_unavailable_at, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
@@ -73,7 +81,7 @@ $stmt_upcoming = $conn->prepare("
         {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
-    WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
+    WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql} AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()
     ORDER BY b.start_date ASC LIMIT 1
 ");
 $stmt_upcoming->bind_param('i', $customer_id);
@@ -81,13 +89,13 @@ $stmt_upcoming->execute();
 $upcoming_booking = $stmt_upcoming->get_result()->fetch_assoc() ?: null;
 $stmt_upcoming->close();
 
-$stmt_upcoming_count = $conn->prepare("SELECT COUNT(*) AS upcoming_count FROM bookings b WHERE b.customer_id = ? AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()");
+$stmt_upcoming_count = $conn->prepare("SELECT COUNT(*) AS upcoming_count FROM bookings b WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql} AND b.booking_status = 'Confirmed' AND b.start_date >= CURDATE() AND b.end_date >= CURDATE()");
 $stmt_upcoming_count->bind_param('i', $customer_id);
 $stmt_upcoming_count->execute();
 $upcoming_count = (int)($stmt_upcoming_count->get_result()->fetch_assoc()['upcoming_count'] ?? 0);
 $stmt_upcoming_count->close();
 
-$stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(b.total_amount - b.amount_paid, 0)), 0) AS balance_due FROM bookings b WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql");
+$stmt_balance = $conn->prepare("SELECT COALESCE(SUM(GREATEST(b.total_amount - b.amount_paid, 0)), 0) AS balance_due FROM bookings b WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql} AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql");
 $stmt_balance->bind_param('i', $customer_id);
 $stmt_balance->execute();
 $balance_due = (float)($stmt_balance->get_result()->fetch_assoc()['balance_due'] ?? 0);
@@ -103,7 +111,7 @@ $booking_offset = ($booking_page - 1) * $booking_limit;
 // 3. Fetch only the current page of bookings.
 $stmt_bookings = $conn->prepare("
     SELECT 
-        b.*, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.*{$checkoutUnavailableOptionalSelectSql}, {$eventQuoteFieldsSql}, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
         v.name AS venue_name, 
         v.category AS venue_type,
         hr.room_type AS hotel_room_type,
@@ -112,13 +120,13 @@ $stmt_bookings = $conn->prepare("
         EXISTS (SELECT 1 FROM reschedule_requests rr_done WHERE rr_done.booking_id = b.id AND rr_done.status = 'Approved') AS has_rescheduled,
         EXISTS (SELECT 1 FROM payments p WHERE p.booking_id=b.id AND p.status='Success' AND LEFT(p.transaction_id,4)='pay_') AS paymongo_paid,
         {$proofPendingSql} AS manual_payment_pending, {$paymentExceptionSql} AS pm_exception,
-        {$proofStatusSql} AS manual_submission_status
+        {$proofStatusSql} AS manual_submission_status, {$checkoutAttemptSql} AS payment_attempt_id, {$checkoutAttemptStatusSql} AS payment_attempt_status
     FROM bookings b
     JOIN venues v ON b.venue_id = v.id
     LEFT JOIN hotel_rooms hr ON v.id = hr.venue_id
     LEFT JOIN cancellations cx ON b.id = cx.booking_id
     LEFT JOIN reschedule_requests rr ON b.id = rr.booking_id AND rr.status = 'Pending'
-    WHERE b.customer_id = ?
+    WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql}
     ORDER BY b.id DESC
     LIMIT ? OFFSET ?
 ");
@@ -173,7 +181,7 @@ while ($row = $notifs_result->fetch_assoc()) {
 // separate from the paginated booking-management query below.
 $stmt_overview_recent = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.booking_status, {$checkoutUnavailableSelectSql} AS checkout_unavailable_at, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
@@ -183,7 +191,7 @@ $stmt_overview_recent = $conn->prepare("
         {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
-    WHERE b.customer_id = ?
+    WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql}
     ORDER BY b.id DESC
     LIMIT 3
 ");
@@ -194,7 +202,7 @@ $stmt_overview_recent->close();
 
 $stmt_attention = $conn->prepare("
     SELECT b.id, b.reference_no, b.start_date, b.end_date, b.total_amount, b.amount_paid,
-        b.booking_status, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
+        b.booking_status, {$checkoutUnavailableSelectSql} AS checkout_unavailable_at, CASE WHEN $booking_completion_sql THEN 'Completed' ELSE b.booking_status END AS display_booking_status,
         b.payment_status, b.source, v.category AS venue_type, v.name AS venue_name,
         EXISTS (SELECT 1 FROM cancellations cx WHERE cx.booking_id = b.id AND cx.status = 'Pending') AS cancel_pending,
         EXISTS (SELECT 1 FROM reschedule_requests rr WHERE rr.booking_id = b.id AND rr.status = 'Pending') AS resched_pending,
@@ -204,7 +212,7 @@ $stmt_attention = $conn->prepare("
         {$eventQuoteFieldsSql}
     FROM bookings b
     INNER JOIN venues v ON v.id = b.venue_id
-    WHERE b.customer_id = ? AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
+    WHERE b.customer_id = ? AND {$checkoutUnavailableFilterSql} AND b.booking_status <> 'Cancelled' AND NOT $booking_completion_sql
       AND (
         b.booking_status IN ({$pendingStatuses})
         OR (b.booking_status = 'Confirmed' AND b.payment_status IN ('Unpaid', 'Partial'))
@@ -232,12 +240,21 @@ $format_dashboard_date = static function ($start, $end = null): string {
 };
 $dashboard_status = 'customer_dashboard_status';
 $can_submit_manual_payment = static function (array $booking) use ($payment_timer_now): bool {
+    if (!empty($booking['checkout_unavailable_at'])) return false;
     if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) {
         $venueCategory = (string)($booking['venue_type'] ?? $booking['venue_category'] ?? '');
         if ($venueCategory === 'Event Hall'
             && ((int)($booking['quote_version'] ?? 0) < 1 || (int)($booking['quote_accepted'] ?? 0) !== 1)) return false;
-        $deadline=$booking['payment_step_expires_at'] ?: ($booking['payment_attempt_expires_at'] ?? ($booking['payment_due_at'] ?? null));
-        return ((float)$booking['amount_paid']>0 || ($deadline && $deadline>$payment_timer_now)) && empty($booking['pm_exception']) && !booking_is_completed($booking) && ($booking['source'] ?? '') === 'Online'
+        if (in_array($booking['payment_attempt_status'] ?? '', ['creating', 'open', 'uncertain', 'review'], true)) return false;
+        if ($venueCategory === 'Event Hall') {
+            $deadline = $booking['payment_due_at'] ?? null;
+            $firstPaymentRecorded = ($booking['payment_status'] ?? '') === 'Partial' && (float)($booking['amount_paid'] ?? 0) > 0;
+            $paymentWindowOpen = $firstPaymentRecorded || ($deadline && $deadline > $payment_timer_now);
+        } else {
+            $deadline = $booking['payment_step_expires_at'] ?: ($booking['payment_attempt_expires_at'] ?? null);
+            $paymentWindowOpen = !$deadline || $deadline > $payment_timer_now;
+        }
+        return $paymentWindowOpen && empty($booking['pm_exception']) && !booking_is_completed($booking) && ($booking['source'] ?? '') === 'Online'
             && in_array($booking['booking_status'], ['Awaiting Proof', 'Confirmed'], true)
             && in_array($booking['payment_status'], ['Unpaid', 'Partial'], true)
             && ($booking['cancel_status'] ?? '') !== 'Pending' && ($booking['resched_status'] ?? '') !== 'Pending';
@@ -249,6 +266,22 @@ $can_submit_manual_payment = static function (array $booking) use ($payment_time
     if (($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall' && $booking['booking_status'] !== 'Confirmed') return false;
     if (!$hasPendingProof && $booking['payment_status'] === 'Unpaid' && !empty($booking['payment_due_at']) && strtotime((string)$booking['payment_due_at']) < time() && empty($booking['payment_step_seen_at'])) return false;
     return true;
+};
+$can_review_event_quote = static function (array $booking) use ($localPayMongo, $payment_timer_now): bool {
+    $deadline = $booking['payment_due_at'] ?? null;
+    return $localPayMongo
+        && ($booking['venue_type'] ?? $booking['venue_category'] ?? '') === 'Event Hall'
+        && ($booking['display_booking_status'] ?? $booking['booking_status'] ?? '') === 'Confirmed'
+        && ($booking['source'] ?? '') === 'Online'
+        && (int)($booking['display_quote_version'] ?? $booking['quote_version'] ?? 0) >= 1
+        && (int)($booking['quote_accepted'] ?? 0) !== 1
+        && in_array($booking['payment_status'] ?? '', ['Unpaid', 'Partial'], true)
+        && is_string($deadline) && $deadline !== '' && $deadline > $payment_timer_now
+        && empty($booking['pm_exception'])
+        && !in_array($booking['payment_attempt_status'] ?? '', ['creating', 'open', 'uncertain', 'review'], true)
+        && empty($booking['cancel_pending']) && ($booking['cancel_status'] ?? '') !== 'Pending'
+        && empty($booking['resched_pending']) && ($booking['resched_status'] ?? '') !== 'Pending'
+        && !booking_is_completed($booking);
 };
 $manual_payment_action_label = static function (array $booking): string {
     if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP) return 'Pay now';
@@ -328,8 +361,8 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8') ?>">
-    <link rel="stylesheet" href="<?= htmlspecialchars(site_metadata_asset_url('assets/css/user_dashboard.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= filemtime(__DIR__ . '/assets/css/style.css'); ?>">
+    <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/user_dashboard.css'); ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
 <?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)): ?>
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
@@ -843,7 +876,10 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
         <div class="modal-box modal-details-scroll">
             <header class="details-modal-header">
                 <h2 class="modal-title" id="ud-title">Booking Details</h2>
-                <span id="ud-status-badge" class="badge details-status-badge">--</span>
+                <div class="details-header-actions">
+                    <span id="ud-status-badge" class="badge details-status-badge">--</span>
+                    <button type="button" class="details-modal-close close-modal" aria-label="Close booking details" title="Close">&times;</button>
+                </div>
             </header>
 
             <div class="modal-summary details-summary">
@@ -852,9 +888,9 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                 <p><span>Dates:</span> <span id="ud-dates">--</span></p>
                 <p><span>Guests:</span> <span id="ud-guests">--</span></p>
 
-                <div id="ud-specific-row" class="hidden-element">
-                    <span id="ud-specific-label">Event Details:</span>
-                    <span id="ud-specific-value">--</span>
+                <div id="ud-specific-row" class="hidden-element booking-specific-details">
+                    <span id="ud-specific-label" class="booking-specific-label">Event details</span>
+                    <span id="ud-specific-value" class="booking-specific-value">--</span>
                 </div>
 
                 <div id="ud-cancel-row" class="cancel-reason-box">
@@ -926,12 +962,11 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
                 <?php if (defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP): ?>
                 <section id="ud-event-quote-acceptance" class="booking-detail-section" aria-labelledby="ud-event-quote-title" hidden>
                     <h3 id="ud-event-quote-title" class="details-section-title">Event Hall quotation</h3>
-                    <p id="ud-event-quote-summary">Review the finalized quote above. Payment is due within 24 hours of staff finalizing it. Unpaid bookings are cancelled automatically after the deadline; uncertain payments are verified before cancellation.</p>
+                    <p id="ud-event-quote-summary">Review the finalized quote above. Your first payment is due within 24 hours of staff finalizing it. After a payment is recorded, use Pay now to pay the remaining balance.</p>
                     <label for="ud-event-quote-accept-checkbox"><input type="checkbox" id="ud-event-quote-accept-checkbox"> I accept this Event Hall quotation.</label>
                     <p id="ud-event-quote-accept-status" role="status" aria-live="polite" hidden></p>
                     <div class="modal-actions center-actions">
-                        <button type="button" class="btn-modal btn-primary" id="ud-event-quote-accept" disabled>Accept quotation</button>
-                        <button type="button" class="btn-modal btn-primary btn-submit-payment" id="ud-event-quote-pay" hidden>Pay now</button>
+                        <button type="button" class="btn-modal btn-primary btn-submit-payment" id="ud-event-quote-pay" disabled hidden>Pay now</button>
                     </div>
                 </section>
                 <?php endif; ?>
@@ -993,6 +1028,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     
     <!-- Global Custom Modals -->
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <?php require_once __DIR__ . '/includes/session_watch_script.php'; ?>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_clipboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 

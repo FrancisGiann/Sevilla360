@@ -27,6 +27,7 @@ $css = $read('assets/css/user_dashboard.css');
 $uiCss = $read('assets/css/ui-refinement.css');
 $statusResolver = $read('includes/customer_booking_status.php');
 $bookingDetailsEndpoint = $read('actions/user/get_my_booking_details.php');
+$cancelEndpoint = $read('actions/user/request_cancel.php');
 $quoteAcceptanceEndpoint = $read('actions/user/accept_event_quote.php');
 $refundPreviewEndpoint = $read('actions/user/paymongo_refund_preview.php');
 $paymentEligibilityStart = strpos($php, '$can_submit_manual_payment = static function');
@@ -68,7 +69,7 @@ $assert(str_contains($php, 'SUM(CASE WHEN b.booking_status IN ({$pendingStatuses
 $assert(str_contains($statusResolver, "return ['Awaiting payment verification', 'badge-pending'];") && str_contains($statusResolver, "return ['Proof rejected', 'badge-cancelled'];") && str_contains($statusResolver, "return ['Inquiry sent', 'badge-pending'];") && str_contains($statusResolver, "return ['Payment due', 'badge-pending'];") && str_contains($statusResolver, "return ['Payment window expired', 'badge-cancelled'];"), 'customer status resolver defines the payment, proof, inquiry, and expiry labels');
 $assert(!str_contains($php, 'Awaiting Approval') && !str_contains($js, 'Awaiting Approval') && str_contains($php, "\$dashboard_status = 'customer_dashboard_status';"), 'overview, booking history, and details use the shared customer status resolver without implying approval is required');
 $assert(str_contains($bookingDetailsEndpoint, 'EXISTS (SELECT 1 FROM manual_payment_submissions mps_pending') && str_contains($bookingDetailsEndpoint, 'latest_mps.transaction_reference AS manual_submission_reference') && str_contains($bookingDetailsEndpoint, 'latest_mps.status AS manual_submission_status') && str_contains($bookingDetailsEndpoint, 'latest_mps.submitted_at AS manual_submission_submitted_at') && str_contains($bookingDetailsEndpoint, 'latest_mps.rejection_reason AS manual_rejection_reason') && str_contains($bookingDetailsEndpoint, 'mps_latest.customer_user_id = c.user_id') && !str_contains($bookingDetailsEndpoint, 'proof_filename') && !str_contains($bookingDetailsEndpoint, 'proof_sha256'), 'owned booking details return only the latest proof review metadata needed by the customer');
-$assert(str_contains($paymentEligibility, "\$venueCategory === 'Event Hall'") && str_contains($paymentEligibility, "\$booking['quote_accepted']") && str_contains($php, 'id="ud-event-quote-acceptance"') && str_contains($js, 'actions/user/accept_event_quote.php') && str_contains($quoteAcceptanceEndpoint, 'quote_version'), 'PayMongo Event Hall payment stays hidden until the customer accepts the current finalized quote.');
+$assert(str_contains($paymentEligibility, "\$venueCategory === 'Event Hall'") && str_contains($paymentEligibility, "\$booking['quote_accepted']") && str_contains($php, 'AS display_quote_version') && str_contains($bookingDetailsEndpoint, 'AS display_quote_version') && str_contains($php, 'id="ud-event-quote-acceptance"') && str_contains($js, 'actions/user/accept_event_quote.php') && str_contains($quoteAcceptanceEndpoint, 'quote_version') && str_contains($quoteAcceptanceEndpoint, '$legacyFinalizedQuote') && str_contains($quoteAcceptanceEndpoint, 'SET quote_version=1,quote_accepted=1'), 'PayMongo Event Hall accepts legacy finalized quotes only after explicit customer acceptance.');
 $assert(str_contains($js, 'badge.textContent = data.customer_status_label') && str_contains($js, "pending: 'Proof awaiting staff review'") && str_contains($js, "rejected: 'Proof rejected'") && !str_contains($js, "approved: 'Approved'") && str_contains($js, 'referenceEl.textContent') && str_contains($js, 'reviewNoteEl.textContent'), 'details modal uses server-resolved booking status and renders only pending/rejected proof metadata');
 
 require_once $root . '/includes/customer_booking_status.php';
@@ -172,8 +173,18 @@ $assert($cancelRequest !== ''
     && str_contains($cancelRequest, 'refund_preview_fingerprint: activePayMongoRefundPreview.fingerprint')
     && str_contains($cancelRequest, '...(isPayMongo ? {')
     && str_contains($cancelRequest, 'refund_destination: {')
-    && str_contains($cancelRequest, '} : needsDestination ? {'),
-    'cancellation sends the fee-preview acknowledgement for PayMongo and legacy destination data only for manual refunds');
+    && str_contains($cancelRequest, '} : needsDestination ? {')
+    && str_contains($js, 'const needsDestination = isRefundable && !isPayMongo;')
+    && str_contains($js, 'destinationFields.hidden = isPayMongo')
+    && str_contains($php, 'id="cancel-refund-destination"')
+    && str_contains($php, 'assets/js/refund_destination.js'),
+    'PayMongo refunds hide destination fields and submit the verified fee acknowledgement while manual refunds collect destination details');
+$assert(str_contains($cancelEndpoint, 'normalize_refund_destination(is_array($data[\'refund_destination\'] ?? null) ? $data[\'refund_destination\'] : [])')
+    && str_contains($cancelEndpoint, 'refund_destination_method = ?, refund_destination_account_name = ?')
+    && str_contains($cancelEndpoint, 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \'Pending\')')
+    && str_contains($cancelEndpoint, 'refund_destination_method=NULL')
+    && str_contains($cancelEndpoint, 'refund_provider=\'paymongo\''),
+    'the cancellation endpoint validates and persists manual refund destinations and keeps PayMongo destinations empty');
 $assert(str_contains($php, 'id="cancel-refund-preview-retry"')
     && str_contains($js, 'const controller = new AbortController();')
     && str_contains($js, 'controller.abort(), 20000')
