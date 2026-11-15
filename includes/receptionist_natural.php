@@ -2013,7 +2013,14 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         }
         $answer = receptionist_knowledge_compose_selection($records, $knowledgeCandidates, $proposal['knowledge_id'], $selectionProperty, $language, $state['slots'], $message);
     }
+    $isSocialInput = receptionist_knowledge_is_social_input($message);
+    $unsupportedNonFactualTurn = !$isSocialInput
+        && ($kind === 'social' || ($kind === 'question' && ($proposal['knowledge_property'] ?? null) === 'unknown'));
     $firstGroundedReply = receptionist_natural_grounded_reply((string)($proposal['social_reply'] ?? ''), $proposal['claims'] ?? [], $records, $state, $proposal, $message, $groundingReason);
+    if ($unsupportedNonFactualTurn) {
+        $firstGroundedReply = null;
+        $groundingReason ??= 'unsupported_nonfactual_turn';
+    }
     if ($firstGroundedReply !== null && !receptionist_natural_reply_matches_language($firstGroundedReply, $language)) {
         $firstGroundedReply = null;
         $groundingReason = 'language_mismatch';
@@ -2043,19 +2050,19 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             $state['slots']['active_room_group_id'] = (int)$item['room_group_id'];
         } else unset($state['slots']['active_room_group_id']);
         if ($reply === '') $reply = receptionist_natural_snapshot_reply($item, $message, $language, $state['recommendation_snapshot'] ?? []);
-    } elseif ($kind === 'social' || receptionist_knowledge_is_social_input($message)) {
+    } elseif ($isSocialInput) {
         if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
             $reply = receptionist_natural_safe_social_reply((string)($proposal['social_reply'] ?? ''), $language);
         }
+    } elseif ($kind === 'social' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
+        $reply = receptionist_ai_unsupported_message($language);
     } elseif ($kind === 'ambiguous') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Alin dito ang ibig mong sabihin?', 'taglish' => 'Alin dito ang ibig mong sabihin?', default => 'Which option did you mean?' };
     } elseif ($kind === 'reference') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Aling option ang gusto mong tingnan?', 'taglish' => 'Aling option ang gusto mong tingnan?', default => 'Which option would you like me to look at?' };
         $quickReplies = array_values(array_slice(array_unique(array_map(static fn(array $item): string => (string)($item['title'] ?? ''), $state['recommendation_snapshot']['results'] ?? [])), 0, 3));
     } elseif ($kind === 'question' && ($proposal['knowledge_property'] ?? null) === 'unknown') {
-        if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
-            $reply = receptionist_natural_local_reply('unknown', $language);
-        }
+        if (!receptionist_knowledge_is_fact_request($message, $state['slots'])) $reply = receptionist_ai_unsupported_message($language);
     }
 
     if ($reply === '' && receptionist_knowledge_is_fact_request($message, $state['slots'])) {
