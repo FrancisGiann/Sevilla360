@@ -875,6 +875,28 @@ $assert('unknown amenity questions use the published-knowledge/support fallback,
     && !str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'do not offer')
     && str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'can’t confirm')
     && ($unsupportedAmenityResult['show_support_contact_cta'] ?? false) === true);
+$misclassifiedSocialProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('social', [], 'Hello! I’m the virtual receptionist. How can I help you today?')],
+]);
+[$misclassifiedSocialResult, $misclassifiedSocialStatus] = $run(receptionist_natural_empty_state(), 'What is the weather today?',
+    $misclassifiedSocialProvider, ['_records' => []]);
+$assert('unrelated questions misclassified as social receive a concise resort-help fallback',
+    $misclassifiedSocialStatus === 200 && count($misclassifiedSocialProvider->calls) === 1
+    && ($misclassifiedSocialResult['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.'
+    && !str_contains((string)($misclassifiedSocialResult['reply'] ?? ''), 'virtual receptionist'));
+$unrelatedQuestion = $payload('question', [], 'Hello! I’m the virtual receptionist. How can I help you today?');
+$unrelatedQuestion['knowledge_property'] = 'unknown';
+$misclassifiedQuestionProvider = new ReceptionistNaturalContractProvider([['payload' => $unrelatedQuestion]]);
+[$misclassifiedQuestionResult, $misclassifiedQuestionStatus] = $run(receptionist_natural_empty_state(), 'What is the weather today?',
+    $misclassifiedQuestionProvider, ['_records' => []]);
+$assert('unrelated questions classified as unknown use the same concise resort-help fallback',
+    $misclassifiedQuestionStatus === 200 && count($misclassifiedQuestionProvider->calls) === 1
+    && ($misclassifiedQuestionResult['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.');
+$greetingProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('social', [], 'Hi there!')]]);
+[$greetingResult, $greetingStatus] = $run(receptionist_natural_empty_state(), 'hello', $greetingProvider, ['_records' => []]);
+$assert('actual greetings keep their social reply',
+    $greetingStatus === 200 && count($greetingProvider->calls) === 1
+    && ($greetingResult['reply'] ?? null) === 'Hi there!');
 $assert('natural claim accepts exact capacity, bed, and price facts',
     receptionist_natural_grounded_reply($groundedReply, [...$capacityClaims, ['source_id' => 'recommendation-101-77', 'field' => 'rate', 'value' => '₱1,200.00 /night']], $groundRecords, $groundState, $groundProposal, 'Tell me about Rafael.') === $groundedReply);
 $assert('natural claim rejects capacity recast as bed count',
