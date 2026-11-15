@@ -1036,6 +1036,15 @@ function receptionist_ai_safe_social_fallback(string $language = 'en'): string
     };
 }
 
+function receptionist_ai_unsupported_message(string $language = 'en'): string
+{
+    return match ($language) {
+        'fil' => 'Pasensya na, hindi ko naintindihan iyon. Matutulungan kita sa resort rooms, rates, bookings, amenities, o directions.',
+        'taglish' => 'Sorry, hindi ko naintindihan iyon. I can help with resort rooms, rates, bookings, amenities, or directions.',
+        default => 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.',
+    };
+}
+
 function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $baseSlots, array $faqs, string $fallbackLanguage = 'en', ?array $venueCatalog = null): array
 {
     if (!in_array($payload['language'] ?? null, ['en', 'fil', 'taglish'], true)) throw new InvalidArgumentException('Invalid receptionist language.');
@@ -1095,7 +1104,7 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'venue' => 'Let me open that venue for you so you can take a closer look!',
             'availability' => 'I’ll check the selected dates for you — no reservation is made at this step.',
             'contact' => 'Great question! I want to make sure you get the right answer. You can reach our team for booking questions, venue details, or help with an existing reservation.',
-            'unsupported' => 'I\'m best at helping with venues, bookings, and resort info! For anything else, our team would love to help — feel free to reach out to us.',
+            'unsupported' => 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.',
         ],
         'fil' => [
             'ask' => 'Sige! Tulungan kita mahanap ang tamang venue. Ano ang hinahanap mo — event hall, hotel room, o resort villa namin?',
@@ -1103,7 +1112,7 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'venue' => 'Buksan ko ang venue na iyan para mas makita mo ang mga detalye!',
             'availability' => 'Tingnan ko ang mga petsa na iyan para sa iyo — wala pang reservation sa hakbang na ito.',
             'contact' => 'Magandang tanong! Gusto kong matiyak na makuha mo ang tamang sagot. Pwede mong tawagan ang team namin para sa booking questions, venue details, o tulong sa existing reservation.',
-            'unsupported' => 'Mas makakatulong ako sa venues, bookings, at resort info! Para sa iba, pwede mong kontakin ang team namin.',
+            'unsupported' => 'Pasensya na, hindi ko naintindihan iyon. Matutulungan kita sa resort rooms, rates, bookings, amenities, o directions.',
         ],
         'taglish' => [
             'ask' => 'Sure! Let me help you find the perfect spot. Ano ang hanap mo — event hall, hotel room, or our resort villa?',
@@ -1111,7 +1120,7 @@ function receptionist_ai_normalize_output(array $payload, mysqli $conn, array $b
             'venue' => 'Let me open that venue for you para mas makita mo ang details!',
             'availability' => 'Let me check those dates for you — wala pang reservation sa step na ito.',
             'contact' => 'Great question! Gusto kong ma-sure na makuha mo ang right answer. You can reach our team for booking questions, venue details, or help sa existing reservation.',
-            'unsupported' => 'I\'m best at helping with venues, bookings, and resort info! For anything else, feel free to reach out to our team.',
+            'unsupported' => 'Sorry, hindi ko naintindihan iyon. I can help with resort rooms, rates, bookings, amenities, or directions.',
         ],
     ];
     // Preserve useful clarifying questions, but keep factual answers on the
@@ -1155,6 +1164,7 @@ function receptionist_ai_normalize_helper_output(array $payload, mysqli $conn, a
     $language = in_array($fallbackLanguage, ['en', 'fil', 'taglish'], true) ? $fallbackLanguage : 'en';
     $action = ($payload['action'] ?? null) === 'social' ? 'social' : 'ask';
     $socialInput = receptionist_knowledge_is_social_input($message);
+    $unsupportedFallback = false;
     if (!$socialInput) {
         $knowledgeAnswer = receptionist_knowledge_compose_selection(
             $knowledgeRecords,
@@ -1172,13 +1182,14 @@ function receptionist_ai_normalize_helper_output(array $payload, mysqli $conn, a
             $fallbackAnswer = receptionist_knowledge_local_fallback($knowledgeRecords, $message, $language, $baseSlots);
             if ($fallbackAnswer !== null) return ['knowledge_answer' => $fallbackAnswer, 'language' => $language, 'action' => 'ask', 'slots' => $baseSlots, 'quick_replies' => []];
         }
+        $unsupportedFallback = empty($baseSlots['intent']);
 
         // Provider-authored prose is never exposed for non-social input. Any
         // fact must have been composed above from a validated public record.
         $payload = [
             'language' => $language,
             'action' => 'ask',
-            'reply' => receptionist_ai_guided_message($language),
+            'reply' => $unsupportedFallback ? receptionist_ai_unsupported_message($language) : receptionist_ai_guided_message($language),
             'faq_id' => null,
             'slots' => $baseSlots,
             'quick_replies' => [],
@@ -1194,6 +1205,7 @@ function receptionist_ai_normalize_helper_output(array $payload, mysqli $conn, a
     $payload['quick_replies'] = [];
 
     $normalized = receptionist_ai_normalize_output($payload, $conn, $baseSlots, $faqs, $language, $venueCatalog);
+    if ($unsupportedFallback) $normalized['reply'] = receptionist_ai_unsupported_message($language);
     $normalized['slots'] = $baseSlots;
     $normalized['missing_slots'] = [];
     $normalized['quick_replies'] = [];

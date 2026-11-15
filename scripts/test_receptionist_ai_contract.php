@@ -438,10 +438,22 @@ $helperClaimAttempt = receptionist_ai_normalize_helper_output([
     'language' => 'en', 'action' => 'social', 'reply' => 'We have a pool and free Wi-Fi.', 'faq_id' => null,
     'slots' => [], 'quick_replies' => [],
 ], $db, [], $defaults, 'en', null, [], [], 'hello');
+$helperUnrelatedAttempt = receptionist_ai_normalize_helper_output([
+    'language' => 'en', 'action' => 'social', 'reply' => 'Hello! I’m the virtual receptionist. How can I help you today?', 'faq_id' => null,
+    'slots' => [], 'quick_replies' => [],
+], $db, [], $defaults, 'en', null, [], [], 'What is the weather today?');
+$helperBookingContextAttempt = receptionist_ai_normalize_helper_output([
+    'language' => 'en', 'action' => 'ask', 'reply' => 'Sure! Let me help you find a venue.', 'faq_id' => null,
+    'slots' => [], 'quick_replies' => [],
+], $db, ['intent' => 'Hotel Room'], $defaults, 'en', null, [], [], 'Please continue.');
 $checks['optional AI helper cannot change venue navigation or invent resort facts'] = ($helperVenueAttempt['action'] ?? null) === 'ask'
     && ($helperVenueAttempt['slots'] ?? null) === $helperBaseSlots
     && ($helperVenueAttempt['quick_replies'] ?? null) === []
-    && ($helperClaimAttempt['reply'] ?? null) === 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?';
+    && ($helperClaimAttempt['reply'] ?? null) === 'Hello! I\'m the virtual receptionist for M.I. Sevilla Resort & Events Place. How can I help you today?'
+    && ($helperUnrelatedAttempt['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.'
+    && ($helperBookingContextAttempt['slots'] ?? null) === ['intent' => 'Hotel Room']
+    && str_contains(strtolower((string)($helperBookingContextAttempt['reply'] ?? '')), 'hotel room')
+    && !str_contains((string)($helperBookingContextAttempt['reply'] ?? ''), 'Sorry, I didn’t understand that.');
 
 $endpoint = $source('actions/public/receptionist_chat.php');
 $resetEndpoint = $source('actions/public/receptionist_chat_reset.php');

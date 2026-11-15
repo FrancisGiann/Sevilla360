@@ -875,8 +875,61 @@ $assert('unknown amenity questions use the published-knowledge/support fallback,
     && !str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'do not offer')
     && str_contains(mb_strtolower((string)$unsupportedAmenityResult['reply'], 'UTF-8'), 'can’t confirm')
     && ($unsupportedAmenityResult['show_support_contact_cta'] ?? false) === true);
+$misclassifiedSocialProvider = new ReceptionistNaturalContractProvider([
+    ['payload' => $payload('social', [], 'Hello! I’m the virtual receptionist. How can I help you today?')],
+]);
+[$misclassifiedSocialResult, $misclassifiedSocialStatus] = $run(receptionist_natural_empty_state(), 'What is the weather today?',
+    $misclassifiedSocialProvider, ['_records' => []]);
+$assert('unrelated questions misclassified as social receive a concise resort-help fallback',
+    $misclassifiedSocialStatus === 200 && count($misclassifiedSocialProvider->calls) === 1
+    && ($misclassifiedSocialResult['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.'
+    && !str_contains((string)($misclassifiedSocialResult['reply'] ?? ''), 'virtual receptionist'));
+$unrelatedQuestion = $payload('question', [], 'Hello! I’m the virtual receptionist. How can I help you today?');
+$unrelatedQuestion['knowledge_property'] = 'unknown';
+$misclassifiedQuestionProvider = new ReceptionistNaturalContractProvider([['payload' => $unrelatedQuestion]]);
+[$misclassifiedQuestionResult, $misclassifiedQuestionStatus] = $run(receptionist_natural_empty_state(), 'What is the weather today?',
+    $misclassifiedQuestionProvider, ['_records' => []]);
+$assert('unrelated questions classified as unknown use the same concise resort-help fallback',
+    $misclassifiedQuestionStatus === 200 && count($misclassifiedQuestionProvider->calls) === 1
+    && ($misclassifiedQuestionResult['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.');
+$greetingProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('social', [], 'Hi there!')]]);
+[$greetingResult, $greetingStatus] = $run(receptionist_natural_empty_state(), 'hello', $greetingProvider, ['_records' => []]);
+$assert('actual greetings keep their social reply',
+    $greetingStatus === 200 && count($greetingProvider->calls) === 1
+    && ($greetingResult['reply'] ?? null) === 'Hi there!');
 $assert('natural claim accepts exact capacity, bed, and price facts',
     receptionist_natural_grounded_reply($groundedReply, [...$capacityClaims, ['source_id' => 'recommendation-101-77', 'field' => 'rate', 'value' => '₱1,200.00 /night']], $groundRecords, $groundState, $groundProposal, 'Tell me about Rafael.') === $groundedReply);
+$roomDetailsSlots = ['intent' => 'Hotel Room', 'group_size' => 3, 'preference' => 'best_fit', 'room_type_code' => 'any',
+    'start_date' => $date1, 'end_date' => $date2];
+$roomDetailsState = array_replace(receptionist_natural_empty_state(), $groundState, [
+    'revision' => 6, 'slots' => $roomDetailsSlots,
+    'recommendation_snapshot' => array_replace($groundState['recommendation_snapshot'], [
+        'criteria_signature' => receptionist_natural_criteria_signature($roomDetailsSlots),
+    ]),
+]);
+$roomDetailsClaims = [...$capacityClaims, ['source_id' => 'recommendation-101-77', 'field' => 'rate', 'value' => '₱1,200.00 /night']];
+foreach ([['social', null], ['question', 'unknown']] as [$misclassifiedKind, $misclassifiedProperty]) {
+    $roomDetailsPayload = $payload($misclassifiedKind, [], $groundedReply, [], null, null, 'en', $roomDetailsClaims);
+    if ($misclassifiedProperty !== null) $roomDetailsPayload['knowledge_property'] = $misclassifiedProperty;
+    $roomDetailsProvider = new ReceptionistNaturalContractProvider([['payload' => $roomDetailsPayload]]);
+    [$roomDetailsResult, $roomDetailsStatus] = $run($roomDetailsState, 'Tell me about Rafael.', $roomDetailsProvider, [
+        '_records' => $groundRecords,
+    ]);
+    $assert('a grounded named-room answer survives ' . $misclassifiedKind . ' classification without changing booking criteria',
+        $roomDetailsStatus === 200 && count($roomDetailsProvider->calls) === 1
+        && ($roomDetailsResult['reply'] ?? null) === $groundedReply
+        && ($roomDetailsResult['slots'] ?? null) === $roomDetailsSlots
+        && ($roomDetailsResult['natural_state']['recommendation_snapshot']['criteria_signature'] ?? null)
+            === receptionist_natural_criteria_signature($roomDetailsSlots));
+}
+$irrelevantRoomClaimsProvider = new ReceptionistNaturalContractProvider([['payload' => $payload('social', [],
+    $groundedReply, [], 101, 77, 'en', $roomDetailsClaims)]]);
+[$irrelevantRoomClaimsResult, $irrelevantRoomClaimsStatus] = $run($roomDetailsState, 'What is the weather today?',
+    $irrelevantRoomClaimsProvider, ['_records' => $groundRecords]);
+$assert('valid room claims do not answer an unrelated weather question classified as social',
+    $irrelevantRoomClaimsStatus === 200 && count($irrelevantRoomClaimsProvider->calls) === 1
+    && ($irrelevantRoomClaimsResult['reply'] ?? null) === 'Sorry, I didn’t understand that. I can help with resort rooms, rates, bookings, amenities, or directions.'
+    && ($irrelevantRoomClaimsResult['slots'] ?? null) === $roomDetailsSlots);
 $assert('natural claim rejects capacity recast as bed count',
     receptionist_natural_grounded_reply('Rafael Standard Room has 4 beds.', [...$identityClaims, ['source_id' => 'recommendation-101-77', 'field' => 'capacity', 'value' => '4 guests maximum']], $groundRecords, $groundState, $groundProposal, 'Tell me about Rafael.') === null);
 $assert('natural claim rejects unlisted jacuzzi',

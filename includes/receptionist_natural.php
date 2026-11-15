@@ -1381,6 +1381,63 @@ function receptionist_natural_grounded_reply(string $reply, array $claims, array
     return trim($clean);
 }
 
+/** Keep a grounded room answer on a misclassified turn only when the user named that room. */
+function receptionist_natural_grounded_room_reply_is_relevant(string $message, array $claims, array $records, array $state): bool
+{
+    $asksForRoomDetails = receptionist_knowledge_property_from_message($message) !== null
+        || receptionist_knowledge_is_room_details_request($message)
+        || preg_match('/\b(?:tell\s+me\s+(?:more\s+)?about|more\s+about|describe)\b/i', $message) === 1;
+    if (!$asksForRoomDetails) return false;
+
+    $exactRoomMatches = receptionist_knowledge_explicit_venue_matches($records, $message, 'Hotel Room');
+    $namedRoomMatches = $exactRoomMatches ?: receptionist_knowledge_hotel_parent_matches($records, $message);
+    if (!$namedRoomMatches) return false;
+
+    $allowedRooms = [];
+    foreach ($namedRoomMatches as $record) {
+        if (($record['kind'] ?? null) !== 'venue' || ($record['category'] ?? null) !== 'Hotel Room') continue;
+        $venueId = (int)($record['venue_id'] ?? 0);
+        $roomGroupId = (int)($record['room_group_id'] ?? 0);
+        if ($venueId > 0 && $roomGroupId > 0) $allowedRooms[$venueId . ':' . $roomGroupId] = true;
+    }
+    if (!$allowedRooms) return false;
+
+    $snapshotResults = is_array($state['recommendation_snapshot']['results'] ?? null)
+        ? $state['recommendation_snapshot']['results'] : [];
+    if ($snapshotResults) {
+        $shownRooms = [];
+        foreach ($snapshotResults as $item) {
+            $key = (int)($item['venue_id'] ?? 0) . ':' . (int)($item['room_group_id'] ?? 0);
+            if (isset($allowedRooms[$key])) $shownRooms[$key] = true;
+        }
+        if (!$shownRooms) return false;
+        $allowedRooms = $shownRooms;
+    }
+
+    $roomFields = ['name', 'room_type', 'capacity', 'beds', 'rate', 'estimated_total', 'reason', 'description', 'amenities',
+        'base_rate', 'overnight_rate', 'capacity_base', 'capacity_max', 'capacity_styles', 'bed_count_min', 'bed_count_max', 'inclusions'];
+    $claimedRooms = [];
+    foreach ($claims as $claim) {
+        if (!is_array($claim) || !in_array($claim['field'] ?? null, $roomFields, true)) return false;
+        $pair = null;
+        if (is_string($claim['source_id'] ?? null)
+            && preg_match('/\Arecommendation-(\d+)-(\d+)\z/', $claim['source_id'], $match) === 1) {
+            $pair = (int)$match[1] . ':' . (int)$match[2];
+        } else {
+            foreach ($records as $record) {
+                if (($record['id'] ?? null) !== ($claim['source_id'] ?? null) || ($record['kind'] ?? null) !== 'venue'
+                    || ($record['category'] ?? null) !== 'Hotel Room') continue;
+                $pair = (int)($record['venue_id'] ?? 0) . ':' . (int)($record['room_group_id'] ?? 0);
+                break;
+            }
+        }
+        if ($pair === null || !isset($allowedRooms[$pair])) return false;
+        $claimedRooms[$pair] = true;
+    }
+
+    return count($claimedRooms) === 1;
+}
+
 function receptionist_natural_category_evidence(string $message): ?string
 {
     $exact = receptionist_natural_category($message);
@@ -2013,11 +2070,21 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
         }
         $answer = receptionist_knowledge_compose_selection($records, $knowledgeCandidates, $proposal['knowledge_id'], $selectionProperty, $language, $state['slots'], $message);
     }
+    $isSocialInput = receptionist_knowledge_is_social_input($message);
+    $unsupportedNonFactualTurn = !$isSocialInput
+        && ($kind === 'social' || ($kind === 'question' && ($proposal['knowledge_property'] ?? null) === 'unknown'));
     $firstGroundedReply = receptionist_natural_grounded_reply((string)($proposal['social_reply'] ?? ''), $proposal['claims'] ?? [], $records, $state, $proposal, $message, $groundingReason);
+    $preserveGroundedRoomReply = $unsupportedNonFactualTurn && $firstGroundedReply !== null
+        && receptionist_natural_grounded_room_reply_is_relevant($message, $proposal['claims'] ?? [], $records, $state);
+    if ($unsupportedNonFactualTurn && !$preserveGroundedRoomReply) {
+        $firstGroundedReply = null;
+        $groundingReason ??= 'unsupported_nonfactual_turn';
+    }
     if ($firstGroundedReply !== null && !receptionist_natural_reply_matches_language($firstGroundedReply, $language)) {
         $firstGroundedReply = null;
         $groundingReason = 'language_mismatch';
     }
+    $preserveGroundedRoomReply = $preserveGroundedRoomReply && $firstGroundedReply !== null;
     if ($firstGroundedReply !== null) $groundingReason = null;
     $reply = $firstGroundedReply ?? '';
     $initialGroundedReplyAccepted = $firstGroundedReply !== null;
@@ -2043,19 +2110,19 @@ function receptionist_natural_handle_turn(mysqli $conn, array $request, string $
             $state['slots']['active_room_group_id'] = (int)$item['room_group_id'];
         } else unset($state['slots']['active_room_group_id']);
         if ($reply === '') $reply = receptionist_natural_snapshot_reply($item, $message, $language, $state['recommendation_snapshot'] ?? []);
-    } elseif ($kind === 'social' || receptionist_knowledge_is_social_input($message)) {
+    } elseif ($isSocialInput) {
         if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
             $reply = receptionist_natural_safe_social_reply((string)($proposal['social_reply'] ?? ''), $language);
         }
+    } elseif ($kind === 'social' && !$preserveGroundedRoomReply && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
+        $reply = receptionist_ai_unsupported_message($language);
     } elseif ($kind === 'ambiguous') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Alin dito ang ibig mong sabihin?', 'taglish' => 'Alin dito ang ibig mong sabihin?', default => 'Which option did you mean?' };
     } elseif ($kind === 'reference') {
         if ($reply === '') $reply = match ($language) { 'fil' => 'Aling option ang gusto mong tingnan?', 'taglish' => 'Aling option ang gusto mong tingnan?', default => 'Which option would you like me to look at?' };
         $quickReplies = array_values(array_slice(array_unique(array_map(static fn(array $item): string => (string)($item['title'] ?? ''), $state['recommendation_snapshot']['results'] ?? [])), 0, 3));
-    } elseif ($kind === 'question' && ($proposal['knowledge_property'] ?? null) === 'unknown') {
-        if ($reply === '' && !receptionist_knowledge_is_fact_request($message, $state['slots'])) {
-            $reply = receptionist_natural_local_reply('unknown', $language);
-        }
+    } elseif ($kind === 'question' && !$preserveGroundedRoomReply && ($proposal['knowledge_property'] ?? null) === 'unknown') {
+        if (!receptionist_knowledge_is_fact_request($message, $state['slots'])) $reply = receptionist_ai_unsupported_message($language);
     }
 
     if ($reply === '' && receptionist_knowledge_is_fact_request($message, $state['slots'])) {
