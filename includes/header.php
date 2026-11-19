@@ -259,6 +259,7 @@ $nav = [
             <a class="s-cta" href="actions/auth/logout.php">Logout</a>
             <?php endif; ?>
         </div>
+        <p class="test-site-notice" role="note">This is a test website. Do not make real bookings or payments.</p>
     </header>
 
     <script>

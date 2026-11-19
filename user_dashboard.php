@@ -433,6 +433,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 
         <!-- MAIN CONTENT -->
         <main class="dashboard-main">
+            <p class="test-site-notice" role="note">This is a test website. Do not make real bookings or payments.</p>
 
             <header class="dashboard-topbar">
                 <div class="topbar-left">
