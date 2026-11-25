@@ -46,28 +46,6 @@ body {
 ::-webkit-scrollbar-thumb { background: #b9a68e; border: 3px solid var(--ui-paper); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
 
-.test-site-notice {
-  display: block;
-  padding: 8px 14px;
-  border: 1px solid rgba(140, 96, 45, .35);
-  background: #fff4df;
-  color: #2b2723;
-  font-size: .78rem;
-  font-weight: 600;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.s-header > .test-site-notice {
-  width: min(100%, 44rem);
-  margin: 10px auto 0;
-}
-
-.dashboard-main > .test-site-notice {
-  width: 100%;
-  margin: 0;
-}
-
 :where(a, button, input, select, textarea, summary):focus-visible {
   outline: 2px solid var(--color-gold) !important;
   outline-offset: 3px !important;

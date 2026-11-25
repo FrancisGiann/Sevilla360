@@ -1287,10 +1287,10 @@ document.addEventListener("DOMContentLoaded", () => {
       return Math.min(viewportHeight - padding, Math.max(padding, headerBounds.bottom + padding));
   }
 
-  function positionHotelMenu(wrapper) {
+  function positionCategoryMenu(wrapper) {
       if (!wrapper?.classList.contains('open')) return;
       const button = wrapper.querySelector('.master-pill');
-      const menu = wrapper.querySelector('.hotel-room-groups-menu');
+      const menu = wrapper.querySelector('.pill-dropdown-menu');
       if (!button || !menu) return;
 
       const bounds = button.getBoundingClientRect();
@@ -1298,8 +1298,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
       const padding = 12;
       const gap = 12;
-      const safeTop = getHotelMenuSafeTop(viewportHeight, padding);
-      const menuWidth = menu.getBoundingClientRect().width;
+      let safeTop = getHotelMenuSafeTop(viewportHeight, padding);
+      const destinationsBounds = destinationsControl?.getBoundingClientRect();
+      if (destinationsBounds && destinationsBounds.width > 0 && destinationsBounds.bottom > 0) {
+          safeTop = Math.max(safeTop, Math.min(viewportHeight - padding, destinationsBounds.bottom + gap));
+      }
+      const menuWidth = Math.min(640, viewportWidth - (padding * 2));
       const left = Math.max(padding, Math.min(
           bounds.left + (bounds.width - menuWidth) / 2,
           viewportWidth - menuWidth - padding
@@ -1316,14 +1320,17 @@ document.addEventListener("DOMContentLoaded", () => {
           ? Math.max(safeTop, bounds.top - gap - visibleHeight)
           : Math.min(viewportHeight - padding - visibleHeight, belowTop);
 
-      menu.style.setProperty('--hotel-menu-left', `${Math.round(left)}px`);
-      menu.style.setProperty('--hotel-menu-top', `${Math.round(top)}px`);
-      menu.style.setProperty('--hotel-menu-max-height', `${Math.floor(availableHeight)}px`);
+      const isHotelMenu = wrapper.classList.contains('hotel-room-dropdown');
+      menu.style.setProperty(isHotelMenu ? '--hotel-menu-left' : '--category-menu-left', `${Math.round(left)}px`);
+      menu.style.setProperty(isHotelMenu ? '--hotel-menu-top' : '--category-menu-top', `${Math.round(top)}px`);
+      menu.style.setProperty(isHotelMenu ? '--hotel-menu-width' : '--category-menu-width', `${Math.floor(menuWidth)}px`);
+      menu.style.setProperty(isHotelMenu ? '--hotel-menu-max-height' : '--category-menu-max-height', `${Math.floor(availableHeight)}px`);
   }
 
   function repositionOpenHotelMenu() {
       const openHotelMenu = document.querySelector('.hotel-room-dropdown.open');
-      if (openHotelMenu) positionHotelMenu(openHotelMenu);
+      if (openHotelMenu) positionCategoryMenu(openHotelMenu);
+      document.querySelectorAll('.pill-dropdown-wrapper.open:not(.hotel-room-dropdown)').forEach(positionCategoryMenu);
   }
 
   hotelVariantSelect?.addEventListener('change', () => {
@@ -1358,7 +1365,9 @@ document.addEventListener("DOMContentLoaded", () => {
               wrapper.classList.add("open");
               this.classList.add("menu-open");
               this.setAttribute('aria-expanded', 'true');
-              if (wrapper.classList.contains('hotel-room-dropdown')) positionHotelMenu(wrapper);
+              if (wrapper.classList.contains('hotel-room-dropdown') || window.matchMedia('(max-width: 992px)').matches) {
+                  positionCategoryMenu(wrapper);
+              }
           }
       });
   });
@@ -4284,7 +4293,16 @@ document.addEventListener("DOMContentLoaded", () => {
       receptionistAutoOpen = true;
     }
     if (!receptionistAutoOpen) receptionistReopen.hidden = false;
-    window.setTimeout(() => { if (receptionistAutoOpen && !receptionistState.hasOpened) openGreeting(); }, 0);
+    const openAutomaticGreeting = () => {
+      if (!receptionistAutoOpen || receptionistState.hasOpened) return;
+      const notice = document.querySelector('[data-test-site-notice]');
+      if (notice && !notice.hidden) {
+        window.addEventListener('SevillaTestSiteNoticeClosed', openAutomaticGreeting, { once: true });
+        return;
+      }
+      openGreeting();
+    };
+    window.setTimeout(openAutomaticGreeting, 0);
   }
 
 

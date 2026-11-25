@@ -1,0 +1,108 @@
+.test-site-notice-backdrop[hidden] {
+  display: none !important;
+}
+
+.test-site-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000100;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: rgba(28, 24, 20, .68);
+  backdrop-filter: blur(3px);
+}
+
+.test-site-notice-dialog {
+  position: relative;
+  width: min(100%, 27rem);
+  box-sizing: border-box;
+  padding: clamp(1.5rem, 6vw, 2.25rem);
+  border: 1px solid rgba(214, 168, 112, .7);
+  border-radius: .8rem;
+  background: #fffaf2;
+  color: #2a2522;
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .35);
+  text-align: center;
+}
+
+.test-site-notice-dialog:focus {
+  outline: none;
+}
+
+.test-site-notice-close {
+  position: absolute;
+  top: .6rem;
+  right: .7rem;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #51473d;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.test-site-notice-close:hover {
+  background: rgba(42, 37, 34, .08);
+}
+
+.test-site-notice-close:focus-visible,
+.test-site-notice-ok:focus-visible {
+  outline: 3px solid #8c602d;
+  outline-offset: 3px;
+}
+
+.test-site-notice-icon {
+  display: inline-grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  place-items: center;
+  margin-bottom: .85rem;
+  border-radius: 50%;
+  background: #f4e5cf;
+  color: #8c602d;
+  font-size: 1.35rem;
+}
+
+.test-site-notice-dialog h2 {
+  margin: 0 2rem .7rem;
+  color: #2a2522;
+  font: 600 1.35rem/1.25 "Playfair Display", Georgia, serif;
+}
+
+.test-site-notice-dialog p {
+  margin: 0 auto 1.4rem;
+  max-width: 23rem;
+  color: #51473d;
+  font: 500 1rem/1.55 "Inter", system-ui, sans-serif;
+}
+
+.test-site-notice-ok {
+  min-width: 8rem;
+  min-height: 2.9rem;
+  padding: .7rem 1.4rem;
+  border: 1px solid #a77a45;
+  border-radius: .4rem;
+  background: linear-gradient(135deg, #e4c194, #c4965e);
+  color: #2a2522;
+  font: 700 .95rem/1.2 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.test-site-notice-ok:hover {
+  filter: brightness(.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .test-site-notice-backdrop,
+  .test-site-notice-dialog {
+    scroll-behavior: auto;
+  }
+}

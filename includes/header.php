@@ -136,6 +136,7 @@ $nav = [
 
     <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/style.css'), ENT_QUOTES, 'UTF-8'); ?>">
     <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/header.css'), ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars(site_metadata_asset_url('assets/css/test_site_notice.css'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php foreach ($extra_css as $stylesheet):
         $stylesheet = trim((string)$stylesheet);
         if ($stylesheet === '') continue;
@@ -259,8 +260,17 @@ $nav = [
             <a class="s-cta" href="actions/auth/logout.php">Logout</a>
             <?php endif; ?>
         </div>
-        <p class="test-site-notice" role="note">This is a test website. Do not make real bookings or payments.</p>
     </header>
+
+    <div class="test-site-notice-backdrop" data-test-site-notice data-notice-context="<?php echo $current_route === 'booking.php' ? 'booking' : 'public'; ?>" hidden>
+        <section class="test-site-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="test-site-notice-title" aria-describedby="test-site-notice-message" tabindex="-1">
+            <button type="button" class="test-site-notice-close" data-test-site-notice-close aria-label="Close test website notice">&times;</button>
+            <span class="test-site-notice-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+            <h2 id="test-site-notice-title">Test website notice</h2>
+            <p id="test-site-notice-message">This is a test website. Do not make real bookings or payments.</p>
+            <button type="button" class="test-site-notice-ok" data-test-site-notice-close>OK</button>
+        </section>
+    </div>
 
     <script>
     (function() {

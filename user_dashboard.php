@@ -364,6 +364,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     <link rel="stylesheet" href="assets/css/style.css?v=<?= filemtime(__DIR__ . '/assets/css/style.css'); ?>">
     <link rel="stylesheet" href="assets/css/user_dashboard.css?v=<?= filemtime(__DIR__ . '/assets/css/user_dashboard.css'); ?>">
     <link rel="stylesheet" href="assets/css/ui-refinement.css?v=<?= filemtime(__DIR__ . '/assets/css/ui-refinement.css'); ?>">
+    <link rel="stylesheet" href="assets/css/test_site_notice.css?v=<?= filemtime(__DIR__ . '/assets/css/test_site_notice.css'); ?>">
 <?php if (!(defined('SEVILLA_PM_FULL_APP') && SEVILLA_PM_FULL_APP)): ?>
     <link rel="stylesheet" href="assets/css/manual_payment.css?v=<?= filemtime(__DIR__ . '/assets/css/manual_payment.css'); ?>">
 <?php endif; ?>
@@ -371,6 +372,15 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 </head>
 
 <body class="dashboard-body">
+    <div class="test-site-notice-backdrop" data-test-site-notice data-notice-context="public" hidden>
+        <section class="test-site-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="test-site-notice-title" aria-describedby="test-site-notice-message" tabindex="-1">
+            <button type="button" class="test-site-notice-close" data-test-site-notice-close aria-label="Close test website notice">&times;</button>
+            <span class="test-site-notice-icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+            <h2 id="test-site-notice-title">Test website notice</h2>
+            <p id="test-site-notice-message">This is a test website. Do not make real bookings or payments.</p>
+            <button type="button" class="test-site-notice-ok" data-test-site-notice-close>OK</button>
+        </section>
+    </div>
     <script>window.sevillaRealtimeConfig = <?php echo json_encode($realtime_client_config, JSON_UNESCAPED_SLASHES); ?>;</script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/realtime_notifications.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <div class="dashboard-layout">
@@ -433,8 +443,6 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
 
         <!-- MAIN CONTENT -->
         <main class="dashboard-main">
-            <p class="test-site-notice" role="note">This is a test website. Do not make real bookings or payments.</p>
-
             <header class="dashboard-topbar">
                 <div class="topbar-left">
                     <button type="button" id="btn-mobile-sidebar-toggle" class="mobile-menu-btn" aria-label="Open menu" aria-controls="customer-sidebar" aria-expanded="false">
@@ -1029,6 +1037,7 @@ if (defined('SEVILLA_CUSTOMER_DASHBOARD_REFRESH')) {
     
     <!-- Global Custom Modals -->
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/test_site_notice.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <?php require_once __DIR__ . '/includes/session_watch_script.php'; ?>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_clipboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
     <script src="<?= htmlspecialchars(site_metadata_asset_url('assets/js/password_policy.js'), ENT_QUOTES, 'UTF-8') ?>"></script>

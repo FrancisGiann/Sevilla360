@@ -407,7 +407,7 @@
   position: absolute;
   bottom: 30px;
   left: 30px;
-  z-index: 50;
+  z-index: 60;
 }
 
 .master-category-pills {
@@ -523,7 +523,7 @@
 /* Hotel choices stay direct venue buttons; room type supplies the grouping. */
 .pill-dropdown-menu.hotel-room-groups-menu {
   position: fixed;
-  z-index: 51;
+  z-index: 56;
   inset: var(--hotel-menu-top, 12px) auto auto var(--hotel-menu-left, 12px);
   width: var(--hotel-menu-width, min(640px, calc(100vw - 24px)));
   min-width: 0;
@@ -585,7 +585,22 @@
 
 @media (max-width: 992px) {
   .hotel-room-groups { grid-template-columns: minmax(0, 1fr); gap: .85rem; }
-  .pill-dropdown-menu.hotel-room-groups-menu { width: var(--hotel-menu-width, min(640px, calc(100vw - 24px))); }
+  .pill-dropdown-menu:not(.hotel-room-groups-menu) {
+    position: fixed;
+    z-index: 56;
+    inset: var(--category-menu-top, 12px) auto auto var(--category-menu-left, 12px);
+    width: var(--category-menu-width, min(640px, calc(100vw - 24px)));
+    min-width: 0;
+    max-width: calc(100vw - 24px);
+    max-height: var(--category-menu-max-height, min(68dvh, 560px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+  }
+  .pill-dropdown-menu.hotel-room-groups-menu {
+    z-index: 56;
+    width: var(--hotel-menu-width, min(640px, calc(100vw - 24px)));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

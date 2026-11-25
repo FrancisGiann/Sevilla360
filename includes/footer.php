@@ -73,6 +73,7 @@ $footer_social_links = array_values(array_filter($footer_social_links, static fu
 
 <!-- Shared and page-specific scripts -->
 <script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/global_modals.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
+<script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/test_site_notice.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
 <?php if (($active_page ?? '') === 'home'): ?>
 <script src="<?php echo htmlspecialchars(site_metadata_asset_url('assets/js/index.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
 <?php endif; ?>
